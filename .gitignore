@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Archivos de resultados
+resultados_expedientes.xlsx
+resultados_expedientes.csv
+*.xlsx
+*.csv
+
+# Debug
+debug_screenshots/
+*.html
+*.png
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Chrome
+chromedriver
+chromedriver.exe
+
+# Logs
+*.log

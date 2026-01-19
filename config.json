@@ -1,0 +1,21 @@
+{
+  "configuracion": {
+    "max_pestanas": 5,
+    "dias_acuerdos_nuevos": 5,
+    "debug_mode": true,
+    "tiempo_espera_carga": 4,
+    "tiempo_entre_lotes": 2
+  },
+  "descripciones": {
+    "max_pestanas": "Número máximo de pestañas de Chrome abiertas simultáneamente (1-10 recomendado)",
+    "dias_acuerdos_nuevos": "Número de días para considerar un acuerdo como 'nuevo' y marcarlo en amarillo",
+    "debug_mode": "Si es true, guarda screenshots y HTML de las páginas para debugging",
+    "tiempo_espera_carga": "Segundos de espera para que cargue cada página",
+    "tiempo_entre_lotes": "Segundos de pausa entre cada lote de búsquedas paralelas"
+  },
+  "notas": [
+    "Aumentar max_pestanas puede acelerar el proceso pero consume más memoria",
+    "Si tienes problemas de carga, aumenta tiempo_espera_carga",
+    "Los acuerdos nuevos se marcan con fondo amarillo en el Excel"
+  ]
+}

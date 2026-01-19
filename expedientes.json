@@ -1,0 +1,118 @@
+{
+  "descripcion": "Archivo de configuración de expedientes para búsqueda automática",
+  "instrucciones": [
+    "Para buscar por NÚMERO de expediente, usa el campo 'numero'",
+    "Para buscar por NOMBRE (actores), usa el campo 'nombre'",
+    "El campo 'juzgado' debe coincidir con alguno de los juzgados disponibles (ver lista abajo)",
+    "Puedes agregar comentarios con el campo 'comentario' (opcional)"
+  ],
+  "juzgados_disponibles": {
+    "CANCUN": [
+      "JUZGADO PRIMERO FAMILIAR ORAL CANCUN",
+      "JUZGADO SEGUNDO FAMILIAR ORAL CANCUN",
+      "JUZGADO SEGUNDO DE LO FAMILIAR CANCUN",
+      "JUZGADO FAMILIAR DE PRIMERA INSTANCIA CANCUN",
+      "JUZGADO PRIMERO CIVIL CANCUN",
+      "JUZGADO SEGUNDO CIVIL CANCUN",
+      "JUZGADO TERCERO CIVIL CANCUN",
+      "JUZGADO CUARTO CIVIL CANCUN",
+      "JUZGADO ORAL CIVIL CANCUN",
+      "JUZGADO PRIMERO MERCANTIL CANCUN",
+      "JUZGADO SEGUNDO MERCANTIL CANCUN",
+      "JUZGADO TERCERO MERCANTIL CANCUN",
+      "JUZGADO ORAL MERCANTIL CANCUN",
+      "TRIBUNAL PRIMERO LABORAL CANCUN",
+      "TRIBUNAL SEGUNDO LABORAL CANCUN"
+    ],
+    "PLAYA_DEL_CARMEN": [
+      "JUZGADO FAMILIAR ORAL PLAYA",
+      "JUZGADO FAMILIAR PRIMERA INSTANCIA PLAYA",
+      "JUZGADO PRIMERO CIVIL PLAYA",
+      "JUZGADO SEGUNDO CIVIL PLAYA",
+      "JUZGADO ORAL CIVIL PLAYA",
+      "JUZGADO MERCANTIL PLAYA",
+      "TRIBUNAL LABORAL PLAYA"
+    ],
+    "CHETUMAL": [
+      "JUZGADO FAMILIAR ORAL CHETUMAL",
+      "JUZGADO FAMILIAR PRIMERA INSTANCIA CHETUMAL",
+      "JUZGADO CIVIL CHETUMAL",
+      "JUZGADO MERCANTIL CHETUMAL",
+      "JUZGADO CIVIL ORAL CHETUMAL",
+      "TRIBUNAL LABORAL CHETUMAL"
+    ],
+    "COZUMEL": [
+      "JUZGADO FAMILIAR COZUMEL",
+      "JUZGADO CIVIL COZUMEL",
+      "JUZGADO FAMILIAR ORAL COZUMEL",
+      "JUZGADO ORAL CIVIL COZUMEL"
+    ],
+    "FELIPE_CARRILLO_PUERTO": [
+      "JUZGADO CIVIL ORAL CARRILLO PUERTO",
+      "JUZGADO FAMILIAR ORAL CARRILLO PUERTO",
+      "JUZGADO CIVIL PRIMERA INSTANCIA CARRILLO PUERTO",
+      "JUZGADO FAMILIAR PRIMERA INSTANCIA CARRILLO PUERTO"
+    ],
+    "ISLA_MUJERES": [
+      "JUZGADO CIVIL ORAL ISLA MUJERES",
+      "JUZGADO FAMILIAR ORAL ISLA MUJERES"
+    ],
+    "TULUM": [
+      "JUZGADO CIVIL ORAL TULUM",
+      "JUZGADO FAMILIAR ORAL TULUM"
+    ],
+    "BACALAR": [
+      "JUZGADO FAMILIAR PRIMERA INSTANCIA BACALAR"
+    ]
+  },
+  "expedientes": [
+    {
+      "comentario": "Expedientes del Juzgado Segundo Familiar Oral Cancún",
+      "numero": "2358/2025",
+      "juzgado": "JUZGADO SEGUNDO FAMILIAR ORAL CANCUN"
+    },
+    {
+      "numero": "2501/2025",
+      "juzgado": "JUZGADO SEGUNDO FAMILIAR ORAL CANCUN"
+    },
+    {
+      "numero": "2502/2025",
+      "juzgado": "JUZGADO SEGUNDO FAMILIAR ORAL CANCUN"
+    },
+    {
+      "numero": "1421/2025",
+      "juzgado": "JUZGADO SEGUNDO FAMILIAR ORAL CANCUN"
+    },
+    {
+      "comentario": "Expedientes del Juzgado Primero Familiar Oral Cancún",
+      "numero": "2500/2025",
+      "juzgado": "JUZGADO PRIMERO FAMILIAR ORAL CANCUN"
+    },
+    {
+      "numero": "1430/2022",
+      "juzgado": "JUZGADO PRIMERO FAMILIAR ORAL CANCUN"
+    },
+    {
+      "comentario": "Búsqueda por nombre en Playa del Carmen",
+      "nombre": "samanta",
+      "juzgado": "JUZGADO FAMILIAR ORAL PLAYA"
+    }
+  ],
+  "ejemplos_para_agregar": [
+    {
+      "comentario": "EJEMPLO: Búsqueda por número de expediente",
+      "numero": "1234/2025",
+      "juzgado": "JUZGADO PRIMERO CIVIL CANCUN"
+    },
+    {
+      "comentario": "EJEMPLO: Búsqueda por nombre de actor",
+      "nombre": "JUAN PEREZ",
+      "juzgado": "JUZGADO MERCANTIL PLAYA"
+    },
+    {
+      "comentario": "EJEMPLO: Expediente en Chetumal",
+      "numero": "567/2024",
+      "juzgado": "JUZGADO CIVIL CHETUMAL"
+    }
+  ]
+}

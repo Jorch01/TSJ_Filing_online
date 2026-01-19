@@ -1,0 +1,11 @@
+# Dependencias para Robot de Búsqueda Automática de Expedientes v6.0
+# TSJ Quintana Roo - Estrados Electrónicos
+
+# Selenium para automatización web
+selenium>=4.0.0
+
+# openpyxl para generación de archivos Excel
+openpyxl>=3.0.0
+
+# Nota: También necesitas ChromeDriver instalado y en tu PATH
+# Descargar desde: https://chromedriver.chromium.org/
