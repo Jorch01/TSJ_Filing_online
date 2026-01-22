@@ -3,9 +3,10 @@
 
 ### 🎯 Características Principales
 
-✅ **Salas de Segunda Instancia** - Soporte completo para las 11 salas de apelación ⭐ NUEVO
+🖥️ **Interfaz Gráfica** - Agrega expedientes visualmente sin editar JSON ⭐ NUEVO
+✅ **Salas de Segunda Instancia** - Soporte completo para las 11 salas de apelación
 ✅ **Búsquedas simultáneas** - Procesa múltiples expedientes en paralelo usando pestañas de Chrome
-✅ **Carga dinámica** - Agrega expedientes fácilmente editando `expedientes.json`
+✅ **Carga dinámica** - Agrega expedientes desde GUI o editando `expedientes.json`
 ✅ **Reportes Excel mejorados** - Formato profesional con acuerdos nuevos marcados en amarillo
 ✅ **Detección inteligente** - Marca automáticamente acuerdos de los últimos 5 días
 ✅ **Búsqueda flexible** - Busca por número de expediente o por nombre de actor
@@ -28,6 +29,31 @@ pip3 install selenium openpyxl
 ---
 
 ## 🚀 Uso Rápido
+
+### 🖥️ OPCIÓN 1: Interfaz Gráfica (RECOMENDADO para principiantes)
+
+```bash
+./iniciar_gui.sh
+```
+
+O directamente:
+
+```bash
+python3 gui_expedientes.py
+```
+
+**Ventajas:**
+- ✅ Agrega expedientes visualmente
+- ✅ No necesitas editar JSON manualmente
+- ✅ Lista desplegable con todos los juzgados/salas
+- ✅ Validación automática
+- ✅ Ejecuta búsqueda con un click
+
+Ver guía completa: [GUIA_GUI.md](GUIA_GUI.md)
+
+---
+
+### 📝 OPCIÓN 2: Edición Manual de JSON
 
 ### 1. Configurar expedientes
 
@@ -162,6 +188,16 @@ Reduce `max_pestanas` a 2-3 pestañas simultáneas
 ---
 
 ## 📜 Changelog
+
+### v6.2 (2025-01-22) 🖥️
+- 🎉 **Interfaz Gráfica (GUI) completa** con Tkinter
+- ✨ Agregar expedientes visualmente sin editar JSON
+- ✨ Lista desplegable con todos los juzgados y salas organizados
+- ✨ Validación automática de datos
+- ✨ Ejecutar búsquedas con un click
+- ✨ Gestión visual de expedientes (agregar/eliminar/limpiar)
+- 📚 Guía completa de uso de la GUI (GUIA_GUI.md)
+- 🚀 Script launcher para macOS/Linux
 
 ### v6.1 (2025-01-22) ✨
 - ✅ **11 Salas de Segunda Instancia completamente configuradas**

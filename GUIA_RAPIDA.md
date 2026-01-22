@@ -1,6 +1,29 @@
 # 📖 Guía Rápida de Uso
 
-## ⚡ Inicio Rápido (3 pasos)
+## 🖥️ NUEVO: Interfaz Gráfica (Más Fácil)
+
+### Inicio Ultra Rápido (2 pasos):
+
+#### 1️⃣ Instalar dependencias:
+```bash
+./instalar.sh
+```
+
+#### 2️⃣ Abrir interfaz gráfica:
+```bash
+./iniciar_gui.sh
+```
+
+Luego:
+- ✅ Agrega expedientes visualmente
+- ✅ Click en "🚀 EJECUTAR BÚSQUEDA"
+- ✅ ¡Listo!
+
+Ver guía completa: [GUIA_GUI.md](GUIA_GUI.md)
+
+---
+
+## ⚡ Modo Clásico (Terminal - 3 pasos)
 
 ### 1️⃣ Instalar dependencias
 
