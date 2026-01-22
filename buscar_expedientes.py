@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Robot de Búsqueda Automática de Expedientes v6.0
+Robot de Búsqueda Automática de Expedientes v6.1
 TSJ Quintana Roo - Lista Electrónica
 Autor: Jorge Israel Clemente Marié - Empírica Legal Lab
 
-VERSIÓN 6.0 - OPTIMIZADA:
+VERSIÓN 6.1 - COMPLETA:
 - ✅ Búsquedas simultáneas en pestañas paralelas
 - ✅ Carga dinámica de expedientes desde archivo JSON
 - ✅ Reporte Excel con formato y marcado de acuerdos nuevos (últimos 5 días)
+- ✅ Soporte completo para 11 Salas de Segunda Instancia
+- ✅ Salas históricas y especializadas incluidas
 - ✅ Mejor manejo de errores y reintentos
 - ✅ Archivo de configuración separado
 """
@@ -91,21 +93,28 @@ class TSJExpedientesBot:
         'JUZGADO FAMILIAR PRIMERA INSTANCIA BACALAR': 188,
 
         # ===== SALAS DE SEGUNDA INSTANCIA =====
-        # ⚠️ IMPORTANTE: Los IDs de las salas deben obtenerse del sistema
-        # Ver archivo INSTRUCCIONES_SALAS.md para saber cómo encontrarlos
-        # Una vez que tengas los IDs, reemplaza 'None' con el número correcto
+        # IDs obtenidos del sistema de estrados electrónicos TSJ QRoo
+        'PRIMERA SALA CIVIL MERCANTIL Y FAMILIAR': 170,
+        'SEGUNDA SALA PENAL ORAL': 171,
+        'TERCERA SALA PENAL ORAL': 173,
+        'CUARTA SALA CIVIL MERCANTIL Y FAMILIAR': 183,
+        'QUINTA SALA CIVIL MERCANTIL Y FAMILIAR': 175,
+        'SEXTA SALA CIVIL MERCANTIL Y FAMILIAR': 176,
+        'SEPTIMA SALA PENAL TRADICIONAL': 177,
+        'OCTAVA SALA PENAL ORAL': 178,
+        'NOVENA SALA PENAL ORAL': 179,
+        'DECIMA SALA CIVIL MERCANTIL Y FAMILIAR PLAYA': 172,
+        'SALA CONSTITUCIONAL': 184,
 
-        'PRIMERA SALA CIVIL MERCANTIL Y FAMILIAR': None,  # TODO: Agregar ID
-        'SEGUNDA SALA PENAL ORAL': None,  # TODO: Agregar ID
-        'TERCERA SALA PENAL ORAL': None,  # TODO: Agregar ID
-        'CUARTA SALA CIVIL MERCANTIL Y FAMILIAR': None,  # TODO: Agregar ID
-        'QUINTA SALA CIVIL MERCANTIL Y FAMILIAR': None,  # TODO: Agregar ID
-        'SEXTA SALA CIVIL MERCANTIL Y FAMILIAR': None,  # TODO: Agregar ID
-        'SEPTIMA SALA PENAL TRADICIONAL': None,  # TODO: Agregar ID
-        'OCTAVA SALA PENAL ORAL': None,  # TODO: Agregar ID
-        'NOVENA SALA PENAL ORAL': None,  # TODO: Agregar ID
-        'DECIMA SALA CIVIL MERCANTIL Y FAMILIAR PLAYA': None,  # TODO: Agregar ID
-        'SALA CONSTITUCIONAL': None,  # TODO: Agregar ID
+        # Salas históricas y especializadas (opcionales)
+        'SALA CONSTITUCIONAL HISTORICO': 143,
+        'SALA CONSTITUCIONAL SISTEMA CARA': 129,
+        '1A SALA ESPECIALIZADA CIVIL Y MERCANTIL': 101,
+        '2A SALA ESPECIALIZADA FAMILIAR Y FAMILIAR ORAL': 103,
+        '3A SALA ESPECIALIZADA PENAL TRADICIONAL': 102,
+        '4A SALA ESPECIALIZADA PENAL ORAL': 142,
+        '7A SALA ESPECIALIZADA FAMILIAR Y FAMILIAR ORAL': 117,
+        '8A SALA ESPECIALIZADA PENAL': 116
     }
     
     def __init__(self, max_pestanas=5, dias_acuerdos_nuevos=5):
@@ -606,7 +615,7 @@ class TSJExpedientesBot:
 
 def main():
     """
-    Versión 6.0 - OPTIMIZADA
+    Versión 6.1 - COMPLETA
 
     INSTRUCCIONES:
     1. Edita el archivo 'expedientes.json' para agregar/modificar expedientes
@@ -616,11 +625,16 @@ def main():
     CONFIGURACIÓN:
     - max_pestanas: Número de pestañas simultáneas (default: 5)
     - dias_acuerdos_nuevos: Días para marcar como nuevo (default: 5)
+
+    NUEVO EN v6.1:
+    - ✅ 11 Salas de Segunda Instancia completamente configuradas
+    - ✅ Soporte para apelaciones y recursos en Salas
     """
 
     print("=" * 70)
-    print("🤖 Robot de Búsqueda Automática de Expedientes v6.0")
+    print("🤖 Robot de Búsqueda Automática de Expedientes v6.1")
     print("    TSJ Quintana Roo - Lista Electrónica")
+    print("    ⭐ Con Soporte Completo para Salas de Segunda Instancia")
     print("=" * 70)
 
     # Cargar configuración desde config.json (o usar valores por defecto)

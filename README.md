@@ -1,14 +1,15 @@
-# 🤖 Robot de Búsqueda Automática de Expedientes v6.0
+# 🤖 Robot de Búsqueda Automática de Expedientes v6.1
 ## Tribunal Superior de Justicia de Quintana Roo - Estrados Electrónicos
 
 ### 🎯 Características Principales
 
+✅ **Salas de Segunda Instancia** - Soporte completo para las 11 salas de apelación ⭐ NUEVO
 ✅ **Búsquedas simultáneas** - Procesa múltiples expedientes en paralelo usando pestañas de Chrome
 ✅ **Carga dinámica** - Agrega expedientes fácilmente editando `expedientes.json`
 ✅ **Reportes Excel mejorados** - Formato profesional con acuerdos nuevos marcados en amarillo
 ✅ **Detección inteligente** - Marca automáticamente acuerdos de los últimos 5 días
 ✅ **Búsqueda flexible** - Busca por número de expediente o por nombre de actor
-✅ **Todos los juzgados** - Soporte para todos los juzgados de Quintana Roo
+✅ **Cobertura completa** - Todos los juzgados y salas de Quintana Roo
 
 ---
 
@@ -86,9 +87,22 @@ dias_nuevos = 5   # Días para marcar como nuevo
 
 ---
 
-## 📚 Juzgados Disponibles
+## 📚 Juzgados y Salas Disponibles
 
-### Cancún
+### 🏛️ Salas de Segunda Instancia (NUEVO ✅)
+- PRIMERA SALA CIVIL MERCANTIL Y FAMILIAR
+- SEGUNDA SALA PENAL ORAL
+- TERCERA SALA PENAL ORAL
+- CUARTA SALA CIVIL MERCANTIL Y FAMILIAR
+- QUINTA SALA CIVIL MERCANTIL Y FAMILIAR
+- SEXTA SALA CIVIL MERCANTIL Y FAMILIAR
+- SEPTIMA SALA PENAL TRADICIONAL
+- OCTAVA SALA PENAL ORAL
+- NOVENA SALA PENAL ORAL
+- DECIMA SALA CIVIL MERCANTIL Y FAMILIAR PLAYA
+- SALA CONSTITUCIONAL
+
+### Cancún - Primera Instancia
 - JUZGADO PRIMERO/SEGUNDO FAMILIAR ORAL CANCUN
 - JUZGADO PRIMERO/SEGUNDO/TERCERO/CUARTO CIVIL CANCUN
 - JUZGADO PRIMERO/SEGUNDO/TERCERO MERCANTIL CANCUN
@@ -148,6 +162,14 @@ Reduce `max_pestanas` a 2-3 pestañas simultáneas
 ---
 
 ## 📜 Changelog
+
+### v6.1 (2025-01-22) ✨
+- ✅ **11 Salas de Segunda Instancia completamente configuradas**
+- ✅ Script de descubrimiento automático de IDs de salas
+- ✅ Soporte completo para apelaciones y recursos
+- ✅ Salas históricas y especializadas incluidas
+- ✅ Guía de instalación específica para macOS
+- ✅ Detección automática de ambientes Conda
 
 ### v6.0 (2025-01-19)
 - ✨ Búsquedas simultáneas en múltiples pestañas

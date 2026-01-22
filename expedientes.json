@@ -77,7 +77,17 @@
       "DECIMA SALA CIVIL MERCANTIL Y FAMILIAR PLAYA",
       "SALA CONSTITUCIONAL"
     ],
-    "NOTA_SALAS": "⚠️ Las Salas de Segunda Instancia ya están agregadas, pero necesitas obtener los IDs del sistema. Ver INSTRUCCIONES_SALAS.md"
+    "SALAS_HISTORICAS_ESPECIALIZADAS": [
+      "SALA CONSTITUCIONAL HISTORICO",
+      "SALA CONSTITUCIONAL SISTEMA CARA",
+      "1A SALA ESPECIALIZADA CIVIL Y MERCANTIL",
+      "2A SALA ESPECIALIZADA FAMILIAR Y FAMILIAR ORAL",
+      "3A SALA ESPECIALIZADA PENAL TRADICIONAL",
+      "4A SALA ESPECIALIZADA PENAL ORAL",
+      "7A SALA ESPECIALIZADA FAMILIAR Y FAMILIAR ORAL",
+      "8A SALA ESPECIALIZADA PENAL"
+    ],
+    "NOTA_SALAS": "✅ Todas las Salas de Segunda Instancia ya están configuradas con sus IDs correctos"
   },
   "expedientes": [
     {
@@ -110,6 +120,11 @@
       "comentario": "Búsqueda por nombre en Playa del Carmen",
       "nombre": "samanta",
       "juzgado": "JUZGADO FAMILIAR ORAL PLAYA"
+    },
+    {
+      "comentario": "Expediente en Sala de Segunda Instancia - Penal Oral",
+      "numero": "615/2019",
+      "juzgado": "NOVENA SALA PENAL ORAL"
     }
   ],
   "ejemplos_para_agregar": [
