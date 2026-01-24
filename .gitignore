@@ -17,8 +17,14 @@ resultados_expedientes.csv
 
 # Debug
 debug_screenshots/
-*.html
-*.png
+
+# Archivos HTML de debug (pero no los del proyecto web)
+!web/**/*.html
+!extension/**/*.html
+
+# PNG de debug (pero no iconos del proyecto)
+!web/static/*.png
+!extension/**/icons/*.png
 
 # IDE
 .vscode/
