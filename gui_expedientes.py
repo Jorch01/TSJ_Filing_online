@@ -554,23 +554,34 @@ class ExpedientesGUI:
 
     def ejecutar_script(self):
         """Ejecuta el script de búsqueda en segundo plano"""
-        try:
-            # Obtener ruta absoluta del script
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            script_path = os.path.join(script_dir, "buscar_expedientes.py")
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        script_path = os.path.join(script_dir, "buscar_expedientes.py")
 
-            # Ejecutar script principal desde su directorio
-            subprocess.run(["python3", script_path], cwd=script_dir, check=True)
-        except subprocess.CalledProcessError as e:
-            messagebox.showerror("Error", f"Error al ejecutar búsqueda:\n{e}")
-        except FileNotFoundError:
+        # Intentar primero con 'python' (Conda), luego con 'python3'
+        for python_cmd in ['python', 'python3']:
             try:
-                # Intentar con 'python' si 'python3' no existe
-                script_dir = os.path.dirname(os.path.abspath(__file__))
-                script_path = os.path.join(script_dir, "buscar_expedientes.py")
-                subprocess.run(["python", script_path], cwd=script_dir, check=True)
-            except Exception as e:
-                messagebox.showerror("Error", f"No se pudo ejecutar el script:\n{e}")
+                subprocess.run([python_cmd, script_path], cwd=script_dir, check=True)
+                return  # Si funciona, salir
+            except FileNotFoundError:
+                continue  # Intentar con el siguiente comando
+            except subprocess.CalledProcessError as e:
+                # Si el comando existe pero falla, mostrar error específico
+                messagebox.showerror(
+                    "Error al ejecutar búsqueda",
+                    f"El script falló con {python_cmd}:\n\n{e}\n\n"
+                    f"Verifica que selenium y openpyxl estén instalados:\n"
+                    f"  conda install selenium openpyxl\n"
+                    f"o\n"
+                    f"  pip install selenium openpyxl"
+                )
+                return
+
+        # Si ninguno funcionó
+        messagebox.showerror(
+            "Error",
+            "No se pudo ejecutar el script.\n\n"
+            "Asegúrate de tener Python instalado."
+        )
 
 
 def main():
