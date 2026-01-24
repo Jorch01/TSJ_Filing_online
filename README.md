@@ -1,190 +1,211 @@
-# 🤖 Robot de Búsqueda Automática de Expedientes v6.2
-## Tribunal Superior de Justicia de Quintana Roo - Estrados Electrónicos
+# ⚖️ TSJ Filing Online v7.0
 
-### 🎯 Características Principales
+## Sistema de Gestión de Expedientes - TSJ Quintana Roo
 
-🖥️ **Interfaz Gráfica** - Agrega expedientes visualmente sin editar JSON
-✅ **Salas de Segunda Instancia** - Soporte completo para las 11 salas de apelación 🐛 **CORREGIDO**
-✅ **Búsquedas simultáneas** - Procesa múltiples expedientes en paralelo usando pestañas de Chrome
-✅ **Carga dinámica** - Agrega expedientes desde GUI o editando `expedientes.json`
-✅ **Reportes Excel mejorados** - Formato profesional con acuerdos nuevos marcados en amarillo
-✅ **Detección inteligente** - Marca automáticamente acuerdos de los últimos 5 días
-✅ **Búsqueda flexible** - Busca por número de expediente o por nombre de actor
-✅ **Cobertura completa** - Todos los juzgados y salas de Quintana Roo
+**Versión Web Completa** | **Base de Datos Local** | **Sin Instalación**
 
-### 🐛 v6.2 - FIX CRÍTICO (24 enero 2026)
-**Problema resuelto:** Las búsquedas en Salas de Segunda Instancia ahora funcionan correctamente.
-- **Antes**: Expedientes en Salas mostraban "Sin publicaciones" aunque existieran
-- **Causa**: El bot usaba el endpoint incorrecto (`buscador_primera.php`)
-- **Solución**: Ahora detecta automáticamente Salas y usa `buscador_segunda.php` con parámetro `areaId`
-- **Resultado**: Las búsquedas en Salas ahora devuelven todos los registros correctamente
+🌐 **[Acceder a la Aplicación Web](https://jorch01.github.io/TSJ_Filing_online/)**
 
 ---
 
-## 📋 Requisitos
+## 🎯 Características Principales
 
-### Instalación de dependencias:
+### 🌐 Versión Web (NUEVA v7.0)
+- ✅ **100% en el navegador** - No requiere instalación
+- ✅ **Base de datos local** - Tus datos se guardan en tu computadora (IndexedDB)
+- ✅ **Funciona offline** - Service Worker para uso sin conexión
+- ✅ **Multiplataforma** - Chrome, Firefox, Safari, Edge
+- ✅ **Diseño responsivo** - Funciona en desktop, tablet y móvil
+
+### 📁 Gestión de Expedientes
+- ✅ Agregar, editar y eliminar expedientes
+- ✅ Organización por juzgados y categorías
+- ✅ Búsqueda y filtrado avanzado
+- ✅ Importar/Exportar datos (JSON, Excel, CSV)
+
+### 📅 Calendario y Agenda
+- ✅ Calendario mensual interactivo
+- ✅ Eventos por expediente (audiencias, vencimientos, etc.)
+- ✅ Alertas y recordatorios
+- ✅ Vista de eventos próximos
+
+### 📝 Sistema de Notas
+- ✅ Notas vinculadas a expedientes
+- ✅ Colores personalizables
+- ✅ Recordatorios con fecha
+- ✅ Búsqueda en notas
+
+### 🔔 Notificaciones
+- ✅ Notificaciones del navegador
+- ✅ Alertas de eventos próximos
+- ✅ Recordatorios por email (EmailJS)
+- ✅ Sonidos de alerta configurables
+
+### 🔍 Búsqueda en TSJ
+- ✅ Extensión de navegador (Chrome, Firefox, Safari)
+- ✅ Búsqueda automática de publicaciones
+- ✅ Modo manual con URLs directas
+- ✅ Exportación de resultados
+
+---
+
+## 🚀 Comenzar
+
+### Opción 1: Usar la Versión Web (Recomendado)
+
+Simplemente visita: **https://jorch01.github.io/TSJ_Filing_online/**
+
+Tus datos se guardarán automáticamente en tu navegador.
+
+### Opción 2: Versión de Escritorio (Python)
+
+Si prefieres la versión de escritorio con automatización completa:
 
 ```bash
+# Clonar repositorio
+git clone https://github.com/Jorch01/TSJ_Filing_online.git
+cd TSJ_Filing_online
+
+# Instalar dependencias
 pip3 install selenium openpyxl
-```
 
-### ChromeDriver:
-- Debe estar instalado y accesible en tu PATH
-- Descargar desde: https://chromedriver.chromium.org/
-
----
-
-## 🚀 Uso Rápido
-
-### 🖥️ OPCIÓN 1: Interfaz Gráfica (RECOMENDADO para principiantes)
-
-```bash
+# Ejecutar interfaz gráfica
 ./iniciar_gui.sh
 ```
 
-O directamente:
+---
+
+## 📱 Instalación de la Extensión
+
+Para habilitar búsquedas automáticas, instala la extensión de navegador:
+
+### Chrome / Edge / Brave
+1. Descarga `extension/chrome.zip`
+2. Ve a `chrome://extensions`
+3. Activa "Modo desarrollador"
+4. Arrastra el archivo .zip
+
+### Firefox
+1. Descarga `extension/firefox.xpi`
+2. Ve a `about:addons`
+3. Haz clic en el engranaje → "Instalar complemento desde archivo"
+
+### Safari
+1. Descarga `extension/safari.zip`
+2. Descomprime y sigue las instrucciones del README incluido
+
+---
+
+## 🏛️ Juzgados y Salas Soportados
+
+### Salas de Segunda Instancia
+- Primera Sala Civil Mercantil y Familiar
+- Segunda Sala Penal Oral
+- Tercera a Décima Salas
+- Sala Constitucional
+
+### Primera Instancia
+- **Cancún**: Civil, Familiar, Mercantil, Laboral
+- **Playa del Carmen**: Civil, Familiar, Mercantil, Laboral
+- **Chetumal**: Civil, Familiar, Mercantil, Laboral
+- **Cozumel, Tulum, Isla Mujeres** y más
+
+Ver lista completa en la aplicación.
+
+---
+
+## 📊 Estructura del Proyecto
+
+```
+TSJ_Filing_online/
+├── web/                    # Aplicación web (Svelte)
+│   ├── src/
+│   │   ├── lib/
+│   │   │   ├── components/ # Componentes reutilizables
+│   │   │   ├── services/   # Base de datos, email, notificaciones
+│   │   │   ├── stores/     # Estado global (Svelte stores)
+│   │   │   └── data/       # Datos de juzgados
+│   │   └── routes/         # Páginas de la aplicación
+│   └── static/             # Archivos estáticos
+│
+├── extension/              # Extensión de navegador
+│   ├── chrome/             # Manifest v3 para Chrome
+│   ├── firefox/            # Manifest v3 para Firefox
+│   ├── safari/             # Para Safari
+│   └── shared/             # Código compartido
+│
+├── *.py                    # Scripts Python (versión desktop)
+├── *.json                  # Configuración
+└── *.md                    # Documentación
+```
+
+---
+
+## 🛠️ Desarrollo Local
+
+### Requisitos
+- Node.js 18+
+- npm o pnpm
+
+### Instalación
 
 ```bash
-python3 gui_expedientes.py
+cd web
+npm install
+npm run dev
 ```
 
-**Ventajas:**
-- ✅ Agrega expedientes visualmente
-- ✅ No necesitas editar JSON manualmente
-- ✅ Lista desplegable con todos los juzgados/salas
-- ✅ Validación automática
-- ✅ Ejecuta búsqueda con un click
-
-Ver guía completa: [GUIA_GUI.md](GUIA_GUI.md)
-
----
-
-### 📝 OPCIÓN 2: Edición Manual de JSON
-
-### 1. Configurar expedientes
-
-Edita el archivo `expedientes.json` y agrega tus expedientes:
-
-```json
-{
-  "expedientes": [
-    {
-      "numero": "1234/2025",
-      "juzgado": "JUZGADO PRIMERO CIVIL CANCUN"
-    },
-    {
-      "nombre": "JUAN PEREZ",
-      "juzgado": "JUZGADO MERCANTIL PLAYA"
-    }
-  ]
-}
-```
-
-### 2. Ejecutar el script
+### Build para Producción
 
 ```bash
-python3 buscar_expedientes.py
+npm run build
 ```
 
-### 3. Revisar resultados
-
-El script genera:
-- 📊 **resultados_expedientes.xlsx** - Archivo Excel con formato (acuerdos nuevos en amarillo)
-- 📄 **resultados_expedientes.csv** - Archivo CSV de respaldo
+Los archivos se generan en `web/build/`.
 
 ---
 
-## ⚙️ Configuración Avanzada
+## 📧 Configuración de Email (Opcional)
 
-Edita `config.json` para personalizar el comportamiento:
+Para recibir recordatorios por email:
 
-```json
-{
-  "configuracion": {
-    "max_pestanas": 5,           // Pestañas simultáneas (1-10)
-    "dias_acuerdos_nuevos": 5,   // Días para marcar como nuevo
-    "debug_mode": true,          // Guardar screenshots para debug
-    "tiempo_espera_carga": 4     // Segundos de espera por página
-  }
-}
-```
-
-También puedes editar directamente en `buscar_expedientes.py`:
-
-```python
-# Líneas 596-597
-max_pestanas = 5  # Número de pestañas simultáneas
-dias_nuevos = 5   # Días para marcar como nuevo
-```
+1. Crea cuenta en [EmailJS](https://www.emailjs.com/) (gratis, 200 emails/mes)
+2. Configura un servicio de email
+3. Crea una plantilla
+4. Ingresa las credenciales en Configuración → Email
 
 ---
 
-## 📚 Juzgados y Salas Disponibles
+## 🔐 Privacidad
 
-### 🏛️ Salas de Segunda Instancia (NUEVO ✅)
-- PRIMERA SALA CIVIL MERCANTIL Y FAMILIAR
-- SEGUNDA SALA PENAL ORAL
-- TERCERA SALA PENAL ORAL
-- CUARTA SALA CIVIL MERCANTIL Y FAMILIAR
-- QUINTA SALA CIVIL MERCANTIL Y FAMILIAR
-- SEXTA SALA CIVIL MERCANTIL Y FAMILIAR
-- SEPTIMA SALA PENAL TRADICIONAL
-- OCTAVA SALA PENAL ORAL
-- NOVENA SALA PENAL ORAL
-- DECIMA SALA CIVIL MERCANTIL Y FAMILIAR PLAYA
-- SALA CONSTITUCIONAL
-
-### Cancún - Primera Instancia
-- JUZGADO PRIMERO/SEGUNDO FAMILIAR ORAL CANCUN
-- JUZGADO PRIMERO/SEGUNDO/TERCERO/CUARTO CIVIL CANCUN
-- JUZGADO PRIMERO/SEGUNDO/TERCERO MERCANTIL CANCUN
-- TRIBUNAL PRIMERO/SEGUNDO LABORAL CANCUN
-
-### Playa del Carmen / Solidaridad
-- JUZGADO FAMILIAR ORAL PLAYA
-- JUZGADO PRIMERO/SEGUNDO CIVIL PLAYA
-- JUZGADO MERCANTIL PLAYA
-- TRIBUNAL LABORAL PLAYA
-
-### Chetumal, Cozumel, Tulum, Isla Mujeres, etc.
-Ver lista completa en `expedientes.json`
+- **Todos los datos se almacenan localmente** en tu navegador
+- No hay servidor central ni base de datos externa
+- Tus expedientes y notas nunca salen de tu computadora
+- Puedes exportar tus datos en cualquier momento
 
 ---
 
-## 📊 Formato del Reporte Excel
+## 📝 Changelog
 
-El archivo Excel incluye:
-- ✅ Encabezados con formato profesional (fondo azul)
-- ⭐ Acuerdos nuevos marcados con **fondo amarillo**
-- 📅 Columna "NUEVO" con indicador visual
-- 📏 Columnas auto-ajustadas
-- 🔒 Primera fila congelada para scroll
+### v7.0 (2026-01-24) 🌐 VERSIÓN WEB
+- 🎉 **Aplicación web completa** con Svelte
+- ✨ Base de datos local con IndexedDB
+- ✨ Sistema de notas por expediente
+- ✨ Calendario y agenda integrados
+- ✨ Notificaciones web y por email
+- ✨ Extensión de navegador multiplataforma
+- ✨ PWA con modo offline
+- ✨ Exportación a Excel/CSV/JSON
+- ✨ Diseño responsivo moderno
 
----
+### v6.2 (2025-01-22)
+- 🖥️ Interfaz gráfica con Tkinter
+- ✅ Fix para Salas de Segunda Instancia
+- ✅ 11 Salas completamente configuradas
 
-## 🔧 Solución de Problemas
-
-### Error: "ChromeDriver not found"
-Instala ChromeDriver y agrégalo a tu PATH
-
-### Error: "No se encontró expedientes.json"
-El script usará expedientes por defecto. Crea `expedientes.json` para personalizar
-
-### Las páginas no cargan completamente
-Aumenta `tiempo_espera_carga` en `config.json` o en el código
-
-### Consumo excesivo de memoria
-Reduce `max_pestanas` a 2-3 pestañas simultáneas
-
----
-
-## 📝 Notas Importantes
-
-- Los **acuerdos nuevos** son aquellos publicados en los últimos 5 días (configurable)
-- El script guarda screenshots en `debug_screenshots/` si `debug_mode=true`
-- Ambos formatos (Excel y CSV) se generan automáticamente
-- La búsqueda por nombre busca en el campo "actores" del sistema
+### v6.0 (2025-01-19)
+- ✨ Búsquedas simultáneas
+- ✨ Reportes Excel con formato
 
 ---
 
@@ -194,40 +215,6 @@ Reduce `max_pestanas` a 2-3 pestañas simultáneas
 
 ---
 
-## 📜 Changelog
-
-### v6.2 (2025-01-22) 🖥️
-- 🎉 **Interfaz Gráfica (GUI) completa** con Tkinter
-- ✨ Agregar expedientes visualmente sin editar JSON
-- ✨ Lista desplegable con todos los juzgados y salas organizados
-- ✨ Validación automática de datos
-- ✨ Ejecutar búsquedas con un click
-- ✨ Gestión visual de expedientes (agregar/eliminar/limpiar)
-- 📚 Guía completa de uso de la GUI (GUIA_GUI.md)
-- 🚀 Script launcher para macOS/Linux
-
-### v6.1 (2025-01-22) ✨
-- ✅ **11 Salas de Segunda Instancia completamente configuradas**
-- ✅ Script de descubrimiento automático de IDs de salas
-- ✅ Soporte completo para apelaciones y recursos
-- ✅ Salas históricas y especializadas incluidas
-- ✅ Guía de instalación específica para macOS
-- ✅ Detección automática de ambientes Conda
-
-### v6.0 (2025-01-19)
-- ✨ Búsquedas simultáneas en múltiples pestañas
-- ✨ Carga dinámica de expedientes desde JSON
-- ✨ Reporte Excel con formato y marcado de acuerdos nuevos
-- ✨ Archivo de configuración separado
-- ✨ Mejor manejo de errores y thread-safety
-
-### v5.0
-- IDs de juzgados corregidos
-- Búsqueda por nombre implementada
-- Extracción mejorada de tablas
-
----
-
 ## 📄 Licencia
 
-Uso interno - Empírica Legal Lab
+MIT License - Uso libre
