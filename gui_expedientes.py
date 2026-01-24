@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Interfaz Gráfica para Robot de Búsqueda de Expedientes v6.1
+Interfaz Gráfica para Robot de Búsqueda de Expedientes v6.2
 TSJ Quintana Roo - Lista Electrónica
 
 Permite agregar/eliminar expedientes y ejecutar búsquedas desde una GUI amigable
+FIX v6.2: Usa rutas absolutas para evitar errores de permisos
 """
 
 import tkinter as tk
@@ -19,12 +20,14 @@ from datetime import datetime
 class ExpedientesGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("🤖 Robot de Búsqueda de Expedientes TSJ QRoo v6.1")
+        self.root.title("🤖 Robot de Búsqueda de Expedientes TSJ QRoo v6.2")
         self.root.geometry("1000x700")
         self.root.resizable(True, True)
 
-        # Archivo de expedientes
-        self.archivo_json = "expedientes.json"
+        # Archivo de expedientes - usar ruta absoluta basada en la ubicación del script
+        # Esto evita problemas de permisos cuando se ejecuta desde diferentes directorios
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.archivo_json = os.path.join(script_dir, "expedientes.json")
         self.expedientes = []
 
         # Lista de juzgados/salas (ordenados por categoría)
@@ -552,14 +555,20 @@ class ExpedientesGUI:
     def ejecutar_script(self):
         """Ejecuta el script de búsqueda en segundo plano"""
         try:
-            # Ejecutar script principal
-            subprocess.run(["python3", "buscar_expedientes.py"], check=True)
+            # Obtener ruta absoluta del script
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            script_path = os.path.join(script_dir, "buscar_expedientes.py")
+
+            # Ejecutar script principal desde su directorio
+            subprocess.run(["python3", script_path], cwd=script_dir, check=True)
         except subprocess.CalledProcessError as e:
             messagebox.showerror("Error", f"Error al ejecutar búsqueda:\n{e}")
         except FileNotFoundError:
             try:
                 # Intentar con 'python' si 'python3' no existe
-                subprocess.run(["python", "buscar_expedientes.py"], check=True)
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                script_path = os.path.join(script_dir, "buscar_expedientes.py")
+                subprocess.run(["python", script_path], cwd=script_dir, check=True)
             except Exception as e:
                 messagebox.showerror("Error", f"No se pudo ejecutar el script:\n{e}")
 
