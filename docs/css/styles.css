@@ -761,6 +761,7 @@ textarea:focus {
     transition: all 0.2s;
     vertical-align: middle;
     position: relative;
+    flex-shrink: 0;
 }
 .help-btn:hover {
     background: var(--primary);
@@ -769,76 +770,34 @@ textarea:focus {
 
 /* Tooltip container */
 .tooltip-container {
-    position: relative;
+    position: static;
     display: inline-flex;
     align-items: center;
 }
 
-/* Tooltip content */
+/* Tooltip content - Fixed positioning to escape overflow:hidden */
 .tooltip-content {
     visibility: hidden;
     opacity: 0;
-    position: absolute;
-    z-index: 1000;
-    bottom: calc(100% + 10px);
-    left: 50%;
-    transform: translateX(-50%);
-    width: 300px;
+    position: fixed;
+    z-index: 9999;
+    width: 320px;
+    max-width: 90vw;
     padding: 1rem;
-    background: var(--text-primary);
+    background: #1a1a2e;
     color: white;
     border-radius: var(--radius);
     font-size: 0.85rem;
     line-height: 1.5;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-    transition: all 0.3s ease;
-}
-
-.tooltip-content::after {
-    content: '';
-    position: absolute;
-    top: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    border: 8px solid transparent;
-    border-top-color: var(--text-primary);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    pointer-events: none;
 }
 
 .tooltip-container:hover .tooltip-content,
-.help-btn:hover + .tooltip-content,
 .help-btn:focus + .tooltip-content {
     visibility: visible;
     opacity: 1;
-}
-
-/* Tooltip positioning variants */
-.tooltip-content.tooltip-left {
-    left: 0;
-    transform: translateX(0);
-}
-.tooltip-content.tooltip-left::after {
-    left: 20px;
-}
-
-.tooltip-content.tooltip-right {
-    left: auto;
-    right: 0;
-    transform: translateX(0);
-}
-.tooltip-content.tooltip-right::after {
-    left: auto;
-    right: 20px;
-}
-
-.tooltip-content.tooltip-bottom {
-    bottom: auto;
-    top: calc(100% + 10px);
-}
-.tooltip-content.tooltip-bottom::after {
-    top: auto;
-    bottom: 100%;
-    border-top-color: transparent;
-    border-bottom-color: var(--text-primary);
 }
 
 /* Tooltip styling */
@@ -846,6 +805,8 @@ textarea:focus {
     margin: 0 0 0.5rem;
     font-size: 0.95rem;
     color: #ffc107;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding-bottom: 0.5rem;
 }
 .tooltip-content p {
     margin: 0 0 0.5rem;
@@ -881,7 +842,7 @@ textarea:focus {
 /* Responsive tooltips */
 @media (max-width: 768px) {
     .tooltip-content {
-        width: 260px;
+        width: 280px;
         font-size: 0.8rem;
         padding: 0.75rem;
     }
