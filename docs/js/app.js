@@ -1428,3 +1428,525 @@ function mostrarToast(mensaje, tipo = 'info') {
         setTimeout(() => toast.remove(), 300);
     }, 3000);
 }
+
+// ==================== INTEGRACIÓN CON IA (GROQ) ====================
+
+let resultadosIAActuales = null;
+
+async function guardarConfigIA(event) {
+    event.preventDefault();
+
+    const apiKey = document.getElementById('groq-api-key').value.trim();
+    const modelo = document.getElementById('groq-model').value;
+
+    await guardarConfig('groq_api_key', apiKey);
+    await guardarConfig('groq_model', modelo);
+
+    mostrarToast('Configuración de IA guardada', 'success');
+}
+
+async function cargarConfigIA() {
+    const apiKey = await obtenerConfig('groq_api_key');
+    const modelo = await obtenerConfig('groq_model');
+
+    if (apiKey) document.getElementById('groq-api-key').value = apiKey;
+    if (modelo) document.getElementById('groq-model').value = modelo;
+}
+
+async function probarIA() {
+    const apiKey = document.getElementById('groq-api-key').value.trim();
+
+    if (!apiKey) {
+        mostrarToast('Ingresa tu API Key de Groq', 'warning');
+        return;
+    }
+
+    mostrarToast('Probando conexión...', 'info');
+
+    try {
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+                model: document.getElementById('groq-model').value,
+                messages: [{ role: 'user', content: 'Responde solo con: OK' }],
+                max_tokens: 10
+            })
+        });
+
+        if (response.ok) {
+            mostrarToast('✅ Conexión exitosa con Groq', 'success');
+        } else {
+            const error = await response.json();
+            mostrarToast('Error: ' + (error.error?.message || 'API Key inválida'), 'error');
+        }
+    } catch (error) {
+        mostrarToast('Error de conexión: ' + error.message, 'error');
+    }
+}
+
+async function analizarAcuerdoConIA() {
+    const texto = document.getElementById('ia-texto-acuerdo').value.trim();
+    const expedienteId = document.getElementById('ia-expediente').value;
+    const apiKey = await obtenerConfig('groq_api_key');
+    const modelo = await obtenerConfig('groq_model') || 'llama-3.3-70b-versatile';
+
+    if (!texto) {
+        mostrarToast('Pega el texto del acuerdo a analizar', 'warning');
+        return;
+    }
+
+    if (!apiKey) {
+        mostrarToast('Configura tu API Key de Groq en Configuración', 'warning');
+        return;
+    }
+
+    const btn = document.getElementById('btn-analizar-ia');
+    btn.innerHTML = '<span class="loading-spinner"></span> Analizando...';
+    btn.classList.add('loading');
+
+    const prompt = `Analiza el siguiente acuerdo judicial del Tribunal Superior de Justicia de Quintana Roo y extrae la información importante.
+
+TEXTO DEL ACUERDO:
+${texto}
+
+Responde ÚNICAMENTE en formato JSON con la siguiente estructura (sin explicaciones adicionales):
+{
+    "resumen": "Resumen breve del acuerdo en 1-2 oraciones",
+    "tipo_acuerdo": "admisión|sentencia|auto|citación|notificación|otro",
+    "fechas": [
+        {
+            "tipo": "audiencia|vencimiento|cita|otro",
+            "fecha": "YYYY-MM-DD",
+            "hora": "HH:MM o null si no aplica",
+            "descripcion": "Descripción del evento"
+        }
+    ],
+    "puntos_importantes": [
+        "Punto importante 1",
+        "Punto importante 2"
+    ],
+    "acciones_requeridas": [
+        "Acción que debe tomar el usuario"
+    ],
+    "montos": [
+        {
+            "concepto": "Descripción",
+            "cantidad": "Monto en formato $X,XXX.XX"
+        }
+    ]
+}
+
+Si algún campo no tiene información, usa un array vacío [] o null según corresponda.`;
+
+    try {
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+                model: modelo,
+                messages: [{ role: 'user', content: prompt }],
+                max_tokens: 2000,
+                temperature: 0.1
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error?.message || 'Error en la API');
+        }
+
+        const data = await response.json();
+        const contenido = data.choices[0].message.content;
+
+        // Extraer JSON de la respuesta
+        const jsonMatch = contenido.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            throw new Error('No se pudo parsear la respuesta de la IA');
+        }
+
+        const resultado = JSON.parse(jsonMatch[0]);
+        resultado.expedienteId = expedienteId ? parseInt(expedienteId) : null;
+
+        mostrarResultadosIA(resultado);
+        resultadosIAActuales = resultado;
+
+        mostrarToast('Análisis completado', 'success');
+
+    } catch (error) {
+        console.error('Error al analizar:', error);
+        mostrarToast('Error: ' + error.message, 'error');
+    } finally {
+        btn.innerHTML = '🤖 Analizar con IA';
+        btn.classList.remove('loading');
+    }
+}
+
+function mostrarResultadosIA(resultado) {
+    const container = document.getElementById('resultados-ia-contenido');
+    let html = '';
+
+    // Resumen
+    if (resultado.resumen) {
+        html += `
+            <div class="ia-resultado-item">
+                <h4>📋 Resumen</h4>
+                <p>${resultado.resumen}</p>
+                <p><small>Tipo: ${resultado.tipo_acuerdo || 'No especificado'}</small></p>
+            </div>
+        `;
+    }
+
+    // Fechas/Eventos
+    if (resultado.fechas && resultado.fechas.length > 0) {
+        html += `<div class="ia-resultado-item">
+            <h4>📅 Fechas y Eventos Detectados</h4>`;
+
+        resultado.fechas.forEach((fecha, i) => {
+            const fechaStr = fecha.fecha + (fecha.hora ? ` a las ${fecha.hora}` : '');
+            html += `
+                <div class="ia-resultado-check">
+                    <input type="checkbox" id="ia-fecha-${i}" checked>
+                    <label for="ia-fecha-${i}">
+                        <strong>${fecha.tipo?.toUpperCase()}:</strong> ${fecha.descripcion}
+                        <br><small>📆 ${fechaStr}</small>
+                    </label>
+                </div>
+            `;
+        });
+        html += `</div>`;
+    }
+
+    // Puntos importantes
+    if (resultado.puntos_importantes && resultado.puntos_importantes.length > 0) {
+        html += `<div class="ia-resultado-item">
+            <h4>⚠️ Puntos Importantes</h4>`;
+
+        resultado.puntos_importantes.forEach((punto, i) => {
+            html += `
+                <div class="ia-resultado-check">
+                    <input type="checkbox" id="ia-punto-${i}" checked>
+                    <label for="ia-punto-${i}">${punto}</label>
+                </div>
+            `;
+        });
+        html += `</div>`;
+    }
+
+    // Acciones requeridas
+    if (resultado.acciones_requeridas && resultado.acciones_requeridas.length > 0) {
+        html += `<div class="ia-resultado-item">
+            <h4>✅ Acciones Requeridas</h4>`;
+
+        resultado.acciones_requeridas.forEach((accion, i) => {
+            html += `
+                <div class="ia-resultado-check">
+                    <input type="checkbox" id="ia-accion-${i}" checked>
+                    <label for="ia-accion-${i}">${accion}</label>
+                </div>
+            `;
+        });
+        html += `</div>`;
+    }
+
+    // Montos
+    if (resultado.montos && resultado.montos.length > 0) {
+        html += `<div class="ia-resultado-item">
+            <h4>💰 Montos Mencionados</h4>`;
+
+        resultado.montos.forEach(monto => {
+            html += `<p><strong>${monto.concepto}:</strong> ${monto.cantidad}</p>`;
+        });
+        html += `</div>`;
+    }
+
+    container.innerHTML = html || '<p>No se encontró información relevante en el texto.</p>';
+    document.getElementById('resultados-ia').style.display = 'block';
+}
+
+async function guardarResultadosIA() {
+    if (!resultadosIAActuales) return;
+
+    const resultado = resultadosIAActuales;
+    let guardados = 0;
+
+    // Guardar eventos/fechas seleccionados
+    if (resultado.fechas) {
+        for (let i = 0; i < resultado.fechas.length; i++) {
+            const checkbox = document.getElementById(`ia-fecha-${i}`);
+            if (checkbox && checkbox.checked) {
+                const fecha = resultado.fechas[i];
+                const evento = {
+                    titulo: fecha.descripcion,
+                    tipo: fecha.tipo === 'audiencia' ? 'audiencia' :
+                          fecha.tipo === 'vencimiento' ? 'vencimiento' : 'recordatorio',
+                    fechaInicio: new Date(fecha.fecha + (fecha.hora ? `T${fecha.hora}` : 'T09:00')).toISOString(),
+                    todoElDia: !fecha.hora,
+                    expedienteId: resultado.expedienteId,
+                    descripcion: `Extraído automáticamente por IA`,
+                    alerta: true,
+                    color: fecha.tipo === 'audiencia' ? '#3788d8' :
+                           fecha.tipo === 'vencimiento' ? '#dc3545' : '#ffc107'
+                };
+
+                try {
+                    await agregarEvento(evento);
+                    guardados++;
+                } catch (e) {
+                    console.error('Error al guardar evento:', e);
+                }
+            }
+        }
+    }
+
+    // Guardar notas de puntos importantes y acciones
+    const notasTexto = [];
+
+    if (resultado.puntos_importantes) {
+        resultado.puntos_importantes.forEach((punto, i) => {
+            const checkbox = document.getElementById(`ia-punto-${i}`);
+            if (checkbox && checkbox.checked) {
+                notasTexto.push(`⚠️ ${punto}`);
+            }
+        });
+    }
+
+    if (resultado.acciones_requeridas) {
+        resultado.acciones_requeridas.forEach((accion, i) => {
+            const checkbox = document.getElementById(`ia-accion-${i}`);
+            if (checkbox && checkbox.checked) {
+                notasTexto.push(`✅ TODO: ${accion}`);
+            }
+        });
+    }
+
+    if (resultado.montos && resultado.montos.length > 0) {
+        notasTexto.push('');
+        notasTexto.push('💰 MONTOS:');
+        resultado.montos.forEach(m => {
+            notasTexto.push(`  - ${m.concepto}: ${m.cantidad}`);
+        });
+    }
+
+    if (notasTexto.length > 0 && resultado.expedienteId) {
+        const nota = {
+            expedienteId: resultado.expedienteId,
+            titulo: `Análisis IA - ${new Date().toLocaleDateString('es-MX')}`,
+            contenido: notasTexto.join('\n'),
+            color: '#cce5ff',
+            recordatorio: null
+        };
+
+        try {
+            await agregarNota(nota);
+            guardados++;
+        } catch (e) {
+            console.error('Error al guardar nota:', e);
+        }
+    }
+
+    // Actualizar UI
+    await cargarEventos();
+    await cargarNotas();
+    await cargarEstadisticas();
+    renderizarCalendario();
+
+    document.getElementById('resultados-ia').style.display = 'none';
+    document.getElementById('ia-texto-acuerdo').value = '';
+    resultadosIAActuales = null;
+
+    mostrarToast(`${guardados} elementos guardados`, 'success');
+}
+
+// Actualizar select de expedientes para IA
+async function actualizarSelectExpedientesIA() {
+    const expedientes = await obtenerExpedientes();
+    const select = document.getElementById('ia-expediente');
+    if (select) {
+        select.innerHTML = '<option value="">Seleccionar expediente...</option>' +
+            expedientes.map(e => `<option value="${e.id}">${e.numero || e.nombre} - ${e.juzgado}</option>`).join('');
+    }
+}
+
+// ==================== BÚSQUEDAS PROGRAMADAS ====================
+
+let busquedaAutoInterval = null;
+
+async function toggleBusquedasAuto() {
+    const activado = document.getElementById('config-busquedas-auto').checked;
+    const opciones = document.getElementById('config-busquedas-opciones');
+
+    await guardarConfig('busquedas_auto', activado ? 'true' : 'false');
+    opciones.style.display = activado ? 'block' : 'none';
+
+    if (activado) {
+        iniciarBusquedasAuto();
+        mostrarToast('Búsquedas automáticas activadas', 'success');
+    } else {
+        detenerBusquedasAuto();
+        mostrarToast('Búsquedas automáticas desactivadas', 'info');
+    }
+}
+
+async function guardarFrecuenciaBusqueda() {
+    const frecuencia = document.getElementById('busqueda-frecuencia').value;
+    await guardarConfig('busqueda_frecuencia', frecuencia);
+
+    // Reiniciar intervalo con nueva frecuencia
+    const activado = document.getElementById('config-busquedas-auto').checked;
+    if (activado) {
+        detenerBusquedasAuto();
+        iniciarBusquedasAuto();
+    }
+
+    mostrarToast('Frecuencia actualizada', 'success');
+}
+
+async function iniciarBusquedasAuto() {
+    const frecuenciaMin = parseInt(await obtenerConfig('busqueda_frecuencia') || '60');
+    const frecuenciaMs = frecuenciaMin * 60 * 1000;
+
+    busquedaAutoInterval = setInterval(async () => {
+        await ejecutarBusquedaAhora();
+    }, frecuenciaMs);
+
+    console.log(`Búsquedas automáticas iniciadas: cada ${frecuenciaMin} minutos`);
+}
+
+function detenerBusquedasAuto() {
+    if (busquedaAutoInterval) {
+        clearInterval(busquedaAutoInterval);
+        busquedaAutoInterval = null;
+    }
+}
+
+async function ejecutarBusquedaAhora() {
+    const expedientes = await obtenerExpedientes();
+
+    if (expedientes.length === 0) {
+        mostrarToast('No hay expedientes para buscar', 'warning');
+        return;
+    }
+
+    // Guardar timestamp de última búsqueda
+    await guardarConfig('ultima_busqueda_auto', new Date().toISOString());
+    actualizarUltimaBusqueda();
+
+    // Abrir búsquedas en popups
+    let delay = 0;
+    expedientes.forEach(exp => {
+        const tipoBusqueda = exp.numero ? 'numero' : 'nombre';
+        const valor = exp.numero || exp.nombre;
+        const url = construirUrlBusqueda(exp.juzgado, tipoBusqueda, valor);
+
+        setTimeout(() => {
+            abrirBusquedaPopup(url, valor);
+        }, delay);
+
+        delay += 800;
+    });
+
+    mostrarToast(`Buscando ${expedientes.length} expedientes...`, 'success');
+}
+
+async function actualizarUltimaBusqueda() {
+    const ultima = await obtenerConfig('ultima_busqueda_auto');
+    const elemento = document.getElementById('ultima-busqueda-auto');
+
+    if (ultima && elemento) {
+        const fecha = new Date(ultima);
+        elemento.textContent = fecha.toLocaleString('es-MX');
+    }
+}
+
+async function cargarConfigBusquedasAuto() {
+    const activado = await obtenerConfig('busquedas_auto') === 'true';
+    const frecuencia = await obtenerConfig('busqueda_frecuencia') || '60';
+
+    document.getElementById('config-busquedas-auto').checked = activado;
+    document.getElementById('busqueda-frecuencia').value = frecuencia;
+    document.getElementById('config-busquedas-opciones').style.display = activado ? 'block' : 'none';
+
+    actualizarUltimaBusqueda();
+
+    if (activado) {
+        iniciarBusquedasAuto();
+    }
+}
+
+// ==================== BÚSQUEDA GLOBAL ====================
+
+async function ejecutarBusquedaGlobal() {
+    const tipoBusqueda = document.querySelector('input[name="tipo-busqueda-global"]:checked').value;
+    const valor = document.getElementById('busqueda-global-valor').value.trim();
+    const ambito = document.getElementById('busqueda-global-ambito').value;
+
+    if (!valor) {
+        mostrarToast('Ingresa un valor para buscar', 'warning');
+        return;
+    }
+
+    // Determinar qué juzgados buscar
+    let juzgadosABuscar = [];
+
+    if (ambito === 'todos' || ambito === 'primera') {
+        juzgadosABuscar = juzgadosABuscar.concat(Object.keys(JUZGADOS));
+    }
+
+    if (ambito === 'todos' || ambito === 'segunda') {
+        juzgadosABuscar = juzgadosABuscar.concat(Object.keys(SALAS_SEGUNDA_INSTANCIA));
+    }
+
+    const totalBusquedas = juzgadosABuscar.length;
+
+    if (!confirm(`Esto abrirá ${totalBusquedas} búsquedas en ventanas popup.\n\n¿Continuar?`)) {
+        return;
+    }
+
+    mostrarToast(`Iniciando búsqueda global en ${totalBusquedas} juzgados...`, 'info');
+
+    // Abrir búsquedas con delay para no saturar
+    let delay = 0;
+    let abiertas = 0;
+
+    for (const juzgado of juzgadosABuscar) {
+        const url = construirUrlBusqueda(juzgado, tipoBusqueda, valor);
+
+        setTimeout(() => {
+            abrirBusquedaPopup(url, `${valor} en ${juzgado.substring(0, 30)}...`);
+            abiertas++;
+
+            if (abiertas === totalBusquedas) {
+                mostrarToast(`${totalBusquedas} búsquedas completadas`, 'success');
+            }
+        }, delay);
+
+        delay += 600; // 600ms entre cada ventana
+    }
+}
+
+// ==================== INICIALIZACIÓN EXTENDIDA ====================
+
+// Extender la función de inicialización original
+const inicializarAppOriginal = inicializarApp;
+inicializarApp = async function() {
+    await inicializarAppOriginal();
+
+    // Cargar configuraciones adicionales
+    await cargarConfigIA();
+    await cargarConfigBusquedasAuto();
+    await actualizarSelectExpedientesIA();
+};
+
+// Actualizar select de IA cuando se cargan expedientes
+const cargarExpedientesOriginal = cargarExpedientes;
+cargarExpedientes = async function() {
+    await cargarExpedientesOriginal();
+    await actualizarSelectExpedientesIA();
+};
