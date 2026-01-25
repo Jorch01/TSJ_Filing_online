@@ -141,7 +141,7 @@ async function cargarExpedientes() {
                 <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
                 <div class="expediente-actions">
                     <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id})">✏️</button>
-                    <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id})">🗑️</button>
+                    <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
                 </div>
             </div>
         </div>
@@ -259,15 +259,23 @@ async function guardarExpediente(event) {
     }
 }
 
-function confirmarEliminarExpediente(id) {
+function confirmarEliminarExpediente(id, event) {
+    // Prevenir propagación del evento
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+
     if (confirm('¿Estás seguro de eliminar este expediente?')) {
-        eliminarExpediente(id, true).then(() => {
-            mostrarToast('Expediente eliminado', 'success');
-            cargarExpedientes();
-            cargarEstadisticas();
-        }).catch(err => {
-            mostrarToast('Error al eliminar', 'error');
-        });
+        eliminarExpediente(id, true)
+            .then(() => {
+                mostrarToast('Expediente eliminado', 'success');
+                return Promise.all([cargarExpedientes(), cargarEstadisticas()]);
+            })
+            .catch(err => {
+                console.error('Error al eliminar expediente:', err);
+                mostrarToast('Error al eliminar: ' + (err.message || 'Error desconocido'), 'error');
+            });
     }
 }
 
@@ -315,7 +323,7 @@ async function filtrarExpedientes() {
                     <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
                     <div class="expediente-actions">
                         <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id})">✏️</button>
-                        <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id})">🗑️</button>
+                        <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
                     </div>
                 </div>
             </div>
@@ -957,6 +965,7 @@ async function generarURLsBusqueda() {
         const tipoBusqueda = exp.numero ? 'numero' : 'nombre';
         const valor = exp.numero || exp.nombre;
         const url = construirUrlBusqueda(exp.juzgado, tipoBusqueda, valor);
+        const urlEscaped = url.replace(/'/g, "\\'");
 
         return `
             <div class="url-item">
@@ -965,8 +974,8 @@ async function generarURLsBusqueda() {
                     <span class="url-juzgado">${exp.juzgado}</span>
                 </div>
                 <div class="url-actions">
-                    <button class="btn btn-sm btn-secondary" onclick="copiarURL('${url}')" title="Copiar">📋</button>
-                    <a href="${url}" target="_blank" class="btn btn-sm btn-primary">🔗 Abrir</a>
+                    <button class="btn btn-sm btn-secondary" onclick="copiarURL('${urlEscaped}')" title="Copiar">📋</button>
+                    <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPopup('${urlEscaped}', '${(exp.numero || exp.nombre).replace(/'/g, "\\'")}')">👁️ Ver</button>
                 </div>
             </div>
         `;
@@ -974,6 +983,62 @@ async function generarURLsBusqueda() {
 
     urlsContainer.style.display = 'block';
     mostrarToast(`${seleccionados.length} URLs generadas`, 'success');
+}
+
+// Abrir búsqueda en popup window
+function abrirBusquedaPopup(url, titulo) {
+    // Calcular posición del popup (a la derecha de la pantalla)
+    const width = Math.min(900, window.screen.width * 0.5);
+    const height = Math.min(700, window.screen.height * 0.8);
+    const left = window.screen.width - width - 50;
+    const top = (window.screen.height - height) / 2;
+
+    const popup = window.open(
+        url,
+        'TSJ_Busqueda_' + Date.now(),
+        `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes,toolbar=no,menubar=no,location=no,status=no`
+    );
+
+    if (popup) {
+        popup.focus();
+        mostrarToast(`Buscando: ${titulo}`, 'info');
+    } else {
+        // Si el popup fue bloqueado, abrir en nueva pestaña
+        mostrarToast('Popup bloqueado. Abriendo en nueva pestaña...', 'warning');
+        window.open(url, '_blank');
+    }
+}
+
+// Abrir todas las búsquedas en popups secuenciales
+async function abrirTodasBusquedas() {
+    const expedientes = await obtenerExpedientes();
+    const seleccionados = expedientes.filter(e => expedientesSeleccionados.includes(e.id));
+
+    if (seleccionados.length === 0) {
+        mostrarToast('Selecciona al menos un expediente', 'warning');
+        return;
+    }
+
+    if (seleccionados.length > 5) {
+        if (!confirm(`Vas a abrir ${seleccionados.length} ventanas. ¿Continuar?`)) {
+            return;
+        }
+    }
+
+    let delay = 0;
+    seleccionados.forEach((exp, index) => {
+        const tipoBusqueda = exp.numero ? 'numero' : 'nombre';
+        const valor = exp.numero || exp.nombre;
+        const url = construirUrlBusqueda(exp.juzgado, tipoBusqueda, valor);
+
+        setTimeout(() => {
+            abrirBusquedaPopup(url, valor);
+        }, delay);
+
+        delay += 500; // 500ms entre cada ventana
+    });
+
+    mostrarToast(`Abriendo ${seleccionados.length} búsquedas...`, 'success');
 }
 
 function copiarURL(url) {
@@ -1107,12 +1172,6 @@ async function eliminarTodosDatos() {
 // ==================== IMPORTACIÓN CSV/EXCEL ====================
 
 function descargarTemplateCSV() {
-    // Crear CSV con todos los juzgados como opciones
-    const juzgadosLista = [
-        ...Object.keys(JUZGADOS),
-        ...Object.keys(SALAS_SEGUNDA_INSTANCIA)
-    ];
-
     // Encabezados
     let csv = 'expediente,tipo,juzgado,comentario\n';
 
@@ -1124,74 +1183,17 @@ function descargarTemplateCSV() {
     // Agregar sección de referencia con todos los juzgados
     csv += '\n# ==================== REFERENCIA DE JUZGADOS ====================\n';
     csv += '# Copia el nombre exacto del juzgado de esta lista:\n';
-    csv += '#\n';
     csv += '# TIPOS VÁLIDOS: numero, nombre\n';
     csv += '#\n';
-    csv += '# --- SALAS DE SEGUNDA INSTANCIA ---\n';
-    Object.keys(SALAS_SEGUNDA_INSTANCIA).forEach(sala => {
-        csv += `# ${sala}\n`;
+
+    // Generar lista automáticamente desde CATEGORIAS_JUZGADOS
+    CATEGORIAS_JUZGADOS.forEach(cat => {
+        csv += `# --- ${cat.nombre} ---\n`;
+        cat.juzgados.forEach(juzgado => {
+            csv += `# ${juzgado}\n`;
+        });
+        csv += '#\n';
     });
-    csv += '#\n';
-    csv += '# --- CANCÚN - FAMILIAR ---\n';
-    csv += '# JUZGADO PRIMERO FAMILIAR ORAL CANCUN\n';
-    csv += '# JUZGADO SEGUNDO FAMILIAR ORAL CANCUN\n';
-    csv += '# JUZGADO TERCERO FAMILIAR ORAL CANCUN\n';
-    csv += '# JUZGADO CUARTO FAMILIAR ORAL CANCUN\n';
-    csv += '#\n';
-    csv += '# --- CANCÚN - CIVIL ---\n';
-    csv += '# JUZGADO PRIMERO CIVIL CANCUN\n';
-    csv += '# JUZGADO SEGUNDO CIVIL CANCUN\n';
-    csv += '# JUZGADO TERCERO CIVIL CANCUN\n';
-    csv += '# JUZGADO CUARTO CIVIL CANCUN\n';
-    csv += '# JUZGADO QUINTO CIVIL CANCUN\n';
-    csv += '#\n';
-    csv += '# --- CANCÚN - MERCANTIL ---\n';
-    csv += '# JUZGADO PRIMERO MERCANTIL CANCUN\n';
-    csv += '# JUZGADO SEGUNDO MERCANTIL CANCUN\n';
-    csv += '# JUZGADO TERCERO MERCANTIL CANCUN\n';
-    csv += '# JUZGADO CUARTO MERCANTIL CANCUN\n';
-    csv += '#\n';
-    csv += '# --- CANCÚN - LABORAL ---\n';
-    csv += '# JUZGADO PRIMERO LABORAL CANCUN\n';
-    csv += '# JUZGADO SEGUNDO LABORAL CANCUN\n';
-    csv += '#\n';
-    csv += '# --- PLAYA DEL CARMEN ---\n';
-    csv += '# JUZGADO PRIMERO CIVIL PLAYA DEL CARMEN\n';
-    csv += '# JUZGADO SEGUNDO CIVIL PLAYA DEL CARMEN\n';
-    csv += '# JUZGADO PRIMERO FAMILIAR PLAYA DEL CARMEN\n';
-    csv += '# JUZGADO SEGUNDO FAMILIAR PLAYA DEL CARMEN\n';
-    csv += '# JUZGADO MERCANTIL PLAYA DEL CARMEN\n';
-    csv += '# JUZGADO MIXTO CIVIL FAMILIAR PLAYA DEL CARMEN\n';
-    csv += '# JUZGADO LABORAL PLAYA DEL CARMEN\n';
-    csv += '#\n';
-    csv += '# --- CHETUMAL ---\n';
-    csv += '# JUZGADO PRIMERO CIVIL CHETUMAL\n';
-    csv += '# JUZGADO SEGUNDO CIVIL CHETUMAL\n';
-    csv += '# JUZGADO PRIMERO FAMILIAR CHETUMAL\n';
-    csv += '# JUZGADO SEGUNDO FAMILIAR CHETUMAL\n';
-    csv += '# JUZGADO MERCANTIL CHETUMAL\n';
-    csv += '# JUZGADO LABORAL CHETUMAL\n';
-    csv += '#\n';
-    csv += '# --- COZUMEL ---\n';
-    csv += '# JUZGADO MIXTO CIVIL COZUMEL\n';
-    csv += '# JUZGADO MIXTO FAMILIAR COZUMEL\n';
-    csv += '# JUZGADO CIVIL COZUMEL\n';
-    csv += '# JUZGADO FAMILIAR COZUMEL\n';
-    csv += '#\n';
-    csv += '# --- OTROS MUNICIPIOS ---\n';
-    csv += '# JUZGADO MIXTO TULUM\n';
-    csv += '# JUZGADO MIXTO CIVIL FAMILIAR TULUM\n';
-    csv += '# JUZGADO PRIMERO FAMILIAR ORAL TULUM\n';
-    csv += '# JUZGADO SEGUNDO FAMILIAR ORAL TULUM\n';
-    csv += '# JUZGADO CIVIL ORAL TULUM\n';
-    csv += '# JUZGADO MIXTO FELIPE CARRILLO PUERTO\n';
-    csv += '# JUZGADO MIXTO JOSE MARIA MORELOS\n';
-    csv += '# JUZGADO MIXTO LAZARO CARDENAS\n';
-    csv += '# JUZGADO MIXTO BACALAR\n';
-    csv += '# JUZGADO MIXTO PUERTO MORELOS\n';
-    csv += '# JUZGADO MIXTO ISLA MUJERES\n';
-    csv += '# JUZGADO CIVIL ORAL ISLA MUJERES\n';
-    csv += '# JUZGADO MIXTO ORAL PUERTO AVENTURAS\n';
 
     // Descargar archivo
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

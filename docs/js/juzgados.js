@@ -1,90 +1,97 @@
 /**
  * Datos de Juzgados del TSJ Quintana Roo
+ * IDs extraídos del sistema de estrados electrónicos oficial
  */
 
 // Mapeo de Juzgados a IDs (Primera Instancia)
+// IDs CORRECTOS del sistema TSJ
 const JUZGADOS = {
-    // CANCÚN - Familiar
-    'JUZGADO PRIMERO FAMILIAR ORAL CANCUN': 61,
-    'JUZGADO SEGUNDO FAMILIAR ORAL CANCUN': 62,
-    'JUZGADO TERCERO FAMILIAR ORAL CANCUN': 63,
-    'JUZGADO CUARTO FAMILIAR ORAL CANCUN': 64,
-
-    // CANCÚN - Civil
+    // ===== CANCÚN =====
+    'JUZGADO PRIMERO FAMILIAR ORAL CANCUN': 109,
+    'JUZGADO SEGUNDO FAMILIAR ORAL CANCUN': 158,
+    'JUZGADO SEGUNDO DE LO FAMILIAR CANCUN': 115,
+    'JUZGADO FAMILIAR DE PRIMERA INSTANCIA CANCUN': 114,
     'JUZGADO PRIMERO CIVIL CANCUN': 111,
     'JUZGADO SEGUNDO CIVIL CANCUN': 112,
     'JUZGADO TERCERO CIVIL CANCUN': 113,
-    'JUZGADO CUARTO CIVIL CANCUN': 114,
-    'JUZGADO QUINTO CIVIL CANCUN': 115,
+    'JUZGADO CUARTO CIVIL CANCUN': 182,
+    'JUZGADO ORAL CIVIL CANCUN': 110,
+    'JUZGADO PRIMERO MERCANTIL CANCUN': 105,
+    'JUZGADO SEGUNDO MERCANTIL CANCUN': 106,
+    'JUZGADO TERCERO MERCANTIL CANCUN': 107,
+    'JUZGADO ORAL MERCANTIL CANCUN': 108,
+    'TRIBUNAL PRIMERO LABORAL CANCUN': 164,
+    'TRIBUNAL SEGUNDO LABORAL CANCUN': 165,
 
-    // CANCÚN - Mercantil
-    'JUZGADO PRIMERO MERCANTIL CANCUN': 51,
-    'JUZGADO SEGUNDO MERCANTIL CANCUN': 52,
-    'JUZGADO TERCERO MERCANTIL CANCUN': 53,
-    'JUZGADO CUARTO MERCANTIL CANCUN': 54,
+    // ===== PLAYA DEL CARMEN / SOLIDARIDAD =====
+    'JUZGADO FAMILIAR ORAL PLAYA': 88,
+    'JUZGADO FAMILIAR PRIMERA INSTANCIA PLAYA': 84,
+    'JUZGADO PRIMERO CIVIL PLAYA': 83,
+    'JUZGADO SEGUNDO CIVIL PLAYA': 161,
+    'JUZGADO ORAL CIVIL PLAYA': 87,
+    'JUZGADO MERCANTIL PLAYA': 85,
+    'TRIBUNAL LABORAL PLAYA': 166,
 
-    // CANCÚN - Laboral
-    'JUZGADO PRIMERO LABORAL CANCUN': 81,
-    'JUZGADO SEGUNDO LABORAL CANCUN': 82,
+    // ===== CHETUMAL =====
+    'JUZGADO FAMILIAR ORAL CHETUMAL': 93,
+    'JUZGADO FAMILIAR PRIMERA INSTANCIA CHETUMAL': 94,
+    'JUZGADO CIVIL CHETUMAL': 95,
+    'JUZGADO MERCANTIL CHETUMAL': 96,
+    'JUZGADO CIVIL ORAL CHETUMAL': 97,
+    'TRIBUNAL LABORAL CHETUMAL': 163,
 
-    // PLAYA DEL CARMEN
-    'JUZGADO PRIMERO CIVIL PLAYA DEL CARMEN': 121,
-    'JUZGADO SEGUNDO CIVIL PLAYA DEL CARMEN': 122,
-    'JUZGADO PRIMERO FAMILIAR PLAYA DEL CARMEN': 71,
-    'JUZGADO SEGUNDO FAMILIAR PLAYA DEL CARMEN': 72,
-    'JUZGADO MERCANTIL PLAYA DEL CARMEN': 55,
-    'JUZGADO MIXTO CIVIL FAMILIAR PLAYA DEL CARMEN': 131,
-    'JUZGADO LABORAL PLAYA DEL CARMEN': 83,
+    // ===== COZUMEL =====
+    'JUZGADO FAMILIAR COZUMEL': 89,
+    'JUZGADO CIVIL COZUMEL': 90,
+    'JUZGADO FAMILIAR ORAL COZUMEL': 91,
+    'JUZGADO ORAL CIVIL COZUMEL': 92,
 
-    // CHETUMAL
-    'JUZGADO PRIMERO CIVIL CHETUMAL': 101,
-    'JUZGADO SEGUNDO CIVIL CHETUMAL': 102,
-    'JUZGADO PRIMERO FAMILIAR CHETUMAL': 41,
-    'JUZGADO SEGUNDO FAMILIAR CHETUMAL': 42,
-    'JUZGADO MERCANTIL CHETUMAL': 56,
-    'JUZGADO LABORAL CHETUMAL': 84,
+    // ===== FELIPE CARRILLO PUERTO =====
+    'JUZGADO CIVIL ORAL CARRILLO PUERTO': 136,
+    'JUZGADO FAMILIAR ORAL CARRILLO PUERTO': 137,
+    'JUZGADO CIVIL PRIMERA INSTANCIA CARRILLO PUERTO': 153,
+    'JUZGADO FAMILIAR PRIMERA INSTANCIA CARRILLO PUERTO': 154,
 
-    // COZUMEL
-    'JUZGADO MIXTO CIVIL COZUMEL': 141,
-    'JUZGADO MIXTO FAMILIAR COZUMEL': 142,
-    'JUZGADO CIVIL COZUMEL': 143,
-    'JUZGADO FAMILIAR COZUMEL': 144,
+    // ===== ISLA MUJERES =====
+    'JUZGADO CIVIL ORAL ISLA MUJERES': 131,
+    'JUZGADO FAMILIAR ORAL ISLA MUJERES': 132,
 
-    // OTROS MUNICIPIOS
-    'JUZGADO MIXTO TULUM': 151,
-    'JUZGADO MIXTO FELIPE CARRILLO PUERTO': 152,
-    'JUZGADO MIXTO JOSE MARIA MORELOS': 153,
-    'JUZGADO MIXTO LAZARO CARDENAS': 154,
-    'JUZGADO MIXTO BACALAR': 155,
-    'JUZGADO MIXTO PUERTO MORELOS': 156,
-    'JUZGADO MIXTO ISLA MUJERES': 157,
-    'JUZGADO CIVIL ORAL ISLA MUJERES': 158,
-    'JUZGADO MIXTO CIVIL FAMILIAR TULUM': 159,
-    'JUZGADO PRIMERO FAMILIAR ORAL TULUM': 160,
-    'JUZGADO SEGUNDO FAMILIAR ORAL TULUM': 161,
-    'JUZGADO CIVIL ORAL TULUM': 162,
-    'JUZGADO MIXTO ORAL PUERTO AVENTURAS': 163
+    // ===== TULUM =====
+    'JUZGADO CIVIL ORAL TULUM': 144,
+    'JUZGADO FAMILIAR ORAL TULUM': 145,
+
+    // ===== BACALAR =====
+    'JUZGADO FAMILIAR PRIMERA INSTANCIA BACALAR': 188
 };
 
 // Mapeo de Salas de Segunda Instancia
 const SALAS_SEGUNDA_INSTANCIA = {
     'PRIMERA SALA CIVIL MERCANTIL Y FAMILIAR': 170,
     'SEGUNDA SALA PENAL ORAL': 171,
-    'TERCERA SALA CIVIL MERCANTIL': 172,
-    'CUARTA SALA FAMILIAR': 173,
-    'QUINTA SALA PENAL ORAL': 174,
-    'SEXTA SALA CIVIL MERCANTIL': 175,
-    'SEPTIMA SALA FAMILIAR': 176,
-    'OCTAVA SALA CIVIL MERCANTIL FAMILIAR': 177,
-    'NOVENA SALA PENAL': 178,
-    'DECIMA SALA PENAL ORAL': 179,
+    'TERCERA SALA PENAL ORAL': 173,
+    'CUARTA SALA CIVIL MERCANTIL Y FAMILIAR': 183,
+    'QUINTA SALA CIVIL MERCANTIL Y FAMILIAR': 175,
+    'SEXTA SALA CIVIL MERCANTIL Y FAMILIAR': 176,
+    'SEPTIMA SALA PENAL TRADICIONAL': 177,
+    'OCTAVA SALA PENAL ORAL': 178,
+    'NOVENA SALA PENAL ORAL': 179,
+    'DECIMA SALA CIVIL MERCANTIL Y FAMILIAR PLAYA': 172,
     'SALA CONSTITUCIONAL': 184
 };
 
-// Mapeo de IDs de Salas a areaIds
+// Mapeo de IDs de Salas a areaIds (requerido para buscador_segunda.php)
 const AREA_IDS_SALAS = {
-    170: 145, 171: 146, 172: 147, 173: 148, 174: 149,
-    175: 150, 176: 151, 177: 152, 178: 153, 179: 154, 184: 159
+    170: 145,  // PRIMERA SALA CIVIL MERCANTIL Y FAMILIAR
+    171: 146,  // SEGUNDA SALA PENAL ORAL
+    172: 147,  // DECIMA SALA CIVIL MERCANTIL Y FAMILIAR PLAYA
+    173: 148,  // TERCERA SALA PENAL ORAL
+    175: 150,  // QUINTA SALA CIVIL MERCANTIL Y FAMILIAR
+    176: 151,  // SEXTA SALA CIVIL MERCANTIL Y FAMILIAR
+    177: 152,  // SEPTIMA SALA PENAL TRADICIONAL
+    178: 153,  // OCTAVA SALA PENAL ORAL
+    179: 154,  // NOVENA SALA PENAL ORAL
+    183: 158,  // CUARTA SALA CIVIL MERCANTIL Y FAMILIAR
+    184: 159   // SALA CONSTITUCIONAL
 };
 
 // Categorías organizadas
@@ -100,8 +107,8 @@ const CATEGORIAS_JUZGADOS = [
         juzgados: [
             'JUZGADO PRIMERO FAMILIAR ORAL CANCUN',
             'JUZGADO SEGUNDO FAMILIAR ORAL CANCUN',
-            'JUZGADO TERCERO FAMILIAR ORAL CANCUN',
-            'JUZGADO CUARTO FAMILIAR ORAL CANCUN'
+            'JUZGADO SEGUNDO DE LO FAMILIAR CANCUN',
+            'JUZGADO FAMILIAR DE PRIMERA INSTANCIA CANCUN'
         ]
     },
     {
@@ -112,7 +119,7 @@ const CATEGORIAS_JUZGADOS = [
             'JUZGADO SEGUNDO CIVIL CANCUN',
             'JUZGADO TERCERO CIVIL CANCUN',
             'JUZGADO CUARTO CIVIL CANCUN',
-            'JUZGADO QUINTO CIVIL CANCUN'
+            'JUZGADO ORAL CIVIL CANCUN'
         ]
     },
     {
@@ -122,69 +129,65 @@ const CATEGORIAS_JUZGADOS = [
             'JUZGADO PRIMERO MERCANTIL CANCUN',
             'JUZGADO SEGUNDO MERCANTIL CANCUN',
             'JUZGADO TERCERO MERCANTIL CANCUN',
-            'JUZGADO CUARTO MERCANTIL CANCUN'
+            'JUZGADO ORAL MERCANTIL CANCUN'
         ]
     },
     {
         nombre: 'CANCÚN - Laboral',
         icono: '👷',
         juzgados: [
-            'JUZGADO PRIMERO LABORAL CANCUN',
-            'JUZGADO SEGUNDO LABORAL CANCUN'
+            'TRIBUNAL PRIMERO LABORAL CANCUN',
+            'TRIBUNAL SEGUNDO LABORAL CANCUN'
         ]
     },
     {
         nombre: 'PLAYA DEL CARMEN',
         icono: '🏖️',
         juzgados: [
-            'JUZGADO PRIMERO CIVIL PLAYA DEL CARMEN',
-            'JUZGADO SEGUNDO CIVIL PLAYA DEL CARMEN',
-            'JUZGADO PRIMERO FAMILIAR PLAYA DEL CARMEN',
-            'JUZGADO SEGUNDO FAMILIAR PLAYA DEL CARMEN',
-            'JUZGADO MERCANTIL PLAYA DEL CARMEN',
-            'JUZGADO MIXTO CIVIL FAMILIAR PLAYA DEL CARMEN',
-            'JUZGADO LABORAL PLAYA DEL CARMEN'
+            'JUZGADO PRIMERO CIVIL PLAYA',
+            'JUZGADO SEGUNDO CIVIL PLAYA',
+            'JUZGADO ORAL CIVIL PLAYA',
+            'JUZGADO FAMILIAR ORAL PLAYA',
+            'JUZGADO FAMILIAR PRIMERA INSTANCIA PLAYA',
+            'JUZGADO MERCANTIL PLAYA',
+            'TRIBUNAL LABORAL PLAYA'
         ]
     },
     {
         nombre: 'CHETUMAL',
         icono: '🌴',
         juzgados: [
-            'JUZGADO PRIMERO CIVIL CHETUMAL',
-            'JUZGADO SEGUNDO CIVIL CHETUMAL',
-            'JUZGADO PRIMERO FAMILIAR CHETUMAL',
-            'JUZGADO SEGUNDO FAMILIAR CHETUMAL',
+            'JUZGADO CIVIL CHETUMAL',
+            'JUZGADO CIVIL ORAL CHETUMAL',
+            'JUZGADO FAMILIAR ORAL CHETUMAL',
+            'JUZGADO FAMILIAR PRIMERA INSTANCIA CHETUMAL',
             'JUZGADO MERCANTIL CHETUMAL',
-            'JUZGADO LABORAL CHETUMAL'
+            'TRIBUNAL LABORAL CHETUMAL'
         ]
     },
     {
         nombre: 'COZUMEL',
         icono: '🏝️',
         juzgados: [
-            'JUZGADO MIXTO CIVIL COZUMEL',
-            'JUZGADO MIXTO FAMILIAR COZUMEL',
             'JUZGADO CIVIL COZUMEL',
-            'JUZGADO FAMILIAR COZUMEL'
+            'JUZGADO ORAL CIVIL COZUMEL',
+            'JUZGADO FAMILIAR COZUMEL',
+            'JUZGADO FAMILIAR ORAL COZUMEL'
         ]
     },
     {
         nombre: 'OTROS MUNICIPIOS',
         icono: '📍',
         juzgados: [
-            'JUZGADO MIXTO TULUM',
-            'JUZGADO MIXTO CIVIL FAMILIAR TULUM',
-            'JUZGADO PRIMERO FAMILIAR ORAL TULUM',
-            'JUZGADO SEGUNDO FAMILIAR ORAL TULUM',
             'JUZGADO CIVIL ORAL TULUM',
-            'JUZGADO MIXTO FELIPE CARRILLO PUERTO',
-            'JUZGADO MIXTO JOSE MARIA MORELOS',
-            'JUZGADO MIXTO LAZARO CARDENAS',
-            'JUZGADO MIXTO BACALAR',
-            'JUZGADO MIXTO PUERTO MORELOS',
-            'JUZGADO MIXTO ISLA MUJERES',
+            'JUZGADO FAMILIAR ORAL TULUM',
+            'JUZGADO CIVIL ORAL CARRILLO PUERTO',
+            'JUZGADO FAMILIAR ORAL CARRILLO PUERTO',
+            'JUZGADO CIVIL PRIMERA INSTANCIA CARRILLO PUERTO',
+            'JUZGADO FAMILIAR PRIMERA INSTANCIA CARRILLO PUERTO',
             'JUZGADO CIVIL ORAL ISLA MUJERES',
-            'JUZGADO MIXTO ORAL PUERTO AVENTURAS'
+            'JUZGADO FAMILIAR ORAL ISLA MUJERES',
+            'JUZGADO FAMILIAR PRIMERA INSTANCIA BACALAR'
         ]
     }
 ];
@@ -211,27 +214,32 @@ function obtenerCategoriaJuzgado(nombre) {
     return 'OTROS';
 }
 
+/**
+ * Construye la URL correcta de búsqueda según el tipo de juzgado
+ * - Primera Instancia: buscador_primera.php
+ * - Segunda Instancia (Salas): buscador_segunda.php + areaId
+ *
+ * @param {string} juzgado - Nombre del juzgado
+ * @param {string} tipoBusqueda - 'numero' o 'nombre'
+ * @param {string} valor - Término de búsqueda
+ * @returns {string} URL completa para la búsqueda
+ */
 function construirUrlBusqueda(juzgado, tipoBusqueda, valor) {
     const idJuzgado = obtenerIdJuzgado(juzgado);
     if (!idJuzgado) return null;
 
-    const baseUrl = 'https://www.tsjqroo.gob.mx/index.php/component/buscador';
+    const baseUrl = 'https://www.tsjqroo.gob.mx/estrados';
     const valorCodificado = encodeURIComponent(valor);
+    const metodo = tipoBusqueda === 'numero' ? 1 : 2;
     const esSala = esSalaSegundaInstancia(juzgado);
 
     if (esSala) {
+        // Sala de Segunda Instancia - usar buscador_segunda.php
         const areaId = AREA_IDS_SALAS[idJuzgado];
-        if (tipoBusqueda === 'numero') {
-            return `${baseUrl}_segunda/?expediente=${valorCodificado}&juzgadoId=${idJuzgado}&areaId=${areaId}`;
-        } else {
-            return `${baseUrl}_segunda/?actor=${valorCodificado}&juzgadoId=${idJuzgado}&areaId=${areaId}`;
-        }
+        return `${baseUrl}/buscador_segunda.php?findexp=${valorCodificado}&int=${idJuzgado}&areaId=${areaId}&metodo=${metodo}`;
     } else {
-        if (tipoBusqueda === 'numero') {
-            return `${baseUrl}_primera/?expediente=${valorCodificado}&juzgadoId=${idJuzgado}`;
-        } else {
-            return `${baseUrl}_primera/?actor=${valorCodificado}&juzgadoId=${idJuzgado}`;
-        }
+        // Primera Instancia - usar buscador_primera.php
+        return `${baseUrl}/buscador_primera.php?int=${idJuzgado}&metodo=${metodo}&findexp=${valorCodificado}`;
     }
 }
 

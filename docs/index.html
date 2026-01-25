@@ -379,11 +379,14 @@
             <!-- URLs Generadas -->
             <div class="card" id="urls-generadas" style="display: none;">
                 <div class="card-header">
-                    <h3>🔗 URLs de Búsqueda</h3>
-                    <button class="btn btn-sm btn-secondary" onclick="copiarTodasURLs()">📋 Copiar todas</button>
+                    <h3>🔗 Resultados de Búsqueda</h3>
+                    <div class="header-actions">
+                        <button class="btn btn-sm btn-secondary" onclick="copiarTodasURLs()">📋 Copiar URLs</button>
+                        <button class="btn btn-sm btn-success" onclick="abrirTodasBusquedas()">🚀 Abrir Todas</button>
+                    </div>
                 </div>
                 <div class="card-body">
-                    <p class="manual-instructions">Haz clic en cada enlace para abrir la búsqueda en el sitio del TSJ.</p>
+                    <p class="manual-instructions">Haz clic en "Ver" para abrir los resultados del TSJ en una ventana popup.</p>
                     <div class="urls-list" id="lista-urls">
                         <!-- URLs generadas por JS -->
                     </div>
