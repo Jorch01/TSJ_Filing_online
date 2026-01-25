@@ -2025,8 +2025,8 @@ cargarExpedientes = async function() {
 const PREMIUM_CONFIG = {
     limiteExpedientes: 10,
     limiteBusquedasGlobales: 10,
-    // URL del Google Sheet publicado como CSV (reemplazar con la URL real)
-    // Formato del sheet: codigo,fecha_expiracion,email
+    // URL del Google Sheet publicado como CSV
+    // Formato: codigo,fecha_expiracion,dispositivo_id,usuario,estado
     googleSheetUrl: '',
     precioMensual: 35
 };
@@ -2035,6 +2035,8 @@ const PREMIUM_CONFIG = {
 let estadoPremium = {
     activo: false,
     codigo: null,
+    usuario: null,
+    dispositivoId: null,
     fechaExpiracion: null,
     busquedasGlobalesUsadas: 0
 };
@@ -2052,9 +2054,72 @@ function _decode(str) {
     }
 }
 
+// ==================== FINGERPRINT DE DISPOSITIVO ====================
+
+// Generar ID único de dispositivo basado en características del navegador
+function generarDeviceFingerprint() {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.textBaseline = 'top';
+    ctx.font = '14px Arial';
+    ctx.fillText('TSJ Filing Premium 🔒', 2, 2);
+    const canvasData = canvas.toDataURL();
+
+    const datos = [
+        navigator.userAgent,
+        navigator.language,
+        screen.width + 'x' + screen.height,
+        screen.colorDepth,
+        new Date().getTimezoneOffset(),
+        navigator.hardwareConcurrency || 'unknown',
+        navigator.platform,
+        canvasData.slice(-50) // últimos 50 chars del canvas
+    ];
+
+    // Crear hash simple
+    const str = datos.join('|');
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+
+    // Convertir a string hexadecimal y tomar los primeros 12 caracteres
+    const hexHash = Math.abs(hash).toString(16).toUpperCase();
+    const deviceId = 'TSJ-' + hexHash.padStart(8, '0').slice(0, 8);
+
+    return deviceId;
+}
+
+// Obtener o generar ID de dispositivo (se guarda para persistencia)
+function obtenerDeviceId() {
+    let deviceId = localStorage.getItem('_tsjdid');
+
+    if (!deviceId) {
+        deviceId = generarDeviceFingerprint();
+        localStorage.setItem('_tsjdid', deviceId);
+    }
+
+    return deviceId;
+}
+
+// Mostrar ID de dispositivo en la UI
+function mostrarDeviceId() {
+    const deviceId = obtenerDeviceId();
+    const displayEl = document.getElementById('device-id-display');
+    if (displayEl) {
+        displayEl.textContent = `ID de dispositivo: ${deviceId}`;
+    }
+    return deviceId;
+}
+
 // Cargar estado premium
 async function cargarEstadoPremium() {
     try {
+        // Mostrar ID de dispositivo
+        mostrarDeviceId();
+
         // Cargar datos guardados
         const datosGuardados = localStorage.getItem('_tsjp');
         if (datosGuardados) {
@@ -2062,6 +2127,19 @@ async function cargarEstadoPremium() {
             if (decoded) {
                 const datos = JSON.parse(decoded);
                 estadoPremium = { ...estadoPremium, ...datos };
+
+                // Verificar que el dispositivo coincida
+                const deviceIdActual = obtenerDeviceId();
+                if (estadoPremium.dispositivoId && estadoPremium.dispositivoId !== deviceIdActual) {
+                    // Dispositivo diferente, invalidar premium
+                    console.warn('Premium inválido: dispositivo diferente');
+                    estadoPremium.activo = false;
+                    estadoPremium.codigo = null;
+                    estadoPremium.fechaExpiracion = null;
+                    estadoPremium.dispositivoId = null;
+                    estadoPremium.usuario = null;
+                    guardarEstadoPremium();
+                }
 
                 // Verificar si expiró
                 if (estadoPremium.fechaExpiracion) {
@@ -2091,6 +2169,8 @@ function guardarEstadoPremium() {
     const datos = {
         activo: estadoPremium.activo,
         codigo: estadoPremium.codigo,
+        usuario: estadoPremium.usuario,
+        dispositivoId: estadoPremium.dispositivoId,
         fechaExpiracion: estadoPremium.fechaExpiracion
     };
     localStorage.setItem('_tsjp', _encode(JSON.stringify(datos)));
@@ -2241,35 +2321,48 @@ function mostrarModalLimite(tipo) {
 // Activar Premium con código
 async function activarPremium() {
     const codigoInput = document.getElementById('premium-code');
+    const usernameInput = document.getElementById('premium-username');
     const codigo = codigoInput.value.trim().toUpperCase();
+    const username = usernameInput ? usernameInput.value.trim() : '';
 
-    if (!codigo) {
-        mostrarToast('Ingresa un código de activación', 'warning');
+    if (!username) {
+        mostrarToast('Ingresa tu nombre o identificador', 'warning');
+        if (usernameInput) usernameInput.focus();
         return;
     }
 
+    if (!codigo) {
+        mostrarToast('Ingresa un código de activación', 'warning');
+        codigoInput.focus();
+        return;
+    }
+
+    const deviceId = obtenerDeviceId();
     mostrarToast('Verificando código...', 'info');
 
     try {
-        // Verificar contra Google Sheets
-        const esValido = await verificarCodigoPremium(codigo);
+        // Verificar contra Google Sheets (incluye verificación de dispositivo)
+        const resultado = await verificarCodigoPremium(codigo, deviceId);
 
-        if (esValido) {
+        if (resultado.valido) {
             // Activar premium por 30 días
             const fechaExp = new Date();
             fechaExp.setDate(fechaExp.getDate() + 30);
 
             estadoPremium.activo = true;
             estadoPremium.codigo = codigo;
+            estadoPremium.usuario = username;
+            estadoPremium.dispositivoId = deviceId;
             estadoPremium.fechaExpiracion = fechaExp.toISOString();
 
             guardarEstadoPremium();
             await actualizarUIPremium();
 
             codigoInput.value = '';
+            if (usernameInput) usernameInput.value = '';
             mostrarToast('¡Premium activado exitosamente!', 'success');
         } else {
-            mostrarToast('Código inválido o ya utilizado', 'error');
+            mostrarToast(resultado.mensaje || 'Código inválido o ya utilizado', 'error');
         }
     } catch (error) {
         console.error('Error al verificar código:', error);
@@ -2278,12 +2371,15 @@ async function activarPremium() {
 }
 
 // Verificar código contra Google Sheets
-async function verificarCodigoPremium(codigo) {
+async function verificarCodigoPremium(codigo, deviceId) {
     // Si no hay URL configurada, usar validación local de emergencia
     if (!PREMIUM_CONFIG.googleSheetUrl) {
-        // Códigos de prueba para desarrollo
+        // Códigos de prueba para desarrollo (sin verificación de dispositivo)
         const codigosPrueba = ['PREMIUM2025', 'TSJPRO2025', 'TESTCODE123'];
-        return codigosPrueba.includes(codigo);
+        if (codigosPrueba.includes(codigo)) {
+            return { valido: true };
+        }
+        return { valido: false, mensaje: 'Código inválido' };
     }
 
     try {
@@ -2291,27 +2387,46 @@ async function verificarCodigoPremium(codigo) {
         const csvText = await response.text();
 
         // Parsear CSV
+        // Formato esperado: codigo,fecha_expiracion,dispositivo_id,usuario,estado
         const lineas = csvText.split('\n').slice(1); // Saltar encabezado
 
         for (const linea of lineas) {
-            const [codigoSheet, fechaExp, estado] = linea.split(',').map(s => s.trim());
+            const campos = linea.split(',').map(s => s.trim());
+            const [codigoSheet, fechaExp, dispositivoRegistrado, usuarioRegistrado, estado] = campos;
 
-            if (codigoSheet.toUpperCase() === codigo) {
-                // Verificar si no está usado y no expiró
-                if (estado.toLowerCase() !== 'usado') {
-                    const fechaExpiracion = new Date(fechaExp);
-                    if (fechaExpiracion > new Date()) {
-                        return true;
-                    }
+            if (codigoSheet && codigoSheet.toUpperCase() === codigo) {
+                // Verificar si el código expiró
+                const fechaExpiracion = new Date(fechaExp);
+                if (fechaExpiracion < new Date()) {
+                    return { valido: false, mensaje: 'Este código ha expirado' };
                 }
+
+                // Verificar si ya está vinculado a otro dispositivo
+                if (dispositivoRegistrado && dispositivoRegistrado !== '' && dispositivoRegistrado !== deviceId) {
+                    return {
+                        valido: false,
+                        mensaje: `Este código ya está vinculado a otro dispositivo`
+                    };
+                }
+
+                // Verificar estado
+                if (estado && estado.toLowerCase() === 'revocado') {
+                    return { valido: false, mensaje: 'Este código ha sido revocado' };
+                }
+
+                // Código válido
+                return { valido: true };
             }
         }
 
-        return false;
+        return { valido: false, mensaje: 'Código no encontrado' };
     } catch (error) {
         console.error('Error al verificar con Google Sheets:', error);
         // Fallback: permitir códigos de emergencia
-        return codigo === 'EMERGENCIA2025';
+        if (codigo === 'EMERGENCIA2025') {
+            return { valido: true };
+        }
+        return { valido: false, mensaje: 'Error de conexión. Intenta de nuevo.' };
     }
 }
 
