@@ -131,7 +131,28 @@
             <div class="info-banner">
                 <div class="info-icon">💡</div>
                 <div class="info-content">
-                    <h4>Base de Datos Local</h4>
+                    <div class="header-with-help">
+                        <h4>Base de Datos Local</h4>
+                        <div class="tooltip-container">
+                            <button class="help-btn" type="button">?</button>
+                            <div class="tooltip-content tooltip-bottom">
+                                <h4>Sobre tus datos</h4>
+                                <p>Tus datos se guardan en <strong>IndexedDB</strong>, una base de datos del navegador.</p>
+                                <p><strong>Ventajas:</strong></p>
+                                <ul>
+                                    <li>Sin registro ni cuenta</li>
+                                    <li>Privacidad total - datos solo en tu equipo</li>
+                                    <li>Funciona sin internet</li>
+                                </ul>
+                                <p><strong>Importante:</strong></p>
+                                <ul>
+                                    <li>Haz respaldos periódicos (Configuración → Exportar)</li>
+                                    <li>Limpiar datos del navegador borra todo</li>
+                                    <li>Los datos NO se sincronizan entre dispositivos</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
                     <p>Todos tus datos se guardan automáticamente en tu navegador. No necesitas instalar nada.</p>
                 </div>
             </div>
@@ -145,9 +166,24 @@
                     <p class="subtitle">Gestiona tus expedientes del TSJ</p>
                 </div>
                 <div class="header-buttons">
-                    <button class="btn btn-secondary" onclick="descargarTemplateCSV()">
-                        📄 Descargar Template
-                    </button>
+                    <div class="tooltip-container">
+                        <button class="btn btn-secondary" onclick="descargarTemplateCSV()">
+                            📄 Descargar Template
+                        </button>
+                        <div class="tooltip-content tooltip-bottom tooltip-right">
+                            <h4>¿Cómo usar la carga masiva?</h4>
+                            <p><strong>Paso 1:</strong> Descarga el template CSV</p>
+                            <p><strong>Paso 2:</strong> Ábrelo con Excel o Google Sheets</p>
+                            <p><strong>Paso 3:</strong> Completa las columnas:</p>
+                            <ul>
+                                <li><code>expediente</code>: Número (ej: 1234/2025) o nombre</li>
+                                <li><code>tipo</code>: "numero" o "nombre"</li>
+                                <li><code>juzgado</code>: Nombre EXACTO del juzgado (ver lista en el template)</li>
+                                <li><code>comentario</code>: Notas opcionales</li>
+                            </ul>
+                            <p><strong>Paso 4:</strong> Guarda como CSV e importa</p>
+                        </div>
+                    </div>
                     <button class="btn btn-secondary" onclick="document.getElementById('import-csv').click()">
                         📥 Importar CSV/Excel
                     </button>
@@ -346,7 +382,23 @@
             <!-- Búsqueda Global -->
             <div class="card">
                 <div class="card-header">
-                    <h3>🌐 Búsqueda Global (Investigación)</h3>
+                    <div class="header-with-help">
+                        <h3>🌐 Búsqueda Global (Investigación)</h3>
+                        <div class="tooltip-container">
+                            <button class="help-btn" type="button">?</button>
+                            <div class="tooltip-content tooltip-left">
+                                <h4>¿Para qué sirve la Búsqueda Global?</h4>
+                                <p>Esta función te permite <strong>investigar</strong> buscando en TODOS los juzgados y salas al mismo tiempo.</p>
+                                <p><strong>Casos de uso:</strong></p>
+                                <ul>
+                                    <li>Buscar todas las causas de una persona</li>
+                                    <li>Verificar si existe un expediente (sin saber el juzgado)</li>
+                                    <li>Investigar antecedentes legales</li>
+                                </ul>
+                                <p><strong>Nota:</strong> Abre múltiples ventanas. El navegador puede bloquear popups - permite las ventanas emergentes del sitio TSJ.</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="card-body">
                     <p class="section-desc">Busca un número de expediente o nombre en TODOS los juzgados y salas a la vez.</p>
@@ -392,7 +444,22 @@
             <!-- Búsqueda por Expedientes Guardados -->
             <div class="card">
                 <div class="card-header">
-                    <h3>📁 Buscar Expedientes Guardados</h3>
+                    <div class="header-with-help">
+                        <h3>📁 Buscar Expedientes Guardados</h3>
+                        <div class="tooltip-container">
+                            <button class="help-btn" type="button">?</button>
+                            <div class="tooltip-content">
+                                <h4>Búsqueda Rápida</h4>
+                                <p>Selecciona uno o más expedientes de tu lista y genera las URLs de búsqueda del TSJ.</p>
+                                <p><strong>Opciones:</strong></p>
+                                <ul>
+                                    <li><strong>Ver:</strong> Abre los resultados en una ventana popup</li>
+                                    <li><strong>Copiar:</strong> Copia el enlace al portapapeles</li>
+                                    <li><strong>Abrir Todas:</strong> Abre todas las búsquedas seleccionadas</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
                     <div class="header-actions">
                         <button class="btn btn-sm btn-secondary" onclick="seleccionarTodosExpedientes()">
                             ✓ Seleccionar todos
@@ -437,7 +504,25 @@
             <!-- Análisis con IA -->
             <div class="card">
                 <div class="card-header">
-                    <h3>🤖 Analizar Acuerdo con IA</h3>
+                    <div class="header-with-help">
+                        <h3>🤖 Analizar Acuerdo con IA</h3>
+                        <div class="tooltip-container">
+                            <button class="help-btn" type="button">?</button>
+                            <div class="tooltip-content tooltip-left">
+                                <h4>¿Cómo usar el análisis con IA?</h4>
+                                <p><strong>Paso 1:</strong> Configura tu API Key de Groq en Configuración (es gratis)</p>
+                                <p><strong>Paso 2:</strong> Busca tu expediente y copia el texto del acuerdo</p>
+                                <p><strong>Paso 3:</strong> Pega el texto aquí y haz clic en "Analizar"</p>
+                                <p><strong>La IA extraerá:</strong></p>
+                                <ul>
+                                    <li>Fechas de audiencias</li>
+                                    <li>Vencimientos de plazos</li>
+                                    <li>Puntos importantes del acuerdo</li>
+                                </ul>
+                                <p>Puedes guardar automáticamente como eventos y notas.</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="card-body">
                     <p class="section-desc">Pega el texto de un acuerdo del TSJ y la IA extraerá automáticamente fechas, audiencias y puntos importantes.</p>
@@ -496,7 +581,22 @@
             </div>
 
             <div class="config-section">
-                <h3>💾 Datos</h3>
+                <div class="header-with-help">
+                    <h3>💾 Datos</h3>
+                    <div class="tooltip-container">
+                        <button class="help-btn" type="button">?</button>
+                        <div class="tooltip-content tooltip-left">
+                            <h4>Respaldos de Seguridad</h4>
+                            <p><strong>¿Por qué respaldar?</strong></p>
+                            <ul>
+                                <li>Tus datos solo existen en este navegador</li>
+                                <li>Limpiar caché/cookies borra todo</li>
+                                <li>Cambiar de computadora requiere migrar datos</li>
+                            </ul>
+                            <p><strong>Recomendación:</strong> Exporta tus datos semanalmente y guarda el archivo JSON en un lugar seguro.</p>
+                        </div>
+                    </div>
+                </div>
                 <div class="data-actions">
                     <div class="data-card">
                         <div class="data-icon">📤</div>
@@ -519,7 +619,24 @@
             </div>
 
             <div class="config-section">
-                <h3>🤖 Inteligencia Artificial (Groq)</h3>
+                <div class="header-with-help">
+                    <h3>🤖 Inteligencia Artificial (Groq)</h3>
+                    <div class="tooltip-container">
+                        <button class="help-btn" type="button">?</button>
+                        <div class="tooltip-content tooltip-left">
+                            <h4>¿Cómo obtener tu API Key de Groq?</h4>
+                            <p><strong>Groq es GRATIS</strong> y muy rápido. Sigue estos pasos:</p>
+                            <ul>
+                                <li>Ve a <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a></li>
+                                <li>Crea una cuenta con Google o email</li>
+                                <li>Haz clic en "Create API Key"</li>
+                                <li>Copia la clave (empieza con <code>gsk_</code>)</li>
+                                <li>Pégala aquí y guarda</li>
+                            </ul>
+                            <p>Usa la función "Probar Conexión" para verificar que funciona.</p>
+                        </div>
+                    </div>
+                </div>
                 <p class="section-desc">Analiza acuerdos automáticamente y extrae fechas, audiencias y notas importantes. <a href="https://console.groq.com/keys" target="_blank">Obtener API Key gratis</a></p>
                 <form id="ai-config-form" onsubmit="guardarConfigIA(event)">
                     <div class="form-row">
@@ -544,7 +661,23 @@
             </div>
 
             <div class="config-section">
-                <h3>⏰ Búsquedas Programadas</h3>
+                <div class="header-with-help">
+                    <h3>⏰ Búsquedas Programadas</h3>
+                    <div class="tooltip-container">
+                        <button class="help-btn" type="button">?</button>
+                        <div class="tooltip-content tooltip-left">
+                            <h4>¿Cómo funcionan las búsquedas automáticas?</h4>
+                            <p>Esta función abre automáticamente las búsquedas de tus expedientes en intervalos regulares.</p>
+                            <p><strong>Requisitos:</strong></p>
+                            <ul>
+                                <li>La página debe estar abierta</li>
+                                <li>Debes tener expedientes guardados</li>
+                                <li>Permite ventanas emergentes del TSJ</li>
+                            </ul>
+                            <p><strong>Ideal para:</strong> Monitorear actualizaciones de múltiples expedientes sin tener que buscar manualmente cada vez.</p>
+                        </div>
+                    </div>
+                </div>
                 <p class="section-desc">Programa búsquedas automáticas de tus expedientes</p>
                 <div class="config-item">
                     <div class="config-info">
