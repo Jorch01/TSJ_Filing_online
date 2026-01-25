@@ -817,19 +817,60 @@
                     <p class="section-desc">¿Ya tienes un código de activación? Ingrésalo aquí:</p>
                     <div class="form-row">
                         <div class="form-group">
-                            <input type="text" id="premium-code" placeholder="Ingresa tu código de activación...">
+                            <label>Tu nombre o identificador</label>
+                            <input type="text" id="premium-username" placeholder="Ej: Juan Pérez o Despacho ABC">
                         </div>
-                        <button class="btn btn-success" onclick="activarPremium()">⭐ Activar Premium</button>
                     </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Código de activación</label>
+                            <input type="text" id="premium-code" placeholder="Ingresa tu código...">
+                        </div>
+                        <button class="btn btn-success" onclick="activarPremium()">⭐ Activar</button>
+                    </div>
+                    <p class="text-muted" style="font-size: 0.75rem; margin-top: 0.5rem;">
+                        🔒 El código quedará vinculado a este dispositivo y no podrá usarse en otro.
+                    </p>
+                    <p class="device-id-display" id="device-id-display" style="font-size: 0.7rem; color: var(--text-muted);"></p>
                 </div>
 
-                <!-- Info de compra -->
+                <!-- Info de compra y precios -->
                 <div class="premium-buy" id="premium-buy">
-                    <div class="info-banner warning">
+                    <h4 style="margin-bottom: 1rem;">💰 Precios</h4>
+                    <div class="pricing-table">
+                        <div class="pricing-row header">
+                            <span>Licencias</span>
+                            <span>Precio c/u</span>
+                            <span>Total/mes</span>
+                        </div>
+                        <div class="pricing-row">
+                            <span>1 licencia</span>
+                            <span>$35 MXN</span>
+                            <span>$35 MXN</span>
+                        </div>
+                        <div class="pricing-row popular">
+                            <span>2 licencias</span>
+                            <span>$30 MXN</span>
+                            <span>$60 MXN</span>
+                        </div>
+                        <div class="pricing-row">
+                            <span>3 licencias</span>
+                            <span>$25 MXN</span>
+                            <span>$75 MXN</span>
+                        </div>
+                        <div class="pricing-row best">
+                            <span>4+ licencias</span>
+                            <span>$23 MXN</span>
+                            <span>Contactar</span>
+                        </div>
+                    </div>
+                    <div class="info-banner warning" style="margin-top: 1rem;">
                         <div class="info-icon">💳</div>
                         <div class="info-content">
-                            <h4>Obtener Premium - $35 MXN/mes</h4>
-                            <p>Realiza tu pago y recibe tu código de activación por email.</p>
+                            <h4>¿Cómo obtener Premium?</h4>
+                            <p>1. Realiza tu pago por Stripe o transferencia</p>
+                            <p>2. Recibirás tu código por email</p>
+                            <p>3. Ingresa tu nombre y código arriba</p>
                             <a href="https://buy.stripe.com/test_XXXXXXX" target="_blank" class="btn btn-primary btn-sm" id="stripe-link" style="margin-top: 0.5rem;">
                                 💳 Pagar con Stripe
                             </a>

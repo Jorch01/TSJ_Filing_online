@@ -976,3 +976,66 @@ textarea:focus {
         flex-direction: column;
     }
 }
+
+/* Pricing Table */
+.pricing-table {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+.pricing-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.9rem;
+}
+.pricing-row:last-child {
+    border-bottom: none;
+}
+.pricing-row.header {
+    background: var(--bg-tertiary);
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+.pricing-row.popular {
+    background: #e3f2fd;
+    position: relative;
+}
+.pricing-row.popular::after {
+    content: '⭐ Popular';
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.65rem;
+    background: var(--primary);
+    color: white;
+    padding: 0.15rem 0.5rem;
+    border-radius: 10px;
+}
+.pricing-row.best {
+    background: linear-gradient(135deg, #fff9c4 0%, #ffeb3b 100%);
+    font-weight: 600;
+}
+.pricing-row span:last-child {
+    text-align: right;
+    font-weight: 600;
+}
+
+/* Device ID display */
+.device-id-display {
+    font-family: monospace;
+    word-break: break-all;
+}
+
+@media (max-width: 768px) {
+    .pricing-row {
+        font-size: 0.8rem;
+        padding: 0.5rem;
+    }
+    .pricing-row.popular::after {
+        display: none;
+    }
+}
