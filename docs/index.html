@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Sistema de Gestión de Expedientes TSJ Quintana Roo - Versión Web">
+    <meta name="theme-color" content="#366092">
+    <title>TSJ Filing Online - Gestión de Expedientes</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
+</head>
+<body>
+    <!-- Header -->
+    <header class="app-header">
+        <div class="header-brand">
+            <span class="brand-icon">⚖️</span>
+            <div class="brand-text">
+                <h1>TSJ Filing Online</h1>
+                <span class="brand-subtitle">Quintana Roo - v7.0</span>
+            </div>
+        </div>
+        <nav class="header-nav">
+            <button class="nav-btn active" data-page="inicio">🏠 Inicio</button>
+            <button class="nav-btn" data-page="expedientes">📁 Expedientes</button>
+            <button class="nav-btn" data-page="calendario">📅 Calendario</button>
+            <button class="nav-btn" data-page="notas">📝 Notas</button>
+            <button class="nav-btn" data-page="busqueda">🔍 Búsqueda</button>
+            <button class="nav-btn" data-page="config">⚙️</button>
+        </nav>
+        <button class="menu-toggle" id="menuToggle">☰</button>
+    </header>
+
+    <!-- Mobile Navigation -->
+    <nav class="mobile-nav" id="mobileNav">
+        <button class="nav-btn active" data-page="inicio">🏠 Inicio</button>
+        <button class="nav-btn" data-page="expedientes">📁 Expedientes</button>
+        <button class="nav-btn" data-page="calendario">📅 Calendario</button>
+        <button class="nav-btn" data-page="notas">📝 Notas</button>
+        <button class="nav-btn" data-page="busqueda">🔍 Búsqueda</button>
+        <button class="nav-btn" data-page="config">⚙️ Configuración</button>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="app-main">
+        <!-- Página Inicio -->
+        <section class="page active" id="page-inicio">
+            <div class="page-header">
+                <h2>Panel de Control</h2>
+                <p class="subtitle">Bienvenido al Sistema de Gestión de Expedientes</p>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: #e3f2fd;">📁</div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="stat-expedientes">0</span>
+                        <span class="stat-label">Expedientes</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: #e8f5e9;">📅</div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="stat-eventos">0</span>
+                        <span class="stat-label">Eventos Próximos</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: #fff3e0;">📝</div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="stat-notas">0</span>
+                        <span class="stat-label">Notas</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: #fce4ec;">🔔</div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="stat-alertas">0</span>
+                        <span class="stat-label">Alertas</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="quick-actions">
+                <h3>Acciones Rápidas</h3>
+                <div class="actions-grid">
+                    <button class="action-card" onclick="navegarA('expedientes'); mostrarFormularioExpediente()">
+                        <span class="action-icon">➕</span>
+                        <span>Nuevo Expediente</span>
+                    </button>
+                    <button class="action-card primary" onclick="navegarA('busqueda')">
+                        <span class="action-icon">🔍</span>
+                        <span>Buscar en TSJ</span>
+                    </button>
+                    <button class="action-card" onclick="navegarA('calendario')">
+                        <span class="action-icon">📅</span>
+                        <span>Ver Calendario</span>
+                    </button>
+                    <button class="action-card" onclick="navegarA('notas'); mostrarFormularioNota()">
+                        <span class="action-icon">📝</span>
+                        <span>Nueva Nota</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="dashboard-grid">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>📅 Eventos de Hoy</h3>
+                    </div>
+                    <div class="card-body" id="eventos-hoy">
+                        <div class="empty-state small">
+                            <span>🎉</span>
+                            <p>No hay eventos para hoy</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <h3>📁 Expedientes Recientes</h3>
+                    </div>
+                    <div class="card-body" id="expedientes-recientes">
+                        <div class="empty-state small">
+                            <span>📂</span>
+                            <p>No hay expedientes</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-banner">
+                <div class="info-icon">💡</div>
+                <div class="info-content">
+                    <h4>Base de Datos Local</h4>
+                    <p>Todos tus datos se guardan automáticamente en tu navegador. No necesitas instalar nada.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Página Expedientes -->
+        <section class="page" id="page-expedientes">
+            <div class="page-header">
+                <div>
+                    <h2>📁 Expedientes</h2>
+                    <p class="subtitle">Gestiona tus expedientes del TSJ</p>
+                </div>
+                <button class="btn btn-primary" onclick="mostrarFormularioExpediente()">
+                    ➕ Nuevo Expediente
+                </button>
+            </div>
+
+            <!-- Formulario Nuevo Expediente -->
+            <div class="card form-card" id="form-expediente" style="display: none;">
+                <div class="card-header">
+                    <h3 id="form-expediente-titulo">Agregar Nuevo Expediente</h3>
+                    <button class="btn-close" onclick="cerrarFormularioExpediente()">✕</button>
+                </div>
+                <div class="card-body">
+                    <form id="expediente-form" onsubmit="guardarExpediente(event)">
+                        <input type="hidden" id="expediente-id">
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Tipo de búsqueda</label>
+                                <div class="radio-group">
+                                    <label class="radio-label">
+                                        <input type="radio" name="tipo-busqueda" value="numero" checked>
+                                        <span>Por Número</span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="tipo-busqueda" value="nombre">
+                                        <span>Por Nombre</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="expediente-valor" id="label-valor">Número de Expediente</label>
+                                <input type="text" id="expediente-valor" placeholder="Ej: 1234/2025" required>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="expediente-juzgado">Juzgado</label>
+                                <select id="expediente-juzgado" required>
+                                    <option value="">Selecciona un juzgado...</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="expediente-comentario">Comentario (opcional)</label>
+                                <input type="text" id="expediente-comentario" placeholder="Notas adicionales...">
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" onclick="cerrarFormularioExpediente()">Cancelar</button>
+                            <button type="submit" class="btn btn-success">💾 Guardar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Filtros -->
+            <div class="filters-section">
+                <div class="search-box">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="buscar-expediente" placeholder="Buscar expedientes..." oninput="filtrarExpedientes()">
+                </div>
+                <select id="filtro-categoria" onchange="filtrarExpedientes()">
+                    <option value="">Todas las categorías</option>
+                </select>
+                <span class="results-count" id="count-expedientes">0 expedientes</span>
+            </div>
+
+            <!-- Lista de Expedientes -->
+            <div class="expedientes-grid" id="lista-expedientes">
+                <div class="empty-state">
+                    <span class="empty-icon">📂</span>
+                    <h3>No hay expedientes</h3>
+                    <p>Comienza agregando tu primer expediente</p>
+                    <button class="btn btn-primary" onclick="mostrarFormularioExpediente()">
+                        ➕ Agregar Expediente
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Página Calendario -->
+        <section class="page" id="page-calendario">
+            <div class="page-header">
+                <div>
+                    <h2>📅 Calendario</h2>
+                    <p class="subtitle">Gestiona tus eventos y recordatorios</p>
+                </div>
+                <button class="btn btn-primary" onclick="mostrarFormularioEvento()">
+                    ➕ Nuevo Evento
+                </button>
+            </div>
+
+            <div class="calendario-nav">
+                <button class="btn btn-secondary" onclick="mesAnterior()">◀ Anterior</button>
+                <h3 id="mes-actual">Enero 2025</h3>
+                <button class="btn btn-secondary" onclick="irAHoy()">Hoy</button>
+                <button class="btn btn-secondary" onclick="mesSiguiente()">Siguiente ▶</button>
+            </div>
+
+            <div class="calendario-container">
+                <div class="calendario">
+                    <div class="calendario-header">
+                        <div>Dom</div>
+                        <div>Lun</div>
+                        <div>Mar</div>
+                        <div>Mié</div>
+                        <div>Jue</div>
+                        <div>Vie</div>
+                        <div>Sáb</div>
+                    </div>
+                    <div class="calendario-body" id="calendario-dias">
+                        <!-- Días generados por JS -->
+                    </div>
+                </div>
+
+                <div class="eventos-panel">
+                    <h3 id="eventos-panel-titulo">Eventos del Mes</h3>
+                    <div class="eventos-lista" id="lista-eventos-panel">
+                        <div class="empty-state small">
+                            <span>📭</span>
+                            <p>No hay eventos</p>
+                        </div>
+                    </div>
+
+                    <div class="leyenda">
+                        <h4>Tipos de Evento</h4>
+                        <div class="leyenda-items">
+                            <div class="leyenda-item"><span class="leyenda-color" style="background: #3788d8;"></span> ⚖️ Audiencia</div>
+                            <div class="leyenda-item"><span class="leyenda-color" style="background: #dc3545;"></span> ⚠️ Vencimiento</div>
+                            <div class="leyenda-item"><span class="leyenda-color" style="background: #ffc107;"></span> 🔔 Recordatorio</div>
+                            <div class="leyenda-item"><span class="leyenda-color" style="background: #6c757d;"></span> 📌 Otro</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Página Notas -->
+        <section class="page" id="page-notas">
+            <div class="page-header">
+                <div>
+                    <h2>📝 Notas</h2>
+                    <p class="subtitle">Organiza tus notas por expediente</p>
+                </div>
+                <button class="btn btn-primary" onclick="mostrarFormularioNota()">
+                    ➕ Nueva Nota
+                </button>
+            </div>
+
+            <!-- Filtros -->
+            <div class="filters-section">
+                <div class="search-box">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="buscar-nota" placeholder="Buscar notas..." oninput="filtrarNotas()">
+                </div>
+                <select id="filtro-expediente-nota" onchange="filtrarNotas()">
+                    <option value="">Todos los expedientes</option>
+                </select>
+                <span class="results-count" id="count-notas">0 notas</span>
+            </div>
+
+            <!-- Lista de Notas -->
+            <div class="notas-grid" id="lista-notas">
+                <div class="empty-state">
+                    <span class="empty-icon">📒</span>
+                    <h3>No hay notas</h3>
+                    <p>Comienza creando tu primera nota</p>
+                    <button class="btn btn-primary" onclick="mostrarFormularioNota()">
+                        ➕ Crear Nota
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Página Búsqueda -->
+        <section class="page" id="page-busqueda">
+            <div class="page-header">
+                <div>
+                    <h2>🔍 Búsqueda en TSJ</h2>
+                    <p class="subtitle">Busca publicaciones en el TSJ de Quintana Roo</p>
+                </div>
+            </div>
+
+            <div class="info-banner warning">
+                <div class="info-icon">💡</div>
+                <div class="info-content">
+                    <h4>Modo Manual</h4>
+                    <p>Selecciona los expedientes y haz clic en "Generar URLs" para obtener los enlaces de búsqueda directa al sitio del TSJ.</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>Selecciona expedientes para buscar</h3>
+                    <div class="header-actions">
+                        <button class="btn btn-sm btn-secondary" onclick="seleccionarTodosExpedientes()">
+                            ✓ Seleccionar todos
+                        </button>
+                        <span class="selection-count" id="count-seleccionados">0 seleccionados</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="expedientes-seleccion" id="expedientes-busqueda">
+                        <div class="empty-state small">
+                            <span>📂</span>
+                            <p>No hay expedientes. Agrega algunos primero.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button class="btn btn-primary btn-lg" onclick="generarURLsBusqueda()">
+                        🔗 Generar URLs de Búsqueda
+                    </button>
+                </div>
+            </div>
+
+            <!-- URLs Generadas -->
+            <div class="card" id="urls-generadas" style="display: none;">
+                <div class="card-header">
+                    <h3>🔗 URLs de Búsqueda</h3>
+                    <button class="btn btn-sm btn-secondary" onclick="copiarTodasURLs()">📋 Copiar todas</button>
+                </div>
+                <div class="card-body">
+                    <p class="manual-instructions">Haz clic en cada enlace para abrir la búsqueda en el sitio del TSJ.</p>
+                    <div class="urls-list" id="lista-urls">
+                        <!-- URLs generadas por JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Página Configuración -->
+        <section class="page" id="page-config">
+            <div class="page-header">
+                <h2>⚙️ Configuración</h2>
+                <p class="subtitle">Personaliza tu experiencia</p>
+            </div>
+
+            <div class="config-section">
+                <h3>🔔 Notificaciones</h3>
+                <div class="config-item">
+                    <div class="config-info">
+                        <h4>Notificaciones del navegador</h4>
+                        <p>Recibe alertas cuando haya eventos próximos</p>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="config-notificaciones" onchange="toggleNotificaciones()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="config-section">
+                <h3>💾 Datos</h3>
+                <div class="data-actions">
+                    <div class="data-card">
+                        <div class="data-icon">📤</div>
+                        <div class="data-info">
+                            <h4>Exportar Datos</h4>
+                            <p>Descarga todos tus datos en JSON</p>
+                        </div>
+                        <button class="btn btn-primary" onclick="exportarDatos()">Exportar</button>
+                    </div>
+                    <div class="data-card">
+                        <div class="data-icon">📥</div>
+                        <div class="data-info">
+                            <h4>Importar Datos</h4>
+                            <p>Restaura desde un archivo de respaldo</p>
+                        </div>
+                        <button class="btn btn-secondary" onclick="document.getElementById('import-file').click()">Importar</button>
+                        <input type="file" id="import-file" accept=".json" style="display:none" onchange="importarDatos(event)">
+                    </div>
+                </div>
+            </div>
+
+            <div class="config-section">
+                <h3>📧 Email (EmailJS)</h3>
+                <p class="section-desc">Configura para recibir recordatorios por correo (200 emails/mes gratis)</p>
+                <form id="email-config-form" onsubmit="guardarConfigEmail(event)">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Service ID</label>
+                            <input type="text" id="email-service-id" placeholder="service_xxxxxxx">
+                        </div>
+                        <div class="form-group">
+                            <label>Public Key</label>
+                            <input type="text" id="email-public-key" placeholder="Tu clave pública">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Template ID</label>
+                            <input type="text" id="email-template-id" placeholder="template_xxxxxxx">
+                        </div>
+                        <div class="form-group">
+                            <label>Tu Email</label>
+                            <input type="email" id="email-destino" placeholder="tu@email.com">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">💾 Guardar</button>
+                        <button type="button" class="btn btn-secondary" onclick="probarEmail()">📧 Probar</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="config-section danger">
+                <h3>⚠️ Zona de Peligro</h3>
+                <div class="danger-item">
+                    <div class="danger-info">
+                        <h4>Eliminar todos los datos</h4>
+                        <p>Esta acción no se puede deshacer</p>
+                    </div>
+                    <button class="btn btn-danger" onclick="eliminarTodosDatos()">🗑️ Eliminar Todo</button>
+                </div>
+            </div>
+
+            <div class="config-section">
+                <h3>ℹ️ Acerca de</h3>
+                <div class="about-info">
+                    <p><strong>TSJ Filing Online</strong> v7.0</p>
+                    <p>Sistema de Gestión de Expedientes del TSJ Quintana Roo</p>
+                    <p class="text-muted">Todos los datos se almacenan localmente en tu navegador usando IndexedDB.</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal Genérico -->
+    <div class="modal-overlay" id="modal-overlay" onclick="cerrarModal()">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="modal-titulo">Modal</h3>
+                <button class="btn-close" onclick="cerrarModal()">✕</button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <!-- Contenido dinámico -->
+            </div>
+            <div class="modal-footer" id="modal-footer">
+                <!-- Botones dinámicos -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Scripts -->
+    <script src="js/juzgados.js"></script>
+    <script src="js/database.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

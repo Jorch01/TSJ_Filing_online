@@ -1,0 +1,394 @@
+/**
+ * Base de Datos Local usando IndexedDB
+ * Almacena todos los datos en el navegador del usuario
+ */
+
+const DB_NAME = 'TSJFilingDB';
+const DB_VERSION = 1;
+
+let db = null;
+
+// Inicializar base de datos
+function initDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+        request.onerror = () => {
+            console.error('Error al abrir IndexedDB:', request.error);
+            reject(request.error);
+        };
+
+        request.onsuccess = () => {
+            db = request.result;
+            console.log('IndexedDB inicializada correctamente');
+            resolve(db);
+        };
+
+        request.onupgradeneeded = (event) => {
+            const database = event.target.result;
+
+            // Store: Expedientes
+            if (!database.objectStoreNames.contains('expedientes')) {
+                const expStore = database.createObjectStore('expedientes', { keyPath: 'id', autoIncrement: true });
+                expStore.createIndex('numero', 'numero', { unique: false });
+                expStore.createIndex('nombre', 'nombre', { unique: false });
+                expStore.createIndex('juzgado', 'juzgado', { unique: false });
+                expStore.createIndex('categoria', 'categoria', { unique: false });
+                expStore.createIndex('activo', 'activo', { unique: false });
+            }
+
+            // Store: Notas
+            if (!database.objectStoreNames.contains('notas')) {
+                const notasStore = database.createObjectStore('notas', { keyPath: 'id', autoIncrement: true });
+                notasStore.createIndex('expedienteId', 'expedienteId', { unique: false });
+                notasStore.createIndex('fechaCreacion', 'fechaCreacion', { unique: false });
+            }
+
+            // Store: Eventos
+            if (!database.objectStoreNames.contains('eventos')) {
+                const eventosStore = database.createObjectStore('eventos', { keyPath: 'id', autoIncrement: true });
+                eventosStore.createIndex('expedienteId', 'expedienteId', { unique: false });
+                eventosStore.createIndex('fechaInicio', 'fechaInicio', { unique: false });
+                eventosStore.createIndex('tipo', 'tipo', { unique: false });
+            }
+
+            // Store: Configuración
+            if (!database.objectStoreNames.contains('config')) {
+                database.createObjectStore('config', { keyPath: 'clave' });
+            }
+
+            console.log('Stores de IndexedDB creados');
+        };
+    });
+}
+
+// ==================== EXPEDIENTES ====================
+
+async function agregarExpediente(expediente) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['expedientes'], 'readwrite');
+        const store = transaction.objectStore('expedientes');
+
+        expediente.fechaCreacion = new Date().toISOString();
+        expediente.fechaActualizacion = new Date().toISOString();
+        expediente.activo = true;
+
+        const request = store.add(expediente);
+
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function obtenerExpedientes() {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['expedientes'], 'readonly');
+        const store = transaction.objectStore('expedientes');
+        const request = store.getAll();
+
+        request.onsuccess = () => {
+            const expedientes = request.result.filter(e => e.activo !== false);
+            resolve(expedientes);
+        };
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function obtenerExpediente(id) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['expedientes'], 'readonly');
+        const store = transaction.objectStore('expedientes');
+        const request = store.get(id);
+
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function actualizarExpediente(id, cambios) {
+    return new Promise(async (resolve, reject) => {
+        const expediente = await obtenerExpediente(id);
+        if (!expediente) {
+            reject(new Error('Expediente no encontrado'));
+            return;
+        }
+
+        const actualizado = { ...expediente, ...cambios, fechaActualizacion: new Date().toISOString() };
+
+        const transaction = db.transaction(['expedientes'], 'readwrite');
+        const store = transaction.objectStore('expedientes');
+        const request = store.put(actualizado);
+
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function eliminarExpediente(id, permanente = false) {
+    if (permanente) {
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(['expedientes'], 'readwrite');
+            const store = transaction.objectStore('expedientes');
+            const request = store.delete(id);
+
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    } else {
+        return actualizarExpediente(id, { activo: false });
+    }
+}
+
+// ==================== NOTAS ====================
+
+async function agregarNota(nota) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['notas'], 'readwrite');
+        const store = transaction.objectStore('notas');
+
+        nota.fechaCreacion = new Date().toISOString();
+        nota.fechaActualizacion = new Date().toISOString();
+
+        const request = store.add(nota);
+
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function obtenerNotas() {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['notas'], 'readonly');
+        const store = transaction.objectStore('notas');
+        const request = store.getAll();
+
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function obtenerNotasPorExpediente(expedienteId) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['notas'], 'readonly');
+        const store = transaction.objectStore('notas');
+        const index = store.index('expedienteId');
+        const request = index.getAll(expedienteId);
+
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function actualizarNota(id, cambios) {
+    return new Promise(async (resolve, reject) => {
+        const transaction = db.transaction(['notas'], 'readwrite');
+        const store = transaction.objectStore('notas');
+        const getRequest = store.get(id);
+
+        getRequest.onsuccess = () => {
+            const nota = getRequest.result;
+            if (!nota) {
+                reject(new Error('Nota no encontrada'));
+                return;
+            }
+
+            const actualizada = { ...nota, ...cambios, fechaActualizacion: new Date().toISOString() };
+            const putRequest = store.put(actualizada);
+
+            putRequest.onsuccess = () => resolve();
+            putRequest.onerror = () => reject(putRequest.error);
+        };
+        getRequest.onerror = () => reject(getRequest.error);
+    });
+}
+
+async function eliminarNota(id) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['notas'], 'readwrite');
+        const store = transaction.objectStore('notas');
+        const request = store.delete(id);
+
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+}
+
+// ==================== EVENTOS ====================
+
+async function agregarEvento(evento) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['eventos'], 'readwrite');
+        const store = transaction.objectStore('eventos');
+
+        evento.fechaCreacion = new Date().toISOString();
+        evento.alertaEnviada = false;
+
+        const request = store.add(evento);
+
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function obtenerEventos() {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['eventos'], 'readonly');
+        const store = transaction.objectStore('eventos');
+        const request = store.getAll();
+
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function obtenerEventosPorFecha(fechaInicio, fechaFin) {
+    const eventos = await obtenerEventos();
+    return eventos.filter(e => {
+        const fecha = new Date(e.fechaInicio);
+        return fecha >= fechaInicio && fecha <= fechaFin;
+    });
+}
+
+async function actualizarEvento(id, cambios) {
+    return new Promise(async (resolve, reject) => {
+        const transaction = db.transaction(['eventos'], 'readwrite');
+        const store = transaction.objectStore('eventos');
+        const getRequest = store.get(id);
+
+        getRequest.onsuccess = () => {
+            const evento = getRequest.result;
+            if (!evento) {
+                reject(new Error('Evento no encontrado'));
+                return;
+            }
+
+            const actualizado = { ...evento, ...cambios };
+            const putRequest = store.put(actualizado);
+
+            putRequest.onsuccess = () => resolve();
+            putRequest.onerror = () => reject(putRequest.error);
+        };
+        getRequest.onerror = () => reject(getRequest.error);
+    });
+}
+
+async function eliminarEvento(id) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['eventos'], 'readwrite');
+        const store = transaction.objectStore('eventos');
+        const request = store.delete(id);
+
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+}
+
+// ==================== CONFIGURACIÓN ====================
+
+async function guardarConfig(clave, valor) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['config'], 'readwrite');
+        const store = transaction.objectStore('config');
+        const request = store.put({ clave, valor });
+
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function obtenerConfig(clave) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['config'], 'readonly');
+        const store = transaction.objectStore('config');
+        const request = store.get(clave);
+
+        request.onsuccess = () => resolve(request.result?.valor);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+// ==================== EXPORTAR / IMPORTAR ====================
+
+async function exportarTodosDatos() {
+    const expedientes = await obtenerExpedientes();
+    const notas = await obtenerNotas();
+    const eventos = await obtenerEventos();
+
+    return {
+        version: 1,
+        fechaExportacion: new Date().toISOString(),
+        expedientes,
+        notas,
+        eventos
+    };
+}
+
+async function importarTodosDatos(datos, sobrescribir = false) {
+    if (sobrescribir) {
+        // Limpiar stores
+        await limpiarStore('expedientes');
+        await limpiarStore('notas');
+        await limpiarStore('eventos');
+    }
+
+    // Importar expedientes
+    for (const exp of datos.expedientes || []) {
+        delete exp.id;
+        await agregarExpediente(exp);
+    }
+
+    // Importar notas
+    for (const nota of datos.notas || []) {
+        delete nota.id;
+        await agregarNota(nota);
+    }
+
+    // Importar eventos
+    for (const evento of datos.eventos || []) {
+        delete evento.id;
+        await agregarEvento(evento);
+    }
+}
+
+async function limpiarStore(storeName) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([storeName], 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.clear();
+
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function eliminarTodosLosDatos() {
+    await limpiarStore('expedientes');
+    await limpiarStore('notas');
+    await limpiarStore('eventos');
+    await limpiarStore('config');
+}
+
+// ==================== ESTADÍSTICAS ====================
+
+async function obtenerEstadisticas() {
+    const expedientes = await obtenerExpedientes();
+    const notas = await obtenerNotas();
+    const eventos = await obtenerEventos();
+
+    const ahora = new Date();
+    const enUnaSemana = new Date(ahora.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    const eventosProximos = eventos.filter(e => {
+        const fecha = new Date(e.fechaInicio);
+        return fecha >= ahora && fecha <= enUnaSemana;
+    });
+
+    const eventosConAlerta = eventos.filter(e => e.alerta && !e.alertaEnviada);
+
+    return {
+        expedientes: expedientes.length,
+        notas: notas.length,
+        eventos: eventosProximos.length,
+        alertas: eventosConAlerta.length
+    };
+}
