@@ -965,6 +965,7 @@ async function generarURLsBusqueda() {
         const tipoBusqueda = exp.numero ? 'numero' : 'nombre';
         const valor = exp.numero || exp.nombre;
         const url = construirUrlBusqueda(exp.juzgado, tipoBusqueda, valor);
+        const urlEscaped = url.replace(/'/g, "\\'");
 
         return `
             <div class="url-item">
@@ -973,8 +974,8 @@ async function generarURLsBusqueda() {
                     <span class="url-juzgado">${exp.juzgado}</span>
                 </div>
                 <div class="url-actions">
-                    <button class="btn btn-sm btn-secondary" onclick="copiarURL('${url}')" title="Copiar">📋</button>
-                    <a href="${url}" target="_blank" class="btn btn-sm btn-primary">🔗 Abrir</a>
+                    <button class="btn btn-sm btn-secondary" onclick="copiarURL('${urlEscaped}')" title="Copiar">📋</button>
+                    <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPopup('${urlEscaped}', '${(exp.numero || exp.nombre).replace(/'/g, "\\'")}')">👁️ Ver</button>
                 </div>
             </div>
         `;
@@ -982,6 +983,62 @@ async function generarURLsBusqueda() {
 
     urlsContainer.style.display = 'block';
     mostrarToast(`${seleccionados.length} URLs generadas`, 'success');
+}
+
+// Abrir búsqueda en popup window
+function abrirBusquedaPopup(url, titulo) {
+    // Calcular posición del popup (a la derecha de la pantalla)
+    const width = Math.min(900, window.screen.width * 0.5);
+    const height = Math.min(700, window.screen.height * 0.8);
+    const left = window.screen.width - width - 50;
+    const top = (window.screen.height - height) / 2;
+
+    const popup = window.open(
+        url,
+        'TSJ_Busqueda_' + Date.now(),
+        `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes,toolbar=no,menubar=no,location=no,status=no`
+    );
+
+    if (popup) {
+        popup.focus();
+        mostrarToast(`Buscando: ${titulo}`, 'info');
+    } else {
+        // Si el popup fue bloqueado, abrir en nueva pestaña
+        mostrarToast('Popup bloqueado. Abriendo en nueva pestaña...', 'warning');
+        window.open(url, '_blank');
+    }
+}
+
+// Abrir todas las búsquedas en popups secuenciales
+async function abrirTodasBusquedas() {
+    const expedientes = await obtenerExpedientes();
+    const seleccionados = expedientes.filter(e => expedientesSeleccionados.includes(e.id));
+
+    if (seleccionados.length === 0) {
+        mostrarToast('Selecciona al menos un expediente', 'warning');
+        return;
+    }
+
+    if (seleccionados.length > 5) {
+        if (!confirm(`Vas a abrir ${seleccionados.length} ventanas. ¿Continuar?`)) {
+            return;
+        }
+    }
+
+    let delay = 0;
+    seleccionados.forEach((exp, index) => {
+        const tipoBusqueda = exp.numero ? 'numero' : 'nombre';
+        const valor = exp.numero || exp.nombre;
+        const url = construirUrlBusqueda(exp.juzgado, tipoBusqueda, valor);
+
+        setTimeout(() => {
+            abrirBusquedaPopup(url, valor);
+        }, delay);
+
+        delay += 500; // 500ms entre cada ventana
+    });
+
+    mostrarToast(`Abriendo ${seleccionados.length} búsquedas...`, 'success');
 }
 
 function copiarURL(url) {
