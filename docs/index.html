@@ -106,12 +106,12 @@
             <div class="dashboard-grid">
                 <div class="card">
                     <div class="card-header">
-                        <h3>📅 Eventos de Hoy</h3>
+                        <h3>📅 Próximos 8 Días</h3>
                     </div>
-                    <div class="card-body" id="eventos-hoy">
+                    <div class="card-body" id="eventos-hoy" style="max-height: 300px; overflow-y: auto;">
                         <div class="empty-state small">
                             <span>🎉</span>
-                            <p>No hay eventos para hoy</p>
+                            <p>No hay eventos próximos</p>
                         </div>
                     </div>
                 </div>
@@ -616,6 +616,18 @@
                         <input type="file" id="import-file" accept=".json" style="display:none" onchange="importarDatos(event)">
                     </div>
                 </div>
+
+                <div class="config-item" style="margin-top: 1rem;">
+                    <div class="config-info">
+                        <h4>🔄 Respaldo Automático Diario</h4>
+                        <p>Descarga automáticamente un respaldo cada día al abrir la app</p>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="config-auto-backup" onchange="toggleAutoBackup()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <p class="text-muted" style="font-size: 0.75rem; margin-top: 0.5rem;" id="ultimo-respaldo-info"></p>
             </div>
 
             <div class="config-section">
@@ -931,6 +943,47 @@
 
     <!-- Toast Notifications -->
     <div class="toast-container" id="toast-container"></div>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+        <div class="footer-content">
+            <div class="footer-brand">
+                <span class="footer-logo">⚖️</span>
+                <div>
+                    <strong>TSJ Filing Online v7.0</strong>
+                    <p>Desarrollado por <a href="https://www.empirica.mx" target="_blank">Empírica Legal Lab</a></p>
+                </div>
+            </div>
+
+            <div class="footer-contact">
+                <h4>📧 Contacto y Soporte</h4>
+                <p>Para activación de cuentas Premium, solución de problemas y dudas:</p>
+                <p><a href="mailto:jorge_clemente@empirica.mx">jorge_clemente@empirica.mx</a></p>
+                <p class="response-time">⏱️ Tiempo de respuesta: 6-48 horas máximo</p>
+            </div>
+
+            <div class="footer-links">
+                <h4>🔗 Enlaces</h4>
+                <a href="https://www.empirica.mx" target="_blank">www.empirica.mx</a>
+                <a href="https://www.tsjqroo.gob.mx" target="_blank">TSJ Quintana Roo</a>
+            </div>
+        </div>
+
+        <div class="footer-legal">
+            <div class="footer-disclaimer">
+                <h4>⚠️ Aviso Legal y Descargo de Responsabilidad</h4>
+                <p><strong>Uso bajo responsabilidad del usuario:</strong> Esta herramienta se proporciona "tal cual" sin garantías de ningún tipo. El uso de este sistema es bajo la exclusiva responsabilidad del usuario.</p>
+                <p><strong>Datos del usuario:</strong> Toda la información contenida en las bases de datos locales es responsabilidad exclusiva de los propios usuarios. Empírica Legal Lab no tiene acceso a los datos almacenados en tu navegador y no se hace responsable de su precisión, integridad o pérdida.</p>
+                <p><strong>Información del TSJ:</strong> Los resultados de búsqueda provienen directamente del sitio oficial del Tribunal Superior de Justicia de Quintana Roo. No garantizamos la exactitud ni la actualización de dicha información.</p>
+                <p><strong>Respaldos:</strong> Es responsabilidad del usuario realizar respaldos periódicos de sus datos. La pérdida de información por limpiar el caché del navegador, cambiar de dispositivo u otras causas no es responsabilidad del desarrollador.</p>
+            </div>
+
+            <div class="footer-copyright">
+                <p>© 2025 Empírica Legal Lab. Todos los derechos reservados.</p>
+                <p>TSJ Filing Online es una herramienta independiente no afiliada al Tribunal Superior de Justicia de Quintana Roo.</p>
+            </div>
+        </div>
+    </footer>
 
     <!-- Scripts -->
     <script src="js/juzgados.js"></script>

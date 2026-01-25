@@ -645,32 +645,54 @@ async function cargarEventos() {
 function actualizarEventosHoy(eventos) {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
-    const manana = new Date(hoy);
-    manana.setDate(manana.getDate() + 1);
 
-    const eventosHoy = eventos.filter(e => {
+    // Mostrar eventos de los próximos 8 días (hoy + 7 días)
+    const limiteFecha = new Date(hoy);
+    limiteFecha.setDate(limiteFecha.getDate() + 8);
+
+    const eventosProximos = eventos.filter(e => {
         const fecha = new Date(e.fechaInicio);
-        return fecha >= hoy && fecha < manana;
-    });
+        return fecha >= hoy && fecha < limiteFecha;
+    }).sort((a, b) => new Date(a.fechaInicio) - new Date(b.fechaInicio));
 
     const container = document.getElementById('eventos-hoy');
 
-    if (eventosHoy.length === 0) {
+    if (eventosProximos.length === 0) {
         container.innerHTML = `
             <div class="empty-state small">
                 <span>🎉</span>
-                <p>No hay eventos para hoy</p>
+                <p>No hay eventos próximos</p>
             </div>
         `;
     } else {
-        container.innerHTML = eventosHoy.map(e => `
-            <div class="list-item" style="border-left: 3px solid ${e.color || '#3788d8'}">
-                <div class="list-item-info">
-                    <span class="list-item-title">${e.titulo}</span>
-                    <span class="list-item-subtitle">${new Date(e.fechaInicio).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</span>
+        container.innerHTML = eventosProximos.map(e => {
+            const fecha = new Date(e.fechaInicio);
+            const esHoy = fecha.toDateString() === hoy.toDateString();
+            const manana = new Date(hoy);
+            manana.setDate(manana.getDate() + 1);
+            const esManana = fecha.toDateString() === manana.toDateString();
+
+            let fechaTexto;
+            if (esHoy) {
+                fechaTexto = 'Hoy';
+            } else if (esManana) {
+                fechaTexto = 'Mañana';
+            } else {
+                fechaTexto = fecha.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' });
+            }
+
+            const horaTexto = e.todoElDia ? 'Todo el día' :
+                fecha.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+
+            return `
+                <div class="list-item" style="border-left: 3px solid ${e.color || '#3788d8'}">
+                    <div class="list-item-info">
+                        <span class="list-item-title">${e.titulo}</span>
+                        <span class="list-item-subtitle">${fechaTexto} • ${horaTexto}</span>
+                    </div>
                 </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
 }
 
@@ -1172,7 +1194,63 @@ async function guardarConfigEmail(event) {
 }
 
 async function probarEmail() {
-    mostrarToast('Función de prueba de email pendiente', 'info');
+    const serviceId = document.getElementById('email-service-id').value.trim();
+    const publicKey = document.getElementById('email-public-key').value.trim();
+    const templateId = document.getElementById('email-template-id').value.trim();
+    const emailDestino = document.getElementById('email-destino').value.trim();
+
+    if (!serviceId || !publicKey || !templateId || !emailDestino) {
+        mostrarToast('Completa todos los campos de configuración', 'warning');
+        return;
+    }
+
+    // Verificar si EmailJS está cargado
+    if (typeof emailjs === 'undefined') {
+        mostrarToast('Cargando EmailJS...', 'info');
+        await cargarEmailJS();
+    }
+
+    try {
+        // Inicializar EmailJS
+        emailjs.init(publicKey);
+
+        // Enviar email de prueba
+        const templateParams = {
+            to_email: emailDestino,
+            subject: '✅ Prueba de TSJ Filing Online',
+            message: `¡Tu configuración de EmailJS funciona correctamente!\n\nFecha: ${new Date().toLocaleString('es-MX')}\n\nYa puedes recibir notificaciones de eventos y recordatorios.`,
+            from_name: 'TSJ Filing Online'
+        };
+
+        mostrarToast('Enviando email de prueba...', 'info');
+
+        const response = await emailjs.send(serviceId, templateId, templateParams);
+
+        if (response.status === 200) {
+            mostrarToast('✅ Email enviado correctamente. Revisa tu bandeja de entrada.', 'success');
+        } else {
+            mostrarToast('Error al enviar email', 'error');
+        }
+    } catch (error) {
+        console.error('Error EmailJS:', error);
+        mostrarToast(`Error: ${error.text || error.message || 'Verifica tu configuración'}`, 'error');
+    }
+}
+
+// Cargar SDK de EmailJS dinámicamente
+function cargarEmailJS() {
+    return new Promise((resolve, reject) => {
+        if (typeof emailjs !== 'undefined') {
+            resolve();
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js';
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+    });
 }
 
 async function exportarDatos() {
@@ -1233,6 +1311,96 @@ async function eliminarTodosDatos() {
             renderizarCalendario();
             mostrarToast('Todos los datos han sido eliminados', 'success');
         }
+    }
+}
+
+// ==================== RESPALDO AUTOMÁTICO DIARIO ====================
+
+async function toggleAutoBackup() {
+    const activado = document.getElementById('config-auto-backup').checked;
+    await guardarConfig('auto_backup', activado ? 'true' : 'false');
+
+    if (activado) {
+        mostrarToast('Respaldo automático activado', 'success');
+        // Verificar si debe hacer respaldo hoy
+        await verificarRespaldoDiario();
+    } else {
+        mostrarToast('Respaldo automático desactivado', 'info');
+    }
+
+    actualizarInfoUltimoRespaldo();
+}
+
+async function verificarRespaldoDiario() {
+    const ultimoRespaldo = await obtenerConfig('ultimo_respaldo_auto');
+    const hoy = new Date().toISOString().split('T')[0];
+
+    if (ultimoRespaldo !== hoy) {
+        // No se ha hecho respaldo hoy, hacerlo ahora
+        await realizarRespaldoAutomatico();
+    }
+}
+
+async function realizarRespaldoAutomatico() {
+    try {
+        const datos = await exportarTodosDatos();
+
+        // Verificar si hay datos para respaldar
+        if (!datos.expedientes?.length && !datos.notas?.length && !datos.eventos?.length) {
+            console.log('No hay datos para respaldar');
+            return;
+        }
+
+        const json = JSON.stringify(datos, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+
+        const fechaHora = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `tsj_auto_backup_${fechaHora}.json`;
+        a.click();
+
+        URL.revokeObjectURL(url);
+
+        // Guardar fecha del último respaldo
+        await guardarConfig('ultimo_respaldo_auto', new Date().toISOString().split('T')[0]);
+        await guardarConfig('ultimo_respaldo_timestamp', new Date().toISOString());
+
+        actualizarInfoUltimoRespaldo();
+        mostrarToast('📦 Respaldo automático descargado', 'success');
+    } catch (error) {
+        console.error('Error en respaldo automático:', error);
+    }
+}
+
+async function actualizarInfoUltimoRespaldo() {
+    const infoEl = document.getElementById('ultimo-respaldo-info');
+    if (!infoEl) return;
+
+    const ultimoTimestamp = await obtenerConfig('ultimo_respaldo_timestamp');
+
+    if (ultimoTimestamp) {
+        const fecha = new Date(ultimoTimestamp);
+        infoEl.textContent = `Último respaldo: ${fecha.toLocaleString('es-MX')}`;
+    } else {
+        infoEl.textContent = 'Nunca se ha realizado un respaldo automático';
+    }
+}
+
+async function cargarConfigAutoBackup() {
+    const activado = await obtenerConfig('auto_backup') === 'true';
+    const checkbox = document.getElementById('config-auto-backup');
+
+    if (checkbox) {
+        checkbox.checked = activado;
+    }
+
+    actualizarInfoUltimoRespaldo();
+
+    // Si está activado, verificar si necesita hacer respaldo
+    if (activado) {
+        await verificarRespaldoDiario();
     }
 }
 
@@ -2027,7 +2195,7 @@ const PREMIUM_CONFIG = {
     limiteBusquedasGlobales: 10,
     // URL del Google Sheet publicado como CSV
     // Formato: codigo,fecha_expiracion,dispositivo_id,usuario,estado
-    googleSheetUrl: '',
+    googleSheetUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRxXuxjhz56UvZcCZTnCJcmSCpkEm-CZAap4lW3RweeSqSuMVRU4Dp-2NLVeYu9fev2kh7tr1d5wB_y/pub?output=csv',
     precioMensual: 35
 };
 
@@ -2464,4 +2632,5 @@ inicializarApp = async function() {
     cargarConfigGoogleSheet();
     await inicializarAppConPremium();
     await cargarEstadoPremium();
+    await cargarConfigAutoBackup();
 };
