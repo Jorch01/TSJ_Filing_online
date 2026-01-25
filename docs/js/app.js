@@ -291,6 +291,12 @@ async function guardarExpediente(event) {
         return;
     }
 
+    // Verificar límite si es nuevo expediente
+    if (!id) {
+        const permitido = await verificarLimiteExpedientes();
+        if (!permitido) return;
+    }
+
     const expediente = {
         juzgado,
         categoria: obtenerCategoriaJuzgado(juzgado),
@@ -2010,4 +2016,337 @@ const cargarExpedientesOriginal = cargarExpedientes;
 cargarExpedientes = async function() {
     await cargarExpedientesOriginal();
     await actualizarSelectExpedientesIA();
+    await actualizarLimitesPremium();
+};
+
+// ==================== SISTEMA PREMIUM ====================
+
+// Configuración Premium
+const PREMIUM_CONFIG = {
+    limiteExpedientes: 10,
+    limiteBusquedasGlobales: 10,
+    // URL del Google Sheet publicado como CSV (reemplazar con la URL real)
+    // Formato del sheet: codigo,fecha_expiracion,email
+    googleSheetUrl: '',
+    precioMensual: 35
+};
+
+// Estado Premium
+let estadoPremium = {
+    activo: false,
+    codigo: null,
+    fechaExpiracion: null,
+    busquedasGlobalesUsadas: 0
+};
+
+// Función de ofuscación simple para almacenar datos
+function _encode(str) {
+    return btoa(encodeURIComponent(str).split('').reverse().join(''));
+}
+
+function _decode(str) {
+    try {
+        return decodeURIComponent(atob(str).split('').reverse().join(''));
+    } catch {
+        return null;
+    }
+}
+
+// Cargar estado premium
+async function cargarEstadoPremium() {
+    try {
+        // Cargar datos guardados
+        const datosGuardados = localStorage.getItem('_tsjp');
+        if (datosGuardados) {
+            const decoded = _decode(datosGuardados);
+            if (decoded) {
+                const datos = JSON.parse(decoded);
+                estadoPremium = { ...estadoPremium, ...datos };
+
+                // Verificar si expiró
+                if (estadoPremium.fechaExpiracion) {
+                    const expira = new Date(estadoPremium.fechaExpiracion);
+                    if (expira < new Date()) {
+                        estadoPremium.activo = false;
+                        estadoPremium.codigo = null;
+                        estadoPremium.fechaExpiracion = null;
+                        guardarEstadoPremium();
+                    }
+                }
+            }
+        }
+
+        // Cargar contador de búsquedas globales
+        const busquedas = await obtenerConfig('busquedas_globales_usadas');
+        estadoPremium.busquedasGlobalesUsadas = parseInt(busquedas) || 0;
+
+        actualizarUIPremium();
+    } catch (error) {
+        console.error('Error al cargar estado premium:', error);
+    }
+}
+
+// Guardar estado premium
+function guardarEstadoPremium() {
+    const datos = {
+        activo: estadoPremium.activo,
+        codigo: estadoPremium.codigo,
+        fechaExpiracion: estadoPremium.fechaExpiracion
+    };
+    localStorage.setItem('_tsjp', _encode(JSON.stringify(datos)));
+}
+
+// Actualizar UI del panel premium
+async function actualizarUIPremium() {
+    const expedientes = await obtenerExpedientes();
+    const numExpedientes = expedientes.length;
+    const numBusquedas = estadoPremium.busquedasGlobalesUsadas;
+
+    // Badge del plan
+    const badge = document.getElementById('plan-badge');
+    const planLimits = document.getElementById('plan-limits');
+    const premiumBuy = document.getElementById('premium-buy');
+    const premiumActive = document.getElementById('premium-active');
+    const premiumActivation = document.getElementById('premium-activation');
+
+    if (estadoPremium.activo) {
+        // Plan Premium activo
+        if (badge) {
+            badge.className = 'plan-badge premium';
+            badge.innerHTML = '<span class="badge-icon">⭐</span><span class="badge-text">Plan Premium</span>';
+        }
+        if (planLimits) planLimits.style.display = 'none';
+        if (premiumBuy) premiumBuy.style.display = 'none';
+        if (premiumActivation) premiumActivation.style.display = 'none';
+        if (premiumActive) {
+            premiumActive.style.display = 'block';
+            const expiry = document.getElementById('premium-expiry');
+            if (expiry && estadoPremium.fechaExpiracion) {
+                expiry.textContent = `Válido hasta: ${new Date(estadoPremium.fechaExpiracion).toLocaleDateString('es-MX')}`;
+            }
+        }
+    } else {
+        // Plan gratuito
+        if (badge) {
+            badge.className = 'plan-badge free';
+            badge.innerHTML = '<span class="badge-icon">🆓</span><span class="badge-text">Plan Gratuito</span>';
+        }
+        if (planLimits) planLimits.style.display = 'grid';
+        if (premiumBuy) premiumBuy.style.display = 'block';
+        if (premiumActivation) premiumActivation.style.display = 'block';
+        if (premiumActive) premiumActive.style.display = 'none';
+
+        // Actualizar barras de límite
+        actualizarBarrasLimite(numExpedientes, numBusquedas);
+    }
+}
+
+// Actualizar barras de límite
+function actualizarBarrasLimite(numExpedientes, numBusquedas) {
+    const limiteExp = PREMIUM_CONFIG.limiteExpedientes;
+    const limiteBus = PREMIUM_CONFIG.limiteBusquedasGlobales;
+
+    // Expedientes
+    const limitExpEl = document.getElementById('limit-expedientes');
+    const fillExp = document.getElementById('limit-fill-exp');
+    if (limitExpEl) {
+        limitExpEl.textContent = `${numExpedientes} / ${limiteExp}`;
+        if (numExpedientes >= limiteExp) limitExpEl.classList.add('limit-reached');
+        else limitExpEl.classList.remove('limit-reached');
+    }
+    if (fillExp) {
+        const pctExp = Math.min((numExpedientes / limiteExp) * 100, 100);
+        fillExp.style.width = `${pctExp}%`;
+        fillExp.className = 'limit-fill' + (pctExp >= 100 ? ' danger' : pctExp >= 70 ? ' warning' : '');
+    }
+
+    // Búsquedas
+    const limitBusEl = document.getElementById('limit-busquedas');
+    const fillBus = document.getElementById('limit-fill-bus');
+    if (limitBusEl) {
+        limitBusEl.textContent = `${numBusquedas} / ${limiteBus}`;
+        if (numBusquedas >= limiteBus) limitBusEl.classList.add('limit-reached');
+        else limitBusEl.classList.remove('limit-reached');
+    }
+    if (fillBus) {
+        const pctBus = Math.min((numBusquedas / limiteBus) * 100, 100);
+        fillBus.style.width = `${pctBus}%`;
+        fillBus.className = 'limit-fill' + (pctBus >= 100 ? ' danger' : pctBus >= 70 ? ' warning' : '');
+    }
+}
+
+// Actualizar límites al cargar expedientes
+async function actualizarLimitesPremium() {
+    await actualizarUIPremium();
+}
+
+// Verificar límite de expedientes
+async function verificarLimiteExpedientes() {
+    if (estadoPremium.activo) return true;
+
+    const expedientes = await obtenerExpedientes();
+    if (expedientes.length >= PREMIUM_CONFIG.limiteExpedientes) {
+        mostrarModalLimite('expedientes');
+        return false;
+    }
+    return true;
+}
+
+// Verificar límite de búsquedas globales
+async function verificarLimiteBusquedasGlobales() {
+    if (estadoPremium.activo) return true;
+
+    if (estadoPremium.busquedasGlobalesUsadas >= PREMIUM_CONFIG.limiteBusquedasGlobales) {
+        mostrarModalLimite('busquedas');
+        return false;
+    }
+    return true;
+}
+
+// Incrementar contador de búsquedas globales
+async function incrementarBusquedasGlobales() {
+    estadoPremium.busquedasGlobalesUsadas++;
+    await guardarConfig('busquedas_globales_usadas', estadoPremium.busquedasGlobalesUsadas.toString());
+    await actualizarUIPremium();
+}
+
+// Mostrar modal de límite alcanzado
+function mostrarModalLimite(tipo) {
+    const titulo = tipo === 'expedientes' ?
+        'Límite de Expedientes Alcanzado' :
+        'Límite de Búsquedas Globales Alcanzado';
+
+    const limite = tipo === 'expedientes' ?
+        PREMIUM_CONFIG.limiteExpedientes :
+        PREMIUM_CONFIG.limiteBusquedasGlobales;
+
+    document.getElementById('modal-titulo').textContent = '⚠️ ' + titulo;
+    document.getElementById('modal-body').innerHTML = `
+        <div class="limit-warning">
+            <div class="limit-warning-icon">🔒</div>
+            <h3>Has alcanzado el límite gratuito</h3>
+            <p>El plan gratuito permite hasta ${limite} ${tipo === 'expedientes' ? 'expedientes' : 'búsquedas globales'}.</p>
+            <p>Actualiza a Premium por solo <strong>$${PREMIUM_CONFIG.precioMensual} MXN/mes</strong> para disfrutar de acceso ilimitado.</p>
+        </div>
+    `;
+    document.getElementById('modal-footer').innerHTML = `
+        <button class="btn btn-secondary" onclick="cerrarModal()">Cerrar</button>
+        <button class="btn btn-success" onclick="cerrarModal(); navegarA('config'); document.getElementById('premium-section').scrollIntoView({behavior: 'smooth'});">
+            ⭐ Ver Planes
+        </button>
+    `;
+    document.getElementById('modal-overlay').classList.add('active');
+}
+
+// Activar Premium con código
+async function activarPremium() {
+    const codigoInput = document.getElementById('premium-code');
+    const codigo = codigoInput.value.trim().toUpperCase();
+
+    if (!codigo) {
+        mostrarToast('Ingresa un código de activación', 'warning');
+        return;
+    }
+
+    mostrarToast('Verificando código...', 'info');
+
+    try {
+        // Verificar contra Google Sheets
+        const esValido = await verificarCodigoPremium(codigo);
+
+        if (esValido) {
+            // Activar premium por 30 días
+            const fechaExp = new Date();
+            fechaExp.setDate(fechaExp.getDate() + 30);
+
+            estadoPremium.activo = true;
+            estadoPremium.codigo = codigo;
+            estadoPremium.fechaExpiracion = fechaExp.toISOString();
+
+            guardarEstadoPremium();
+            await actualizarUIPremium();
+
+            codigoInput.value = '';
+            mostrarToast('¡Premium activado exitosamente!', 'success');
+        } else {
+            mostrarToast('Código inválido o ya utilizado', 'error');
+        }
+    } catch (error) {
+        console.error('Error al verificar código:', error);
+        mostrarToast('Error al verificar. Intenta de nuevo.', 'error');
+    }
+}
+
+// Verificar código contra Google Sheets
+async function verificarCodigoPremium(codigo) {
+    // Si no hay URL configurada, usar validación local de emergencia
+    if (!PREMIUM_CONFIG.googleSheetUrl) {
+        // Códigos de prueba para desarrollo
+        const codigosPrueba = ['PREMIUM2025', 'TSJPRO2025', 'TESTCODE123'];
+        return codigosPrueba.includes(codigo);
+    }
+
+    try {
+        const response = await fetch(PREMIUM_CONFIG.googleSheetUrl);
+        const csvText = await response.text();
+
+        // Parsear CSV
+        const lineas = csvText.split('\n').slice(1); // Saltar encabezado
+
+        for (const linea of lineas) {
+            const [codigoSheet, fechaExp, estado] = linea.split(',').map(s => s.trim());
+
+            if (codigoSheet.toUpperCase() === codigo) {
+                // Verificar si no está usado y no expiró
+                if (estado.toLowerCase() !== 'usado') {
+                    const fechaExpiracion = new Date(fechaExp);
+                    if (fechaExpiracion > new Date()) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    } catch (error) {
+        console.error('Error al verificar con Google Sheets:', error);
+        // Fallback: permitir códigos de emergencia
+        return codigo === 'EMERGENCIA2025';
+    }
+}
+
+// Configurar URL de Google Sheets (llamar desde consola para configurar)
+function configurarGoogleSheet(url) {
+    PREMIUM_CONFIG.googleSheetUrl = url;
+    localStorage.setItem('_tsjgs', _encode(url));
+    console.log('URL de Google Sheet configurada');
+}
+
+// Cargar URL de Google Sheets
+function cargarConfigGoogleSheet() {
+    const urlGuardada = localStorage.getItem('_tsjgs');
+    if (urlGuardada) {
+        const url = _decode(urlGuardada);
+        if (url) {
+            PREMIUM_CONFIG.googleSheetUrl = url;
+        }
+    }
+}
+
+// Modificar ejecutarBusquedaGlobal para verificar límite y contar uso
+const ejecutarBusquedaGlobalOriginal = ejecutarBusquedaGlobal;
+ejecutarBusquedaGlobal = async function() {
+    const permitido = await verificarLimiteBusquedasGlobales();
+    if (!permitido) return;
+
+    await ejecutarBusquedaGlobalOriginal();
+    await incrementarBusquedasGlobales();
+};
+
+// Extender inicialización para cargar premium
+const inicializarAppConPremium = inicializarApp;
+inicializarApp = async function() {
+    cargarConfigGoogleSheet();
+    await inicializarAppConPremium();
+    await cargarEstadoPremium();
 };

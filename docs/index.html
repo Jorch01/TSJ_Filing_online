@@ -714,7 +714,31 @@
             </div>
 
             <div class="config-section">
-                <h3>📧 Email (EmailJS)</h3>
+                <div class="header-with-help">
+                    <h3>📧 Email (EmailJS)</h3>
+                    <div class="tooltip-container">
+                        <button class="help-btn" type="button">?</button>
+                        <div class="tooltip-content tooltip-left">
+                            <h4>¿Qué es EmailJS?</h4>
+                            <p>EmailJS te permite recibir <strong>recordatorios por email</strong> sin necesidad de un servidor.</p>
+                            <p><strong>¿Para qué sirve?</strong></p>
+                            <ul>
+                                <li>Recibir alertas de eventos del calendario</li>
+                                <li>Recordatorios de vencimientos</li>
+                                <li>Notificaciones importantes</li>
+                            </ul>
+                            <p><strong>Configuración (5 min):</strong></p>
+                            <ul>
+                                <li>Crea cuenta en <a href="https://www.emailjs.com/" target="_blank">emailjs.com</a></li>
+                                <li>Conecta tu email (Gmail, Outlook, etc.)</li>
+                                <li>Crea un "Email Service" y copia el ID</li>
+                                <li>Crea un "Template" y copia el ID</li>
+                                <li>Copia tu "Public Key" de Account</li>
+                            </ul>
+                            <p>Plan gratis: 200 emails/mes</p>
+                        </div>
+                    </div>
+                </div>
                 <p class="section-desc">Configura para recibir recordatorios por correo (200 emails/mes gratis)</p>
                 <form id="email-config-form" onsubmit="guardarConfigEmail(event)">
                     <div class="form-row">
@@ -742,6 +766,88 @@
                         <button type="button" class="btn btn-secondary" onclick="probarEmail()">📧 Probar</button>
                     </div>
                 </form>
+            </div>
+
+            <div class="config-section premium-section" id="premium-section">
+                <div class="header-with-help">
+                    <h3>⭐ Plan Premium</h3>
+                    <div class="tooltip-container">
+                        <button class="help-btn" type="button">?</button>
+                        <div class="tooltip-content tooltip-left">
+                            <h4>¿Qué incluye Premium?</h4>
+                            <p><strong>Plan Gratuito:</strong></p>
+                            <ul>
+                                <li>Hasta 10 expedientes</li>
+                                <li>10 búsquedas globales</li>
+                                <li>Todas las demás funciones</li>
+                            </ul>
+                            <p><strong>Plan Premium ($35/mes):</strong></p>
+                            <ul>
+                                <li>Expedientes ilimitados</li>
+                                <li>Búsquedas globales ilimitadas</li>
+                                <li>Soporte prioritario</li>
+                            </ul>
+                            <p>Contacta para obtener tu código de activación después de realizar el pago.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Estado del plan -->
+                <div class="plan-status" id="plan-status">
+                    <div class="plan-badge free" id="plan-badge">
+                        <span class="badge-icon">🆓</span>
+                        <span class="badge-text">Plan Gratuito</span>
+                    </div>
+                    <div class="plan-limits" id="plan-limits">
+                        <div class="limit-item">
+                            <span class="limit-label">Expedientes:</span>
+                            <span class="limit-value" id="limit-expedientes">0 / 10</span>
+                            <div class="limit-bar"><div class="limit-fill" id="limit-fill-exp" style="width: 0%"></div></div>
+                        </div>
+                        <div class="limit-item">
+                            <span class="limit-label">Búsquedas globales:</span>
+                            <span class="limit-value" id="limit-busquedas">0 / 10</span>
+                            <div class="limit-bar"><div class="limit-fill" id="limit-fill-bus" style="width: 0%"></div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Activación Premium -->
+                <div class="premium-activation" id="premium-activation">
+                    <p class="section-desc">¿Ya tienes un código de activación? Ingrésalo aquí:</p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <input type="text" id="premium-code" placeholder="Ingresa tu código de activación...">
+                        </div>
+                        <button class="btn btn-success" onclick="activarPremium()">⭐ Activar Premium</button>
+                    </div>
+                </div>
+
+                <!-- Info de compra -->
+                <div class="premium-buy" id="premium-buy">
+                    <div class="info-banner warning">
+                        <div class="info-icon">💳</div>
+                        <div class="info-content">
+                            <h4>Obtener Premium - $35 MXN/mes</h4>
+                            <p>Realiza tu pago y recibe tu código de activación por email.</p>
+                            <a href="https://buy.stripe.com/test_XXXXXXX" target="_blank" class="btn btn-primary btn-sm" id="stripe-link" style="margin-top: 0.5rem;">
+                                💳 Pagar con Stripe
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Estado Premium Activo -->
+                <div class="premium-active" id="premium-active" style="display: none;">
+                    <div class="info-banner" style="background: linear-gradient(135deg, #fff9c4 0%, #ffeb3b 100%); border-left-color: #ffc107;">
+                        <div class="info-icon">⭐</div>
+                        <div class="info-content">
+                            <h4>¡Premium Activo!</h4>
+                            <p>Tienes acceso ilimitado a todas las funciones.</p>
+                            <p class="text-muted" id="premium-expiry">Válido hasta: --</p>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="config-section danger">
