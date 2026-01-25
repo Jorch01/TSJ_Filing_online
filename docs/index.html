@@ -144,9 +144,18 @@
                     <h2>📁 Expedientes</h2>
                     <p class="subtitle">Gestiona tus expedientes del TSJ</p>
                 </div>
-                <button class="btn btn-primary" onclick="mostrarFormularioExpediente()">
-                    ➕ Nuevo Expediente
-                </button>
+                <div class="header-buttons">
+                    <button class="btn btn-secondary" onclick="descargarTemplateCSV()">
+                        📄 Descargar Template
+                    </button>
+                    <button class="btn btn-secondary" onclick="document.getElementById('import-csv').click()">
+                        📥 Importar CSV/Excel
+                    </button>
+                    <input type="file" id="import-csv" accept=".csv,.xlsx,.xls" style="display:none" onchange="importarExpedientesCSV(event)">
+                    <button class="btn btn-primary" onclick="mostrarFormularioExpediente()">
+                        ➕ Nuevo Expediente
+                    </button>
+                </div>
             </div>
 
             <!-- Formulario Nuevo Expediente -->

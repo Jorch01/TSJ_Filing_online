@@ -14,6 +14,7 @@ resultados_expedientes.xlsx
 resultados_expedientes.csv
 *.xlsx
 *.csv
+!docs/*.csv
 
 # Debug
 debug_screenshots/

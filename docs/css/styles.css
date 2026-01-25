@@ -123,6 +123,7 @@ body {
 
 .page-header h2 { margin: 0 0 0.25rem; }
 .subtitle { color: var(--text-secondary); margin: 0; }
+.header-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
 /* Stats Grid */
 .stats-grid {

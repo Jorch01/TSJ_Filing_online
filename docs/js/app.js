@@ -1104,6 +1104,276 @@ async function eliminarTodosDatos() {
     }
 }
 
+// ==================== IMPORTACIÓN CSV/EXCEL ====================
+
+function descargarTemplateCSV() {
+    // Crear CSV con todos los juzgados como opciones
+    const juzgadosLista = [
+        ...Object.keys(JUZGADOS),
+        ...Object.keys(SALAS_SEGUNDA_INSTANCIA)
+    ];
+
+    // Encabezados
+    let csv = 'expediente,tipo,juzgado,comentario\n';
+
+    // Filas de ejemplo
+    csv += '1234/2025,numero,JUZGADO PRIMERO CIVIL CANCUN,Ejemplo de expediente por número\n';
+    csv += 'Juan Pérez García,nombre,JUZGADO SEGUNDO FAMILIAR ORAL CANCUN,Ejemplo de búsqueda por nombre\n';
+    csv += '5678/2024,numero,PRIMERA SALA CIVIL MERCANTIL Y FAMILIAR,Ejemplo en Segunda Instancia\n';
+
+    // Agregar sección de referencia con todos los juzgados
+    csv += '\n# ==================== REFERENCIA DE JUZGADOS ====================\n';
+    csv += '# Copia el nombre exacto del juzgado de esta lista:\n';
+    csv += '#\n';
+    csv += '# TIPOS VÁLIDOS: numero, nombre\n';
+    csv += '#\n';
+    csv += '# --- SALAS DE SEGUNDA INSTANCIA ---\n';
+    Object.keys(SALAS_SEGUNDA_INSTANCIA).forEach(sala => {
+        csv += `# ${sala}\n`;
+    });
+    csv += '#\n';
+    csv += '# --- CANCÚN - FAMILIAR ---\n';
+    csv += '# JUZGADO PRIMERO FAMILIAR ORAL CANCUN\n';
+    csv += '# JUZGADO SEGUNDO FAMILIAR ORAL CANCUN\n';
+    csv += '# JUZGADO TERCERO FAMILIAR ORAL CANCUN\n';
+    csv += '# JUZGADO CUARTO FAMILIAR ORAL CANCUN\n';
+    csv += '#\n';
+    csv += '# --- CANCÚN - CIVIL ---\n';
+    csv += '# JUZGADO PRIMERO CIVIL CANCUN\n';
+    csv += '# JUZGADO SEGUNDO CIVIL CANCUN\n';
+    csv += '# JUZGADO TERCERO CIVIL CANCUN\n';
+    csv += '# JUZGADO CUARTO CIVIL CANCUN\n';
+    csv += '# JUZGADO QUINTO CIVIL CANCUN\n';
+    csv += '#\n';
+    csv += '# --- CANCÚN - MERCANTIL ---\n';
+    csv += '# JUZGADO PRIMERO MERCANTIL CANCUN\n';
+    csv += '# JUZGADO SEGUNDO MERCANTIL CANCUN\n';
+    csv += '# JUZGADO TERCERO MERCANTIL CANCUN\n';
+    csv += '# JUZGADO CUARTO MERCANTIL CANCUN\n';
+    csv += '#\n';
+    csv += '# --- CANCÚN - LABORAL ---\n';
+    csv += '# JUZGADO PRIMERO LABORAL CANCUN\n';
+    csv += '# JUZGADO SEGUNDO LABORAL CANCUN\n';
+    csv += '#\n';
+    csv += '# --- PLAYA DEL CARMEN ---\n';
+    csv += '# JUZGADO PRIMERO CIVIL PLAYA DEL CARMEN\n';
+    csv += '# JUZGADO SEGUNDO CIVIL PLAYA DEL CARMEN\n';
+    csv += '# JUZGADO PRIMERO FAMILIAR PLAYA DEL CARMEN\n';
+    csv += '# JUZGADO SEGUNDO FAMILIAR PLAYA DEL CARMEN\n';
+    csv += '# JUZGADO MERCANTIL PLAYA DEL CARMEN\n';
+    csv += '# JUZGADO MIXTO CIVIL FAMILIAR PLAYA DEL CARMEN\n';
+    csv += '# JUZGADO LABORAL PLAYA DEL CARMEN\n';
+    csv += '#\n';
+    csv += '# --- CHETUMAL ---\n';
+    csv += '# JUZGADO PRIMERO CIVIL CHETUMAL\n';
+    csv += '# JUZGADO SEGUNDO CIVIL CHETUMAL\n';
+    csv += '# JUZGADO PRIMERO FAMILIAR CHETUMAL\n';
+    csv += '# JUZGADO SEGUNDO FAMILIAR CHETUMAL\n';
+    csv += '# JUZGADO MERCANTIL CHETUMAL\n';
+    csv += '# JUZGADO LABORAL CHETUMAL\n';
+    csv += '#\n';
+    csv += '# --- COZUMEL ---\n';
+    csv += '# JUZGADO MIXTO CIVIL COZUMEL\n';
+    csv += '# JUZGADO MIXTO FAMILIAR COZUMEL\n';
+    csv += '# JUZGADO CIVIL COZUMEL\n';
+    csv += '# JUZGADO FAMILIAR COZUMEL\n';
+    csv += '#\n';
+    csv += '# --- OTROS MUNICIPIOS ---\n';
+    csv += '# JUZGADO MIXTO TULUM\n';
+    csv += '# JUZGADO MIXTO CIVIL FAMILIAR TULUM\n';
+    csv += '# JUZGADO PRIMERO FAMILIAR ORAL TULUM\n';
+    csv += '# JUZGADO SEGUNDO FAMILIAR ORAL TULUM\n';
+    csv += '# JUZGADO CIVIL ORAL TULUM\n';
+    csv += '# JUZGADO MIXTO FELIPE CARRILLO PUERTO\n';
+    csv += '# JUZGADO MIXTO JOSE MARIA MORELOS\n';
+    csv += '# JUZGADO MIXTO LAZARO CARDENAS\n';
+    csv += '# JUZGADO MIXTO BACALAR\n';
+    csv += '# JUZGADO MIXTO PUERTO MORELOS\n';
+    csv += '# JUZGADO MIXTO ISLA MUJERES\n';
+    csv += '# JUZGADO CIVIL ORAL ISLA MUJERES\n';
+    csv += '# JUZGADO MIXTO ORAL PUERTO AVENTURAS\n';
+
+    // Descargar archivo
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'template_expedientes_tsj.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+
+    mostrarToast('Template descargado', 'success');
+}
+
+async function importarExpedientesCSV(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const extension = file.name.split('.').pop().toLowerCase();
+
+    try {
+        let datos;
+
+        if (extension === 'csv') {
+            const texto = await file.text();
+            datos = parseCSV(texto);
+        } else if (extension === 'xlsx' || extension === 'xls') {
+            // Para Excel, necesitamos leerlo de forma diferente
+            mostrarToast('Para archivos Excel, primero expórtalos a CSV', 'warning');
+            event.target.value = '';
+            return;
+        }
+
+        if (!datos || datos.length === 0) {
+            mostrarToast('No se encontraron datos válidos', 'error');
+            event.target.value = '';
+            return;
+        }
+
+        // Validar y procesar datos
+        const expedientesValidos = [];
+        const errores = [];
+
+        datos.forEach((fila, index) => {
+            const expediente = fila.expediente?.trim();
+            const tipo = fila.tipo?.trim().toLowerCase();
+            const juzgado = fila.juzgado?.trim().toUpperCase();
+            const comentario = fila.comentario?.trim() || '';
+
+            // Validar campos requeridos
+            if (!expediente) {
+                errores.push(`Fila ${index + 2}: Falta el expediente`);
+                return;
+            }
+
+            if (!tipo || (tipo !== 'numero' && tipo !== 'nombre')) {
+                errores.push(`Fila ${index + 2}: Tipo inválido (debe ser 'numero' o 'nombre')`);
+                return;
+            }
+
+            // Validar juzgado
+            const juzgadoValido = JUZGADOS[juzgado] || SALAS_SEGUNDA_INSTANCIA[juzgado];
+            if (!juzgadoValido) {
+                errores.push(`Fila ${index + 2}: Juzgado no reconocido: ${juzgado}`);
+                return;
+            }
+
+            const nuevoExpediente = {
+                juzgado: juzgado,
+                categoria: obtenerCategoriaJuzgado(juzgado),
+                comentario: comentario || undefined
+            };
+
+            if (tipo === 'numero') {
+                nuevoExpediente.numero = expediente;
+            } else {
+                nuevoExpediente.nombre = expediente;
+            }
+
+            expedientesValidos.push(nuevoExpediente);
+        });
+
+        // Mostrar errores si hay
+        if (errores.length > 0) {
+            console.warn('Errores en importación:', errores);
+            if (expedientesValidos.length === 0) {
+                mostrarToast(`Error: ${errores[0]}`, 'error');
+                event.target.value = '';
+                return;
+            }
+        }
+
+        // Confirmar importación
+        const mensaje = errores.length > 0
+            ? `Se importarán ${expedientesValidos.length} expedientes (${errores.length} filas con errores ignoradas). ¿Continuar?`
+            : `¿Importar ${expedientesValidos.length} expedientes?`;
+
+        if (!confirm(mensaje)) {
+            event.target.value = '';
+            return;
+        }
+
+        // Importar expedientes
+        let importados = 0;
+        for (const exp of expedientesValidos) {
+            try {
+                await agregarExpediente(exp);
+                importados++;
+            } catch (e) {
+                console.error('Error al agregar expediente:', e);
+            }
+        }
+
+        await cargarExpedientes();
+        await cargarEstadisticas();
+
+        mostrarToast(`${importados} expedientes importados correctamente`, 'success');
+
+    } catch (error) {
+        console.error('Error al importar:', error);
+        mostrarToast('Error al procesar el archivo: ' + error.message, 'error');
+    }
+
+    event.target.value = '';
+}
+
+function parseCSV(texto) {
+    const lineas = texto.split('\n').filter(l => l.trim() && !l.trim().startsWith('#'));
+
+    if (lineas.length < 2) return [];
+
+    // Obtener encabezados
+    const encabezados = lineas[0].split(',').map(h => h.trim().toLowerCase());
+
+    // Validar encabezados requeridos
+    const requeridos = ['expediente', 'tipo', 'juzgado'];
+    const faltantes = requeridos.filter(r => !encabezados.includes(r));
+    if (faltantes.length > 0) {
+        throw new Error(`Faltan columnas requeridas: ${faltantes.join(', ')}`);
+    }
+
+    // Parsear filas
+    const datos = [];
+    for (let i = 1; i < lineas.length; i++) {
+        const linea = lineas[i].trim();
+        if (!linea || linea.startsWith('#')) continue;
+
+        // Parsear CSV considerando comillas
+        const valores = parseCSVLine(linea);
+
+        const fila = {};
+        encabezados.forEach((encabezado, index) => {
+            fila[encabezado] = valores[index] || '';
+        });
+
+        datos.push(fila);
+    }
+
+    return datos;
+}
+
+function parseCSVLine(linea) {
+    const valores = [];
+    let valorActual = '';
+    let dentroComillas = false;
+
+    for (let i = 0; i < linea.length; i++) {
+        const char = linea[i];
+
+        if (char === '"') {
+            dentroComillas = !dentroComillas;
+        } else if (char === ',' && !dentroComillas) {
+            valores.push(valorActual.trim());
+            valorActual = '';
+        } else {
+            valorActual += char;
+        }
+    }
+
+    valores.push(valorActual.trim());
+    return valores;
+}
+
 // ==================== UTILIDADES ====================
 
 function configurarFormularios() {
