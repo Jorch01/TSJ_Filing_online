@@ -36,8 +36,69 @@ async function inicializarApp() {
     configurarNavegacion();
     configurarFormularios();
 
+    // Configurar tooltips de ayuda
+    configurarTooltips();
+
     // Cargar configuración
     await cargarConfiguracion();
+}
+
+// ==================== TOOLTIPS DE AYUDA ====================
+
+function configurarTooltips() {
+    const tooltipContainers = document.querySelectorAll('.tooltip-container');
+
+    tooltipContainers.forEach(container => {
+        const helpBtn = container.querySelector('.help-btn');
+        const tooltip = container.querySelector('.tooltip-content');
+
+        if (!helpBtn || !tooltip) return;
+
+        // Posicionar tooltip al hacer hover
+        const posicionarTooltip = () => {
+            const btnRect = helpBtn.getBoundingClientRect();
+            const tooltipWidth = 320;
+            const tooltipHeight = tooltip.offsetHeight || 200;
+            const padding = 10;
+
+            // Calcular posición ideal (arriba del botón)
+            let top = btnRect.top - tooltipHeight - padding;
+            let left = btnRect.left + (btnRect.width / 2) - (tooltipWidth / 2);
+
+            // Si no hay espacio arriba, mostrar abajo
+            if (top < padding) {
+                top = btnRect.bottom + padding;
+            }
+
+            // Ajustar si se sale por la izquierda
+            if (left < padding) {
+                left = padding;
+            }
+
+            // Ajustar si se sale por la derecha
+            if (left + tooltipWidth > window.innerWidth - padding) {
+                left = window.innerWidth - tooltipWidth - padding;
+            }
+
+            tooltip.style.top = `${top}px`;
+            tooltip.style.left = `${left}px`;
+        };
+
+        helpBtn.addEventListener('mouseenter', posicionarTooltip);
+        helpBtn.addEventListener('focus', posicionarTooltip);
+
+        // Reposicionar en scroll
+        let scrollTimeout;
+        window.addEventListener('scroll', () => {
+            clearTimeout(scrollTimeout);
+            scrollTimeout = setTimeout(() => {
+                if (tooltip.style.visibility === 'visible' ||
+                    tooltip.style.opacity === '1') {
+                    posicionarTooltip();
+                }
+            }, 50);
+        }, { passive: true });
+    });
 }
 
 // ==================== NAVEGACIÓN ====================
