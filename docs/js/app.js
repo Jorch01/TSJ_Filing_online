@@ -2562,7 +2562,7 @@ function mostrarModalLimite(tipo) {
 async function activarPremium() {
     const codigoInput = document.getElementById('premium-code');
     const usernameInput = document.getElementById('premium-username');
-    const codigo = codigoInput.value.trim().toUpperCase();
+    const codigo = codigoInput.value.trim();
     const username = usernameInput ? usernameInput.value.trim() : '';
 
     if (!username) {
