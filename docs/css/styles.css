@@ -1067,17 +1067,13 @@ textarea:focus {
     background: #e3f2fd;
     position: relative;
 }
-.pricing-row.popular::after {
-    content: '⭐ Popular';
+.pricing-row.popular::before {
+    content: '⭐';
     position: absolute;
-    right: 0.5rem;
+    left: -1.5rem;
     top: 50%;
     transform: translateY(-50%);
-    font-size: 0.65rem;
-    background: var(--primary);
-    color: white;
-    padding: 0.15rem 0.5rem;
-    border-radius: 10px;
+    font-size: 0.9rem;
 }
 .pricing-row.best {
     background: linear-gradient(135deg, #fff9c4 0%, #ffeb3b 100%);
@@ -1099,8 +1095,9 @@ textarea:focus {
         font-size: 0.8rem;
         padding: 0.5rem;
     }
-    .pricing-row.popular::after {
-        display: none;
+    .pricing-row.popular::before {
+        left: -1rem;
+        font-size: 0.7rem;
     }
 }
 

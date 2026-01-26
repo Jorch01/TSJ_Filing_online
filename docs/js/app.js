@@ -836,30 +836,46 @@ function initEventTooltips() {
         if (!tooltip) return;
 
         item.addEventListener('mouseenter', (e) => {
+            // Primero hacer visible para medir dimensiones reales
+            tooltip.style.visibility = 'hidden';
+            tooltip.style.display = 'block';
+            const tooltipRect = tooltip.getBoundingClientRect();
+            const tooltipWidth = tooltipRect.width || 300;
+            const tooltipHeight = tooltipRect.height || 180;
+            tooltip.style.display = '';
+            tooltip.style.visibility = '';
+
             const rect = item.getBoundingClientRect();
-            const tooltipWidth = 300;
-            const tooltipHeight = tooltip.offsetHeight || 200;
+            const margin = 15;
 
             // Posicionar a la derecha del elemento por defecto
             let left = rect.right + 10;
-            let top = rect.top + (rect.height / 2);
 
             // Si no cabe a la derecha, mostrar a la izquierda
-            if (left + tooltipWidth > window.innerWidth - 20) {
+            if (left + tooltipWidth > window.innerWidth - margin) {
                 left = rect.left - tooltipWidth - 10;
+                // Si tampoco cabe a la izquierda, centrar en la pantalla
+                if (left < margin) {
+                    left = Math.max(margin, (window.innerWidth - tooltipWidth) / 2);
+                }
             }
 
-            // Ajustar verticalmente si se sale de la pantalla
-            if (top + tooltipHeight / 2 > window.innerHeight - 20) {
-                top = window.innerHeight - tooltipHeight - 20;
+            // Calcular posición vertical - alineado con el centro del item
+            let top = rect.top + (rect.height / 2) - (tooltipHeight / 2);
+
+            // Asegurar que no se salga por arriba
+            if (top < margin) {
+                top = margin;
             }
-            if (top - tooltipHeight / 2 < 20) {
-                top = tooltipHeight / 2 + 20;
+
+            // Asegurar que no se salga por abajo
+            if (top + tooltipHeight > window.innerHeight - margin) {
+                top = window.innerHeight - tooltipHeight - margin;
             }
 
             tooltip.style.left = `${left}px`;
             tooltip.style.top = `${top}px`;
-            tooltip.style.transform = 'translateY(-50%)';
+            tooltip.style.transform = 'none';
             tooltip.classList.add('visible');
         });
 
