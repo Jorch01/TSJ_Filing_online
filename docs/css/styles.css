@@ -848,6 +848,70 @@ textarea:focus {
     }
 }
 
+/* Event Tooltip in Dashboard */
+.list-item-with-tooltip {
+    position: relative;
+    cursor: pointer;
+}
+
+.event-tooltip {
+    visibility: hidden;
+    opacity: 0;
+    position: fixed;
+    z-index: 9999;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #fff;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    min-width: 220px;
+    max-width: 300px;
+    font-size: 0.8rem;
+    transition: opacity 0.15s ease, visibility 0.15s ease;
+    pointer-events: none;
+}
+
+.event-tooltip-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(255,255,255,0.15);
+}
+
+.event-tooltip-row {
+    display: flex;
+    margin-bottom: 0.35rem;
+}
+
+.event-tooltip-row:last-child {
+    margin-bottom: 0;
+}
+
+.event-tooltip-label {
+    color: rgba(255,255,255,0.6);
+    min-width: 75px;
+    flex-shrink: 0;
+}
+
+.event-tooltip-value {
+    color: #fff;
+}
+
+.event-tooltip-badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 10px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    text-transform: capitalize;
+}
+
+.event-tooltip.visible {
+    visibility: visible;
+    opacity: 1;
+}
+
 /* Premium Section */
 .premium-section {
     background: linear-gradient(135deg, #fff 0%, #fffde7 100%);

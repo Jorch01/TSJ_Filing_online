@@ -261,7 +261,22 @@ function mostrarFormularioExpediente() {
 }
 
 function cerrarFormularioExpediente() {
-    document.getElementById('form-expediente').style.display = 'none';
+    const formContainer = document.getElementById('form-expediente');
+    const form = document.getElementById('expediente-form');
+    const submitBtn = form?.querySelector('button[type="submit"]');
+
+    // Restaurar botón si estaba deshabilitado
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '💾 Guardar';
+    }
+
+    // Resetear formulario
+    if (form) form.reset();
+    document.getElementById('expediente-id').value = '';
+
+    // Ocultar formulario
+    formContainer.style.display = 'none';
 }
 
 async function editarExpediente(id) {
@@ -282,36 +297,45 @@ async function editarExpediente(id) {
 async function guardarExpediente(event) {
     event.preventDefault();
 
-    const id = document.getElementById('expediente-id').value;
-    const tipoBusqueda = document.querySelector('input[name="tipo-busqueda"]:checked').value;
-    const valor = document.getElementById('expediente-valor').value.trim();
-    const juzgado = document.getElementById('expediente-juzgado').value;
-    const comentario = document.getElementById('expediente-comentario').value.trim();
-
-    if (!valor || !juzgado) {
-        mostrarToast('Completa todos los campos requeridos', 'error');
-        return;
-    }
-
-    // Verificar límite si es nuevo expediente
-    if (!id) {
-        const permitido = await verificarLimiteExpedientes();
-        if (!permitido) return;
-    }
-
-    const expediente = {
-        juzgado,
-        categoria: obtenerCategoriaJuzgado(juzgado),
-        comentario: comentario || undefined
-    };
-
-    if (tipoBusqueda === 'numero') {
-        expediente.numero = valor;
-    } else {
-        expediente.nombre = valor;
+    // Prevenir múltiples clicks
+    const form = document.getElementById('expediente-form');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn && submitBtn.disabled) return;
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="loading-spinner"></span> Guardando...';
     }
 
     try {
+        const id = document.getElementById('expediente-id').value;
+        const tipoBusqueda = document.querySelector('input[name="tipo-busqueda"]:checked').value;
+        const valor = document.getElementById('expediente-valor').value.trim();
+        const juzgado = document.getElementById('expediente-juzgado').value;
+        const comentario = document.getElementById('expediente-comentario').value.trim();
+
+        if (!valor || !juzgado) {
+            mostrarToast('Completa todos los campos requeridos', 'error');
+            return;
+        }
+
+        // Verificar límite si es nuevo expediente
+        if (!id) {
+            const permitido = await verificarLimiteExpedientes();
+            if (!permitido) return;
+        }
+
+        const expediente = {
+            juzgado,
+            categoria: obtenerCategoriaJuzgado(juzgado),
+            comentario: comentario || undefined
+        };
+
+        if (tipoBusqueda === 'numero') {
+            expediente.numero = valor;
+        } else {
+            expediente.nombre = valor;
+        }
+
         if (id) {
             await actualizarExpediente(parseInt(id), expediente);
             mostrarToast('Expediente actualizado', 'success');
@@ -325,6 +349,12 @@ async function guardarExpediente(event) {
         await cargarEstadisticas();
     } catch (error) {
         mostrarToast('Error al guardar: ' + error.message, 'error');
+    } finally {
+        // Restaurar botón
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '💾 Guardar';
+        }
     }
 }
 
@@ -731,16 +761,112 @@ function actualizarEventosHoy(eventos) {
             const horaTexto = e.todoElDia ? 'Todo el día' :
                 fecha.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
 
+            // Preparar información para el tooltip
+            const tipoLabel = {
+                audiencia: 'Audiencia',
+                vencimiento: 'Vencimiento',
+                recordatorio: 'Recordatorio',
+                otro: 'Otro'
+            }[e.tipo] || e.tipo || 'Evento';
+
+            const fechaCompleta = fecha.toLocaleDateString('es-MX', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+
+            const horaCompleta = e.todoElDia ? 'Todo el día' :
+                fecha.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+
+            const expedienteInfo = e.expedienteTexto ||
+                (e.expedienteId ? `Expediente #${e.expedienteId}` : 'Sin expediente');
+
+            const descripcionCorta = e.descripcion ?
+                (e.descripcion.length > 80 ? e.descripcion.substring(0, 80) + '...' : e.descripcion) :
+                'Sin descripción';
+
             return `
-                <div class="list-item" style="border-left: 3px solid ${e.color || '#3788d8'}">
+                <div class="list-item list-item-with-tooltip" style="border-left: 3px solid ${e.color || '#3788d8'}">
                     <div class="list-item-info">
                         <span class="list-item-title">${e.titulo}</span>
                         <span class="list-item-subtitle">${fechaTexto} • ${horaTexto}</span>
                     </div>
+                    <div class="event-tooltip">
+                        <div class="event-tooltip-title">${e.titulo}</div>
+                        <div class="event-tooltip-row">
+                            <span class="event-tooltip-label">Tipo:</span>
+                            <span class="event-tooltip-value">
+                                <span class="event-tooltip-badge" style="background: ${e.color || '#3788d8'}; color: white;">
+                                    ${tipoLabel}
+                                </span>
+                            </span>
+                        </div>
+                        <div class="event-tooltip-row">
+                            <span class="event-tooltip-label">Fecha:</span>
+                            <span class="event-tooltip-value">${fechaCompleta}</span>
+                        </div>
+                        <div class="event-tooltip-row">
+                            <span class="event-tooltip-label">Hora:</span>
+                            <span class="event-tooltip-value">${horaCompleta}</span>
+                        </div>
+                        <div class="event-tooltip-row">
+                            <span class="event-tooltip-label">Expediente:</span>
+                            <span class="event-tooltip-value">${expedienteInfo}</span>
+                        </div>
+                        <div class="event-tooltip-row">
+                            <span class="event-tooltip-label">Detalles:</span>
+                            <span class="event-tooltip-value">${descripcionCorta}</span>
+                        </div>
+                        ${e.alerta ? '<div class="event-tooltip-row"><span class="event-tooltip-label">🔔</span><span class="event-tooltip-value">Tiene recordatorio</span></div>' : ''}
+                    </div>
                 </div>
             `;
         }).join('');
+
+        // Inicializar event listeners para tooltips
+        initEventTooltips();
     }
+}
+
+function initEventTooltips() {
+    const items = document.querySelectorAll('.list-item-with-tooltip');
+    items.forEach(item => {
+        const tooltip = item.querySelector('.event-tooltip');
+        if (!tooltip) return;
+
+        item.addEventListener('mouseenter', (e) => {
+            const rect = item.getBoundingClientRect();
+            const tooltipWidth = 300;
+            const tooltipHeight = tooltip.offsetHeight || 200;
+
+            // Posicionar a la derecha del elemento por defecto
+            let left = rect.right + 10;
+            let top = rect.top + (rect.height / 2);
+
+            // Si no cabe a la derecha, mostrar a la izquierda
+            if (left + tooltipWidth > window.innerWidth - 20) {
+                left = rect.left - tooltipWidth - 10;
+            }
+
+            // Ajustar verticalmente si se sale de la pantalla
+            if (top + tooltipHeight / 2 > window.innerHeight - 20) {
+                top = window.innerHeight - tooltipHeight - 20;
+            }
+            if (top - tooltipHeight / 2 < 20) {
+                top = tooltipHeight / 2 + 20;
+            }
+
+            tooltip.style.left = `${left}px`;
+            tooltip.style.top = `${top}px`;
+            tooltip.style.transform = 'translateY(-50%)';
+            tooltip.classList.add('visible');
+        });
+
+        item.addEventListener('mouseleave', () => {
+            tooltip.classList.remove('visible');
+        });
+    });
 }
 
 async function renderizarCalendario() {
