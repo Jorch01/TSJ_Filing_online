@@ -2622,12 +2622,8 @@ async function verificarCodigoPremium(codigo, deviceId, usuario) {
         return await verificarConCSV(codigo, deviceId);
     }
 
-    // Códigos de prueba para desarrollo
-    const codigosPrueba = ['PREMIUM2025', 'TSJPRO2025', 'TESTCODE123'];
-    if (codigosPrueba.includes(codigo)) {
-        return { valido: true };
-    }
-    return { valido: false, mensaje: 'Código inválido' };
+    // Sin API ni CSV configurado
+    return { valido: false, mensaje: 'Sistema de licencias no configurado' };
 }
 
 // Verificar usando la API de Google Apps Script
@@ -2813,9 +2809,6 @@ async function verificarConCSV(codigo, deviceId) {
         return { valido: false, mensaje: 'Código no encontrado' };
     } catch (error) {
         console.error('Error al verificar con Google Sheets:', error);
-        if (codigo === 'EMERGENCIA2025') {
-            return { valido: true };
-        }
         return { valido: false, mensaje: 'Error de conexión. Intenta de nuevo.' };
     }
 }
