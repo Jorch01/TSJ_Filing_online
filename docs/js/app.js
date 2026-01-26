@@ -245,7 +245,9 @@ function actualizarSelectExpedientes() {
     obtenerExpedientes().then(expedientes => {
         const select = document.getElementById('filtro-expediente-nota');
         if (select) {
-            select.innerHTML = '<option value="">Todos los expedientes</option>' +
+            select.innerHTML = '<option value="">Todos</option>' +
+                '<option value="__general__">📋 Generales (sin expediente)</option>' +
+                '<option value="__custom__">✏️ Personalizados</option>' +
                 expedientes.map(e => `<option value="${e.id}">${e.numero || e.nombre}</option>`).join('');
         }
     });
@@ -447,9 +449,11 @@ async function cargarNotas() {
 
 function mostrarFormularioNota() {
     const expedientes = obtenerExpedientes().then(exps => {
-        const selectHtml = exps.map(e =>
-            `<option value="${e.id}">${e.numero || e.nombre} - ${e.juzgado}</option>`
-        ).join('');
+        const selectHtml = '<option value="">General (sin expediente)</option>' +
+            '<option value="__custom__">✏️ Otro (escribir manualmente)</option>' +
+            exps.map(e =>
+                `<option value="${e.id}">${e.numero || e.nombre} - ${e.juzgado}</option>`
+            ).join('');
 
         const colores = [
             { nombre: 'Amarillo', valor: '#fff3cd' },
@@ -469,14 +473,17 @@ function mostrarFormularioNota() {
                 <input type="hidden" id="nota-id">
                 <input type="hidden" id="nota-color" value="#fff3cd">
                 <div class="form-group">
-                    <label>Expediente</label>
-                    <select id="nota-expediente" required>
-                        <option value="">Selecciona un expediente...</option>
+                    <label>Expediente o tema (opcional)</label>
+                    <select id="nota-expediente" onchange="toggleExpedienteCustom('nota')">
                         ${selectHtml}
                     </select>
                 </div>
+                <div class="form-group" id="nota-expediente-custom-group" style="display: none;">
+                    <label>Número de expediente o tema</label>
+                    <input type="text" id="nota-expediente-custom" placeholder="Ej: 123/2025, Reunión cliente, etc.">
+                </div>
                 <div class="form-group">
-                    <label>Título</label>
+                    <label>Título *</label>
                     <input type="text" id="nota-titulo" placeholder="Título de la nota" required>
                 </div>
                 <div class="form-group">
@@ -513,19 +520,31 @@ async function guardarNota(event) {
     event.preventDefault();
 
     const id = document.getElementById('nota-id').value;
-    const expedienteId = parseInt(document.getElementById('nota-expediente').value);
+    const expedienteSelect = document.getElementById('nota-expediente').value;
+    const expedienteCustom = document.getElementById('nota-expediente-custom')?.value?.trim() || '';
     const titulo = document.getElementById('nota-titulo').value.trim();
     const contenido = document.getElementById('nota-contenido').value.trim();
     const color = document.getElementById('nota-color').value;
     const recordatorio = document.getElementById('nota-recordatorio').value;
 
-    if (!expedienteId || !titulo) {
-        mostrarToast('Completa los campos requeridos', 'error');
+    if (!titulo) {
+        mostrarToast('El título es requerido', 'error');
         return;
+    }
+
+    // Manejar expediente: puede ser ID numérico, personalizado, o ninguno (general)
+    let expedienteId = null;
+    let expedienteTexto = null;
+
+    if (expedienteSelect === '__custom__' && expedienteCustom) {
+        expedienteTexto = expedienteCustom;
+    } else if (expedienteSelect && expedienteSelect !== '__custom__' && expedienteSelect !== '') {
+        expedienteId = parseInt(expedienteSelect);
     }
 
     const nota = {
         expedienteId,
+        expedienteTexto, // Nuevo campo para expedientes/temas personalizados
         titulo,
         contenido,
         color,
@@ -559,12 +578,22 @@ async function editarNota(id) {
     setTimeout(() => {
         document.getElementById('modal-titulo').textContent = 'Editar Nota';
         document.getElementById('nota-id').value = id;
-        document.getElementById('nota-expediente').value = nota.expedienteId;
         document.getElementById('nota-titulo').value = nota.titulo;
         document.getElementById('nota-contenido').value = nota.contenido || '';
         document.getElementById('nota-color').value = nota.color || '#fff3cd';
         if (nota.recordatorio) {
             document.getElementById('nota-recordatorio').value = nota.recordatorio.slice(0, 16);
+        }
+
+        // Manejar expediente personalizado
+        if (nota.expedienteTexto) {
+            document.getElementById('nota-expediente').value = '__custom__';
+            toggleExpedienteCustom('nota');
+            document.getElementById('nota-expediente-custom').value = nota.expedienteTexto;
+        } else if (nota.expedienteId) {
+            document.getElementById('nota-expediente').value = nota.expedienteId;
+        } else {
+            document.getElementById('nota-expediente').value = '';
         }
 
         document.getElementById('modal-footer').innerHTML = `
@@ -588,7 +617,7 @@ function confirmarEliminarNota(id) {
 
 async function filtrarNotas() {
     const busqueda = document.getElementById('buscar-nota').value.toLowerCase();
-    const expedienteId = document.getElementById('filtro-expediente-nota').value;
+    const filtroValue = document.getElementById('filtro-expediente-nota').value;
 
     let notas = await obtenerNotas();
     const expedientes = await obtenerExpedientes();
@@ -597,12 +626,21 @@ async function filtrarNotas() {
     if (busqueda) {
         notas = notas.filter(n =>
             n.titulo.toLowerCase().includes(busqueda) ||
-            (n.contenido && n.contenido.toLowerCase().includes(busqueda))
+            (n.contenido && n.contenido.toLowerCase().includes(busqueda)) ||
+            (n.expedienteTexto && n.expedienteTexto.toLowerCase().includes(busqueda))
         );
     }
 
-    if (expedienteId) {
-        notas = notas.filter(n => n.expedienteId === parseInt(expedienteId));
+    // Filtrar por tipo de expediente
+    if (filtroValue === '__general__') {
+        // Solo notas sin expediente (ni ID ni texto)
+        notas = notas.filter(n => !n.expedienteId && !n.expedienteTexto);
+    } else if (filtroValue === '__custom__') {
+        // Solo notas con expediente/tema personalizado
+        notas = notas.filter(n => n.expedienteTexto);
+    } else if (filtroValue) {
+        // Expediente específico por ID
+        notas = notas.filter(n => n.expedienteId === parseInt(filtroValue));
     }
 
     const lista = document.getElementById('lista-notas');
@@ -618,6 +656,15 @@ async function filtrarNotas() {
     } else {
         lista.innerHTML = notas.map(nota => {
             const exp = expMap[nota.expedienteId];
+            // Determinar qué mostrar como expediente
+            let expedienteLabel;
+            if (nota.expedienteTexto) {
+                expedienteLabel = `✏️ ${nota.expedienteTexto}`;
+            } else if (exp) {
+                expedienteLabel = `📁 ${exp.numero || exp.nombre}`;
+            } else {
+                expedienteLabel = '📋 General';
+            }
             return `
                 <div class="nota-card" style="background-color: ${nota.color || '#fff3cd'}" onclick="editarNota(${nota.id})">
                     <div class="nota-header">
@@ -625,7 +672,7 @@ async function filtrarNotas() {
                     </div>
                     <p class="nota-contenido">${nota.contenido || 'Sin contenido'}</p>
                     <div class="nota-footer">
-                        <span class="nota-expediente">📁 ${exp ? (exp.numero || exp.nombre) : 'Sin expediente'}</span>
+                        <span class="nota-expediente">${expedienteLabel}</span>
                     </div>
                 </div>
             `;
@@ -843,6 +890,7 @@ function crearEventoEnDia(timestamp) {
 async function mostrarFormularioEvento(fecha = null) {
     const expedientes = await obtenerExpedientes();
     const selectHtml = '<option value="">Sin expediente</option>' +
+        '<option value="__custom__">✏️ Otro (escribir manualmente)</option>' +
         expedientes.map(e => `<option value="${e.id}">${e.numero || e.nombre}</option>`).join('');
 
     const fechaDefault = fecha || diaSeleccionado || new Date();
@@ -877,7 +925,11 @@ async function mostrarFormularioEvento(fecha = null) {
             </div>
             <div class="form-group">
                 <label>Expediente (opcional)</label>
-                <select id="evento-expediente">${selectHtml}</select>
+                <select id="evento-expediente" onchange="toggleExpedienteCustom('evento')">${selectHtml}</select>
+            </div>
+            <div class="form-group" id="evento-expediente-custom-group" style="display: none;">
+                <label>Número de expediente o tema</label>
+                <input type="text" id="evento-expediente-custom" placeholder="Ej: 123/2025, Junta de socios, etc.">
             </div>
             <div class="form-group">
                 <label>Descripción</label>
@@ -899,6 +951,15 @@ async function mostrarFormularioEvento(fecha = null) {
     abrirModal();
 }
 
+// Toggle para mostrar campo de expediente personalizado
+function toggleExpedienteCustom(prefix) {
+    const select = document.getElementById(`${prefix}-expediente`);
+    const customGroup = document.getElementById(`${prefix}-expediente-custom-group`);
+    if (select && customGroup) {
+        customGroup.style.display = select.value === '__custom__' ? 'block' : 'none';
+    }
+}
+
 const COLORES_EVENTOS = {
     audiencia: '#3788d8',
     vencimiento: '#dc3545',
@@ -914,7 +975,8 @@ async function guardarEvento(event) {
     const tipo = document.getElementById('evento-tipo').value;
     const fechaInicio = document.getElementById('evento-fecha').value;
     const todoElDia = document.getElementById('evento-todo-dia').checked;
-    const expedienteId = document.getElementById('evento-expediente').value;
+    const expedienteSelect = document.getElementById('evento-expediente').value;
+    const expedienteCustom = document.getElementById('evento-expediente-custom')?.value?.trim() || '';
     const descripcion = document.getElementById('evento-descripcion').value.trim();
     const alerta = document.getElementById('evento-alerta').checked;
 
@@ -923,12 +985,23 @@ async function guardarEvento(event) {
         return;
     }
 
+    // Manejar expediente: puede ser ID numérico, personalizado, o ninguno
+    let expedienteId = null;
+    let expedienteTexto = null;
+
+    if (expedienteSelect === '__custom__' && expedienteCustom) {
+        expedienteTexto = expedienteCustom; // Guardar como texto personalizado
+    } else if (expedienteSelect && expedienteSelect !== '__custom__') {
+        expedienteId = parseInt(expedienteSelect);
+    }
+
     const evento = {
         titulo,
         tipo,
         fechaInicio: new Date(fechaInicio).toISOString(),
         todoElDia,
-        expedienteId: expedienteId ? parseInt(expedienteId) : null,
+        expedienteId,
+        expedienteTexto, // Nuevo campo para expedientes personalizados
         descripcion,
         alerta,
         color: COLORES_EVENTOS[tipo]
@@ -966,9 +1039,17 @@ async function editarEvento(id) {
         document.getElementById('evento-tipo').value = evento.tipo;
         document.getElementById('evento-fecha').value = new Date(evento.fechaInicio).toISOString().slice(0, 16);
         document.getElementById('evento-todo-dia').checked = evento.todoElDia;
-        document.getElementById('evento-expediente').value = evento.expedienteId || '';
         document.getElementById('evento-descripcion').value = evento.descripcion || '';
         document.getElementById('evento-alerta').checked = evento.alerta;
+
+        // Manejar expediente personalizado
+        if (evento.expedienteTexto) {
+            document.getElementById('evento-expediente').value = '__custom__';
+            toggleExpedienteCustom('evento');
+            document.getElementById('evento-expediente-custom').value = evento.expedienteTexto;
+        } else {
+            document.getElementById('evento-expediente').value = evento.expedienteId || '';
+        }
 
         document.getElementById('modal-footer').innerHTML = `
             <button class="btn btn-danger" onclick="confirmarEliminarEvento(${id})">🗑️ Eliminar</button>
@@ -1787,9 +1868,20 @@ async function probarIA() {
 
 async function analizarAcuerdoConIA() {
     const texto = document.getElementById('ia-texto-acuerdo').value.trim();
-    const expedienteId = document.getElementById('ia-expediente').value;
+    const expedienteSelect = document.getElementById('ia-expediente').value;
+    const expedienteCustom = document.getElementById('ia-expediente-custom')?.value?.trim() || '';
     const apiKey = await obtenerConfig('groq_api_key');
     const modelo = await obtenerConfig('groq_model') || 'llama-3.3-70b-versatile';
+
+    // Determinar expediente: ID, personalizado, o ninguno
+    let expedienteId = null;
+    let expedienteTexto = null;
+
+    if (expedienteSelect === '__custom__' && expedienteCustom) {
+        expedienteTexto = expedienteCustom;
+    } else if (expedienteSelect && expedienteSelect !== '__custom__' && expedienteSelect !== '') {
+        expedienteId = expedienteSelect;
+    }
 
     if (!texto) {
         mostrarToast('Pega el texto del acuerdo a analizar', 'warning');
@@ -1870,6 +1962,7 @@ Si algún campo no tiene información, usa un array vacío [] o null según corr
 
         const resultado = JSON.parse(jsonMatch[0]);
         resultado.expedienteId = expedienteId ? parseInt(expedienteId) : null;
+        resultado.expedienteTexto = expedienteTexto || null;
 
         mostrarResultadosIA(resultado);
         resultadosIAActuales = resultado;
@@ -1986,6 +2079,7 @@ async function guardarResultadosIA() {
                     fechaInicio: new Date(fecha.fecha + (fecha.hora ? `T${fecha.hora}` : 'T09:00')).toISOString(),
                     todoElDia: !fecha.hora,
                     expedienteId: resultado.expedienteId,
+                    expedienteTexto: resultado.expedienteTexto, // Soporte para expediente personalizado
                     descripcion: `Extraído automáticamente por IA`,
                     alerta: true,
                     color: fecha.tipo === 'audiencia' ? '#3788d8' :
@@ -2031,9 +2125,11 @@ async function guardarResultadosIA() {
         });
     }
 
-    if (notasTexto.length > 0 && resultado.expedienteId) {
+    // Guardar nota si hay contenido (con o sin expediente)
+    if (notasTexto.length > 0) {
         const nota = {
             expedienteId: resultado.expedienteId,
+            expedienteTexto: resultado.expedienteTexto, // Soporte para expediente personalizado
             titulo: `Análisis IA - ${new Date().toLocaleDateString('es-MX')}`,
             contenido: notasTexto.join('\n'),
             color: '#cce5ff',
@@ -2066,7 +2162,8 @@ async function actualizarSelectExpedientesIA() {
     const expedientes = await obtenerExpedientes();
     const select = document.getElementById('ia-expediente');
     if (select) {
-        select.innerHTML = '<option value="">Seleccionar expediente...</option>' +
+        select.innerHTML = '<option value="">Sin expediente específico</option>' +
+            '<option value="__custom__">✏️ Otro (escribir manualmente)</option>' +
             expedientes.map(e => `<option value="${e.id}">${e.numero || e.nombre} - ${e.juzgado}</option>`).join('');
     }
 }
