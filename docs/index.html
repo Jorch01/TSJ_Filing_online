@@ -898,9 +898,41 @@
                             <h4>¡Premium Activo!</h4>
                             <p>Tienes acceso ilimitado a todas las funciones.</p>
                             <p class="text-muted" id="premium-expiry">Válido hasta: --</p>
+                            <p class="text-muted" id="premium-user" style="font-size: 0.75rem;"></p>
                         </div>
                     </div>
+                    <button class="btn btn-secondary btn-sm" onclick="desactivarPremium()" style="margin-top: 0.5rem;">
+                        Desactivar Premium
+                    </button>
                 </div>
+
+                <!-- Transferencia de licencia -->
+                <div class="transfer-section" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+                    <p style="font-size: 0.85rem; color: var(--text-muted);">
+                        🔄 <strong>¿Cambiaste de dispositivo?</strong>
+                    </p>
+                    <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+                        Si tienes una licencia activa en otro dispositivo, puedes solicitar transferirla aquí (disponible cada 30 días).
+                    </p>
+                    <button class="btn btn-outline btn-sm" onclick="mostrarModalTransferencia()">
+                        🔄 Solicitar Transferencia
+                    </button>
+                </div>
+
+                <!-- Configuración avanzada (Admin) -->
+                <details style="margin-top: 1rem;">
+                    <summary style="cursor: pointer; color: var(--text-muted); font-size: 0.8rem;">⚙️ Configuración avanzada</summary>
+                    <div style="margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-secondary); border-radius: 4px;">
+                        <div class="form-group" style="margin-bottom: 0.5rem;">
+                            <label style="font-size: 0.75rem;">URL de API de licencias</label>
+                            <input type="text" id="api-url-config" placeholder="https://script.google.com/..." class="form-control" style="font-size: 0.75rem;">
+                        </div>
+                        <button class="btn btn-sm btn-secondary" onclick="guardarConfiguracionAPI()">Guardar API</button>
+                        <p style="font-size: 0.65rem; color: var(--text-muted); margin-top: 0.25rem;">
+                            La API permite vincular dispositivos. Sin ella, solo se verifica el código.
+                        </p>
+                    </div>
+                </details>
             </div>
 
             <div class="config-section danger">
