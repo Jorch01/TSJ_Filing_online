@@ -528,9 +528,14 @@
                     <p class="section-desc">Pega el texto de un acuerdo del TSJ y la IA extraerá automáticamente fechas, audiencias y puntos importantes.</p>
                     <div class="form-group">
                         <label>Expediente relacionado (opcional)</label>
-                        <select id="ia-expediente">
-                            <option value="">Seleccionar expediente...</option>
+                        <select id="ia-expediente" onchange="toggleExpedienteCustom('ia')">
+                            <option value="">Sin expediente específico</option>
+                            <option value="__custom__">✏️ Otro (escribir manualmente)</option>
                         </select>
+                    </div>
+                    <div class="form-group" id="ia-expediente-custom-group" style="display: none;">
+                        <label>Número de expediente</label>
+                        <input type="text" id="ia-expediente-custom" placeholder="Ej: 123/2025">
                     </div>
                     <div class="form-group">
                         <label>Texto del Acuerdo</label>
