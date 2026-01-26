@@ -5,11 +5,13 @@
  * 1. Ve a https://script.google.com
  * 2. Crea un nuevo proyecto
  * 3. Copia todo este código
- * 4. En el menú: Implementar > Nueva implementación
- * 5. Tipo: Aplicación web
- * 6. Ejecutar como: Yo
- * 7. Quién tiene acceso: Cualquier persona
- * 8. Copia la URL de la implementación y configúrala en la app
+ * 4. IMPORTANTE: Modifica SHEET_ID con tu ID de Google Sheet
+ * 5. IMPORTANTE: Modifica SHEET_NAME con el nombre exacto de tu hoja (ej: "Hoja 1", "Sheet1", etc.)
+ * 6. En el menú: Implementar > Nueva implementación
+ * 7. Tipo: Aplicación web
+ * 8. Ejecutar como: Yo
+ * 9. Quién tiene acceso: Cualquier persona
+ * 10. Copia la URL de la implementación
  *
  * FORMATO DEL SHEET (columnas A-H):
  * A: codigo
@@ -20,11 +22,43 @@
  * F: fecha_registro_dispositivo
  * G: intentos_duplicacion
  * H: ultimo_acceso
+ *
+ * NOTA: La primera fila debe ser el encabezado con estos nombres de columna.
  */
 
-// ID de tu Google Sheet (obtener de la URL)
-const SHEET_ID = 'TU_SHEET_ID_AQUI'; // Reemplazar con tu ID
-const SHEET_NAME = 'Licencias'; // Nombre de la hoja
+// ========== CONFIGURACIÓN - MODIFICAR ESTOS VALORES ==========
+// ID de tu Google Sheet (obtener de la URL: docs.google.com/spreadsheets/d/ESTE_ES_EL_ID/edit)
+const SHEET_ID = 'TU_SHEET_ID_AQUI'; // <-- CAMBIAR ESTO
+
+// Nombre EXACTO de la hoja (pestaña) donde están las licencias
+// Ejemplos: "Hoja 1", "Sheet1", "Licencias", etc.
+const SHEET_NAME = 'Hoja 1'; // <-- CAMBIAR ESTO si tu hoja tiene otro nombre
+// ==============================================================
+
+/**
+ * Obtiene la hoja de cálculo, con manejo de errores
+ */
+function getSheet() {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(SHEET_ID);
+    let sheet = spreadsheet.getSheetByName(SHEET_NAME);
+
+    // Si no encuentra la hoja por nombre, usar la primera hoja
+    if (!sheet) {
+      console.log('Hoja "' + SHEET_NAME + '" no encontrada, usando primera hoja');
+      sheet = spreadsheet.getSheets()[0];
+    }
+
+    if (!sheet) {
+      throw new Error('No se encontró ninguna hoja en el documento');
+    }
+
+    return sheet;
+  } catch (error) {
+    console.error('Error al abrir el sheet:', error);
+    throw new Error('No se pudo acceder al documento. Verifica el SHEET_ID.');
+  }
+}
 
 function doGet(e) {
   return handleRequest(e);
@@ -80,7 +114,7 @@ function verificarCodigo(codigo, dispositivoId, usuario) {
     return { valido: false, mensaje: 'Código y dispositivo requeridos' };
   }
 
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  const sheet = getSheet();
   const data = sheet.getDataRange().getValues();
 
   for (let i = 1; i < data.length; i++) {
@@ -160,7 +194,7 @@ function registrarDispositivo(codigo, dispositivoId, usuario) {
     return { exito: false, mensaje: 'Código y dispositivo requeridos' };
   }
 
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  const sheet = getSheet();
   const data = sheet.getDataRange().getValues();
 
   for (let i = 1; i < data.length; i++) {
@@ -215,7 +249,7 @@ function transferirLicencia(codigo, nuevoDispositivoId, usuario, motivo) {
     return { exito: false, mensaje: 'Código y nuevo dispositivo requeridos' };
   }
 
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  const sheet = getSheet();
   const data = sheet.getDataRange().getValues();
 
   for (let i = 1; i < data.length; i++) {
@@ -267,7 +301,7 @@ function transferirLicencia(codigo, nuevoDispositivoId, usuario, motivo) {
  * Registra heartbeat para verificación periódica
  */
 function registrarHeartbeat(codigo, dispositivoId) {
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  const sheet = getSheet();
   const data = sheet.getDataRange().getValues();
 
   for (let i = 1; i < data.length; i++) {
@@ -308,7 +342,7 @@ function registrarHeartbeat(codigo, dispositivoId) {
  * Obtiene información de una licencia (para admin)
  */
 function obtenerInfoLicencia(codigo) {
-  const sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+  const sheet = getSheet();
   const data = sheet.getDataRange().getValues();
 
   for (let i = 1; i < data.length; i++) {

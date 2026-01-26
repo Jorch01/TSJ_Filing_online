@@ -2251,19 +2251,26 @@ cargarExpedientes = async function() {
 
 // ==================== SISTEMA PREMIUM ====================
 
-// Configuración Premium
+// ==================== CONFIGURACIÓN PREMIUM ====================
+// IMPORTANTE: Esta configuración es del lado del servidor/código
+// NO debe ser modificable por usuarios desde la interfaz
 const PREMIUM_CONFIG = {
     limiteExpedientes: 10,
     limiteBusquedasGlobales: 10,
-    // URL del Google Sheet publicado como CSV (fallback para lectura)
-    // Formato: codigo,fecha_expiracion,dispositivo_id,usuario,estado
+
+    // URL del Google Sheet publicado como CSV (solo lectura - fallback)
+    // Formato columnas: codigo, fecha_expiracion, dispositivo_id, usuario, estado
     googleSheetUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRxXuxjhz56UvZcCZTnCJcmSCpkEm-CZAap4lW3RweeSqSuMVRU4Dp-2NLVeYu9fev2kh7tr1d5wB_y/pub?output=csv',
+
+    // ============ CONFIGURAR API AQUÍ ============
     // URL de la API de Google Apps Script (permite lectura Y escritura)
-    // Configurar después de desplegar el script
+    // Obtener después de desplegar google-apps-script.js en Google Apps Script
+    // Ejemplo: 'https://script.google.com/macros/s/AKfycbw.../exec'
     apiUrl: '',
+    // =============================================
+
     precioMensual: 35,
-    // Intervalo de verificación periódica en días
-    verificacionIntervalo: 7
+    verificacionIntervalo: 7 // Días entre verificaciones periódicas
 };
 
 // Estado Premium
@@ -2847,33 +2854,12 @@ ejecutarBusquedaGlobal = async function() {
 const inicializarAppConPremium = inicializarApp;
 inicializarApp = async function() {
     cargarConfigGoogleSheet();
-    cargarConfigAPI();
     await inicializarAppConPremium();
     await cargarEstadoPremium();
     await cargarConfigAutoBackup();
     // Verificar licencia periódicamente
     await verificarLicenciaPeriodica();
-    // Cargar UI de configuración de API
-    cargarUIConfigAPI();
 };
-
-// Configurar URL de API (llamar desde consola o UI)
-function configurarAPI(url) {
-    PREMIUM_CONFIG.apiUrl = url;
-    localStorage.setItem('_tsjapi', _encode(url));
-    console.log('URL de API configurada');
-}
-
-// Cargar configuración de API
-function cargarConfigAPI() {
-    const urlGuardada = localStorage.getItem('_tsjapi');
-    if (urlGuardada) {
-        const url = _decode(urlGuardada);
-        if (url) {
-            PREMIUM_CONFIG.apiUrl = url;
-        }
-    }
-}
 
 // UI para solicitar transferencia de licencia
 function mostrarModalTransferencia() {
@@ -2942,24 +2928,3 @@ async function ejecutarTransferencia() {
     }
 }
 
-// Guardar configuración de API desde la UI
-function guardarConfiguracionAPI() {
-    const url = document.getElementById('api-url-config')?.value?.trim();
-    if (url) {
-        configurarAPI(url);
-        mostrarToast('URL de API guardada', 'success');
-    } else {
-        // Si está vacío, limpiar la configuración
-        PREMIUM_CONFIG.apiUrl = '';
-        localStorage.removeItem('_tsjapi');
-        mostrarToast('Configuración de API eliminada', 'info');
-    }
-}
-
-// Cargar URL de API en el input al cargar la página
-function cargarUIConfigAPI() {
-    const input = document.getElementById('api-url-config');
-    if (input && PREMIUM_CONFIG.apiUrl) {
-        input.value = PREMIUM_CONFIG.apiUrl;
-    }
-}
