@@ -28,11 +28,11 @@
 
 // ========== CONFIGURACIÓN - MODIFICAR ESTOS VALORES ==========
 // ID de tu Google Sheet (obtener de la URL: docs.google.com/spreadsheets/d/ESTE_ES_EL_ID/edit)
-const SHEET_ID = 'TU_SHEET_ID_AQUI'; // <-- CAMBIAR ESTO
+const SHEET_ID = '18U5xEDwgHoI0IK1RZAEcG_j736Q12LFCM5ayGvQX00U';
 
 // Nombre EXACTO de la hoja (pestaña) donde están las licencias
 // Ejemplos: "Hoja 1", "Sheet1", "Licencias", etc.
-const SHEET_NAME = 'Hoja 1'; // <-- CAMBIAR ESTO si tu hoja tiene otro nombre
+const SHEET_NAME = 'contraseñas tsjonline';
 // ==============================================================
 
 /**
