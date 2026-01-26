@@ -26,14 +26,10 @@
  * NOTA: La primera fila debe ser el encabezado con estos nombres de columna.
  */
 
-// ========== CONFIGURACIÓN - MODIFICAR ESTOS VALORES ==========
-// ID de tu Google Sheet (obtener de la URL: docs.google.com/spreadsheets/d/ESTE_ES_EL_ID/edit)
+// ========== CONFIGURACIÓN ==========
 const SHEET_ID = '18U5xEDwgHoI0IK1RZAEcG_j736Q12LFCM5ayGvQX00U';
-
-// Nombre EXACTO de la hoja (pestaña) donde están las licencias
-// Ejemplos: "Hoja 1", "Sheet1", "Licencias", etc.
-const SHEET_NAME = 'contraseñas tsjonline';
-// ==============================================================
+const SHEET_NAME = 'Hoja 1';
+// ====================================
 
 /**
  * Obtiene la hoja de cálculo, con manejo de errores
@@ -126,8 +122,8 @@ function verificarCodigo(codigo, dispositivoId, usuario) {
       const dispositivoRegistrado = row[2]?.toString().trim();
       const estado = row[4]?.toString().trim().toLowerCase();
 
-      // Verificar estado
-      if (estado !== 'activo') {
+      // Verificar estado (vacío o "activo" = válido)
+      if (estado && estado !== 'activo' && estado !== '') {
         return {
           valido: false,
           mensaje: 'Licencia suspendida o inactiva',
@@ -205,7 +201,8 @@ function registrarDispositivo(codigo, dispositivoId, usuario) {
       const dispositivoRegistrado = row[2]?.toString().trim();
       const estado = row[4]?.toString().trim().toLowerCase();
 
-      if (estado !== 'activo') {
+      // Estado vacío o "activo" = válido
+      if (estado && estado !== 'activo' && estado !== '') {
         return { exito: false, mensaje: 'Licencia no activa' };
       }
 
@@ -311,8 +308,8 @@ function registrarHeartbeat(codigo, dispositivoId) {
       const estado = row[4]?.toString().trim().toLowerCase();
       const fechaExp = row[1];
 
-      // Verificar validez
-      if (estado !== 'activo') {
+      // Verificar validez (vacío o "activo" = válido)
+      if (estado && estado !== 'activo' && estado !== '') {
         return { valido: false, razon: 'inactivo' };
       }
 
