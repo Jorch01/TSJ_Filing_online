@@ -1284,20 +1284,82 @@ async function importarDatos(event) {
             throw new Error('Archivo inválido');
         }
 
-        if (confirm(`¿Importar ${datos.expedientes?.length || 0} expedientes, ${datos.notas?.length || 0} notas y ${datos.eventos?.length || 0} eventos?`)) {
-            await importarTodosDatos(datos, true);
+        const totalExpedientes = datos.expedientes?.length || 0;
+        const totalNotas = datos.notas?.length || 0;
+        const totalEventos = datos.eventos?.length || 0;
+
+        // Verificar si es usuario Premium
+        const esPremium = estadoPremium && estadoPremium.activo;
+        let expedientesAImportar = datos.expedientes;
+        let advertenciaPremium = '';
+
+        // Si NO es premium y hay más de 10 expedientes, limitar
+        if (!esPremium && totalExpedientes > PREMIUM_CONFIG.limiteExpedientes) {
+            // Ordenar por fecha de modificación (más recientes primero) y tomar los últimos 10
+            expedientesAImportar = [...datos.expedientes]
+                .sort((a, b) => new Date(b.fechaModificacion || b.fechaCreacion || 0) - new Date(a.fechaModificacion || a.fechaCreacion || 0))
+                .slice(0, PREMIUM_CONFIG.limiteExpedientes);
+
+            advertenciaPremium = `\n\n⚠️ CUENTA GRATUITA: Solo se importarán los ${PREMIUM_CONFIG.limiteExpedientes} expedientes más recientes de ${totalExpedientes} totales.\n\nActiva Premium ($${PREMIUM_CONFIG.precioMensual} MXN/mes) para importar todos tus expedientes.`;
+        }
+
+        const mensajeConfirm = esPremium
+            ? `¿Importar ${totalExpedientes} expedientes, ${totalNotas} notas y ${totalEventos} eventos?`
+            : `¿Importar ${expedientesAImportar.length} expedientes, ${totalNotas} notas y ${totalEventos} eventos?${advertenciaPremium}`;
+
+        if (confirm(mensajeConfirm)) {
+            // Crear copia de datos con expedientes limitados si no es premium
+            const datosAImportar = {
+                ...datos,
+                expedientes: expedientesAImportar
+            };
+
+            await importarTodosDatos(datosAImportar, true);
             await cargarExpedientes();
             await cargarNotas();
             await cargarEventos();
             await cargarEstadisticas();
             renderizarCalendario();
-            mostrarToast('Datos importados correctamente', 'success');
+
+            if (!esPremium && totalExpedientes > PREMIUM_CONFIG.limiteExpedientes) {
+                mostrarModalAdvertenciaPremium(totalExpedientes, expedientesAImportar.length);
+            } else {
+                mostrarToast('Datos importados correctamente', 'success');
+            }
         }
     } catch (error) {
         mostrarToast('Error al importar: ' + error.message, 'error');
     }
 
     event.target.value = '';
+}
+
+// Modal de advertencia para importación limitada
+function mostrarModalAdvertenciaPremium(totalOriginal, totalImportado) {
+    document.getElementById('modal-titulo').textContent = '⚠️ Importación Limitada';
+    document.getElementById('modal-body').innerHTML = `
+        <div class="limit-warning">
+            <div class="limit-warning-icon">📁</div>
+            <h3>Datos importados parcialmente</h3>
+            <p>Tu archivo contenía <strong>${totalOriginal} expedientes</strong>, pero la cuenta gratuita solo permite <strong>${totalImportado} expedientes</strong>.</p>
+            <p>Se importaron los <strong>${totalImportado} expedientes más recientes</strong>.</p>
+            <div class="premium-cta" style="margin-top: 15px; padding: 15px; background: linear-gradient(135deg, #ffd700, #ffaa00); border-radius: 8px;">
+                <p style="margin: 0; color: #333;"><strong>¿Necesitas todos tus expedientes?</strong></p>
+                <p style="margin: 5px 0 0; color: #333;">Activa Premium por solo <strong>$${PREMIUM_CONFIG.precioMensual} MXN/mes</strong></p>
+            </div>
+            <p style="margin-top: 15px; font-size: 12px; color: #888;">
+                Cada licencia es válida para <strong>un dispositivo</strong>.<br>
+                Contacto: jorge_clemente@empirica.mx
+            </p>
+        </div>
+    `;
+    document.getElementById('modal-footer').innerHTML = `
+        <button class="btn btn-secondary" onclick="cerrarModal()">Entendido</button>
+        <button class="btn btn-success" onclick="cerrarModal(); navegarA('config'); setTimeout(() => document.getElementById('premium-section')?.scrollIntoView({behavior: 'smooth'}), 300);">
+            ⭐ Activar Premium
+        </button>
+    `;
+    document.getElementById('modal-overlay').classList.add('active');
 }
 
 async function eliminarTodosDatos() {
@@ -2193,10 +2255,15 @@ cargarExpedientes = async function() {
 const PREMIUM_CONFIG = {
     limiteExpedientes: 10,
     limiteBusquedasGlobales: 10,
-    // URL del Google Sheet publicado como CSV
+    // URL del Google Sheet publicado como CSV (fallback para lectura)
     // Formato: codigo,fecha_expiracion,dispositivo_id,usuario,estado
     googleSheetUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRxXuxjhz56UvZcCZTnCJcmSCpkEm-CZAap4lW3RweeSqSuMVRU4Dp-2NLVeYu9fev2kh7tr1d5wB_y/pub?output=csv',
-    precioMensual: 35
+    // URL de la API de Google Apps Script (permite lectura Y escritura)
+    // Configurar después de desplegar el script
+    apiUrl: '',
+    precioMensual: 35,
+    // Intervalo de verificación periódica en días
+    verificacionIntervalo: 7
 };
 
 // Estado Premium
@@ -2538,51 +2605,202 @@ async function activarPremium() {
     }
 }
 
-// Verificar código contra Google Sheets
-async function verificarCodigoPremium(codigo, deviceId) {
-    // Si no hay URL configurada, usar validación local de emergencia
-    if (!PREMIUM_CONFIG.googleSheetUrl) {
-        // Códigos de prueba para desarrollo (sin verificación de dispositivo)
-        const codigosPrueba = ['PREMIUM2025', 'TSJPRO2025', 'TESTCODE123'];
-        if (codigosPrueba.includes(codigo)) {
-            return { valido: true };
-        }
-        return { valido: false, mensaje: 'Código inválido' };
+// Verificar código contra API o Google Sheets
+async function verificarCodigoPremium(codigo, deviceId, usuario) {
+    // Si hay API configurada, usar API (permite registro de dispositivo)
+    if (PREMIUM_CONFIG.apiUrl) {
+        return await verificarConAPI(codigo, deviceId, usuario);
     }
 
+    // Fallback a CSV (solo lectura, no puede registrar dispositivos)
+    if (PREMIUM_CONFIG.googleSheetUrl) {
+        return await verificarConCSV(codigo, deviceId);
+    }
+
+    // Códigos de prueba para desarrollo
+    const codigosPrueba = ['PREMIUM2025', 'TSJPRO2025', 'TESTCODE123'];
+    if (codigosPrueba.includes(codigo)) {
+        return { valido: true };
+    }
+    return { valido: false, mensaje: 'Código inválido' };
+}
+
+// Verificar usando la API de Google Apps Script
+async function verificarConAPI(codigo, deviceId, usuario) {
+    try {
+        const url = `${PREMIUM_CONFIG.apiUrl}?action=verificar&codigo=${encodeURIComponent(codigo)}&dispositivo_id=${encodeURIComponent(deviceId)}&usuario=${encodeURIComponent(usuario || '')}`;
+        const response = await fetch(url);
+        const resultado = await response.json();
+
+        if (resultado.requiereRegistro) {
+            // El código es válido pero necesita registrar este dispositivo
+            return await registrarDispositivoEnAPI(codigo, deviceId, usuario);
+        }
+
+        if (resultado.dispositivoDiferente) {
+            // Ofrecer opción de transferencia
+            return {
+                valido: false,
+                mensaje: resultado.mensaje,
+                puedeTransferir: true,
+                intentosDuplicacion: resultado.intentosDuplicacion
+            };
+        }
+
+        return resultado;
+    } catch (error) {
+        console.error('Error al verificar con API:', error);
+        // Fallback a CSV si la API falla
+        return await verificarConCSV(codigo, deviceId);
+    }
+}
+
+// Registrar dispositivo en la API
+async function registrarDispositivoEnAPI(codigo, deviceId, usuario) {
+    try {
+        const url = `${PREMIUM_CONFIG.apiUrl}?action=registrar&codigo=${encodeURIComponent(codigo)}&dispositivo_id=${encodeURIComponent(deviceId)}&usuario=${encodeURIComponent(usuario || '')}`;
+        const response = await fetch(url);
+        const resultado = await response.json();
+
+        if (resultado.exito) {
+            return { valido: true, fechaExpiracion: resultado.fechaExpiracion };
+        }
+
+        return { valido: false, mensaje: resultado.mensaje };
+    } catch (error) {
+        console.error('Error al registrar dispositivo:', error);
+        return { valido: false, mensaje: 'Error de conexión al registrar dispositivo' };
+    }
+}
+
+// Transferir licencia a nuevo dispositivo
+async function transferirLicencia(codigo, nuevoDeviceId, usuario, motivo) {
+    if (!PREMIUM_CONFIG.apiUrl) {
+        return { exito: false, mensaje: 'Transferencia no disponible sin API configurada. Contacta soporte: jorge_clemente@empirica.mx' };
+    }
+
+    try {
+        const url = `${PREMIUM_CONFIG.apiUrl}?action=transferir&codigo=${encodeURIComponent(codigo)}&dispositivo_id=${encodeURIComponent(nuevoDeviceId)}&usuario=${encodeURIComponent(usuario || '')}&motivo=${encodeURIComponent(motivo || '')}`;
+        const response = await fetch(url);
+        const resultado = await response.json();
+
+        if (resultado.cooldown) {
+            mostrarToast(`Debes esperar ${resultado.diasRestantes} días para transferir`, 'warning');
+        }
+
+        return resultado;
+    } catch (error) {
+        console.error('Error al transferir licencia:', error);
+        return { exito: false, mensaje: 'Error de conexión' };
+    }
+}
+
+// Verificación periódica de licencia (heartbeat)
+async function verificarLicenciaPeriodica() {
+    if (!estadoPremium.activo || !estadoPremium.codigo) return;
+
+    // Verificar si ha pasado el intervalo desde la última verificación
+    const ultimaVerificacion = localStorage.getItem('_tsjLastVerif');
+    if (ultimaVerificacion) {
+        const diasTranscurridos = (Date.now() - parseInt(ultimaVerificacion)) / (1000 * 60 * 60 * 24);
+        if (diasTranscurridos < PREMIUM_CONFIG.verificacionIntervalo) {
+            return; // No ha pasado suficiente tiempo
+        }
+    }
+
+    if (PREMIUM_CONFIG.apiUrl) {
+        try {
+            const url = `${PREMIUM_CONFIG.apiUrl}?action=heartbeat&codigo=${encodeURIComponent(estadoPremium.codigo)}&dispositivo_id=${encodeURIComponent(estadoPremium.dispositivoId)}`;
+            const response = await fetch(url);
+            const resultado = await response.json();
+
+            if (!resultado.valido) {
+                // Licencia ya no es válida
+                console.warn('Verificación periódica falló:', resultado.razon);
+
+                if (resultado.razon === 'dispositivo_diferente') {
+                    mostrarToast('Tu licencia fue transferida a otro dispositivo', 'warning');
+                } else if (resultado.razon === 'expirado') {
+                    mostrarToast('Tu licencia ha expirado', 'warning');
+                } else if (resultado.razon === 'inactivo') {
+                    mostrarToast('Tu licencia ha sido desactivada', 'warning');
+                }
+
+                // Desactivar premium localmente
+                await desactivarPremium(false); // false = no mostrar toast adicional
+            } else {
+                // Actualizar fecha de expiración si cambió
+                if (resultado.fechaExpiracion) {
+                    estadoPremium.fechaExpiracion = resultado.fechaExpiracion;
+                    guardarEstadoPremium();
+                }
+
+                // Mostrar aviso si quedan pocos días
+                if (resultado.diasRestantes && resultado.diasRestantes <= 7) {
+                    mostrarToast(`Tu licencia expira en ${resultado.diasRestantes} días`, 'warning');
+                }
+            }
+
+            localStorage.setItem('_tsjLastVerif', Date.now().toString());
+        } catch (error) {
+            console.error('Error en verificación periódica:', error);
+        }
+    }
+}
+
+// Desactivar premium
+async function desactivarPremium(mostrarMensaje = true) {
+    estadoPremium.activo = false;
+    estadoPremium.codigo = null;
+    estadoPremium.usuario = null;
+    estadoPremium.dispositivoId = null;
+    estadoPremium.fechaExpiracion = null;
+
+    localStorage.removeItem('_tsjprem');
+    localStorage.removeItem('_tsjLastVerif');
+
+    await actualizarUIPremium();
+
+    if (mostrarMensaje) {
+        mostrarToast('Suscripción Premium desactivada', 'info');
+    }
+}
+
+// Verificar usando CSV (solo lectura - fallback)
+async function verificarConCSV(codigo, deviceId) {
     try {
         const response = await fetch(PREMIUM_CONFIG.googleSheetUrl);
         const csvText = await response.text();
 
-        // Parsear CSV
-        // Formato esperado: codigo,fecha_expiracion,dispositivo_id,usuario,estado
-        const lineas = csvText.split('\n').slice(1); // Saltar encabezado
+        const lineas = csvText.split('\n').slice(1);
 
         for (const linea of lineas) {
             const campos = linea.split(',').map(s => s.trim());
             const [codigoSheet, fechaExp, dispositivoRegistrado, usuarioRegistrado, estado] = campos;
 
-            if (codigoSheet && codigoSheet.toUpperCase() === codigo) {
-                // Verificar si el código expiró
+            if (codigoSheet && codigoSheet.toUpperCase() === codigo.toUpperCase()) {
                 const fechaExpiracion = new Date(fechaExp);
                 if (fechaExpiracion < new Date()) {
                     return { valido: false, mensaje: 'Este código ha expirado' };
                 }
 
-                // Verificar si ya está vinculado a otro dispositivo
                 if (dispositivoRegistrado && dispositivoRegistrado !== '' && dispositivoRegistrado !== deviceId) {
                     return {
                         valido: false,
-                        mensaje: `Este código ya está vinculado a otro dispositivo`
+                        mensaje: 'Este código ya está vinculado a otro dispositivo. Contacta soporte para transferir tu licencia.',
+                        puedeTransferir: true
                     };
                 }
 
-                // Verificar estado
                 if (estado && estado.toLowerCase() === 'revocado') {
                     return { valido: false, mensaje: 'Este código ha sido revocado' };
                 }
 
-                // Código válido
+                // Código válido - Advertir que sin API no se puede registrar
+                if (!dispositivoRegistrado || dispositivoRegistrado === '') {
+                    console.warn('Advertencia: Sin API configurada, no se puede vincular el dispositivo');
+                }
+
                 return { valido: true };
             }
         }
@@ -2590,7 +2808,6 @@ async function verificarCodigoPremium(codigo, deviceId) {
         return { valido: false, mensaje: 'Código no encontrado' };
     } catch (error) {
         console.error('Error al verificar con Google Sheets:', error);
-        // Fallback: permitir códigos de emergencia
         if (codigo === 'EMERGENCIA2025') {
             return { valido: true };
         }
@@ -2630,7 +2847,119 @@ ejecutarBusquedaGlobal = async function() {
 const inicializarAppConPremium = inicializarApp;
 inicializarApp = async function() {
     cargarConfigGoogleSheet();
+    cargarConfigAPI();
     await inicializarAppConPremium();
     await cargarEstadoPremium();
     await cargarConfigAutoBackup();
+    // Verificar licencia periódicamente
+    await verificarLicenciaPeriodica();
+    // Cargar UI de configuración de API
+    cargarUIConfigAPI();
 };
+
+// Configurar URL de API (llamar desde consola o UI)
+function configurarAPI(url) {
+    PREMIUM_CONFIG.apiUrl = url;
+    localStorage.setItem('_tsjapi', _encode(url));
+    console.log('URL de API configurada');
+}
+
+// Cargar configuración de API
+function cargarConfigAPI() {
+    const urlGuardada = localStorage.getItem('_tsjapi');
+    if (urlGuardada) {
+        const url = _decode(urlGuardada);
+        if (url) {
+            PREMIUM_CONFIG.apiUrl = url;
+        }
+    }
+}
+
+// UI para solicitar transferencia de licencia
+function mostrarModalTransferencia() {
+    const deviceId = generarDeviceFingerprint();
+
+    document.getElementById('modal-titulo').textContent = '🔄 Transferir Licencia';
+    document.getElementById('modal-body').innerHTML = `
+        <div class="transfer-form">
+            <p>Si cambiaste de dispositivo, puedes solicitar una transferencia de licencia.</p>
+            <p style="color: #ff9800; font-size: 13px;"><strong>Nota:</strong> Solo puedes transferir cada 30 días.</p>
+
+            <div class="form-group" style="margin-top: 15px;">
+                <label>Código de licencia:</label>
+                <input type="text" id="transfer-codigo" class="form-control" placeholder="Ej: f9KQ7mR2ZxP4A8Wc">
+            </div>
+
+            <div class="form-group">
+                <label>Tu nombre/identificador:</label>
+                <input type="text" id="transfer-usuario" class="form-control" placeholder="Para identificar la solicitud">
+            </div>
+
+            <div class="form-group">
+                <label>Motivo de transferencia:</label>
+                <select id="transfer-motivo" class="form-control">
+                    <option value="nuevo_dispositivo">Cambié de computadora/dispositivo</option>
+                    <option value="reinstalacion">Reinstalé el sistema operativo</option>
+                    <option value="otro">Otro motivo</option>
+                </select>
+            </div>
+
+            <p style="font-size: 11px; color: #888; margin-top: 10px;">
+                ID de este dispositivo: <code style="font-size: 10px;">${deviceId.substring(0, 20)}...</code>
+            </p>
+        </div>
+    `;
+    document.getElementById('modal-footer').innerHTML = `
+        <button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="ejecutarTransferencia()">Solicitar Transferencia</button>
+    `;
+    document.getElementById('modal-overlay').classList.add('active');
+}
+
+// Ejecutar transferencia de licencia
+async function ejecutarTransferencia() {
+    const codigo = document.getElementById('transfer-codigo').value.trim();
+    const usuario = document.getElementById('transfer-usuario').value.trim();
+    const motivo = document.getElementById('transfer-motivo').value;
+    const deviceId = generarDeviceFingerprint();
+
+    if (!codigo) {
+        mostrarToast('Ingresa el código de licencia', 'error');
+        return;
+    }
+
+    const resultado = await transferirLicencia(codigo, deviceId, usuario, motivo);
+
+    if (resultado.exito) {
+        cerrarModal();
+        mostrarToast('¡Licencia transferida! Ahora activa tu código.', 'success');
+
+        // Limpiar estado anterior y activar
+        estadoPremium.activo = false;
+        await actualizarUIPremium();
+    } else {
+        mostrarToast(resultado.mensaje, 'error');
+    }
+}
+
+// Guardar configuración de API desde la UI
+function guardarConfiguracionAPI() {
+    const url = document.getElementById('api-url-config')?.value?.trim();
+    if (url) {
+        configurarAPI(url);
+        mostrarToast('URL de API guardada', 'success');
+    } else {
+        // Si está vacío, limpiar la configuración
+        PREMIUM_CONFIG.apiUrl = '';
+        localStorage.removeItem('_tsjapi');
+        mostrarToast('Configuración de API eliminada', 'info');
+    }
+}
+
+// Cargar URL de API en el input al cargar la página
+function cargarUIConfigAPI() {
+    const input = document.getElementById('api-url-config');
+    if (input && PREMIUM_CONFIG.apiUrl) {
+        input.value = PREMIUM_CONFIG.apiUrl;
+    }
+}
