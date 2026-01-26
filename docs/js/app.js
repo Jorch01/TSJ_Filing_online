@@ -2264,7 +2264,7 @@ const PREMIUM_CONFIG = {
 
     // ============ API DE LICENCIAS ============
     // URL de la API de Google Apps Script (permite lectura Y escritura)
-    apiUrl: 'https://script.google.com/macros/s/AKfycbzCcDvmkdYM2Y-FSG4hsc8FvsXZLMAUghjZAdFGyCP4CwZNH3nr80YhNACkhILcVbz1aw/exec',
+    apiUrl: 'https://script.google.com/macros/s/AKfycbyK8kudH83BoBEN-NHLo7sPpdsIuqTdnusZcr08aRO_oXtv0frwzo8bpG9JWn9EoHbrLQ/exec',
     // =========================================
 
     precioMensual: 35,
@@ -2562,7 +2562,7 @@ function mostrarModalLimite(tipo) {
 async function activarPremium() {
     const codigoInput = document.getElementById('premium-code');
     const usernameInput = document.getElementById('premium-username');
-    const codigo = codigoInput.value.trim().toUpperCase();
+    const codigo = codigoInput.value.trim();
     const username = usernameInput ? usernameInput.value.trim() : '';
 
     if (!username) {
