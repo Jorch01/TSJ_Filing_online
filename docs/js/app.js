@@ -2262,12 +2262,10 @@ const PREMIUM_CONFIG = {
     // Formato columnas: codigo, fecha_expiracion, dispositivo_id, usuario, estado
     googleSheetUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRxXuxjhz56UvZcCZTnCJcmSCpkEm-CZAap4lW3RweeSqSuMVRU4Dp-2NLVeYu9fev2kh7tr1d5wB_y/pub?output=csv',
 
-    // ============ CONFIGURAR API AQUÍ ============
+    // ============ API DE LICENCIAS ============
     // URL de la API de Google Apps Script (permite lectura Y escritura)
-    // Obtener después de desplegar google-apps-script.js en Google Apps Script
-    // Ejemplo: 'https://script.google.com/macros/s/AKfycbw.../exec'
-    apiUrl: '',
-    // =============================================
+    apiUrl: 'https://script.google.com/macros/s/AKfycbzCcDvmkdYM2Y-FSG4hsc8FvsXZLMAUghjZAdFGyCP4CwZNH3nr80YhNACkhILcVbz1aw/exec',
+    // =========================================
 
     precioMensual: 35,
     verificacionIntervalo: 7 // Días entre verificaciones periódicas
