@@ -2,37 +2,48 @@
  * TSJ Filing - Sistema de Licencias Multi-Dispositivo
  * Google Apps Script para gestión de licencias y dispositivos
  *
- * INSTRUCCIONES DE CONFIGURACIÓN:
- * 1. Crea un Google Sheet con las siguientes columnas:
- *    A: codigo | B: fecha_expiracion | C: estado | D: usuario | E: max_dispositivos | F: dispositivos_json
+ * ESTRUCTURA DE TU HOJA (columnas existentes + nuevas):
+ * A: codigo
+ * B: fecha_expiracion
+ * C: dispositivo_id (legacy - se mantiene por compatibilidad)
+ * D: usuario
+ * E: estado
+ * F: fecha_registro_dispositivo
+ * G: intentos_duplicacion
+ * H: ultimo_acceso
+ * I: max_dispositivos (NUEVA - agregar manualmente)
+ * J: dispositivos_json (NUEVA - agregar manualmente)
  *
- * 2. Copia este código en Apps Script (Extensiones > Apps Script)
- * 3. Configura SPREADSHEET_ID con el ID de tu hoja
- * 4. Despliega como aplicación web (Implementar > Nueva implementación > Aplicación web)
- *    - Ejecutar como: Yo
- *    - Quién tiene acceso: Cualquiera
- * 5. Copia la URL de la implementación y úsala como apiUrl en tu app
+ * INSTRUCCIONES:
+ * 1. Agrega las columnas I y J a tu hoja existente
+ * 2. En columna I pon el número de dispositivos permitidos (2 por defecto)
+ * 3. Columna J déjala vacía (se llena automáticamente)
+ * 4. Actualiza SPREADSHEET_ID con el ID de tu hoja
+ * 5. Despliega como aplicación web
  */
 
 // ==================== CONFIGURACIÓN ====================
 const SPREADSHEET_ID = 'TU_SPREADSHEET_ID_AQUI'; // Reemplaza con tu ID
 const SHEET_NAME = 'Licencias'; // Nombre de la hoja
 
-// Columnas (ajusta según tu estructura)
+// Columnas según TU estructura actual
 const COL = {
-  CODIGO: 0,           // A
-  FECHA_EXP: 1,        // B
-  ESTADO: 2,           // C (activo, inactivo, suspendido)
-  USUARIO: 3,          // D
-  MAX_DISPOSITIVOS: 4, // E (número: 1-99)
-  DISPOSITIVOS_JSON: 5 // F (JSON array de dispositivos)
+  CODIGO: 0,                    // A
+  FECHA_EXP: 1,                 // B
+  DISPOSITIVO_ID_LEGACY: 2,     // C (campo antiguo, para compatibilidad)
+  USUARIO: 3,                   // D
+  ESTADO: 4,                    // E
+  FECHA_REGISTRO_DISP: 5,       // F
+  INTENTOS_DUPLICACION: 6,      // G
+  ULTIMO_ACCESO: 7,             // H
+  MAX_DISPOSITIVOS: 8,          // I (NUEVA)
+  DISPOSITIVOS_JSON: 9          // J (NUEVA)
 };
 
 // ==================== FUNCIONES PRINCIPALES ====================
 
 function doGet(e) {
   const action = e.parameter.action;
-
   let resultado;
 
   try {
@@ -52,6 +63,9 @@ function doGet(e) {
       case 'transferir':
         resultado = transferirLicencia(e.parameter);
         break;
+      case 'obtener_dispositivos':
+        resultado = obtenerDispositivos(e.parameter);
+        break;
       default:
         resultado = { error: true, mensaje: 'Acción no válida' };
     }
@@ -62,6 +76,47 @@ function doGet(e) {
   return ContentService
     .createTextOutput(JSON.stringify(resultado))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ==================== HELPERS ====================
+
+function getSheet() {
+  return SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+}
+
+function getDispositivos(row) {
+  let dispositivos = [];
+
+  // Intentar parsear dispositivos_json
+  try {
+    const jsonStr = row[COL.DISPOSITIVOS_JSON];
+    if (jsonStr && jsonStr.trim()) {
+      dispositivos = JSON.parse(jsonStr);
+    }
+  } catch (e) {
+    dispositivos = [];
+  }
+
+  // Si está vacío pero hay un dispositivo legacy, migrarlo
+  if (dispositivos.length === 0 && row[COL.DISPOSITIVO_ID_LEGACY]) {
+    dispositivos = [{
+      id: row[COL.DISPOSITIVO_ID_LEGACY],
+      tipo: 'desktop',
+      nombre: 'Dispositivo (migrado)',
+      fechaRegistro: row[COL.FECHA_REGISTRO_DISP] || new Date().toISOString()
+    }];
+  }
+
+  return dispositivos;
+}
+
+function getMaxDispositivos(row) {
+  const max = parseInt(row[COL.MAX_DISPOSITIVOS]);
+  return isNaN(max) || max < 1 ? 2 : max; // Default: 2 dispositivos
+}
+
+function actualizarUltimoAcceso(sheet, rowIndex) {
+  sheet.getRange(rowIndex + 1, COL.ULTIMO_ACCESO + 1).setValue(new Date());
 }
 
 // ==================== VERIFICACIÓN DE CÓDIGO ====================
@@ -75,22 +130,16 @@ function verificarCodigo(params) {
     return { valido: false, mensaje: 'Parámetros incompletos' };
   }
 
-  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+  const sheet = getSheet();
   const data = sheet.getDataRange().getValues();
 
-  for (let i = 1; i < data.length; i++) { // Empezar en 1 para saltar encabezado
+  for (let i = 1; i < data.length; i++) {
     if (data[i][COL.CODIGO] === codigo) {
       const row = data[i];
       const fechaExp = new Date(row[COL.FECHA_EXP]);
       const estado = row[COL.ESTADO];
-      const maxDispositivos = parseInt(row[COL.MAX_DISPOSITIVOS]) || 2;
-      let dispositivos = [];
-
-      try {
-        dispositivos = JSON.parse(row[COL.DISPOSITIVOS_JSON] || '[]');
-      } catch (e) {
-        dispositivos = [];
-      }
+      const maxDispositivos = getMaxDispositivos(row);
+      const dispositivos = getDispositivos(row);
 
       // Verificar estado
       if (estado !== 'activo') {
@@ -102,12 +151,15 @@ function verificarCodigo(params) {
         return { valido: false, mensaje: 'Licencia expirada', razon: 'expirado' };
       }
 
+      // Actualizar último acceso
+      actualizarUltimoAcceso(sheet, i);
+
       // Verificar si el dispositivo ya está registrado
       const dispositivoExistente = dispositivos.find(d => d.id === dispositivoId);
       if (dispositivoExistente) {
         return {
           valido: true,
-          mensaje: 'Dispositivo ya registrado',
+          mensaje: 'Dispositivo verificado',
           fechaExpiracion: fechaExp.toISOString(),
           diasRestantes: Math.ceil((fechaExp - new Date()) / (1000 * 60 * 60 * 24)),
           dispositivos: dispositivos,
@@ -119,11 +171,11 @@ function verificarCodigo(params) {
       if (dispositivos.length >= maxDispositivos) {
         return {
           valido: false,
-          mensaje: `Límite de ${maxDispositivos} dispositivos alcanzado`,
+          mensaje: `Límite de ${maxDispositivos} dispositivo(s) alcanzado. Desvincula uno para continuar.`,
           dispositivoDiferente: true,
           requiereDesvincular: true,
           dispositivos: dispositivos.map(d => ({
-            id: d.id.substring(0, 8) + '...',
+            id: d.id.substring(0, 12) + '...',
             tipo: d.tipo,
             nombre: d.nombre,
             fechaRegistro: d.fechaRegistro
@@ -159,7 +211,7 @@ function registrarDispositivo(params) {
     return { success: false, mensaje: 'Parámetros incompletos' };
   }
 
-  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+  const sheet = getSheet();
   const data = sheet.getDataRange().getValues();
 
   for (let i = 1; i < data.length; i++) {
@@ -167,14 +219,8 @@ function registrarDispositivo(params) {
       const row = data[i];
       const fechaExp = new Date(row[COL.FECHA_EXP]);
       const estado = row[COL.ESTADO];
-      const maxDispositivos = parseInt(row[COL.MAX_DISPOSITIVOS]) || 2;
-      let dispositivos = [];
-
-      try {
-        dispositivos = JSON.parse(row[COL.DISPOSITIVOS_JSON] || '[]');
-      } catch (e) {
-        dispositivos = [];
-      }
+      const maxDispositivos = getMaxDispositivos(row);
+      let dispositivos = getDispositivos(row);
 
       // Verificaciones
       if (estado !== 'activo') {
@@ -190,7 +236,7 @@ function registrarDispositivo(params) {
       if (existente) {
         return {
           success: true,
-          mensaje: 'Dispositivo ya estaba registrado',
+          mensaje: 'Dispositivo ya registrado',
           dispositivos: dispositivos,
           maxDispositivos: maxDispositivos
         };
@@ -200,20 +246,29 @@ function registrarDispositivo(params) {
       if (dispositivos.length >= maxDispositivos) {
         return {
           success: false,
-          mensaje: `Límite de ${maxDispositivos} dispositivos alcanzado`
+          mensaje: `Límite de ${maxDispositivos} dispositivo(s) alcanzado`
         };
       }
 
       // Registrar nuevo dispositivo
-      dispositivos.push({
+      const nuevoDispositivo = {
         id: dispositivoId,
         tipo: tipoDispositivo,
         nombre: nombreDispositivo,
         fechaRegistro: new Date().toISOString()
-      });
+      };
+      dispositivos.push(nuevoDispositivo);
 
       // Actualizar la hoja
-      sheet.getRange(i + 1, COL.DISPOSITIVOS_JSON + 1).setValue(JSON.stringify(dispositivos));
+      const rowNum = i + 1;
+      sheet.getRange(rowNum, COL.DISPOSITIVOS_JSON + 1).setValue(JSON.stringify(dispositivos));
+      sheet.getRange(rowNum, COL.ULTIMO_ACCESO + 1).setValue(new Date());
+
+      // También actualizar el campo legacy con el primer dispositivo (compatibilidad)
+      if (dispositivos.length === 1) {
+        sheet.getRange(rowNum, COL.DISPOSITIVO_ID_LEGACY + 1).setValue(dispositivoId);
+        sheet.getRange(rowNum, COL.FECHA_REGISTRO_DISP + 1).setValue(new Date());
+      }
 
       return {
         success: true,
@@ -237,34 +292,64 @@ function desvincularDispositivo(params) {
     return { success: false, mensaje: 'Parámetros incompletos' };
   }
 
-  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+  const sheet = getSheet();
   const data = sheet.getDataRange().getValues();
 
   for (let i = 1; i < data.length; i++) {
     if (data[i][COL.CODIGO] === codigo) {
-      let dispositivos = [];
-
-      try {
-        dispositivos = JSON.parse(data[i][COL.DISPOSITIVOS_JSON] || '[]');
-      } catch (e) {
-        dispositivos = [];
-      }
+      let dispositivos = getDispositivos(data[i]);
 
       const index = dispositivos.findIndex(d => d.id === dispositivoId);
       if (index === -1) {
-        return { success: false, mensaje: 'Dispositivo no encontrado' };
+        return { success: false, mensaje: 'Dispositivo no encontrado en esta licencia' };
       }
 
       // Eliminar dispositivo
       dispositivos.splice(index, 1);
 
       // Actualizar la hoja
-      sheet.getRange(i + 1, COL.DISPOSITIVOS_JSON + 1).setValue(JSON.stringify(dispositivos));
+      const rowNum = i + 1;
+      sheet.getRange(rowNum, COL.DISPOSITIVOS_JSON + 1).setValue(JSON.stringify(dispositivos));
+
+      // Si se eliminó el dispositivo legacy, limpiar ese campo también
+      if (data[i][COL.DISPOSITIVO_ID_LEGACY] === dispositivoId) {
+        sheet.getRange(rowNum, COL.DISPOSITIVO_ID_LEGACY + 1).setValue('');
+      }
 
       return {
         success: true,
-        mensaje: 'Dispositivo desvinculado',
+        mensaje: 'Dispositivo desvinculado correctamente',
         dispositivos: dispositivos
+      };
+    }
+  }
+
+  return { success: false, mensaje: 'Código no encontrado' };
+}
+
+// ==================== OBTENER DISPOSITIVOS ====================
+
+function obtenerDispositivos(params) {
+  const codigo = params.codigo;
+
+  if (!codigo) {
+    return { success: false, mensaje: 'Código requerido' };
+  }
+
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][COL.CODIGO] === codigo) {
+      const row = data[i];
+      const dispositivos = getDispositivos(row);
+      const maxDispositivos = getMaxDispositivos(row);
+
+      return {
+        success: true,
+        dispositivos: dispositivos,
+        maxDispositivos: maxDispositivos,
+        disponibles: maxDispositivos - dispositivos.length
       };
     }
   }
@@ -282,7 +367,7 @@ function verificarHeartbeat(params) {
     return { valido: false, razon: 'parametros_incompletos' };
   }
 
-  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+  const sheet = getSheet();
   const data = sheet.getDataRange().getValues();
 
   for (let i = 1; i < data.length; i++) {
@@ -290,13 +375,7 @@ function verificarHeartbeat(params) {
       const row = data[i];
       const fechaExp = new Date(row[COL.FECHA_EXP]);
       const estado = row[COL.ESTADO];
-      let dispositivos = [];
-
-      try {
-        dispositivos = JSON.parse(row[COL.DISPOSITIVOS_JSON] || '[]');
-      } catch (e) {
-        dispositivos = [];
-      }
+      const dispositivos = getDispositivos(row);
 
       // Verificar estado
       if (estado !== 'activo') {
@@ -311,8 +390,11 @@ function verificarHeartbeat(params) {
       // Verificar que el dispositivo esté registrado
       const dispositivoRegistrado = dispositivos.find(d => d.id === dispositivoId);
       if (!dispositivoRegistrado) {
-        return { valido: false, razon: 'dispositivo_diferente' };
+        return { valido: false, razon: 'dispositivo_no_registrado' };
       }
+
+      // Actualizar último acceso
+      actualizarUltimoAcceso(sheet, i);
 
       const diasRestantes = Math.ceil((fechaExp - new Date()) / (1000 * 60 * 60 * 24));
 
@@ -339,7 +421,7 @@ function transferirLicencia(params) {
     return { success: false, mensaje: 'Parámetros incompletos' };
   }
 
-  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+  const sheet = getSheet();
   const data = sheet.getDataRange().getValues();
 
   for (let i = 1; i < data.length; i++) {
@@ -347,13 +429,13 @@ function transferirLicencia(params) {
       const row = data[i];
       const fechaExp = new Date(row[COL.FECHA_EXP]);
       const estado = row[COL.ESTADO];
-      const maxDispositivos = parseInt(row[COL.MAX_DISPOSITIVOS]) || 2;
+      const maxDispositivos = getMaxDispositivos(row);
 
       if (estado !== 'activo' || fechaExp < new Date()) {
         return { success: false, mensaje: 'Licencia no válida' };
       }
 
-      // Crear nuevo array con solo el nuevo dispositivo
+      // Limpiar todos los dispositivos y registrar solo el nuevo
       const dispositivos = [{
         id: nuevoDispositivoId,
         tipo: tipoDispositivo,
@@ -362,7 +444,11 @@ function transferirLicencia(params) {
       }];
 
       // Actualizar
-      sheet.getRange(i + 1, COL.DISPOSITIVOS_JSON + 1).setValue(JSON.stringify(dispositivos));
+      const rowNum = i + 1;
+      sheet.getRange(rowNum, COL.DISPOSITIVOS_JSON + 1).setValue(JSON.stringify(dispositivos));
+      sheet.getRange(rowNum, COL.DISPOSITIVO_ID_LEGACY + 1).setValue(nuevoDispositivoId);
+      sheet.getRange(rowNum, COL.FECHA_REGISTRO_DISP + 1).setValue(new Date());
+      sheet.getRange(rowNum, COL.ULTIMO_ACCESO + 1).setValue(new Date());
 
       return {
         success: true,
@@ -376,7 +462,7 @@ function transferirLicencia(params) {
   return { success: false, mensaje: 'Código no encontrado' };
 }
 
-// ==================== FUNCIONES AUXILIARES ====================
+// ==================== FUNCIONES DE ADMINISTRACIÓN ====================
 
 /**
  * Genera un código de licencia aleatorio
@@ -391,36 +477,105 @@ function generarCodigoLicencia() {
 }
 
 /**
- * Crea una nueva licencia (usar desde la hoja o un trigger)
+ * Crea una nueva licencia
+ * @param {string} usuario - Email o nombre del usuario
+ * @param {number} diasValidez - Días de validez (ej: 30)
+ * @param {number} maxDispositivos - Dispositivos permitidos (1-99)
  */
-function crearLicencia(usuario, diasValidez, maxDispositivos = 2) {
-  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+function crearLicencia(usuario, diasValidez, maxDispositivos) {
+  const sheet = getSheet();
 
   const codigo = generarCodigoLicencia();
   const fechaExp = new Date();
   fechaExp.setDate(fechaExp.getDate() + diasValidez);
 
+  // Columnas: codigo, fecha_exp, disp_id, usuario, estado, fecha_reg, intentos, ultimo_acceso, max_disp, disp_json
   sheet.appendRow([
     codigo,
     fechaExp,
-    'activo',
+    '',  // dispositivo_id (vacío, se llena al registrar)
     usuario,
-    maxDispositivos,
-    '[]' // dispositivos_json vacío
+    'activo',
+    '',  // fecha_registro_dispositivo
+    0,   // intentos_duplicacion
+    '',  // ultimo_acceso
+    maxDispositivos || 2,
+    '[]' // dispositivos_json
   ]);
 
   return {
     codigo: codigo,
-    fechaExpiracion: fechaExp,
-    maxDispositivos: maxDispositivos
+    fechaExpiracion: fechaExp.toISOString(),
+    maxDispositivos: maxDispositivos || 2
   };
 }
 
 /**
- * Función de prueba
+ * Actualiza el máximo de dispositivos para una licencia existente
+ * @param {string} codigo - Código de la licencia
+ * @param {number} nuevoMax - Nuevo límite de dispositivos
  */
-function test() {
-  // Crear licencia de prueba con 3 dispositivos permitidos
-  const licencia = crearLicencia('usuario_prueba@email.com', 30, 3);
-  Logger.log('Licencia creada: ' + JSON.stringify(licencia));
+function actualizarMaxDispositivos(codigo, nuevoMax) {
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][COL.CODIGO] === codigo) {
+      sheet.getRange(i + 1, COL.MAX_DISPOSITIVOS + 1).setValue(nuevoMax);
+      return { success: true, mensaje: `Límite actualizado a ${nuevoMax} dispositivos` };
+    }
+  }
+
+  return { success: false, mensaje: 'Código no encontrado' };
+}
+
+/**
+ * Migra licencias existentes al nuevo formato multi-dispositivo
+ * Ejecutar UNA VEZ después de agregar las columnas I y J
+ */
+function migrarLicenciasExistentes() {
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+  let migradas = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const dispositivoLegacy = row[COL.DISPOSITIVO_ID_LEGACY];
+    const dispositivosJson = row[COL.DISPOSITIVOS_JSON];
+    const maxDispositivos = row[COL.MAX_DISPOSITIVOS];
+
+    const rowNum = i + 1;
+
+    // Si no tiene max_dispositivos, poner 2 por defecto
+    if (!maxDispositivos) {
+      sheet.getRange(rowNum, COL.MAX_DISPOSITIVOS + 1).setValue(2);
+    }
+
+    // Si tiene dispositivo legacy pero no tiene dispositivos_json, migrar
+    if (dispositivoLegacy && (!dispositivosJson || dispositivosJson === '[]')) {
+      const dispositivos = [{
+        id: dispositivoLegacy,
+        tipo: 'desktop',
+        nombre: 'Dispositivo (migrado)',
+        fechaRegistro: row[COL.FECHA_REGISTRO_DISP] || new Date().toISOString()
+      }];
+      sheet.getRange(rowNum, COL.DISPOSITIVOS_JSON + 1).setValue(JSON.stringify(dispositivos));
+      migradas++;
+    }
+  }
+
+  Logger.log(`Migración completada: ${migradas} licencias migradas`);
+  return { success: true, migradas: migradas };
+}
+
+// ==================== FUNCIONES DE PRUEBA ====================
+
+function testCrearLicencia() {
+  const resultado = crearLicencia('test@example.com', 30, 3);
+  Logger.log('Licencia creada: ' + JSON.stringify(resultado));
+}
+
+function testMigrar() {
+  const resultado = migrarLicenciasExistentes();
+  Logger.log('Resultado migración: ' + JSON.stringify(resultado));
 }
