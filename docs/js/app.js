@@ -168,9 +168,22 @@ async function cargarEstadisticas() {
 // ==================== EXPEDIENTES ====================
 
 async function cargarExpedientes() {
-    const expedientes = await obtenerExpedientes();
+    let expedientes = await obtenerExpedientes();
     const lista = document.getElementById('lista-expedientes');
     const count = document.getElementById('count-expedientes');
+    const totalExpedientes = expedientes.length;
+
+    // Verificar si usuario NO es premium y tiene más de 10 expedientes
+    const esPremium = estadoPremium && estadoPremium.activo;
+    let mostrandoLimitados = false;
+
+    if (!esPremium && totalExpedientes > PREMIUM_CONFIG.limiteExpedientes) {
+        // Ordenar por fecha de modificación/creación (más recientes primero) y tomar solo 10
+        expedientes = [...expedientes]
+            .sort((a, b) => new Date(b.fechaModificacion || b.fechaCreacion || 0) - new Date(a.fechaModificacion || a.fechaCreacion || 0))
+            .slice(0, PREMIUM_CONFIG.limiteExpedientes);
+        mostrandoLimitados = true;
+    }
 
     if (expedientes.length === 0) {
         lista.innerHTML = `
@@ -187,7 +200,22 @@ async function cargarExpedientes() {
         return;
     }
 
-    lista.innerHTML = expedientes.map(exp => `
+    // Mostrar advertencia si está limitado
+    let advertenciaHTML = '';
+    if (mostrandoLimitados) {
+        advertenciaHTML = `
+            <div class="info-banner warning" style="margin-bottom: 1rem;">
+                <div class="info-icon">⚠️</div>
+                <div class="info-content">
+                    <h4>Licencia requerida</h4>
+                    <p>Tienes ${totalExpedientes} expedientes pero solo puedes ver los 10 más recientes.
+                    <a href="#" onclick="mostrarSeccion('configuracion'); return false;">Activa Premium</a> para acceso completo.</p>
+                </div>
+            </div>
+        `;
+    }
+
+    lista.innerHTML = advertenciaHTML + expedientes.map(exp => `
         <div class="expediente-card" data-id="${exp.id}">
             <div class="expediente-header">
                 <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
@@ -208,7 +236,12 @@ async function cargarExpedientes() {
         </div>
     `).join('');
 
-    count.textContent = `${expedientes.length} expediente${expedientes.length !== 1 ? 's' : ''}`;
+    // Mostrar conteo real vs visible
+    if (mostrandoLimitados) {
+        count.textContent = `${expedientes.length} de ${totalExpedientes} expedientes (limitado)`;
+    } else {
+        count.textContent = `${expedientes.length} expediente${expedientes.length !== 1 ? 's' : ''}`;
+    }
 
     // Actualizar select de expedientes en notas
     actualizarSelectExpedientes();
@@ -1216,8 +1249,22 @@ function confirmarEliminarEvento(id) {
 // ==================== BÚSQUEDA ====================
 
 async function cargarExpedientesParaBusqueda() {
-    const expedientes = await obtenerExpedientes();
+    let expedientes = await obtenerExpedientes();
     const container = document.getElementById('expedientes-busqueda');
+    const totalExpedientes = expedientes.length;
+
+    // Verificar si usuario NO es premium y tiene más de 10 expedientes
+    const esPremium = estadoPremium && estadoPremium.activo;
+    let mostrandoLimitados = false;
+
+    if (!esPremium && totalExpedientes > PREMIUM_CONFIG.limiteExpedientes) {
+        expedientes = [...expedientes]
+            .sort((a, b) => new Date(b.fechaModificacion || b.fechaCreacion || 0) - new Date(a.fechaModificacion || a.fechaCreacion || 0))
+            .slice(0, PREMIUM_CONFIG.limiteExpedientes);
+        mostrandoLimitados = true;
+        // Limpiar seleccionados que ya no están visibles
+        expedientesSeleccionados = expedientesSeleccionados.filter(id => expedientes.some(e => e.id === id));
+    }
 
     if (expedientes.length === 0) {
         container.innerHTML = `
@@ -1229,7 +1276,17 @@ async function cargarExpedientesParaBusqueda() {
         return;
     }
 
-    container.innerHTML = expedientes.map(exp => `
+    let advertenciaHTML = '';
+    if (mostrandoLimitados) {
+        advertenciaHTML = `
+            <div style="background: #fff3cd; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.5rem; font-size: 0.8rem;">
+                ⚠️ Mostrando solo ${PREMIUM_CONFIG.limiteExpedientes} de ${totalExpedientes} expedientes.
+                <a href="#" onclick="mostrarSeccion('configuracion'); return false;">Activar Premium</a>
+            </div>
+        `;
+    }
+
+    container.innerHTML = advertenciaHTML + expedientes.map(exp => `
         <label class="expediente-seleccion-item ${expedientesSeleccionados.includes(exp.id) ? 'selected' : ''}">
             <input type="checkbox" ${expedientesSeleccionados.includes(exp.id) ? 'checked' : ''} onchange="toggleExpedienteSeleccion(${exp.id})">
             <div class="exp-info">
