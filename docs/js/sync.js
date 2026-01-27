@@ -744,9 +744,22 @@ async function activarSync() {
         return;
     }
 
-    const clientId = localStorage.getItem('sync_client_id') || SYNC_CONFIG.clientId;
+    // Leer el Client ID del input y guardarlo
+    const inputClientId = document.getElementById('sync-client-id');
+    let clientId = inputClientId ? inputClientId.value.trim() : '';
+
+    // Si hay valor en el input, guardarlo
+    if (clientId) {
+        localStorage.setItem('sync_client_id', clientId);
+        SYNC_CONFIG.clientId = clientId;
+    } else {
+        // Intentar recuperar de localStorage
+        clientId = localStorage.getItem('sync_client_id') || SYNC_CONFIG.clientId;
+    }
+
     if (!clientId) {
-        mostrarToast('Configura el Client ID de Google primero', 'warning');
+        mostrarToast('Ingresa el Client ID de Google en el campo de arriba', 'warning');
+        if (inputClientId) inputClientId.focus();
         return;
     }
 
@@ -843,10 +856,20 @@ async function inicializarSync() {
     const lastSync = localStorage.getItem('sync_last_sync');
     const dispositivos = localStorage.getItem('sync_dispositivos');
     const maxDisp = localStorage.getItem('sync_max_dispositivos');
+    const savedClientId = localStorage.getItem('sync_client_id');
 
     if (lastSync) syncState.lastSync = parseInt(lastSync);
     if (dispositivos) syncState.dispositivos = JSON.parse(dispositivos);
     if (maxDisp) syncState.maxDispositivos = parseInt(maxDisp);
+
+    // Restaurar Client ID al input si existe
+    if (savedClientId) {
+        SYNC_CONFIG.clientId = savedClientId;
+        const inputClientId = document.getElementById('sync-client-id');
+        if (inputClientId) {
+            inputClientId.value = savedClientId;
+        }
+    }
 
     // Restaurar token si existe
     if (syncEnabled && restaurarToken()) {
