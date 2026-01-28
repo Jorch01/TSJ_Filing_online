@@ -1,6 +1,6 @@
 /**
- * TSJ Filing - Sistema de Licencias Multi-Dispositivo
- * Google Apps Script para gestión de licencias y dispositivos
+ * TSJ Filing - Sistema de Licencias con Sincronización
+ * Google Apps Script para gestión de licencias y sincronización de datos
  *
  * ESTRUCTURA DE TU HOJA (columnas existentes + nuevas):
  * A: codigo
@@ -11,13 +11,14 @@
  * F: fecha_registro_dispositivo
  * G: intentos_duplicacion
  * H: ultimo_acceso
- * I: max_dispositivos (NUEVA - agregar manualmente)
- * J: dispositivos_json (NUEVA - agregar manualmente)
+ * I: max_dispositivos (número de dispositivos permitidos, default: 2)
+ * J: dispositivos_json (array JSON de dispositivos)
+ * K: datos_sync (datos cifrados del usuario para sincronización)
  *
  * INSTRUCCIONES:
- * 1. Agrega las columnas I y J a tu hoja existente
+ * 1. Agrega las columnas I, J y K a tu hoja existente
  * 2. En columna I pon el número de dispositivos permitidos (2 por defecto)
- * 3. Columna J déjala vacía (se llena automáticamente)
+ * 3. Columnas J y K déjalas vacías (se llenan automáticamente)
  * 4. Actualiza SPREADSHEET_ID con el ID de tu hoja
  * 5. Despliega como aplicación web
  */
@@ -36,8 +37,9 @@ const COL = {
   FECHA_REGISTRO_DISP: 5,       // F
   INTENTOS_DUPLICACION: 6,      // G
   ULTIMO_ACCESO: 7,             // H
-  MAX_DISPOSITIVOS: 8,          // I (NUEVA)
-  DISPOSITIVOS_JSON: 9          // J (NUEVA)
+  MAX_DISPOSITIVOS: 8,          // I
+  DISPOSITIVOS_JSON: 9,         // J
+  DATOS_SYNC: 10                // K (NUEVA - datos cifrados para sync)
 };
 
 // ==================== FUNCIONES PRINCIPALES ====================
@@ -65,6 +67,12 @@ function doGet(e) {
         break;
       case 'obtener_dispositivos':
         resultado = obtenerDispositivos(e.parameter);
+        break;
+      case 'obtener_sync':
+        resultado = obtenerDatosSync(e.parameter);
+        break;
+      case 'guardar_sync':
+        resultado = guardarDatosSync(e.parameter);
         break;
       default:
         resultado = { error: true, mensaje: 'Acción no válida' };
@@ -566,6 +574,100 @@ function migrarLicenciasExistentes() {
 
   Logger.log(`Migración completada: ${migradas} licencias migradas`);
   return { success: true, migradas: migradas };
+}
+
+// ==================== SINCRONIZACIÓN DE DATOS ====================
+
+/**
+ * Obtiene los datos sincronizados (cifrados) para un código
+ */
+function obtenerDatosSync(params) {
+  const codigo = params.codigo;
+
+  if (!codigo) {
+    return { success: false, mensaje: 'Código requerido' };
+  }
+
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][COL.CODIGO] === codigo) {
+      const row = data[i];
+      const estado = row[COL.ESTADO];
+      const fechaExp = new Date(row[COL.FECHA_EXP]);
+
+      // Verificar licencia válida
+      if (estado !== 'activo') {
+        return { success: false, mensaje: 'Licencia inactiva' };
+      }
+
+      if (fechaExp < new Date()) {
+        return { success: false, mensaje: 'Licencia expirada' };
+      }
+
+      // Obtener datos sync (pueden estar vacíos)
+      const datosSync = row[COL.DATOS_SYNC] || null;
+
+      // Actualizar último acceso
+      sheet.getRange(i + 1, COL.ULTIMO_ACCESO + 1).setValue(new Date());
+
+      return {
+        success: true,
+        datos: datosSync
+      };
+    }
+  }
+
+  return { success: false, mensaje: 'Código no encontrado' };
+}
+
+/**
+ * Guarda los datos sincronizados (cifrados) para un código
+ */
+function guardarDatosSync(params) {
+  const codigo = params.codigo;
+  const datos = params.datos;
+
+  if (!codigo) {
+    return { success: false, mensaje: 'Código requerido' };
+  }
+
+  if (!datos) {
+    return { success: false, mensaje: 'Datos requeridos' };
+  }
+
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][COL.CODIGO] === codigo) {
+      const row = data[i];
+      const estado = row[COL.ESTADO];
+      const fechaExp = new Date(row[COL.FECHA_EXP]);
+
+      // Verificar licencia válida
+      if (estado !== 'activo') {
+        return { success: false, mensaje: 'Licencia inactiva' };
+      }
+
+      if (fechaExp < new Date()) {
+        return { success: false, mensaje: 'Licencia expirada' };
+      }
+
+      // Guardar datos sync
+      const rowNum = i + 1;
+      sheet.getRange(rowNum, COL.DATOS_SYNC + 1).setValue(datos);
+      sheet.getRange(rowNum, COL.ULTIMO_ACCESO + 1).setValue(new Date());
+
+      return {
+        success: true,
+        mensaje: 'Datos sincronizados correctamente'
+      };
+    }
+  }
+
+  return { success: false, mensaje: 'Código no encontrado' };
 }
 
 // ==================== FUNCIONES DE PRUEBA ====================

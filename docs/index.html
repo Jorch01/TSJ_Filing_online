@@ -937,55 +937,34 @@
             <!-- Sección de Sincronización Multi-Dispositivo -->
             <div class="config-section" id="sync-section">
                 <h3>🔄 Sincronización Multi-Dispositivo</h3>
-                <p class="text-muted" style="margin-bottom: 1rem;">
-                    Sincroniza tus expedientes, notas y eventos entre varios dispositivos de forma segura.
-                    <strong>Solo para usuarios Premium.</strong>
-                </p>
 
-                <!-- Panel cuando NO está autenticado -->
-                <div id="sync-panel-auth">
+                <!-- Mensaje para usuarios no premium -->
+                <div class="sync-no-premium">
+                    <div class="info-banner warning">
+                        <div class="info-icon">⭐</div>
+                        <div class="info-content">
+                            <h4>Función Premium</h4>
+                            <p>Activa tu licencia Premium para sincronizar tus datos entre dispositivos.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Panel para usuarios premium -->
+                <div class="sync-content" style="display: none;">
                     <div class="info-banner" style="margin-bottom: 1rem;">
                         <div class="info-icon">🔐</div>
                         <div class="info-content">
                             <h4>Sincronización Cifrada</h4>
-                            <p>Tus datos se almacenan cifrados en tu propia cuenta de Google Drive.
-                            Ni siquiera nosotros podemos leerlos.</p>
+                            <p>Tus datos se cifran con tu código premium antes de enviarse. Nadie más puede leerlos.</p>
                         </div>
                     </div>
 
-                    <div class="form-group">
-                        <label>
-                            Google Client ID
-                            <span class="tooltip-container">
-                                <button type="button" class="help-btn">?</button>
-                                <div class="tooltip-content">
-                                    <h4>¿Cómo obtener el Client ID?</h4>
-                                    <p>1. Ve a <a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a></p>
-                                    <p>2. Crea un proyecto o selecciona uno existente</p>
-                                    <p>3. Ve a "APIs y Servicios" → "Credenciales"</p>
-                                    <p>4. Crea una credencial OAuth 2.0 tipo "Aplicación web"</p>
-                                    <p>5. Agrega tu dominio en "Orígenes autorizados"</p>
-                                    <p>6. Copia el Client ID aquí</p>
-                                </div>
-                            </span>
-                        </label>
-                        <input type="text" id="sync-client-id" class="form-control"
-                            placeholder="xxxxxx.apps.googleusercontent.com">
-                    </div>
-
-                    <button class="btn btn-primary" onclick="activarSync()" id="btn-activar-sync">
-                        🔗 Conectar con Google Drive
-                    </button>
-                </div>
-
-                <!-- Panel cuando ESTÁ sincronizando -->
-                <div id="sync-panel-active" style="display: none;">
                     <div class="sync-status-card">
                         <div class="sync-status-header">
                             <span id="sync-status">
-                                <span class="sync-dot online"></span> Conectado
+                                <span class="sync-dot offline"></span> No sincronizado
                             </span>
-                            <button class="btn btn-sm btn-secondary" onclick="sincronizarDatos(true)" id="btn-sync">
+                            <button class="btn btn-primary" onclick="sincronizarDatos()" id="btn-sync">
                                 🔄 Sincronizar ahora
                             </button>
                         </div>
@@ -993,31 +972,19 @@
                         <div class="sync-info">
                             <div class="sync-info-item">
                                 <span class="sync-info-label">Última sincronización:</span>
-                                <span class="sync-info-value" id="sync-last-time">--</span>
+                                <span class="sync-info-value" id="sync-last-time">Nunca</span>
                             </div>
-                            <div class="sync-info-item">
-                                <span class="sync-info-label">Tipo de dispositivo:</span>
-                                <span class="sync-info-value" id="sync-device-type">--</span>
-                            </div>
-                        </div>
-
-                        <div class="sync-actions">
-                            <button class="btn btn-outline btn-sm" onclick="mostrarModalDispositivos()">
-                                📱 Ver dispositivos vinculados
-                            </button>
-                            <button class="btn btn-outline btn-sm btn-danger" onclick="desactivarSync()">
-                                ❌ Desconectar
-                            </button>
                         </div>
                     </div>
-                </div>
 
-                <!-- Info sobre dispositivos -->
-                <div class="info-banner warning" style="margin-top: 1rem;">
-                    <div class="info-icon">💡</div>
-                    <div class="info-content">
-                        <p><strong>Plan básico:</strong> 2 dispositivos (1 móvil + 1 PC/laptop)</p>
-                        <p><strong>Más dispositivos:</strong> Contacta soporte para planes especiales.</p>
+                    <div class="info-banner warning" style="margin-top: 1rem;">
+                        <div class="info-icon">💡</div>
+                        <div class="info-content">
+                            <p><strong>¿Cómo funciona?</strong></p>
+                            <p>1. Activa tu código premium en ambos dispositivos</p>
+                            <p>2. Haz clic en "Sincronizar ahora" en cada uno</p>
+                            <p>Los datos más recientes se combinan automáticamente.</p>
+                        </div>
                     </div>
                 </div>
             </div>
