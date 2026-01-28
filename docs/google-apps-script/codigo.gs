@@ -99,6 +99,46 @@ function esEstadoActivo(estado) {
   return estadoNormalizado === 'activo' || estadoNormalizado === 'active';
 }
 
+// Parsear fecha de forma segura (maneja Date objects, strings, y formatos variados)
+function parsearFechaSegura(valor) {
+  if (!valor) return null;
+
+  // Si ya es un objeto Date de Google Sheets
+  if (valor instanceof Date) {
+    if (isNaN(valor.getTime())) return null;
+    return valor;
+  }
+
+  // Si es string, intentar parsear
+  const str = String(valor).trim();
+  if (!str) return null;
+
+  // Intentar parseo directo
+  let fecha = new Date(str);
+  if (!isNaN(fecha.getTime())) return fecha;
+
+  // Intentar formato DD/MM/YYYY
+  const partes = str.split(/[\/\-]/);
+  if (partes.length === 3) {
+    // Intentar DD/MM/YYYY
+    fecha = new Date(partes[2], partes[1] - 1, partes[0]);
+    if (!isNaN(fecha.getTime())) return fecha;
+
+    // Intentar MM/DD/YYYY
+    fecha = new Date(partes[2], partes[0] - 1, partes[1]);
+    if (!isNaN(fecha.getTime())) return fecha;
+  }
+
+  return null;
+}
+
+// Convertir fecha a ISO string de forma segura
+function fechaAISOString(fecha) {
+  const fechaParseada = parsearFechaSegura(fecha);
+  if (!fechaParseada) return null;
+  return fechaParseada.toISOString();
+}
+
 function getDispositivos(row) {
   let dispositivos = [];
 
@@ -114,11 +154,12 @@ function getDispositivos(row) {
 
   // Si está vacío pero hay un dispositivo legacy, migrarlo
   if (dispositivos.length === 0 && row[COL.DISPOSITIVO_ID_LEGACY]) {
+    const fechaRegDisp = fechaAISOString(row[COL.FECHA_REGISTRO_DISP]) || new Date().toISOString();
     dispositivos = [{
       id: row[COL.DISPOSITIVO_ID_LEGACY],
       tipo: 'desktop',
       nombre: 'Dispositivo (migrado)',
-      fechaRegistro: row[COL.FECHA_REGISTRO_DISP] || new Date().toISOString()
+      fechaRegistro: fechaRegDisp
     }];
   }
 
@@ -151,7 +192,7 @@ function verificarCodigo(params) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][COL.CODIGO] === codigo) {
       const row = data[i];
-      const fechaExp = new Date(row[COL.FECHA_EXP]);
+      const fechaExp = parsearFechaSegura(row[COL.FECHA_EXP]);
       const estado = row[COL.ESTADO];
       const maxDispositivos = getMaxDispositivos(row);
       const dispositivos = getDispositivos(row);
@@ -159,6 +200,11 @@ function verificarCodigo(params) {
       // Verificar estado (case-insensitive)
       if (!esEstadoActivo(estado)) {
         return { valido: false, mensaje: 'Licencia inactiva o suspendida' };
+      }
+
+      // Verificar que la fecha sea válida
+      if (!fechaExp) {
+        return { valido: false, mensaje: 'Fecha de expiración inválida en el sistema' };
       }
 
       // Verificar expiración
@@ -232,7 +278,7 @@ function registrarDispositivo(params) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][COL.CODIGO] === codigo) {
       const row = data[i];
-      const fechaExp = new Date(row[COL.FECHA_EXP]);
+      const fechaExp = parsearFechaSegura(row[COL.FECHA_EXP]);
       const estado = row[COL.ESTADO];
       const maxDispositivos = getMaxDispositivos(row);
       let dispositivos = getDispositivos(row);
@@ -242,7 +288,7 @@ function registrarDispositivo(params) {
         return { success: false, mensaje: 'Licencia inactiva' };
       }
 
-      if (fechaExp < new Date()) {
+      if (!fechaExp || fechaExp < new Date()) {
         return { success: false, mensaje: 'Licencia expirada' };
       }
 
@@ -388,7 +434,7 @@ function verificarHeartbeat(params) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][COL.CODIGO] === codigo) {
       const row = data[i];
-      const fechaExp = new Date(row[COL.FECHA_EXP]);
+      const fechaExp = parsearFechaSegura(row[COL.FECHA_EXP]);
       const estado = row[COL.ESTADO];
       const dispositivos = getDispositivos(row);
 
@@ -398,7 +444,7 @@ function verificarHeartbeat(params) {
       }
 
       // Verificar expiración
-      if (fechaExp < new Date()) {
+      if (!fechaExp || fechaExp < new Date()) {
         return { valido: false, razon: 'expirado' };
       }
 
@@ -442,11 +488,11 @@ function transferirLicencia(params) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][COL.CODIGO] === codigo) {
       const row = data[i];
-      const fechaExp = new Date(row[COL.FECHA_EXP]);
+      const fechaExp = parsearFechaSegura(row[COL.FECHA_EXP]);
       const estado = row[COL.ESTADO];
       const maxDispositivos = getMaxDispositivos(row);
 
-      if (!esEstadoActivo(estado) || fechaExp < new Date()) {
+      if (!esEstadoActivo(estado) || !fechaExp || fechaExp < new Date()) {
         return { success: false, mensaje: 'Licencia no válida' };
       }
 
@@ -568,11 +614,12 @@ function migrarLicenciasExistentes() {
 
     // Si tiene dispositivo legacy pero no tiene dispositivos_json, migrar
     if (dispositivoLegacy && (!dispositivosJson || dispositivosJson === '[]')) {
+      const fechaRegDisp = fechaAISOString(row[COL.FECHA_REGISTRO_DISP]) || new Date().toISOString();
       const dispositivos = [{
         id: dispositivoLegacy,
         tipo: 'desktop',
         nombre: 'Dispositivo (migrado)',
-        fechaRegistro: row[COL.FECHA_REGISTRO_DISP] || new Date().toISOString()
+        fechaRegistro: fechaRegDisp
       }];
       sheet.getRange(rowNum, COL.DISPOSITIVOS_JSON + 1).setValue(JSON.stringify(dispositivos));
       migradas++;
@@ -602,14 +649,14 @@ function obtenerDatosSync(params) {
     if (data[i][COL.CODIGO] === codigo) {
       const row = data[i];
       const estado = row[COL.ESTADO];
-      const fechaExp = new Date(row[COL.FECHA_EXP]);
+      const fechaExp = parsearFechaSegura(row[COL.FECHA_EXP]);
 
       // Verificar licencia válida
       if (!esEstadoActivo(estado)) {
         return { success: false, mensaje: 'Licencia inactiva' };
       }
 
-      if (fechaExp < new Date()) {
+      if (!fechaExp || fechaExp < new Date()) {
         return { success: false, mensaje: 'Licencia expirada' };
       }
 
@@ -651,14 +698,14 @@ function guardarDatosSync(params) {
     if (data[i][COL.CODIGO] === codigo) {
       const row = data[i];
       const estado = row[COL.ESTADO];
-      const fechaExp = new Date(row[COL.FECHA_EXP]);
+      const fechaExp = parsearFechaSegura(row[COL.FECHA_EXP]);
 
       // Verificar licencia válida
       if (!esEstadoActivo(estado)) {
         return { success: false, mensaje: 'Licencia inactiva' };
       }
 
-      if (fechaExp < new Date()) {
+      if (!fechaExp || fechaExp < new Date()) {
         return { success: false, mensaje: 'Licencia expirada' };
       }
 
