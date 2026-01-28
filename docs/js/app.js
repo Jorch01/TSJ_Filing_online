@@ -2590,6 +2590,18 @@ function _decode(str) {
     }
 }
 
+// Parsear fecha de forma segura (evita "Invalid time value")
+function parsearFechaSegura(valor) {
+    if (!valor) return null;
+    try {
+        const fecha = new Date(valor);
+        if (isNaN(fecha.getTime())) return null;
+        return fecha;
+    } catch {
+        return null;
+    }
+}
+
 // ==================== FINGERPRINT DE DISPOSITIVO ====================
 
 // Generar ID único de dispositivo basado en características del navegador
@@ -2679,8 +2691,8 @@ async function cargarEstadoPremium() {
 
                 // Verificar si expiró
                 if (estadoPremium.fechaExpiracion) {
-                    const expira = new Date(estadoPremium.fechaExpiracion);
-                    if (expira < new Date()) {
+                    const expira = parsearFechaSegura(estadoPremium.fechaExpiracion);
+                    if (!expira || expira < new Date()) {
                         estadoPremium.activo = false;
                         estadoPremium.codigo = null;
                         estadoPremium.fechaExpiracion = null;
@@ -2738,7 +2750,10 @@ async function actualizarUIPremium() {
             premiumActive.style.display = 'block';
             const expiry = document.getElementById('premium-expiry');
             if (expiry && estadoPremium.fechaExpiracion) {
-                expiry.textContent = `Válido hasta: ${new Date(estadoPremium.fechaExpiracion).toLocaleDateString('es-MX')}`;
+                const fechaExp = parsearFechaSegura(estadoPremium.fechaExpiracion);
+                expiry.textContent = fechaExp
+                    ? `Válido hasta: ${fechaExp.toLocaleDateString('es-MX')}`
+                    : 'Fecha no disponible';
             }
         }
     } else {
@@ -2881,15 +2896,21 @@ async function activarPremium() {
         const resultado = await verificarCodigoPremium(codigo, deviceId);
 
         if (resultado.valido) {
-            // Activar premium por 30 días
-            const fechaExp = new Date();
-            fechaExp.setDate(fechaExp.getDate() + 30);
+            // Usar la fecha de expiración de la API, o 30 días como fallback
+            let fechaExpISO;
+            if (resultado.fechaExpiracion) {
+                fechaExpISO = resultado.fechaExpiracion;
+            } else {
+                const fechaExp = new Date();
+                fechaExp.setDate(fechaExp.getDate() + 30);
+                fechaExpISO = fechaExp.toISOString();
+            }
 
             estadoPremium.activo = true;
             estadoPremium.codigo = codigo;
             estadoPremium.usuario = username;
             estadoPremium.dispositivoId = deviceId;
-            estadoPremium.fechaExpiracion = fechaExp.toISOString();
+            estadoPremium.fechaExpiracion = fechaExpISO;
 
             guardarEstadoPremium();
             await actualizarUIPremium();
@@ -3076,8 +3097,8 @@ async function verificarConCSV(codigo, deviceId) {
             const [codigoSheet, fechaExp, dispositivoRegistrado, usuarioRegistrado, estado] = campos;
 
             if (codigoSheet && codigoSheet.toUpperCase() === codigo.toUpperCase()) {
-                const fechaExpiracion = new Date(fechaExp);
-                if (fechaExpiracion < new Date()) {
+                const fechaExpiracion = parsearFechaSegura(fechaExp);
+                if (!fechaExpiracion || fechaExpiracion < new Date()) {
                     return { valido: false, mensaje: 'Este código ha expirado' };
                 }
 
