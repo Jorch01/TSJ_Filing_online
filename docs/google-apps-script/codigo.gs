@@ -92,6 +92,13 @@ function getSheet() {
   return SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
 }
 
+// Verificar si el estado es activo (case-insensitive)
+function esEstadoActivo(estado) {
+  if (!estado) return false;
+  const estadoNormalizado = String(estado).toLowerCase().trim();
+  return estadoNormalizado === 'activo' || estadoNormalizado === 'active';
+}
+
 function getDispositivos(row) {
   let dispositivos = [];
 
@@ -149,8 +156,8 @@ function verificarCodigo(params) {
       const maxDispositivos = getMaxDispositivos(row);
       const dispositivos = getDispositivos(row);
 
-      // Verificar estado
-      if (estado !== 'activo') {
+      // Verificar estado (case-insensitive)
+      if (!esEstadoActivo(estado)) {
         return { valido: false, mensaje: 'Licencia inactiva o suspendida' };
       }
 
@@ -231,7 +238,7 @@ function registrarDispositivo(params) {
       let dispositivos = getDispositivos(row);
 
       // Verificaciones
-      if (estado !== 'activo') {
+      if (!esEstadoActivo(estado)) {
         return { success: false, mensaje: 'Licencia inactiva' };
       }
 
@@ -386,7 +393,7 @@ function verificarHeartbeat(params) {
       const dispositivos = getDispositivos(row);
 
       // Verificar estado
-      if (estado !== 'activo') {
+      if (!esEstadoActivo(estado)) {
         return { valido: false, razon: 'inactivo' };
       }
 
@@ -439,7 +446,7 @@ function transferirLicencia(params) {
       const estado = row[COL.ESTADO];
       const maxDispositivos = getMaxDispositivos(row);
 
-      if (estado !== 'activo' || fechaExp < new Date()) {
+      if (!esEstadoActivo(estado) || fechaExp < new Date()) {
         return { success: false, mensaje: 'Licencia no válida' };
       }
 
@@ -598,7 +605,7 @@ function obtenerDatosSync(params) {
       const fechaExp = new Date(row[COL.FECHA_EXP]);
 
       // Verificar licencia válida
-      if (estado !== 'activo') {
+      if (!esEstadoActivo(estado)) {
         return { success: false, mensaje: 'Licencia inactiva' };
       }
 
@@ -647,7 +654,7 @@ function guardarDatosSync(params) {
       const fechaExp = new Date(row[COL.FECHA_EXP]);
 
       // Verificar licencia válida
-      if (estado !== 'activo') {
+      if (!esEstadoActivo(estado)) {
         return { success: false, mensaje: 'Licencia inactiva' };
       }
 
