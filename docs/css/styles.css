@@ -593,6 +593,17 @@ input:focus, textarea:focus, select:focus {
 .dia-cell.es-hoy { background: #e3f2fd; }
 .dia-cell.es-hoy .dia-numero { background: var(--primary); color: white; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; }
 .dia-cell.seleccionado { outline: 2px solid var(--primary); outline-offset: -2px; }
+.dia-cell.dia-inhabil { background: #ffebee; }
+.dia-cell.dia-inhabil:hover { background: #ffcdd2; }
+.dia-inhabil-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    font-size: 0.6rem;
+    opacity: 0.7;
+}
+[data-theme="dark"] .dia-cell.dia-inhabil { background: #4a1a1a; }
+[data-theme="dark"] .dia-cell.dia-inhabil:hover { background: #5a2a2a; }
 .dia-numero { font-weight: 500; font-size: 0.9rem; }
 .dia-eventos { display: flex; flex-wrap: wrap; gap: 2px; margin-top: auto; }
 .evento-dot { width: 8px; height: 8px; border-radius: 50%; }
@@ -1514,3 +1525,82 @@ textarea:focus {
         text-align: center;
     }
 }
+
+/* ==================== ANUNCIOS ==================== */
+.ad-banner {
+    background: linear-gradient(135deg, #f5f7fa 0%, #e4e8eb 100%);
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    position: relative;
+}
+
+.ad-banner-top { margin-bottom: 1.5rem; }
+.ad-banner-sidebar { margin-top: 1rem; }
+
+.ad-content {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.ad-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    background: var(--bg-tertiary);
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.ad-body {
+    flex: 1;
+    min-width: 200px;
+}
+
+.ad-body a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+}
+.ad-body a:hover { text-decoration: underline; }
+
+.ad-body img {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius);
+    max-height: 80px;
+    object-fit: contain;
+}
+
+.ad-remove-link {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-decoration: none;
+}
+.ad-remove-link:hover {
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+.ad-text {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.ad-text-link {
+    display: block;
+    padding: 0.5rem;
+    background: var(--bg-primary);
+    border-radius: var(--radius);
+    text-align: center;
+}
+
+[data-theme="dark"] .ad-banner {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+}
+
+/* Ocultar anuncios cuando el usuario los desactiva */
+.ads-hidden .ad-banner { display: none !important; }

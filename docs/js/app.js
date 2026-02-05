@@ -7,6 +7,65 @@ let expedientesSeleccionados = [];
 let fechaCalendario = new Date();
 let diaSeleccionado = null;
 let vistaExpedientes = localStorage.getItem('vistaExpedientes') || 'cards'; // 'cards' o 'table'
+let diasInhabilesTSJ = []; // Días inhábiles del tribunal
+
+// Días inhábiles fijos del TSJQROO (formato MM-DD)
+const DIAS_INHABILES_FIJOS = [
+    { fecha: '01-01', nombre: 'Año Nuevo' },
+    { fecha: '02-05', nombre: 'Día de la Constitución' },
+    { fecha: '03-21', nombre: 'Natalicio de Benito Juárez' },
+    { fecha: '05-01', nombre: 'Día del Trabajo' },
+    { fecha: '09-16', nombre: 'Independencia de México' },
+    { fecha: '11-20', nombre: 'Revolución Mexicana' },
+    { fecha: '12-25', nombre: 'Navidad' },
+    // Semana Santa y otras fechas variables se agregan dinámicamente
+];
+
+// Períodos de vacaciones judiciales (formato: { inicio: 'MM-DD', fin: 'MM-DD' })
+const VACACIONES_JUDICIALES = [
+    { inicio: '07-16', fin: '07-31', nombre: 'Primer período vacacional' },
+    { inicio: '12-16', fin: '12-31', nombre: 'Segundo período vacacional' },
+];
+
+// Verificar si una fecha es día inhábil
+function esDiaInhabil(fecha) {
+    const mesdia = `${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
+    const year = fecha.getFullYear();
+
+    // Verificar fines de semana
+    if (fecha.getDay() === 0 || fecha.getDay() === 6) {
+        return { inhabil: true, razon: fecha.getDay() === 0 ? 'Domingo' : 'Sábado' };
+    }
+
+    // Verificar días fijos
+    const diaFijo = DIAS_INHABILES_FIJOS.find(d => d.fecha === mesdia);
+    if (diaFijo) {
+        return { inhabil: true, razon: diaFijo.nombre };
+    }
+
+    // Verificar vacaciones
+    for (const vac of VACACIONES_JUDICIALES) {
+        const [iniMes, iniDia] = vac.inicio.split('-').map(Number);
+        const [finMes, finDia] = vac.fin.split('-').map(Number);
+        const inicio = new Date(year, iniMes - 1, iniDia);
+        const fin = new Date(year, finMes - 1, finDia);
+
+        if (fecha >= inicio && fecha <= fin) {
+            return { inhabil: true, razon: vac.nombre };
+        }
+    }
+
+    // Verificar días inhábiles dinámicos (cargados de configuración)
+    const diaPersonalizado = diasInhabilesTSJ.find(d => {
+        const fechaInhabil = new Date(d.fecha);
+        return fechaInhabil.toDateString() === fecha.toDateString();
+    });
+    if (diaPersonalizado) {
+        return { inhabil: true, razon: diaPersonalizado.nombre };
+    }
+
+    return { inhabil: false };
+}
 
 // ==================== INICIALIZACIÓN ====================
 
@@ -1038,10 +1097,12 @@ function generarDiasDelMes(fecha, eventos) {
             const fechaEvento = new Date(e.fechaInicio);
             return fechaEvento.toDateString() === dia.toDateString();
         });
+        const infoInhabil = esDiaInhabil(dia);
 
         let clases = 'dia-cell';
         if (esHoy) clases += ' es-hoy';
         if (diaSeleccionado && dia.getTime() === diaSeleccionado.getTime()) clases += ' seleccionado';
+        if (infoInhabil.inhabil) clases += ' dia-inhabil';
 
         let dotsHtml = '';
         if (eventosDelDia.length > 0) {
@@ -1051,9 +1112,12 @@ function generarDiasDelMes(fecha, eventos) {
             </div>`;
         }
 
+        const tooltipInhabil = infoInhabil.inhabil ? ` title="${infoInhabil.razon}"` : '';
+
         diasHtml.push(`
-            <div class="${clases}" onclick="seleccionarDia(${dia.getTime()})" ondblclick="crearEventoEnDia(${dia.getTime()})">
+            <div class="${clases}"${tooltipInhabil} onclick="seleccionarDia(${dia.getTime()})" ondblclick="crearEventoEnDia(${dia.getTime()})">
                 <span class="dia-numero">${i}</span>
+                ${infoInhabil.inhabil ? '<span class="dia-inhabil-badge">⛔</span>' : ''}
                 ${dotsHtml}
             </div>
         `);
@@ -1530,6 +1594,14 @@ async function cargarConfiguracion() {
         checkTema.checked = temaOscuro === 'true';
     }
     aplicarTema();
+
+    // Cargar preferencia de anuncios (para premium, ocultos por defecto)
+    const ocultarAnuncios = await obtenerConfig('ocultar_anuncios');
+    const checkAnuncios = document.getElementById('config-ocultar-anuncios');
+    if (checkAnuncios) {
+        // Para premium: checked por defecto a menos que explícitamente quiera ver anuncios
+        checkAnuncios.checked = ocultarAnuncios !== 'false';
+    }
 }
 
 // ==================== TEMA OSCURO ====================
@@ -2503,21 +2575,62 @@ async function guardarResultadosIA() {
     const resultado = resultadosIAActuales;
     let guardados = 0;
 
+    // Si hay un expediente personalizado, crearlo automáticamente
+    if (resultado.expedienteTexto && !resultado.expedienteId) {
+        try {
+            // Verificar si ya existe un expediente con ese número
+            const expedientes = await obtenerExpedientes();
+            const existente = expedientes.find(e =>
+                (e.numero && e.numero.toLowerCase() === resultado.expedienteTexto.toLowerCase()) ||
+                (e.nombre && e.nombre.toLowerCase() === resultado.expedienteTexto.toLowerCase())
+            );
+
+            if (existente) {
+                // Ya existe, usar su ID
+                resultado.expedienteId = existente.id;
+                mostrarToast(`Expediente "${resultado.expedienteTexto}" ya existe, vinculando...`, 'info');
+            } else {
+                // Crear nuevo expediente
+                const nuevoExp = {
+                    numero: resultado.expedienteTexto,
+                    juzgado: 'Por determinar',
+                    categoria: 'General',
+                    comentario: 'Creado automáticamente desde análisis IA'
+                };
+                const idNuevo = await agregarExpediente(nuevoExp);
+                resultado.expedienteId = idNuevo;
+                guardados++;
+                mostrarToast(`Expediente "${resultado.expedienteTexto}" creado automáticamente`, 'success');
+            }
+        } catch (e) {
+            console.error('Error al crear expediente:', e);
+        }
+    }
+
     // Guardar eventos/fechas seleccionados
     if (resultado.fechas) {
         for (let i = 0; i < resultado.fechas.length; i++) {
             const checkbox = document.getElementById(`ia-fecha-${i}`);
             if (checkbox && checkbox.checked) {
                 const fecha = resultado.fechas[i];
+                // Obtener info del expediente para mostrar en el título
+                let expedienteInfo = '';
+                if (resultado.expedienteId) {
+                    const exp = await obtenerExpediente(resultado.expedienteId);
+                    if (exp) expedienteInfo = ` [${exp.numero || exp.nombre}]`;
+                } else if (resultado.expedienteTexto) {
+                    expedienteInfo = ` [${resultado.expedienteTexto}]`;
+                }
+
                 const evento = {
-                    titulo: fecha.descripcion,
+                    titulo: `${fecha.descripcion}${expedienteInfo}`,
                     tipo: fecha.tipo === 'audiencia' ? 'audiencia' :
                           fecha.tipo === 'vencimiento' ? 'vencimiento' : 'recordatorio',
                     fechaInicio: new Date(fecha.fecha + (fecha.hora ? `T${fecha.hora}` : 'T09:00')).toISOString(),
                     todoElDia: !fecha.hora,
                     expedienteId: resultado.expedienteId,
-                    expedienteTexto: resultado.expedienteTexto, // Soporte para expediente personalizado
-                    descripcion: `Extraído automáticamente por IA`,
+                    expedienteTexto: resultado.expedienteTexto,
+                    descripcion: `Expediente: ${resultado.expedienteTexto || 'N/A'}\nExtraído automáticamente por IA`,
                     alerta: true,
                     color: fecha.tipo === 'audiencia' ? '#3788d8' :
                            fecha.tipo === 'vencimiento' ? '#dc3545' : '#ffc107'
@@ -2582,6 +2695,7 @@ async function guardarResultadosIA() {
     }
 
     // Actualizar UI
+    await cargarExpedientes(); // También actualizar expedientes por si se creó uno nuevo
     await cargarEventos();
     await cargarNotas();
     await cargarEstadisticas();
@@ -2589,6 +2703,7 @@ async function guardarResultadosIA() {
 
     document.getElementById('resultados-ia').style.display = 'none';
     document.getElementById('ia-texto-acuerdo').value = '';
+    eliminarImagenAcuerdo(); // Limpiar imagen si había
     resultadosIAActuales = null;
 
     mostrarToast(`${guardados} elementos guardados`, 'success');
@@ -3514,4 +3629,159 @@ setInterval(async () => {
         await verificarLicenciaPeriodica();
     }
 }, 60 * 60 * 1000); // Cada hora
+
+// ==================== SISTEMA DE ANUNCIOS ====================
+
+// Configuración de anuncios (pueden ser cargados de un servidor o configurados manualmente)
+const ANUNCIOS_CONFIG = [
+    {
+        id: 'ad1',
+        tipo: 'texto',
+        contenido: '¿Necesitas un abogado especializado? Contáctanos en abogados@ejemplo.com',
+        enlace: 'mailto:abogados@ejemplo.com',
+        activo: true
+    },
+    {
+        id: 'ad2',
+        tipo: 'texto',
+        contenido: '📋 Software de gestión jurídica profesional - Prueba gratis',
+        enlace: '#',
+        activo: true
+    },
+    {
+        id: 'placeholder',
+        tipo: 'placeholder',
+        contenido: '📢 Espacio disponible para anunciantes',
+        enlace: 'mailto:publicidad@tsjfiling.com?subject=Anuncio en TSJ Filing',
+        activo: true
+    }
+];
+
+// Inicializar sistema de anuncios
+async function inicializarAnuncios() {
+    const ocultarAnuncios = await obtenerConfig('ocultar_anuncios');
+    const esPremium = estadoPremium && estadoPremium.activo;
+
+    if (esPremium) {
+        // Premium: ocultar anuncios por defecto, mostrar solo si explícitamente quiere
+        if (ocultarAnuncios === 'false') {
+            // Usuario premium que quiere ver anuncios (raro pero posible)
+            document.body.classList.remove('ads-hidden');
+            mostrarAnuncios();
+        } else {
+            // Por defecto, premium no ve anuncios
+            document.body.classList.add('ads-hidden');
+        }
+    } else {
+        // No premium: siempre mostrar anuncios
+        document.body.classList.remove('ads-hidden');
+        mostrarAnuncios();
+    }
+}
+
+// Mostrar anuncios en los contenedores
+function mostrarAnuncios() {
+    const anunciosActivos = ANUNCIOS_CONFIG.filter(a => a.activo);
+    if (anunciosActivos.length === 0) return;
+
+    // Rotar anuncios aleatoriamente
+    const anuncioAleatorio = () => anunciosActivos[Math.floor(Math.random() * anunciosActivos.length)];
+
+    // Mostrar en cada contenedor de anuncios
+    const contenedores = document.querySelectorAll('.ad-banner');
+    contenedores.forEach(contenedor => {
+        contenedor.style.display = 'block';
+        const bodyEl = contenedor.querySelector('.ad-body');
+        if (bodyEl) {
+            const anuncio = anuncioAleatorio();
+            bodyEl.innerHTML = generarHTMLAnuncio(anuncio);
+        }
+    });
+}
+
+// Generar HTML para un anuncio
+function generarHTMLAnuncio(anuncio) {
+    if (anuncio.tipo === 'imagen') {
+        return `
+            <a href="${anuncio.enlace}" target="_blank" class="ad-image-link">
+                <img src="${anuncio.imagen}" alt="${anuncio.contenido}">
+            </a>
+        `;
+    } else {
+        return `
+            <a href="${anuncio.enlace}" ${anuncio.enlace.startsWith('http') ? 'target="_blank"' : ''} class="ad-text-link">
+                <span class="ad-text">${anuncio.contenido}</span>
+            </a>
+        `;
+    }
+}
+
+// Mostrar opción de quitar anuncios
+function mostrarOpcionQuitarAnuncios(event) {
+    event.preventDefault();
+
+    if (estadoPremium && estadoPremium.activo) {
+        // Usuario premium - puede quitar anuncios
+        if (confirm('¿Deseas ocultar los anuncios? Puedes reactivarlos en Configuración.')) {
+            guardarConfig('ocultar_anuncios', 'true');
+            document.body.classList.add('ads-hidden');
+            mostrarToast('Anuncios ocultados. Puedes reactivarlos en Configuración.', 'success');
+        }
+    } else {
+        // Usuario gratuito - mostrar info de premium
+        document.getElementById('modal-titulo').textContent = '⭐ Quitar Anuncios';
+        document.getElementById('modal-body').innerHTML = `
+            <div style="text-align: center; padding: 1rem;">
+                <p style="font-size: 1.1rem; margin-bottom: 1rem;">
+                    Los anuncios ayudan a mantener este servicio gratuito.
+                </p>
+                <p style="margin-bottom: 1.5rem;">
+                    Con <strong>Premium</strong> puedes quitar los anuncios y disfrutar de todas las funciones sin límites.
+                </p>
+                <button class="btn btn-primary btn-lg" onclick="cerrarModal(); mostrarSeccion('configuracion');">
+                    ⭐ Ver planes Premium
+                </button>
+            </div>
+        `;
+        document.getElementById('modal-footer').innerHTML = `
+            <button class="btn btn-secondary" onclick="cerrarModal()">Cerrar</button>
+        `;
+        document.getElementById('modal-overlay').classList.add('active');
+    }
+}
+
+// Toggle anuncios para usuarios premium
+async function toggleAnunciosPremium() {
+    const checkbox = document.getElementById('config-ocultar-anuncios');
+    const ocultar = checkbox.checked;
+
+    await guardarConfig('ocultar_anuncios', ocultar ? 'true' : 'false');
+
+    if (ocultar) {
+        document.body.classList.add('ads-hidden');
+        mostrarToast('Anuncios ocultados', 'success');
+    } else {
+        document.body.classList.remove('ads-hidden');
+        mostrarAnuncios();
+        mostrarToast('Anuncios visibles', 'success');
+    }
+}
+
+// Inicializar anuncios cuando cambia el estado premium
+const actualizarUIPremiumOriginal2 = actualizarUIPremium;
+actualizarUIPremium = async function() {
+    await actualizarUIPremiumOriginal2();
+    await inicializarAnuncios();
+
+    // Mostrar/ocultar opción de quitar anuncios según estado premium
+    const opcionAnuncios = document.getElementById('config-anuncios-section');
+    if (opcionAnuncios) {
+        opcionAnuncios.style.display = estadoPremium.activo ? 'block' : 'none';
+    }
+};
+
+// Inicializar al cargar
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(inicializarAnuncios, 500);
+});
 
