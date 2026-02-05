@@ -2,36 +2,31 @@
  * TSJ Filing - Sistema de Licencias con Sincronización
  * Google Apps Script para gestión de licencias y sincronización de datos
  *
- * ESTRUCTURA DE TU HOJA (columnas existentes + nuevas):
- * A: codigo
- * B: fecha_expiracion
- * C: dispositivo_id (legacy - se mantiene por compatibilidad)
- * D: usuario
- * E: estado
- * F: fecha_registro_dispositivo
- * G: intentos_duplicacion
- * H: ultimo_acceso
- * I: max_dispositivos (número de dispositivos permitidos, default: 2)
- * J: dispositivos_json (array JSON de dispositivos)
- * K: datos_sync (datos cifrados del usuario para sincronización)
+ * SOLO NECESITAS PONER EL CÓDIGO EN COLUMNA A
+ * Todo lo demás se genera automáticamente:
  *
- * INSTRUCCIONES:
- * 1. Agrega las columnas I, J y K a tu hoja existente
- * 2. En columna I pon el número de dispositivos permitidos (2 por defecto)
- * 3. Columnas J y K déjalas vacías (se llenan automáticamente)
- * 4. Actualiza SPREADSHEET_ID con el ID de tu hoja
- * 5. Despliega como aplicación web
+ * A: codigo (TÚ LO PONES)
+ * B: fecha_expiracion (auto: 1 año, o escribe "perpetua" para sin límite)
+ * C: dispositivo_id (auto)
+ * D: usuario (auto)
+ * E: estado (auto: "activo")
+ * F: fecha_registro_dispositivo (auto)
+ * G: intentos_duplicacion (auto: 0)
+ * H: ultimo_acceso (auto)
+ * I: max_dispositivos (auto: 2, puedes cambiar manualmente)
+ * J: dispositivos_json (auto)
+ * K: datos_sync (auto)
  */
 
 // ==================== CONFIGURACIÓN ====================
 const SPREADSHEET_ID = 'TU_SPREADSHEET_ID_AQUI'; // Reemplaza con tu ID
-const SHEET_NAME = 'Licencias'; // Nombre de la hoja
+const SHEET_NAME = 'Licencias';
+const DIAS_EXPIRACION_DEFAULT = 365; // 1 año por defecto
 
-// Columnas según TU estructura actual
 const COL = {
   CODIGO: 0,                    // A
   FECHA_EXP: 1,                 // B
-  DISPOSITIVO_ID_LEGACY: 2,     // C (campo antiguo, para compatibilidad)
+  DISPOSITIVO_ID_LEGACY: 2,     // C
   USUARIO: 3,                   // D
   ESTADO: 4,                    // E
   FECHA_REGISTRO_DISP: 5,       // F
@@ -39,7 +34,7 @@ const COL = {
   ULTIMO_ACCESO: 7,             // H
   MAX_DISPOSITIVOS: 8,          // I
   DISPOSITIVOS_JSON: 9,         // J
-  DATOS_SYNC: 10                // K (NUEVA - datos cifrados para sync)
+  DATOS_SYNC: 10                // K
 };
 
 // ==================== FUNCIONES PRINCIPALES ====================
@@ -94,65 +89,129 @@ function getSheet() {
 
 // Verificar si el estado es activo (case-insensitive)
 function esEstadoActivo(estado) {
-  if (!estado) return false;
+  if (!estado) return true; // Si está vacío, se considera activo (nuevo código)
   const estadoNormalizado = String(estado).toLowerCase().trim();
+  if (estadoNormalizado === '') return true;
   return estadoNormalizado === 'activo' || estadoNormalizado === 'active';
 }
 
-// Parsear fecha de forma segura (maneja Date objects, strings, y formatos variados)
-function parsearFechaSegura(valor) {
-  if (!valor) return null;
+// Verificar si la licencia es perpetua (sin expiración)
+function esLicenciaPerpetua(valor) {
+  if (!valor) return false;
+  const str = String(valor).toLowerCase().trim();
+  return str === 'perpetua' || str === 'ilimitada' || str === 'never' || str === 'unlimited' || str === 'perpetual' || str === 'sin limite';
+}
 
-  // Si ya es un objeto Date de Google Sheets
-  if (valor instanceof Date) {
-    if (isNaN(valor.getTime())) return null;
-    return valor;
+// Inicializar campos vacíos de una fila (auto-genera todo excepto el código)
+function inicializarCamposVacios(sheet, rowIndex, row) {
+  const rowNum = rowIndex + 1;
+  let huboCambios = false;
+
+  // Estado: default "activo"
+  if (!row[COL.ESTADO] || String(row[COL.ESTADO]).trim() === '') {
+    sheet.getRange(rowNum, COL.ESTADO + 1).setValue('activo');
+    huboCambios = true;
+  }
+
+  // Fecha expiración: default 1 año desde hoy (si no es perpetua y está vacío)
+  if (!row[COL.FECHA_EXP] || String(row[COL.FECHA_EXP]).trim() === '') {
+    const fechaExp = new Date();
+    fechaExp.setDate(fechaExp.getDate() + DIAS_EXPIRACION_DEFAULT);
+    sheet.getRange(rowNum, COL.FECHA_EXP + 1).setValue(fechaExp);
+    huboCambios = true;
+  }
+
+  // Max dispositivos: default 2
+  if (!row[COL.MAX_DISPOSITIVOS] || isNaN(parseInt(row[COL.MAX_DISPOSITIVOS]))) {
+    sheet.getRange(rowNum, COL.MAX_DISPOSITIVOS + 1).setValue(2);
+    huboCambios = true;
+  }
+
+  // Intentos duplicacion: default 0
+  if (row[COL.INTENTOS_DUPLICACION] === '' || row[COL.INTENTOS_DUPLICACION] === null || row[COL.INTENTOS_DUPLICACION] === undefined) {
+    sheet.getRange(rowNum, COL.INTENTOS_DUPLICACION + 1).setValue(0);
+    huboCambios = true;
+  }
+
+  // Dispositivos JSON: default []
+  if (!row[COL.DISPOSITIVOS_JSON] || String(row[COL.DISPOSITIVOS_JSON]).trim() === '') {
+    sheet.getRange(rowNum, COL.DISPOSITIVOS_JSON + 1).setValue('[]');
+    huboCambios = true;
+  }
+
+  return huboCambios;
+}
+
+// Obtener fecha de expiración con soporte para perpetua
+function obtenerFechaExpiracion(row) {
+  const valor = row[COL.FECHA_EXP];
+
+  // Si es licencia perpetua
+  if (esLicenciaPerpetua(valor)) {
+    return { perpetua: true, fecha: null };
+  }
+
+  // Si es un objeto Date válido
+  if (valor instanceof Date && !isNaN(valor.getTime())) {
+    return { perpetua: false, fecha: valor };
   }
 
   // Si es string, intentar parsear
-  const str = String(valor).trim();
-  if (!str) return null;
+  if (valor) {
+    const str = String(valor).trim();
+    if (str) {
+      let fecha = new Date(str);
+      if (!isNaN(fecha.getTime())) {
+        return { perpetua: false, fecha: fecha };
+      }
 
-  // Intentar parseo directo
-  let fecha = new Date(str);
-  if (!isNaN(fecha.getTime())) return fecha;
-
-  // Intentar formato DD/MM/YYYY
-  const partes = str.split(/[\/\-]/);
-  if (partes.length === 3) {
-    // Intentar DD/MM/YYYY
-    fecha = new Date(partes[2], partes[1] - 1, partes[0]);
-    if (!isNaN(fecha.getTime())) return fecha;
-
-    // Intentar MM/DD/YYYY
-    fecha = new Date(partes[2], partes[0] - 1, partes[1]);
-    if (!isNaN(fecha.getTime())) return fecha;
+      // Intentar formato DD/MM/YYYY
+      const partes = str.split(/[\/\-]/);
+      if (partes.length === 3) {
+        fecha = new Date(partes[2], partes[1] - 1, partes[0]);
+        if (!isNaN(fecha.getTime())) {
+          return { perpetua: false, fecha: fecha };
+        }
+      }
+    }
   }
 
-  return null;
+  // Fecha no válida - será inicializada por inicializarCamposVacios
+  return { perpetua: false, fecha: null, necesitaInicializar: true };
 }
 
-// Convertir fecha a ISO string de forma segura
+// Verificar si la licencia está expirada
+function licenciaExpirada(infoFecha) {
+  if (infoFecha.perpetua) return false; // Perpetua nunca expira
+  if (!infoFecha.fecha) return true; // Sin fecha válida = expirada
+  return infoFecha.fecha < new Date();
+}
+
+// Convertir fecha a ISO string
 function fechaAISOString(fecha) {
-  const fechaParseada = parsearFechaSegura(fecha);
-  if (!fechaParseada) return null;
-  return fechaParseada.toISOString();
+  if (!fecha) return null;
+  if (fecha instanceof Date) {
+    if (isNaN(fecha.getTime())) return null;
+    return fecha.toISOString();
+  }
+  const parsed = new Date(fecha);
+  if (isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
 }
 
 function getDispositivos(row) {
   let dispositivos = [];
 
-  // Intentar parsear dispositivos_json
   try {
     const jsonStr = row[COL.DISPOSITIVOS_JSON];
-    if (jsonStr && jsonStr.trim()) {
+    if (jsonStr && String(jsonStr).trim()) {
       dispositivos = JSON.parse(jsonStr);
     }
   } catch (e) {
     dispositivos = [];
   }
 
-  // Si está vacío pero hay un dispositivo legacy, migrarlo
+  // Migrar dispositivo legacy si existe
   if (dispositivos.length === 0 && row[COL.DISPOSITIVO_ID_LEGACY]) {
     const fechaRegDisp = fechaAISOString(row[COL.FECHA_REGISTRO_DISP]) || new Date().toISOString();
     dispositivos = [{
@@ -168,7 +227,7 @@ function getDispositivos(row) {
 
 function getMaxDispositivos(row) {
   const max = parseInt(row[COL.MAX_DISPOSITIVOS]);
-  return isNaN(max) || max < 1 ? 2 : max; // Default: 2 dispositivos
+  return isNaN(max) || max < 1 ? 2 : max;
 }
 
 function actualizarUltimoAcceso(sheet, rowIndex) {
@@ -192,28 +251,32 @@ function verificarCodigo(params) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][COL.CODIGO] === codigo) {
       const row = data[i];
-      const fechaExp = parsearFechaSegura(row[COL.FECHA_EXP]);
-      const estado = row[COL.ESTADO];
-      const maxDispositivos = getMaxDispositivos(row);
-      const dispositivos = getDispositivos(row);
 
-      // Verificar estado (case-insensitive)
-      if (!esEstadoActivo(estado)) {
+      // Auto-inicializar campos vacíos
+      inicializarCamposVacios(sheet, i, row);
+
+      // Recargar la fila después de inicializar
+      const rowActualizada = sheet.getRange(i + 1, 1, 1, 11).getValues()[0];
+
+      const infoFecha = obtenerFechaExpiracion(rowActualizada);
+      const maxDispositivos = getMaxDispositivos(rowActualizada);
+      const dispositivos = getDispositivos(rowActualizada);
+
+      // Verificar estado
+      if (!esEstadoActivo(rowActualizada[COL.ESTADO])) {
         return { valido: false, mensaje: 'Licencia inactiva o suspendida' };
       }
 
-      // Verificar que la fecha sea válida
-      if (!fechaExp) {
-        return { valido: false, mensaje: 'Fecha de expiración inválida en el sistema' };
-      }
-
       // Verificar expiración
-      if (fechaExp < new Date()) {
+      if (licenciaExpirada(infoFecha)) {
         return { valido: false, mensaje: 'Licencia expirada', razon: 'expirado' };
       }
 
-      // Actualizar último acceso
+      // Actualizar último acceso y usuario si se proporcionó
       actualizarUltimoAcceso(sheet, i);
+      if (usuario && !rowActualizada[COL.USUARIO]) {
+        sheet.getRange(i + 1, COL.USUARIO + 1).setValue(usuario);
+      }
 
       // Verificar si el dispositivo ya está registrado
       const dispositivoExistente = dispositivos.find(d => d.id === dispositivoId);
@@ -221,8 +284,9 @@ function verificarCodigo(params) {
         return {
           valido: true,
           mensaje: 'Dispositivo verificado',
-          fechaExpiracion: fechaExp.toISOString(),
-          diasRestantes: Math.ceil((fechaExp - new Date()) / (1000 * 60 * 60 * 24)),
+          fechaExpiracion: infoFecha.perpetua ? 'perpetua' : infoFecha.fecha.toISOString(),
+          perpetua: infoFecha.perpetua,
+          diasRestantes: infoFecha.perpetua ? 9999 : Math.ceil((infoFecha.fecha - new Date()) / (1000 * 60 * 60 * 24)),
           dispositivos: dispositivos,
           maxDispositivos: maxDispositivos
         };
@@ -245,12 +309,13 @@ function verificarCodigo(params) {
         };
       }
 
-      // El código es válido y hay espacio para más dispositivos
+      // Código válido, hay espacio para más dispositivos
       return {
         valido: true,
         requiereRegistro: true,
         mensaje: 'Código válido, registrar dispositivo',
-        fechaExpiracion: fechaExp.toISOString(),
+        fechaExpiracion: infoFecha.perpetua ? 'perpetua' : infoFecha.fecha.toISOString(),
+        perpetua: infoFecha.perpetua,
         maxDispositivos: maxDispositivos,
         dispositivosActuales: dispositivos.length
       };
@@ -278,17 +343,22 @@ function registrarDispositivo(params) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][COL.CODIGO] === codigo) {
       const row = data[i];
-      const fechaExp = parsearFechaSegura(row[COL.FECHA_EXP]);
-      const estado = row[COL.ESTADO];
-      const maxDispositivos = getMaxDispositivos(row);
-      let dispositivos = getDispositivos(row);
+      const rowNum = i + 1;
+
+      // Auto-inicializar campos vacíos
+      inicializarCamposVacios(sheet, i, row);
+      const rowActualizada = sheet.getRange(rowNum, 1, 1, 11).getValues()[0];
+
+      const infoFecha = obtenerFechaExpiracion(rowActualizada);
+      const maxDispositivos = getMaxDispositivos(rowActualizada);
+      let dispositivos = getDispositivos(rowActualizada);
 
       // Verificaciones
-      if (!esEstadoActivo(estado)) {
+      if (!esEstadoActivo(rowActualizada[COL.ESTADO])) {
         return { success: false, mensaje: 'Licencia inactiva' };
       }
 
-      if (!fechaExp || fechaExp < new Date()) {
+      if (licenciaExpirada(infoFecha)) {
         return { success: false, mensaje: 'Licencia expirada' };
       }
 
@@ -298,6 +368,8 @@ function registrarDispositivo(params) {
         return {
           success: true,
           mensaje: 'Dispositivo ya registrado',
+          fechaExpiracion: infoFecha.perpetua ? 'perpetua' : infoFecha.fecha.toISOString(),
+          perpetua: infoFecha.perpetua,
           dispositivos: dispositivos,
           maxDispositivos: maxDispositivos
         };
@@ -321,11 +393,10 @@ function registrarDispositivo(params) {
       dispositivos.push(nuevoDispositivo);
 
       // Actualizar la hoja
-      const rowNum = i + 1;
       sheet.getRange(rowNum, COL.DISPOSITIVOS_JSON + 1).setValue(JSON.stringify(dispositivos));
       sheet.getRange(rowNum, COL.ULTIMO_ACCESO + 1).setValue(new Date());
 
-      // También actualizar el campo legacy con el primer dispositivo (compatibilidad)
+      // Actualizar campo legacy con el primer dispositivo
       if (dispositivos.length === 1) {
         sheet.getRange(rowNum, COL.DISPOSITIVO_ID_LEGACY + 1).setValue(dispositivoId);
         sheet.getRange(rowNum, COL.FECHA_REGISTRO_DISP + 1).setValue(new Date());
@@ -334,6 +405,8 @@ function registrarDispositivo(params) {
       return {
         success: true,
         mensaje: 'Dispositivo registrado correctamente',
+        fechaExpiracion: infoFecha.perpetua ? 'perpetua' : infoFecha.fecha.toISOString(),
+        perpetua: infoFecha.perpetua,
         dispositivos: dispositivos,
         maxDispositivos: maxDispositivos
       };
@@ -365,14 +438,11 @@ function desvincularDispositivo(params) {
         return { success: false, mensaje: 'Dispositivo no encontrado en esta licencia' };
       }
 
-      // Eliminar dispositivo
       dispositivos.splice(index, 1);
 
-      // Actualizar la hoja
       const rowNum = i + 1;
       sheet.getRange(rowNum, COL.DISPOSITIVOS_JSON + 1).setValue(JSON.stringify(dispositivos));
 
-      // Si se eliminó el dispositivo legacy, limpiar ese campo también
       if (data[i][COL.DISPOSITIVO_ID_LEGACY] === dispositivoId) {
         sheet.getRange(rowNum, COL.DISPOSITIVO_ID_LEGACY + 1).setValue('');
       }
@@ -418,7 +488,7 @@ function obtenerDispositivos(params) {
   return { success: false, mensaje: 'Código no encontrado' };
 }
 
-// ==================== HEARTBEAT (VERIFICACIÓN PERIÓDICA) ====================
+// ==================== HEARTBEAT ====================
 
 function verificarHeartbeat(params) {
   const codigo = params.codigo;
@@ -434,35 +504,29 @@ function verificarHeartbeat(params) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][COL.CODIGO] === codigo) {
       const row = data[i];
-      const fechaExp = parsearFechaSegura(row[COL.FECHA_EXP]);
-      const estado = row[COL.ESTADO];
+      const infoFecha = obtenerFechaExpiracion(row);
       const dispositivos = getDispositivos(row);
 
-      // Verificar estado
-      if (!esEstadoActivo(estado)) {
+      if (!esEstadoActivo(row[COL.ESTADO])) {
         return { valido: false, razon: 'inactivo' };
       }
 
-      // Verificar expiración
-      if (!fechaExp || fechaExp < new Date()) {
+      if (licenciaExpirada(infoFecha)) {
         return { valido: false, razon: 'expirado' };
       }
 
-      // Verificar que el dispositivo esté registrado
       const dispositivoRegistrado = dispositivos.find(d => d.id === dispositivoId);
       if (!dispositivoRegistrado) {
         return { valido: false, razon: 'dispositivo_no_registrado' };
       }
 
-      // Actualizar último acceso
       actualizarUltimoAcceso(sheet, i);
-
-      const diasRestantes = Math.ceil((fechaExp - new Date()) / (1000 * 60 * 60 * 24));
 
       return {
         valido: true,
-        fechaExpiracion: fechaExp.toISOString(),
-        diasRestantes: diasRestantes
+        fechaExpiracion: infoFecha.perpetua ? 'perpetua' : infoFecha.fecha.toISOString(),
+        perpetua: infoFecha.perpetua,
+        diasRestantes: infoFecha.perpetua ? 9999 : Math.ceil((infoFecha.fecha - new Date()) / (1000 * 60 * 60 * 24))
       };
     }
   }
@@ -488,15 +552,13 @@ function transferirLicencia(params) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][COL.CODIGO] === codigo) {
       const row = data[i];
-      const fechaExp = parsearFechaSegura(row[COL.FECHA_EXP]);
-      const estado = row[COL.ESTADO];
+      const infoFecha = obtenerFechaExpiracion(row);
       const maxDispositivos = getMaxDispositivos(row);
 
-      if (!esEstadoActivo(estado) || !fechaExp || fechaExp < new Date()) {
+      if (!esEstadoActivo(row[COL.ESTADO]) || licenciaExpirada(infoFecha)) {
         return { success: false, mensaje: 'Licencia no válida' };
       }
 
-      // Limpiar todos los dispositivos y registrar solo el nuevo
       const dispositivos = [{
         id: nuevoDispositivoId,
         tipo: tipoDispositivo,
@@ -504,7 +566,6 @@ function transferirLicencia(params) {
         fechaRegistro: new Date().toISOString()
       }];
 
-      // Actualizar
       const rowNum = i + 1;
       sheet.getRange(rowNum, COL.DISPOSITIVOS_JSON + 1).setValue(JSON.stringify(dispositivos));
       sheet.getRange(rowNum, COL.DISPOSITIVO_ID_LEGACY + 1).setValue(nuevoDispositivoId);
@@ -523,118 +584,8 @@ function transferirLicencia(params) {
   return { success: false, mensaje: 'Código no encontrado' };
 }
 
-// ==================== FUNCIONES DE ADMINISTRACIÓN ====================
-
-/**
- * Genera un código de licencia aleatorio
- */
-function generarCodigoLicencia() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  let codigo = '';
-  for (let i = 0; i < 16; i++) {
-    codigo += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return codigo;
-}
-
-/**
- * Crea una nueva licencia
- * @param {string} usuario - Email o nombre del usuario
- * @param {number} diasValidez - Días de validez (ej: 30)
- * @param {number} maxDispositivos - Dispositivos permitidos (1-99)
- */
-function crearLicencia(usuario, diasValidez, maxDispositivos) {
-  const sheet = getSheet();
-
-  const codigo = generarCodigoLicencia();
-  const fechaExp = new Date();
-  fechaExp.setDate(fechaExp.getDate() + diasValidez);
-
-  // Columnas: codigo, fecha_exp, disp_id, usuario, estado, fecha_reg, intentos, ultimo_acceso, max_disp, disp_json
-  sheet.appendRow([
-    codigo,
-    fechaExp,
-    '',  // dispositivo_id (vacío, se llena al registrar)
-    usuario,
-    'activo',
-    '',  // fecha_registro_dispositivo
-    0,   // intentos_duplicacion
-    '',  // ultimo_acceso
-    maxDispositivos || 2,
-    '[]' // dispositivos_json
-  ]);
-
-  return {
-    codigo: codigo,
-    fechaExpiracion: fechaExp.toISOString(),
-    maxDispositivos: maxDispositivos || 2
-  };
-}
-
-/**
- * Actualiza el máximo de dispositivos para una licencia existente
- * @param {string} codigo - Código de la licencia
- * @param {number} nuevoMax - Nuevo límite de dispositivos
- */
-function actualizarMaxDispositivos(codigo, nuevoMax) {
-  const sheet = getSheet();
-  const data = sheet.getDataRange().getValues();
-
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][COL.CODIGO] === codigo) {
-      sheet.getRange(i + 1, COL.MAX_DISPOSITIVOS + 1).setValue(nuevoMax);
-      return { success: true, mensaje: `Límite actualizado a ${nuevoMax} dispositivos` };
-    }
-  }
-
-  return { success: false, mensaje: 'Código no encontrado' };
-}
-
-/**
- * Migra licencias existentes al nuevo formato multi-dispositivo
- * Ejecutar UNA VEZ después de agregar las columnas I y J
- */
-function migrarLicenciasExistentes() {
-  const sheet = getSheet();
-  const data = sheet.getDataRange().getValues();
-  let migradas = 0;
-
-  for (let i = 1; i < data.length; i++) {
-    const row = data[i];
-    const dispositivoLegacy = row[COL.DISPOSITIVO_ID_LEGACY];
-    const dispositivosJson = row[COL.DISPOSITIVOS_JSON];
-    const maxDispositivos = row[COL.MAX_DISPOSITIVOS];
-
-    const rowNum = i + 1;
-
-    // Si no tiene max_dispositivos, poner 2 por defecto
-    if (!maxDispositivos) {
-      sheet.getRange(rowNum, COL.MAX_DISPOSITIVOS + 1).setValue(2);
-    }
-
-    // Si tiene dispositivo legacy pero no tiene dispositivos_json, migrar
-    if (dispositivoLegacy && (!dispositivosJson || dispositivosJson === '[]')) {
-      const fechaRegDisp = fechaAISOString(row[COL.FECHA_REGISTRO_DISP]) || new Date().toISOString();
-      const dispositivos = [{
-        id: dispositivoLegacy,
-        tipo: 'desktop',
-        nombre: 'Dispositivo (migrado)',
-        fechaRegistro: fechaRegDisp
-      }];
-      sheet.getRange(rowNum, COL.DISPOSITIVOS_JSON + 1).setValue(JSON.stringify(dispositivos));
-      migradas++;
-    }
-  }
-
-  Logger.log(`Migración completada: ${migradas} licencias migradas`);
-  return { success: true, migradas: migradas };
-}
-
 // ==================== SINCRONIZACIÓN DE DATOS ====================
 
-/**
- * Obtiene los datos sincronizados (cifrados) para un código
- */
 function obtenerDatosSync(params) {
   const codigo = params.codigo;
 
@@ -648,22 +599,17 @@ function obtenerDatosSync(params) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][COL.CODIGO] === codigo) {
       const row = data[i];
-      const estado = row[COL.ESTADO];
-      const fechaExp = parsearFechaSegura(row[COL.FECHA_EXP]);
+      const infoFecha = obtenerFechaExpiracion(row);
 
-      // Verificar licencia válida
-      if (!esEstadoActivo(estado)) {
+      if (!esEstadoActivo(row[COL.ESTADO])) {
         return { success: false, mensaje: 'Licencia inactiva' };
       }
 
-      if (!fechaExp || fechaExp < new Date()) {
+      if (licenciaExpirada(infoFecha)) {
         return { success: false, mensaje: 'Licencia expirada' };
       }
 
-      // Obtener datos sync (pueden estar vacíos)
       const datosSync = row[COL.DATOS_SYNC] || null;
-
-      // Actualizar último acceso
       sheet.getRange(i + 1, COL.ULTIMO_ACCESO + 1).setValue(new Date());
 
       return {
@@ -676,9 +622,6 @@ function obtenerDatosSync(params) {
   return { success: false, mensaje: 'Código no encontrado' };
 }
 
-/**
- * Guarda los datos sincronizados (cifrados) para un código
- */
 function guardarDatosSync(params) {
   const codigo = params.codigo;
   const datos = params.datos;
@@ -697,19 +640,16 @@ function guardarDatosSync(params) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][COL.CODIGO] === codigo) {
       const row = data[i];
-      const estado = row[COL.ESTADO];
-      const fechaExp = parsearFechaSegura(row[COL.FECHA_EXP]);
+      const infoFecha = obtenerFechaExpiracion(row);
 
-      // Verificar licencia válida
-      if (!esEstadoActivo(estado)) {
+      if (!esEstadoActivo(row[COL.ESTADO])) {
         return { success: false, mensaje: 'Licencia inactiva' };
       }
 
-      if (!fechaExp || fechaExp < new Date()) {
+      if (licenciaExpirada(infoFecha)) {
         return { success: false, mensaje: 'Licencia expirada' };
       }
 
-      // Guardar datos sync
       const rowNum = i + 1;
       sheet.getRange(rowNum, COL.DATOS_SYNC + 1).setValue(datos);
       sheet.getRange(rowNum, COL.ULTIMO_ACCESO + 1).setValue(new Date());
@@ -724,14 +664,65 @@ function guardarDatosSync(params) {
   return { success: false, mensaje: 'Código no encontrado' };
 }
 
-// ==================== FUNCIONES DE PRUEBA ====================
+// ==================== FUNCIONES DE ADMINISTRACIÓN ====================
 
-function testCrearLicencia() {
-  const resultado = crearLicencia('test@example.com', 30, 3);
-  Logger.log('Licencia creada: ' + JSON.stringify(resultado));
+function generarCodigoLicencia() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let codigo = '';
+  for (let i = 0; i < 16; i++) {
+    codigo += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return codigo;
 }
 
-function testMigrar() {
-  const resultado = migrarLicenciasExistentes();
-  Logger.log('Resultado migración: ' + JSON.stringify(resultado));
+/**
+ * Crea una nueva licencia programáticamente
+ */
+function crearLicencia(usuario, diasValidez, maxDispositivos) {
+  const sheet = getSheet();
+  const codigo = generarCodigoLicencia();
+  const fechaExp = new Date();
+  fechaExp.setDate(fechaExp.getDate() + diasValidez);
+
+  sheet.appendRow([
+    codigo,
+    fechaExp,
+    '',
+    usuario,
+    'activo',
+    '',
+    0,
+    '',
+    maxDispositivos || 2,
+    '[]',
+    ''
+  ]);
+
+  return {
+    codigo: codigo,
+    fechaExpiracion: fechaExp.toISOString(),
+    maxDispositivos: maxDispositivos || 2
+  };
+}
+
+/**
+ * Inicializa todos los códigos existentes que solo tienen el código en columna A
+ * Ejecutar una vez si ya tienes códigos sin los demás campos
+ */
+function inicializarTodosLosCodigos() {
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+  let inicializados = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row[COL.CODIGO] && String(row[COL.CODIGO]).trim()) {
+      if (inicializarCamposVacios(sheet, i, row)) {
+        inicializados++;
+      }
+    }
+  }
+
+  Logger.log(`Inicialización completada: ${inicializados} licencias actualizadas`);
+  return { success: true, inicializados: inicializados };
 }
