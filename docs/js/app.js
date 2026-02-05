@@ -6,6 +6,7 @@
 let expedientesSeleccionados = [];
 let fechaCalendario = new Date();
 let diaSeleccionado = null;
+let vistaExpedientes = localStorage.getItem('vistaExpedientes') || 'cards'; // 'cards' o 'table'
 
 // ==================== INICIALIZACIÓN ====================
 
@@ -24,6 +25,11 @@ async function inicializarApp() {
     // Poblar selects
     poblarSelectJuzgados('expediente-juzgado');
     poblarSelectCategorias('filtro-categoria');
+
+    // Inicializar vista de expedientes
+    document.querySelectorAll('.view-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === vistaExpedientes);
+    });
 
     // Cargar datos
     await cargarEstadisticas();
@@ -229,7 +235,7 @@ async function cargarExpedientes() {
             <div class="expediente-footer">
                 <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
                 <div class="expediente-actions">
-                    <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id})">✏️</button>
+                    <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
                     <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
                 </div>
             </div>
@@ -243,11 +249,60 @@ async function cargarExpedientes() {
         count.textContent = `${expedientes.length} expediente${expedientes.length !== 1 ? 's' : ''}`;
     }
 
+    // Poblar tabla
+    const tablaBody = document.getElementById('tabla-expedientes-body');
+    if (tablaBody) {
+        tablaBody.innerHTML = expedientes.map(exp => `
+            <tr data-id="${exp.id}">
+                <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
+                <td><strong>${exp.numero || exp.nombre}</strong></td>
+                <td>${exp.juzgado}</td>
+                <td><span class="categoria-badge">${exp.categoria || 'General'}</span></td>
+                <td class="comentario-cell" title="${exp.comentario || ''}">${exp.comentario || '-'}</td>
+                <td>${formatearFecha(exp.fechaCreacion)}</td>
+                <td class="acciones-cell">
+                    <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
+                    <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    // Aplicar vista actual
+    aplicarVistaExpedientes();
+
     // Actualizar select de expedientes en notas
     actualizarSelectExpedientes();
 
     // Actualizar expedientes recientes en dashboard
     actualizarExpedientesRecientes(expedientes);
+}
+
+// Cambiar vista de expedientes
+function cambiarVistaExpedientes(vista) {
+    vistaExpedientes = vista;
+    localStorage.setItem('vistaExpedientes', vista);
+
+    // Actualizar botones
+    document.querySelectorAll('.view-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === vista);
+    });
+
+    aplicarVistaExpedientes();
+}
+
+// Aplicar vista actual
+function aplicarVistaExpedientes() {
+    const listaCards = document.getElementById('lista-expedientes');
+    const tablaContainer = document.getElementById('tabla-expedientes');
+
+    if (vistaExpedientes === 'table') {
+        listaCards.style.display = 'none';
+        if (tablaContainer) tablaContainer.style.display = 'block';
+    } else {
+        listaCards.style.display = 'grid';
+        if (tablaContainer) tablaContainer.style.display = 'none';
+    }
 }
 
 function actualizarExpedientesRecientes(expedientes) {
@@ -312,19 +367,42 @@ function cerrarFormularioExpediente() {
     formContainer.style.display = 'none';
 }
 
-async function editarExpediente(id) {
-    const exp = await obtenerExpediente(id);
-    if (!exp) return;
+async function editarExpediente(id, event) {
+    // Prevenir propagación del evento (fix para Firefox)
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
 
-    document.getElementById('form-expediente').style.display = 'block';
-    document.getElementById('form-expediente-titulo').textContent = 'Editar Expediente';
-    document.getElementById('expediente-id').value = id;
-    document.getElementById('expediente-valor').value = exp.numero || exp.nombre;
-    document.getElementById('expediente-juzgado').value = exp.juzgado;
-    document.getElementById('expediente-comentario').value = exp.comentario || '';
+    try {
+        const exp = await obtenerExpediente(id);
+        if (!exp) {
+            mostrarToast('Expediente no encontrado', 'error');
+            return;
+        }
 
-    const tipo = exp.numero ? 'numero' : 'nombre';
-    document.querySelector(`input[name="tipo-busqueda"][value="${tipo}"]`).checked = true;
+        const formContainer = document.getElementById('form-expediente');
+        if (!formContainer) {
+            console.error('Formulario no encontrado');
+            return;
+        }
+
+        formContainer.style.display = 'block';
+        document.getElementById('form-expediente-titulo').textContent = 'Editar Expediente';
+        document.getElementById('expediente-id').value = id;
+        document.getElementById('expediente-valor').value = exp.numero || exp.nombre;
+        document.getElementById('expediente-juzgado').value = exp.juzgado;
+        document.getElementById('expediente-comentario').value = exp.comentario || '';
+
+        const tipo = exp.numero ? 'numero' : 'nombre';
+        document.querySelector(`input[name="tipo-busqueda"][value="${tipo}"]`).checked = true;
+
+        // Scroll al formulario
+        formContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (error) {
+        console.error('Error al editar expediente:', error);
+        mostrarToast('Error al cargar expediente', 'error');
+    }
 }
 
 async function guardarExpediente(event) {
@@ -454,7 +532,7 @@ async function filtrarExpedientes() {
                 <div class="expediente-footer">
                     <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
                     <div class="expediente-actions">
-                        <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id})">✏️</button>
+                        <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
                         <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
                     </div>
                 </div>
@@ -1444,7 +1522,38 @@ async function cargarConfiguracion() {
     if (emailPublicKey) document.getElementById('email-public-key').value = emailPublicKey;
     if (emailTemplateId) document.getElementById('email-template-id').value = emailTemplateId;
     if (emailDestino) document.getElementById('email-destino').value = emailDestino;
+
+    // Cargar tema
+    const temaOscuro = await obtenerConfig('tema_oscuro');
+    const checkTema = document.getElementById('config-tema-oscuro');
+    if (checkTema) {
+        checkTema.checked = temaOscuro === 'true';
+    }
+    aplicarTema();
 }
+
+// ==================== TEMA OSCURO ====================
+
+function aplicarTema() {
+    const temaOscuro = localStorage.getItem('tema_oscuro') === 'true';
+    document.documentElement.setAttribute('data-theme', temaOscuro ? 'dark' : 'light');
+}
+
+async function toggleTemaOscuro() {
+    const activado = document.getElementById('config-tema-oscuro').checked;
+    localStorage.setItem('tema_oscuro', activado ? 'true' : 'false');
+    await guardarConfig('tema_oscuro', activado ? 'true' : 'false');
+    aplicarTema();
+    mostrarToast(`Tema ${activado ? 'oscuro' : 'claro'} activado`, 'success');
+}
+
+// Aplicar tema al cargar (antes de que el DOM esté listo para evitar flash)
+(function() {
+    const temaOscuro = localStorage.getItem('tema_oscuro') === 'true';
+    if (temaOscuro) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+    }
+})();
 
 async function toggleNotificaciones() {
     const activado = document.getElementById('config-notificaciones').checked;
@@ -2064,6 +2173,135 @@ async function probarIA() {
         mostrarToast('Error de conexión: ' + error.message, 'error');
     }
 }
+
+// ==================== PROCESAMIENTO DE IMÁGENES PARA IA ====================
+
+let imagenAcuerdoActual = null;
+
+// Procesar imagen seleccionada
+async function procesarImagenAcuerdo(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Validar tipo de archivo
+    if (!file.type.startsWith('image/')) {
+        mostrarToast('Por favor selecciona una imagen válida', 'error');
+        return;
+    }
+
+    // Validar tamaño (máx 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+        mostrarToast('La imagen es muy grande. Máximo 10MB', 'error');
+        return;
+    }
+
+    // Mostrar preview
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        const previewContainer = document.getElementById('ia-imagen-preview');
+        const previewImg = document.getElementById('ia-imagen-preview-img');
+
+        previewImg.src = e.target.result;
+        previewContainer.style.display = 'block';
+        imagenAcuerdoActual = e.target.result;
+
+        // Extraer texto de la imagen usando IA
+        await extraerTextoDeImagen(e.target.result);
+    };
+    reader.readAsDataURL(file);
+}
+
+// Capturar foto con la cámara
+function capturarFotoAcuerdo() {
+    const input = document.getElementById('ia-imagen-acuerdo');
+    // Forzar modo captura
+    input.setAttribute('capture', 'environment');
+    input.click();
+}
+
+// Extraer texto de imagen usando Groq Vision
+async function extraerTextoDeImagen(imagenBase64) {
+    const apiKey = await obtenerConfig('groq_api_key');
+
+    if (!apiKey) {
+        mostrarToast('Configura tu API Key de Groq para usar OCR', 'warning');
+        return;
+    }
+
+    const statusEl = document.getElementById('ia-ocr-status');
+    statusEl.style.display = 'flex';
+
+    try {
+        // Usar modelo de visión de Groq
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+                model: 'llama-3.2-90b-vision-preview',
+                messages: [{
+                    role: 'user',
+                    content: [
+                        {
+                            type: 'text',
+                            text: 'Extrae todo el texto que puedas leer de esta imagen de un documento judicial. Transcribe el texto exactamente como aparece, manteniendo el formato y los párrafos. Solo devuelve el texto extraído, sin explicaciones adicionales.'
+                        },
+                        {
+                            type: 'image_url',
+                            image_url: {
+                                url: imagenBase64
+                            }
+                        }
+                    ]
+                }],
+                max_tokens: 4096
+            })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            const textoExtraido = data.choices[0]?.message?.content || '';
+
+            if (textoExtraido) {
+                // Agregar texto extraído al textarea
+                const textarea = document.getElementById('ia-texto-acuerdo');
+                textarea.value = textoExtraido;
+                mostrarToast('Texto extraído correctamente', 'success');
+            } else {
+                mostrarToast('No se pudo extraer texto de la imagen', 'warning');
+            }
+        } else {
+            const error = await response.json();
+            console.error('Error OCR:', error);
+
+            // Si el modelo de visión no está disponible, intentar con OCR básico
+            if (error.error?.message?.includes('model')) {
+                mostrarToast('El modelo de visión no está disponible. Usa texto manual.', 'warning');
+            } else {
+                mostrarToast('Error al procesar imagen: ' + (error.error?.message || 'Error desconocido'), 'error');
+            }
+        }
+    } catch (error) {
+        console.error('Error al extraer texto:', error);
+        mostrarToast('Error al procesar la imagen', 'error');
+    } finally {
+        statusEl.style.display = 'none';
+    }
+}
+
+// Eliminar imagen seleccionada
+function eliminarImagenAcuerdo() {
+    const previewContainer = document.getElementById('ia-imagen-preview');
+    const input = document.getElementById('ia-imagen-acuerdo');
+
+    previewContainer.style.display = 'none';
+    input.value = '';
+    imagenAcuerdoActual = null;
+}
+
+// ==================== ANÁLISIS CON IA ====================
 
 async function analizarAcuerdoConIA() {
     const texto = document.getElementById('ia-texto-acuerdo').value.trim();
@@ -3235,4 +3473,45 @@ async function ejecutarTransferencia() {
         mostrarToast(resultado.mensaje, 'error');
     }
 }
+
+// ==================== EVENT DELEGATION (FIX FIREFOX) ====================
+// Delegación de eventos para botones en contenido dinámico
+document.addEventListener('click', function(event) {
+    // Buscar si el click fue en un botón de editar expediente
+    const editBtn = event.target.closest('.expediente-actions .btn-secondary');
+    if (editBtn && !event.defaultPrevented) {
+        const card = editBtn.closest('.expediente-card');
+        if (card) {
+            const id = parseInt(card.dataset.id);
+            if (!isNaN(id)) {
+                event.preventDefault();
+                event.stopPropagation();
+                editarExpediente(id, event);
+            }
+        }
+    }
+
+    // Buscar si el click fue en un botón de eliminar expediente
+    const deleteBtn = event.target.closest('.expediente-actions .btn-danger');
+    if (deleteBtn && !event.defaultPrevented) {
+        const card = deleteBtn.closest('.expediente-card');
+        if (card) {
+            const id = parseInt(card.dataset.id);
+            if (!isNaN(id)) {
+                event.preventDefault();
+                event.stopPropagation();
+                confirmarEliminarExpediente(id, event);
+            }
+        }
+    }
+}, true); // Usar capture phase para mejor compatibilidad con Firefox
+
+// ==================== HOURLY SUBSCRIPTION CHECK ====================
+// Verificar suscripción cada hora
+setInterval(async () => {
+    if (estadoPremium.activo && estadoPremium.codigo) {
+        console.log('Verificando estado de suscripción...');
+        await verificarLicenciaPeriodica();
+    }
+}, 60 * 60 * 1000); // Cada hora
 

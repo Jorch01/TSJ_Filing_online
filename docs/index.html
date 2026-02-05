@@ -251,7 +251,7 @@
                 </div>
             </div>
 
-            <!-- Filtros -->
+            <!-- Filtros y Vista -->
             <div class="filters-section">
                 <div class="search-box">
                     <span class="search-icon">🔍</span>
@@ -260,10 +260,18 @@
                 <select id="filtro-categoria" onchange="filtrarExpedientes()">
                     <option value="">Todas las categorías</option>
                 </select>
+                <div class="view-toggle">
+                    <button class="view-btn active" data-view="cards" onclick="cambiarVistaExpedientes('cards')" title="Vista tarjetas">
+                        <span>▦</span>
+                    </button>
+                    <button class="view-btn" data-view="table" onclick="cambiarVistaExpedientes('table')" title="Vista tabla">
+                        <span>☰</span>
+                    </button>
+                </div>
                 <span class="results-count" id="count-expedientes">0 expedientes</span>
             </div>
 
-            <!-- Lista de Expedientes -->
+            <!-- Lista de Expedientes (Cards) -->
             <div class="expedientes-grid" id="lista-expedientes">
                 <div class="empty-state">
                     <span class="empty-icon">📂</span>
@@ -273,6 +281,25 @@
                         ➕ Agregar Expediente
                     </button>
                 </div>
+            </div>
+
+            <!-- Lista de Expedientes (Tabla) -->
+            <div class="expedientes-table-container" id="tabla-expedientes" style="display: none;">
+                <table class="expedientes-table">
+                    <thead>
+                        <tr>
+                            <th>Tipo</th>
+                            <th>Número/Nombre</th>
+                            <th>Juzgado</th>
+                            <th>Categoría</th>
+                            <th>Comentario</th>
+                            <th>Fecha</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-expedientes-body">
+                    </tbody>
+                </table>
             </div>
         </section>
 
@@ -537,9 +564,34 @@
                         <label>Número de expediente</label>
                         <input type="text" id="ia-expediente-custom" placeholder="Ej: 123/2025">
                     </div>
+
+                    <!-- Opción de imagen/foto -->
+                    <div class="form-group">
+                        <label>📷 Subir imagen del acuerdo (opcional)</label>
+                        <div class="image-upload-container">
+                            <input type="file" id="ia-imagen-acuerdo" accept="image/*" capture="environment" onchange="procesarImagenAcuerdo(event)" style="display: none;">
+                            <div class="image-upload-buttons">
+                                <button type="button" class="btn btn-secondary" onclick="document.getElementById('ia-imagen-acuerdo').click()">
+                                    📁 Seleccionar imagen
+                                </button>
+                                <button type="button" class="btn btn-secondary" onclick="capturarFotoAcuerdo()">
+                                    📸 Tomar foto
+                                </button>
+                            </div>
+                            <div id="ia-imagen-preview" class="image-preview" style="display: none;">
+                                <img id="ia-imagen-preview-img" src="" alt="Preview">
+                                <button type="button" class="btn-remove-image" onclick="eliminarImagenAcuerdo()">✕</button>
+                            </div>
+                            <div id="ia-ocr-status" class="ocr-status" style="display: none;">
+                                <span class="loading-spinner"></span> Extrayendo texto de la imagen...
+                            </div>
+                        </div>
+                        <p class="form-help">Puedes tomar una foto o subir una imagen del acuerdo. El texto será extraído automáticamente.</p>
+                    </div>
+
                     <div class="form-group">
                         <label>Texto del Acuerdo</label>
-                        <textarea id="ia-texto-acuerdo" rows="8" placeholder="Pega aquí el texto del acuerdo copiado del sitio del TSJ..."></textarea>
+                        <textarea id="ia-texto-acuerdo" rows="8" placeholder="Pega aquí el texto del acuerdo copiado del sitio del TSJ, o sube una imagen arriba..."></textarea>
                     </div>
                 </div>
                 <div class="card-footer">
@@ -569,6 +621,20 @@
             <div class="page-header">
                 <h2>⚙️ Configuración</h2>
                 <p class="subtitle">Personaliza tu experiencia</p>
+            </div>
+
+            <div class="config-section">
+                <h3>🎨 Apariencia</h3>
+                <div class="config-item">
+                    <div class="config-info">
+                        <h4>Tema oscuro</h4>
+                        <p>Reduce la fatiga visual en ambientes con poca luz</p>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="config-tema-oscuro" onchange="toggleTemaOscuro()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
             </div>
 
             <div class="config-section">

@@ -20,6 +20,52 @@
     --radius-lg: 12px;
 }
 
+/* Tema Oscuro */
+[data-theme="dark"] {
+    --primary: #5a8cc7;
+    --primary-dark: #4a7bb5;
+    --primary-light: #7aa8d9;
+    --success: #48c774;
+    --warning: #ffdd57;
+    --danger: #f14668;
+    --info: #3298dc;
+    --bg-primary: #1a1a2e;
+    --bg-secondary: #16213e;
+    --bg-tertiary: #0f3460;
+    --text-primary: #e8e8e8;
+    --text-secondary: #b0b0b0;
+    --text-muted: #808080;
+    --border-color: #2d3a4f;
+    --shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+[data-theme="dark"] .nav-sidebar,
+[data-theme="dark"] .mobile-nav {
+    background: linear-gradient(180deg, #0f3460 0%, #16213e 100%);
+}
+
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] select {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .btn-secondary {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .expediente-categoria,
+[data-theme="dark"] .categoria-badge {
+    background: var(--primary-dark);
+}
+
+[data-theme="dark"] .calendario-dias .dia:hover {
+    background: var(--bg-tertiary);
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
@@ -317,6 +363,52 @@ input:focus, textarea:focus, select:focus {
 .radio-label, .checkbox-label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
 .radio-label input, .checkbox-label input { width: auto; }
 .form-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
+.form-help { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; }
+
+/* Image Upload */
+.image-upload-container { margin-top: 0.5rem; }
+.image-upload-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.image-preview {
+    position: relative;
+    margin-top: 0.75rem;
+    max-width: 300px;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 2px solid var(--border-color);
+}
+.image-preview img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+.btn-remove-image {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: none;
+    background: var(--danger);
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+}
+.btn-remove-image:hover { background: #c82333; }
+.ocr-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: var(--info);
+    color: white;
+    border-radius: var(--radius);
+    margin-top: 0.75rem;
+    font-size: 0.875rem;
+}
 
 /* Filters */
 .filters-section {
@@ -332,6 +424,29 @@ input:focus, textarea:focus, select:focus {
 .search-box input { padding-left: 2.25rem; }
 .filters-section select { min-width: 180px; }
 .results-count { font-size: 0.875rem; color: var(--text-secondary); }
+
+/* View Toggle */
+.view-toggle {
+    display: flex;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+.view-btn {
+    padding: 0.4rem 0.6rem;
+    background: var(--bg-primary);
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    color: var(--text-secondary);
+    transition: all 0.2s;
+}
+.view-btn:hover { background: var(--bg-secondary); }
+.view-btn.active {
+    background: var(--primary);
+    color: white;
+}
+.view-btn + .view-btn { border-left: 1px solid var(--border-color); }
 
 /* Expedientes Grid */
 .expedientes-grid {
@@ -377,6 +492,50 @@ input:focus, textarea:focus, select:focus {
 
 .expediente-fecha { font-size: 0.75rem; color: var(--text-muted); }
 .expediente-actions { display: flex; gap: 0.25rem; }
+
+/* Expedientes Table */
+.expedientes-table-container {
+    overflow-x: auto;
+    background: var(--bg-primary);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+}
+.expedientes-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+.expedientes-table th,
+.expedientes-table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+.expedientes-table th {
+    background: var(--bg-secondary);
+    font-weight: 600;
+    color: var(--text-primary);
+    position: sticky;
+    top: 0;
+}
+.expedientes-table tbody tr:hover {
+    background: var(--bg-secondary);
+}
+.expedientes-table td.tipo-cell { font-size: 1.25rem; text-align: center; width: 50px; }
+.expedientes-table td.acciones-cell { width: 100px; }
+.expedientes-table .categoria-badge {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    background: var(--primary);
+    color: white;
+    border-radius: var(--radius);
+}
+.expedientes-table .comentario-cell {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
 /* Notas Grid */
 .notas-grid {
