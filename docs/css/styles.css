@@ -328,6 +328,63 @@
     color: white;
 }
 
+/* Dark theme - Notas cards contrast fix */
+[data-theme="dark"] .nota-card {
+    color: #1a1a1a !important;
+}
+
+[data-theme="dark"] .nota-card .nota-titulo,
+[data-theme="dark"] .nota-card .nota-contenido,
+[data-theme="dark"] .nota-card .nota-footer,
+[data-theme="dark"] .nota-card .nota-header {
+    color: #1a1a1a !important;
+}
+
+[data-theme="dark"] .nota-card .nota-recordatorio {
+    color: #333 !important;
+}
+
+/* Dark theme - IA Results contrast fix */
+[data-theme="dark"] .ia-resultado-item {
+    background: var(--bg-tertiary);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .ia-resultado-item h4 {
+    color: var(--primary-light);
+}
+
+[data-theme="dark"] .ia-resultado-item p,
+[data-theme="dark"] .ia-resultado-item li,
+[data-theme="dark"] .ia-resultado-item span {
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .ia-resultado-check {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .ia-resultado-check label {
+    color: var(--text-primary);
+}
+
+/* Dark theme - IA analysis cards and summaries */
+[data-theme="dark"] #resultados-ia-contenido {
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] #resultados-ia-contenido h4,
+[data-theme="dark"] #resultados-ia-contenido h3 {
+    color: var(--primary-light);
+}
+
+[data-theme="dark"] #resultados-ia-contenido p,
+[data-theme="dark"] #resultados-ia-contenido li,
+[data-theme="dark"] #resultados-ia-contenido ul {
+    color: var(--text-primary);
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
