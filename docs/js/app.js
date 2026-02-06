@@ -238,15 +238,26 @@ async function cargarExpedientes() {
     const count = document.getElementById('count-expedientes');
     const totalExpedientes = expedientes.length;
 
+    // Ordenar por orden personalizado (si existe) o por fecha
+    expedientes = [...expedientes].sort((a, b) => {
+        // Si ambos tienen orden, usar orden
+        if (a.orden !== undefined && b.orden !== undefined) {
+            return a.orden - b.orden;
+        }
+        // Si solo uno tiene orden, ese va primero
+        if (a.orden !== undefined) return -1;
+        if (b.orden !== undefined) return 1;
+        // Si ninguno tiene orden, ordenar por fecha
+        return new Date(b.fechaModificacion || b.fechaCreacion || 0) - new Date(a.fechaModificacion || a.fechaCreacion || 0);
+    });
+
     // Verificar si usuario NO es premium y tiene más de 10 expedientes
     const esPremium = estadoPremium && estadoPremium.activo;
     let mostrandoLimitados = false;
 
     if (!esPremium && totalExpedientes > PREMIUM_CONFIG.limiteExpedientes) {
-        // Ordenar por fecha de modificación/creación (más recientes primero) y tomar solo 10
-        expedientes = [...expedientes]
-            .sort((a, b) => new Date(b.fechaModificacion || b.fechaCreacion || 0) - new Date(a.fechaModificacion || a.fechaCreacion || 0))
-            .slice(0, PREMIUM_CONFIG.limiteExpedientes);
+        // Tomar solo los primeros 10 (ya ordenados)
+        expedientes = expedientes.slice(0, PREMIUM_CONFIG.limiteExpedientes);
         mostrandoLimitados = true;
     }
 
@@ -280,8 +291,9 @@ async function cargarExpedientes() {
         `;
     }
 
-    lista.innerHTML = advertenciaHTML + expedientes.map(exp => `
-        <div class="expediente-card" data-id="${exp.id}">
+    lista.innerHTML = advertenciaHTML + expedientes.map((exp, index) => `
+        <div class="expediente-card" data-id="${exp.id}" data-orden="${exp.orden || index}" draggable="true">
+            <div class="drag-handle" title="Arrastra para reordenar">⋮⋮</div>
             <div class="expediente-header">
                 <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
                 <span class="expediente-categoria">${exp.categoria || 'General'}</span>
@@ -300,6 +312,9 @@ async function cargarExpedientes() {
             </div>
         </div>
     `).join('');
+
+    // Inicializar drag and drop
+    inicializarDragAndDrop();
 
     // Mostrar conteo real vs visible
     if (mostrandoLimitados) {
@@ -361,6 +376,92 @@ function aplicarVistaExpedientes() {
     } else {
         listaCards.style.display = 'grid';
         if (tablaContainer) tablaContainer.style.display = 'none';
+    }
+}
+
+// ==================== DRAG AND DROP EXPEDIENTES ====================
+
+let draggedElement = null;
+
+function inicializarDragAndDrop() {
+    const lista = document.getElementById('lista-expedientes');
+    const cards = lista.querySelectorAll('.expediente-card');
+
+    cards.forEach(card => {
+        card.addEventListener('dragstart', handleDragStart);
+        card.addEventListener('dragend', handleDragEnd);
+        card.addEventListener('dragover', handleDragOver);
+        card.addEventListener('dragenter', handleDragEnter);
+        card.addEventListener('dragleave', handleDragLeave);
+        card.addEventListener('drop', handleDrop);
+    });
+}
+
+function handleDragStart(e) {
+    draggedElement = this;
+    this.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', this.dataset.id);
+}
+
+function handleDragEnd(e) {
+    this.classList.remove('dragging');
+    document.querySelectorAll('.expediente-card').forEach(card => {
+        card.classList.remove('drag-over');
+    });
+    draggedElement = null;
+}
+
+function handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+}
+
+function handleDragEnter(e) {
+    e.preventDefault();
+    if (this !== draggedElement) {
+        this.classList.add('drag-over');
+    }
+}
+
+function handleDragLeave(e) {
+    this.classList.remove('drag-over');
+}
+
+async function handleDrop(e) {
+    e.preventDefault();
+    this.classList.remove('drag-over');
+
+    if (this === draggedElement) return;
+
+    const lista = document.getElementById('lista-expedientes');
+    const cards = [...lista.querySelectorAll('.expediente-card')];
+    const draggedIndex = cards.indexOf(draggedElement);
+    const targetIndex = cards.indexOf(this);
+
+    // Reordenar visualmente
+    if (draggedIndex < targetIndex) {
+        this.parentNode.insertBefore(draggedElement, this.nextSibling);
+    } else {
+        this.parentNode.insertBefore(draggedElement, this);
+    }
+
+    // Guardar nuevo orden
+    await guardarOrdenExpedientes();
+    mostrarToast('Orden actualizado', 'success');
+}
+
+async function guardarOrdenExpedientes() {
+    const lista = document.getElementById('lista-expedientes');
+    const cards = lista.querySelectorAll('.expediente-card');
+
+    for (let i = 0; i < cards.length; i++) {
+        const id = parseInt(cards[i].dataset.id);
+        const expediente = await obtenerExpedientePorId(id);
+        if (expediente) {
+            expediente.orden = i;
+            await actualizarExpediente(expediente);
+        }
     }
 }
 
@@ -1602,6 +1703,12 @@ async function cargarConfiguracion() {
         // Para premium: checked por defecto a menos que explícitamente quiera ver anuncios
         checkAnuncios.checked = ocultarAnuncios !== 'false';
     }
+
+    // Cargar configuración de recordatorios
+    await cargarConfigRecordatorios();
+
+    // Verificar recordatorios automáticamente
+    verificarRecordatoriosAutomatico();
 }
 
 // ==================== TEMA OSCURO ====================
@@ -1712,6 +1819,240 @@ function cargarEmailJS() {
         script.onerror = reject;
         document.head.appendChild(script);
     });
+}
+
+// ==================== SISTEMA DE RECORDATORIOS ====================
+
+// Guardar configuración de recordatorios
+async function guardarConfigRecordatorios() {
+    const config = {
+        unDia: document.getElementById('reminder-1day')?.checked || false,
+        tresDias: document.getElementById('reminder-3days')?.checked || false,
+        unaSemana: document.getElementById('reminder-1week')?.checked || false,
+        suscripcion: document.getElementById('reminder-suscripcion')?.checked || false
+    };
+
+    await guardarConfig('recordatorios_config', JSON.stringify(config));
+    mostrarToast('Configuración de recordatorios guardada', 'success');
+}
+
+// Cargar configuración de recordatorios
+async function cargarConfigRecordatorios() {
+    const configStr = await obtenerConfig('recordatorios_config');
+    if (configStr) {
+        try {
+            const config = JSON.parse(configStr);
+            const el1day = document.getElementById('reminder-1day');
+            const el3days = document.getElementById('reminder-3days');
+            const el1week = document.getElementById('reminder-1week');
+            const elSuscripcion = document.getElementById('reminder-suscripcion');
+
+            if (el1day) el1day.checked = config.unDia || false;
+            if (el3days) el3days.checked = config.tresDias || false;
+            if (el1week) el1week.checked = config.unaSemana || false;
+            if (elSuscripcion) elSuscripcion.checked = config.suscripcion || false;
+        } catch (e) {
+            console.error('Error cargando config de recordatorios:', e);
+        }
+    }
+}
+
+// Verificar y enviar recordatorios pendientes
+async function verificarRecordatoriosPendientes() {
+    // Verificar que EmailJS está configurado
+    const serviceId = await obtenerConfig('email_service_id');
+    const publicKey = await obtenerConfig('email_public_key');
+    const templateId = await obtenerConfig('email_template_id');
+    const emailDestino = await obtenerConfig('email_destino');
+
+    if (!serviceId || !publicKey || !templateId || !emailDestino) {
+        mostrarToast('Configura EmailJS primero para recibir recordatorios', 'warning');
+        return;
+    }
+
+    const configStr = await obtenerConfig('recordatorios_config');
+    if (!configStr) {
+        mostrarToast('Configura los recordatorios primero', 'warning');
+        return;
+    }
+
+    const config = JSON.parse(configStr);
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    // Obtener eventos
+    const eventos = await obtenerEventos();
+    const recordatoriosEnviados = JSON.parse(localStorage.getItem('recordatorios_enviados') || '{}');
+
+    let pendientes = [];
+    let enviados = 0;
+
+    for (const evento of eventos) {
+        const fechaEvento = new Date(evento.fecha);
+        fechaEvento.setHours(0, 0, 0, 0);
+        const diasRestantes = Math.ceil((fechaEvento - hoy) / (1000 * 60 * 60 * 24));
+
+        // Solo eventos futuros
+        if (diasRestantes < 0) continue;
+
+        // Verificar si debe enviar recordatorio
+        const deberiasEnviar = (
+            (config.unDia && diasRestantes === 1) ||
+            (config.tresDias && diasRestantes === 3) ||
+            (config.unaSemana && diasRestantes === 7)
+        );
+
+        if (deberiasEnviar) {
+            const claveRecordatorio = `${evento.id}_${diasRestantes}`;
+
+            if (!recordatoriosEnviados[claveRecordatorio]) {
+                pendientes.push({
+                    evento,
+                    diasRestantes,
+                    clave: claveRecordatorio
+                });
+            }
+        }
+    }
+
+    // Verificar recordatorio de suscripción
+    if (config.suscripcion && estadoPremium.activo && estadoPremium.expiracion) {
+        const fechaExp = new Date(estadoPremium.expiracion);
+        const diasParaExpirar = Math.ceil((fechaExp - hoy) / (1000 * 60 * 60 * 24));
+
+        if (diasParaExpirar === 7 && !recordatoriosEnviados['suscripcion_7dias']) {
+            pendientes.push({
+                tipo: 'suscripcion',
+                diasRestantes: diasParaExpirar,
+                clave: 'suscripcion_7dias'
+            });
+        }
+    }
+
+    if (pendientes.length === 0) {
+        mostrarToast('No hay recordatorios pendientes', 'info');
+        return;
+    }
+
+    // Enviar recordatorios
+    mostrarToast(`Enviando ${pendientes.length} recordatorio(s)...`, 'info');
+
+    for (const item of pendientes) {
+        try {
+            if (item.tipo === 'suscripcion') {
+                await enviarRecordatorioSuscripcion(serviceId, publicKey, templateId, emailDestino);
+            } else {
+                await enviarRecordatorioEvento(item.evento, item.diasRestantes, serviceId, publicKey, templateId, emailDestino);
+            }
+
+            recordatoriosEnviados[item.clave] = Date.now();
+            enviados++;
+        } catch (error) {
+            console.error('Error enviando recordatorio:', error);
+        }
+    }
+
+    localStorage.setItem('recordatorios_enviados', JSON.stringify(recordatoriosEnviados));
+    mostrarToast(`✅ ${enviados} recordatorio(s) enviado(s)`, 'success');
+}
+
+// Enviar recordatorio de evento por email
+async function enviarRecordatorioEvento(evento, diasRestantes, serviceId, publicKey, templateId, emailDestino) {
+    if (typeof emailjs === 'undefined') {
+        await cargarEmailJS();
+    }
+
+    emailjs.init(publicKey);
+
+    const diasTexto = diasRestantes === 1 ? '1 día' : `${diasRestantes} días`;
+    const fechaEvento = new Date(evento.fecha).toLocaleDateString('es-MX', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+
+    const templateParams = {
+        to_email: emailDestino,
+        subject: `📅 Recordatorio: ${evento.titulo} en ${diasTexto}`,
+        message: `
+RECORDATORIO DE EVENTO
+
+Evento: ${evento.titulo}
+Fecha: ${fechaEvento}
+Faltan: ${diasTexto}
+
+${evento.descripcion || ''}
+
+---
+TSJ Filing Online
+        `.trim(),
+        from_name: 'TSJ Filing Online'
+    };
+
+    await emailjs.send(serviceId, templateId, templateParams);
+}
+
+// Enviar recordatorio de suscripción
+async function enviarRecordatorioSuscripcion(serviceId, publicKey, templateId, emailDestino) {
+    if (typeof emailjs === 'undefined') {
+        await cargarEmailJS();
+    }
+
+    emailjs.init(publicKey);
+
+    const fechaExp = new Date(estadoPremium.expiracion).toLocaleDateString('es-MX', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+
+    const templateParams = {
+        to_email: emailDestino,
+        subject: '⚠️ Tu suscripción Premium vence pronto',
+        message: `
+RECORDATORIO DE SUSCRIPCIÓN
+
+Tu suscripción Premium de TSJ Filing Online vence el ${fechaExp}.
+
+Renueva antes de esa fecha para no perder acceso a:
+- Expedientes ilimitados
+- Búsquedas ilimitadas
+- Sin anuncios
+- Soporte prioritario
+
+Contacta para renovar tu suscripción.
+
+---
+TSJ Filing Online
+        `.trim(),
+        from_name: 'TSJ Filing Online'
+    };
+
+    await emailjs.send(serviceId, templateId, templateParams);
+}
+
+// Verificar recordatorios automáticamente al cargar
+async function verificarRecordatoriosAutomatico() {
+    const ultimaVerificacion = localStorage.getItem('ultima_verificacion_recordatorios');
+    const hoy = new Date().toDateString();
+
+    // Solo verificar una vez al día
+    if (ultimaVerificacion === hoy) return;
+
+    // Verificar que EmailJS está configurado
+    const serviceId = await obtenerConfig('email_service_id');
+    if (!serviceId) return;
+
+    const configStr = await obtenerConfig('recordatorios_config');
+    if (!configStr) return;
+
+    // Verificar en segundo plano
+    setTimeout(async () => {
+        await verificarRecordatoriosPendientes();
+        localStorage.setItem('ultima_verificacion_recordatorios', hoy);
+    }, 5000);
 }
 
 async function exportarDatos() {

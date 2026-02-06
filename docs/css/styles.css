@@ -363,6 +363,27 @@ input:focus, textarea:focus, select:focus {
 .radio-label, .checkbox-label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
 .radio-label input, .checkbox-label input { width: auto; }
 .form-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
+
+/* Reminder Options */
+.reminder-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 0.5rem;
+}
+.reminder-config h4 {
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+.reminder-config .checkbox-label {
+    background: var(--bg-secondary);
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius);
+    transition: background-color 0.2s;
+}
+.reminder-config .checkbox-label:hover {
+    background: var(--bg-tertiary);
+}
 .form-help { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; }
 
 /* Image Upload */
@@ -464,6 +485,45 @@ input:focus, textarea:focus, select:focus {
 }
 
 .expediente-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+
+/* Drag and Drop */
+.expediente-card[draggable="true"] {
+    position: relative;
+}
+
+.drag-handle {
+    position: absolute;
+    top: 50%;
+    left: -8px;
+    transform: translateY(-50%);
+    font-size: 1rem;
+    color: var(--text-muted);
+    cursor: grab;
+    opacity: 0;
+    transition: opacity 0.2s;
+    padding: 0.5rem 0.25rem;
+    user-select: none;
+    letter-spacing: -3px;
+}
+
+.expediente-card:hover .drag-handle {
+    opacity: 1;
+}
+
+.drag-handle:active {
+    cursor: grabbing;
+}
+
+.expediente-card.dragging {
+    opacity: 0.5;
+    transform: rotate(2deg);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+}
+
+.expediente-card.drag-over {
+    border: 2px dashed var(--primary);
+    background: var(--bg-tertiary);
+}
 
 .expediente-header {
     display: flex;
