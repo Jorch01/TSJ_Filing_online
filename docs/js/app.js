@@ -233,6 +233,12 @@ async function cargarEstadisticas() {
 // ==================== EXPEDIENTES ====================
 
 async function cargarExpedientes() {
+    // Eliminar duplicados automáticamente
+    const duplicadosEliminados = await eliminarExpedientesDuplicados();
+    if (duplicadosEliminados > 0) {
+        console.log(`Se eliminaron ${duplicadosEliminados} expediente(s) duplicado(s)`);
+    }
+
     let expedientes = await obtenerExpedientes();
     const lista = document.getElementById('lista-expedientes');
     const count = document.getElementById('count-expedientes');
@@ -1650,6 +1656,7 @@ async function cargarExpedientesParaBusqueda() {
             <div class="exp-info">
                 <span class="exp-numero">${exp.numero || exp.nombre}</span>
                 <span class="exp-juzgado">${exp.juzgado}</span>
+                ${exp.comentario ? `<span class="exp-comentario">${exp.comentario}</span>` : ''}
             </div>
         </label>
     `).join('');

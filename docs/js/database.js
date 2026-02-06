@@ -176,6 +176,65 @@ async function eliminarExpediente(id, permanente = false) {
     }
 }
 
+// ==================== DETECCIÓN Y ELIMINACIÓN DE DUPLICADOS ====================
+
+async function eliminarExpedientesDuplicados() {
+    const expedientes = await obtenerExpedientes();
+    const duplicadosAEliminar = [];
+    const expedientesPorClave = new Map();
+
+    // Agrupar expedientes por clave (número/nombre + juzgado + categoría)
+    for (const exp of expedientes) {
+        const identificador = (exp.numero || exp.nombre || '').toLowerCase().trim();
+        const juzgado = (exp.juzgado || '').toLowerCase().trim();
+        const categoria = (exp.categoria || 'general').toLowerCase().trim();
+        const clave = `${identificador}|${juzgado}|${categoria}`;
+
+        if (!expedientesPorClave.has(clave)) {
+            expedientesPorClave.set(clave, []);
+        }
+        expedientesPorClave.get(clave).push(exp);
+    }
+
+    // Identificar duplicados y mantener el más completo/reciente
+    for (const [clave, grupo] of expedientesPorClave) {
+        if (grupo.length > 1) {
+            // Ordenar: primero el que tiene más datos, luego el más reciente
+            grupo.sort((a, b) => {
+                // Contar campos con datos
+                const contarCampos = (e) => {
+                    let count = 0;
+                    if (e.numero) count++;
+                    if (e.nombre) count++;
+                    if (e.comentario) count++;
+                    if (e.categoria) count++;
+                    return count;
+                };
+                const camposA = contarCampos(a);
+                const camposB = contarCampos(b);
+                if (camposA !== camposB) return camposB - camposA;
+
+                // Si tienen igual número de campos, el más reciente
+                const fechaA = new Date(a.fechaModificacion || a.fechaCreacion || 0);
+                const fechaB = new Date(b.fechaModificacion || b.fechaCreacion || 0);
+                return fechaB - fechaA;
+            });
+
+            // El primero se mantiene, los demás son duplicados
+            for (let i = 1; i < grupo.length; i++) {
+                duplicadosAEliminar.push(grupo[i].id);
+            }
+        }
+    }
+
+    // Eliminar duplicados
+    for (const id of duplicadosAEliminar) {
+        await eliminarExpediente(id, true);
+    }
+
+    return duplicadosAEliminar.length;
+}
+
 // ==================== NOTAS ====================
 
 async function agregarNota(nota) {
