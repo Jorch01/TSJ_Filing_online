@@ -205,6 +205,17 @@
                 </div>
             </div>
 
+            <!-- Banner de anuncios -->
+            <div class="ad-banner ad-banner-top" id="ad-banner-expedientes" style="display: none;">
+                <div class="ad-content">
+                    <span class="ad-label">Anuncio</span>
+                    <div class="ad-body" id="ad-body-expedientes">
+                        <!-- Contenido del anuncio se carga dinámicamente -->
+                    </div>
+                    <a href="#" class="ad-remove-link" onclick="mostrarOpcionQuitarAnuncios(event)">Quitar anuncios</a>
+                </div>
+            </div>
+
             <!-- Formulario Nuevo Expediente -->
             <div class="card form-card" id="form-expediente" style="display: none;">
                 <div class="card-header">
@@ -326,6 +337,17 @@
                 </button>
             </div>
 
+            <!-- Banner de anuncios -->
+            <div class="ad-banner ad-banner-top" id="ad-banner-calendario" style="display: none;">
+                <div class="ad-content">
+                    <span class="ad-label">Anuncio</span>
+                    <div class="ad-body" id="ad-body-calendario">
+                        <!-- Contenido del anuncio se carga dinámicamente -->
+                    </div>
+                    <a href="#" class="ad-remove-link" onclick="mostrarOpcionQuitarAnuncios(event)">Quitar anuncios</a>
+                </div>
+            </div>
+
             <div class="calendario-nav">
                 <button class="btn btn-secondary" onclick="mesAnterior()">◀ Anterior</button>
                 <h3 id="mes-actual">Enero 2025</h3>
@@ -383,6 +405,17 @@
                 </button>
             </div>
 
+            <!-- Banner de anuncios -->
+            <div class="ad-banner ad-banner-top" id="ad-banner-notas" style="display: none;">
+                <div class="ad-content">
+                    <span class="ad-label">Anuncio</span>
+                    <div class="ad-body" id="ad-body-notas">
+                        <!-- Contenido del anuncio se carga dinámicamente -->
+                    </div>
+                    <a href="#" class="ad-remove-link" onclick="mostrarOpcionQuitarAnuncios(event)">Quitar anuncios</a>
+                </div>
+            </div>
+
             <!-- Filtros -->
             <div class="filters-section">
                 <div class="search-box">
@@ -414,6 +447,17 @@
                 <div>
                     <h2>🔍 Búsqueda en TSJ</h2>
                     <p class="subtitle">Busca publicaciones en el TSJ de Quintana Roo</p>
+                </div>
+            </div>
+
+            <!-- Banner de anuncios -->
+            <div class="ad-banner ad-banner-top" id="ad-banner-busqueda" style="display: none;">
+                <div class="ad-content">
+                    <span class="ad-label">Anuncio</span>
+                    <div class="ad-body" id="ad-body-busqueda">
+                        <!-- Contenido del anuncio se carga dinámicamente -->
+                    </div>
+                    <a href="#" class="ad-remove-link" onclick="mostrarOpcionQuitarAnuncios(event)">Quitar anuncios</a>
                 </div>
             </div>
 
@@ -635,6 +679,17 @@
             <div class="page-header">
                 <h2>⚙️ Configuración</h2>
                 <p class="subtitle">Personaliza tu experiencia</p>
+            </div>
+
+            <!-- Banner de anuncios -->
+            <div class="ad-banner ad-banner-top" id="ad-banner-config" style="display: none;">
+                <div class="ad-content">
+                    <span class="ad-label">Anuncio</span>
+                    <div class="ad-body" id="ad-body-config">
+                        <!-- Contenido del anuncio se carga dinámicamente -->
+                    </div>
+                    <a href="#" class="ad-remove-link" onclick="mostrarOpcionQuitarAnuncios(event)">Quitar anuncios</a>
+                </div>
             </div>
 
             <div class="config-section">
@@ -1225,6 +1280,8 @@
     </footer>
 
     <!-- Scripts -->
+    <!-- Tesseract.js para OCR en navegador -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script src="js/juzgados.js"></script>
     <script src="js/database.js"></script>
     <script src="js/app.js"></script>

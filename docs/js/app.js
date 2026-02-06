@@ -2766,104 +2766,155 @@ const GROQ_VISION_MODELS = [
     'llava-v1.5-7b-4096-preview'
 ];
 
-// Extraer texto de imagen usando Groq Vision
+// ==================== OCR CON TESSERACT.JS (NAVEGADOR) ====================
+
+// Extraer texto usando Tesseract.js (OCR en el navegador)
+async function extraerTextoConTesseract(imagenBase64) {
+    const statusEl = document.getElementById('ia-ocr-status');
+    const statusText = statusEl?.querySelector('span:not(.loading-spinner)') || statusEl;
+
+    try {
+        // Verificar que Tesseract esté disponible
+        if (typeof Tesseract === 'undefined') {
+            throw new Error('Tesseract.js no está cargado');
+        }
+
+        console.log('Iniciando OCR con Tesseract.js...');
+
+        // Actualizar mensaje de estado
+        if (statusText) {
+            statusText.textContent = ' Extrayendo texto con OCR del navegador...';
+        }
+
+        // Ejecutar OCR con Tesseract.js
+        const result = await Tesseract.recognize(
+            imagenBase64,
+            'spa', // Idioma español
+            {
+                logger: info => {
+                    if (info.status === 'recognizing text') {
+                        const progress = Math.round(info.progress * 100);
+                        if (statusText) {
+                            statusText.textContent = ` Extrayendo texto... ${progress}%`;
+                        }
+                    }
+                }
+            }
+        );
+
+        const textoExtraido = result.data.text?.trim();
+
+        if (textoExtraido && textoExtraido.length > 10) {
+            // Éxito - agregar texto extraído al textarea
+            const textarea = document.getElementById('ia-texto-acuerdo');
+            textarea.value = textoExtraido;
+            mostrarToast('Texto extraído correctamente con OCR del navegador', 'success');
+            console.log('OCR Tesseract exitoso, caracteres extraídos:', textoExtraido.length);
+            return true;
+        } else {
+            console.warn('Tesseract no pudo extraer texto significativo');
+            return false;
+        }
+    } catch (error) {
+        console.error('Error en Tesseract OCR:', error);
+        return false;
+    }
+}
+
+// Extraer texto de imagen - Intenta Groq Vision primero, luego Tesseract.js como fallback
 async function extraerTextoDeImagen(imagenBase64) {
     const apiKey = await obtenerConfig('groq_api_key');
-
-    if (!apiKey) {
-        mostrarToast('Configura tu API Key de Groq para usar OCR', 'warning');
-        return;
-    }
-
     const statusEl = document.getElementById('ia-ocr-status');
-    if (statusEl) statusEl.style.display = 'flex';
+
+    if (statusEl) {
+        statusEl.style.display = 'flex';
+        const statusText = statusEl.querySelector('span:not(.loading-spinner)');
+        if (statusText) statusText.textContent = ' Extrayendo texto de la imagen...';
+    }
 
     let textoExtraido = null;
-    let ultimoError = null;
-    let errorMensaje = '';
+    let groqFailed = false;
 
-    // Intentar con cada modelo de visión
-    for (const modelo of GROQ_VISION_MODELS) {
-        try {
-            console.log(`Intentando OCR con modelo: ${modelo}`);
+    // Primero intentar con Groq Vision API (si hay API key)
+    if (apiKey) {
+        for (const modelo of GROQ_VISION_MODELS) {
+            try {
+                console.log(`Intentando OCR con modelo: ${modelo}`);
 
-            const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey}`
-                },
-                body: JSON.stringify({
-                    model: modelo,
-                    messages: [{
-                        role: 'user',
-                        content: [
-                            {
-                                type: 'text',
-                                text: 'Extrae todo el texto que puedas leer de esta imagen de un documento judicial. Transcribe el texto exactamente como aparece, manteniendo el formato y los párrafos. Solo devuelve el texto extraído, sin explicaciones adicionales.'
-                            },
-                            {
-                                type: 'image_url',
-                                image_url: {
-                                    url: imagenBase64
+                const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: modelo,
+                        messages: [{
+                            role: 'user',
+                            content: [
+                                {
+                                    type: 'text',
+                                    text: 'Extrae todo el texto que puedas leer de esta imagen de un documento judicial. Transcribe el texto exactamente como aparece, manteniendo el formato y los párrafos. Solo devuelve el texto extraído, sin explicaciones adicionales.'
+                                },
+                                {
+                                    type: 'image_url',
+                                    image_url: {
+                                        url: imagenBase64
+                                    }
                                 }
-                            }
-                        ]
-                    }],
-                    max_tokens: 4096
-                })
-            });
+                            ]
+                        }],
+                        max_tokens: 4096
+                    })
+                });
 
-            if (response.ok) {
-                const data = await response.json();
-                textoExtraido = data.choices[0]?.message?.content || '';
+                if (response.ok) {
+                    const data = await response.json();
+                    textoExtraido = data.choices[0]?.message?.content || '';
 
-                if (textoExtraido) {
-                    // Éxito - agregar texto extraído al textarea
-                    const textarea = document.getElementById('ia-texto-acuerdo');
-                    textarea.value = textoExtraido;
-                    mostrarToast('Texto extraído correctamente con ' + modelo, 'success');
-                    break; // Salir del loop si tuvo éxito
+                    if (textoExtraido) {
+                        // Éxito con Groq Vision
+                        const textarea = document.getElementById('ia-texto-acuerdo');
+                        textarea.value = textoExtraido;
+                        mostrarToast('Texto extraído correctamente con IA', 'success');
+                        if (statusEl) statusEl.style.display = 'none';
+                        return;
+                    }
+                } else {
+                    const error = await response.json();
+                    console.warn(`Modelo ${modelo} falló:`, error);
+                    groqFailed = true;
                 }
-            } else {
-                const error = await response.json();
-                console.warn(`Modelo ${modelo} falló:`, error);
-                ultimoError = error;
-                errorMensaje = error.error?.message || 'Error desconocido';
-                // Continuar con el siguiente modelo
+            } catch (error) {
+                console.warn(`Error con modelo ${modelo}:`, error);
+                groqFailed = true;
             }
-        } catch (error) {
-            console.warn(`Error con modelo ${modelo}:`, error);
-            ultimoError = error;
-            errorMensaje = error.message || 'Error de conexión';
-            // Continuar con el siguiente modelo
         }
+    } else {
+        groqFailed = true;
+        console.log('No hay API Key de Groq, usando OCR del navegador directamente');
     }
 
-    // Si ningún modelo funcionó
+    // Si Groq falló o no hay API key, usar Tesseract.js como fallback
     if (!textoExtraido) {
-        console.error('Ningún modelo de visión funcionó:', ultimoError);
+        console.log('Groq Vision no disponible, intentando con Tesseract.js...');
 
-        // Mostrar error detallado
-        let mensajeError = 'OCR no disponible.';
-        if (errorMensaje.includes('model')) {
-            mensajeError = 'Los modelos de visión no están disponibles en tu cuenta de Groq.';
-        } else if (errorMensaje.includes('rate') || errorMensaje.includes('limit')) {
-            mensajeError = 'Límite de uso alcanzado. Intenta más tarde.';
-        } else if (errorMensaje.includes('invalid') || errorMensaje.includes('key')) {
-            mensajeError = 'API Key inválida. Verifica tu configuración.';
+        if (apiKey && groqFailed) {
+            mostrarToast('API de visión no disponible, usando OCR del navegador...', 'info');
+        } else if (!apiKey) {
+            mostrarToast('Usando OCR del navegador (sin API Key)...', 'info');
         }
 
-        mostrarToast(mensajeError + ' Copia el texto manualmente.', 'warning');
+        const tesseractSuccess = await extraerTextoConTesseract(imagenBase64);
 
-        // Mostrar mensaje de ayuda en el textarea
-        const textarea = document.getElementById('ia-texto-acuerdo');
-        if (textarea && !textarea.value) {
-            textarea.placeholder = mensajeError + ' Pega aquí el texto del acuerdo manualmente...';
+        if (!tesseractSuccess) {
+            mostrarToast('No se pudo extraer texto. Intenta con una imagen más clara o copia el texto manualmente.', 'warning');
+
+            const textarea = document.getElementById('ia-texto-acuerdo');
+            if (textarea && !textarea.value) {
+                textarea.placeholder = 'No se pudo extraer texto automáticamente. Pega aquí el texto del acuerdo manualmente...';
+            }
         }
-
-        // Mostrar detalle del error en consola
-        console.log('Error detallado OCR:', errorMensaje);
     }
 
     if (statusEl) statusEl.style.display = 'none';
@@ -4153,22 +4204,22 @@ const ANUNCIOS_CONFIG = [
     {
         id: 'ad1',
         tipo: 'texto',
-        contenido: '¿Necesitas un abogado especializado? Contáctanos en abogados@ejemplo.com',
-        enlace: 'mailto:abogados@ejemplo.com',
+        contenido: '📢 ¿Quieres anunciarte aquí? Contáctanos',
+        enlace: 'mailto:frida@empirica.mx?subject=Publicidad en TSJ Filing Online',
         activo: true
     },
     {
         id: 'ad2',
         tipo: 'texto',
-        contenido: '📋 Software de gestión jurídica profesional - Prueba gratis',
-        enlace: '#',
+        contenido: '💼 Espacio publicitario disponible - Llega a abogados de Quintana Roo',
+        enlace: 'mailto:frida@empirica.mx?subject=Solicitud de espacio publicitario en TSJ Filing',
         activo: true
     },
     {
         id: 'placeholder',
         tipo: 'placeholder',
         contenido: '📢 Espacio disponible para anunciantes',
-        enlace: 'mailto:publicidad@tsjfiling.com?subject=Anuncio en TSJ Filing',
+        enlace: 'mailto:frida@empirica.mx?subject=Anuncio en TSJ Filing Online',
         activo: true
     }
 ];
