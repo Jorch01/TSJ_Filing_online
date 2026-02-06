@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = 'TSJFilingDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Incrementado para agregar store de historial
 
 let db = null;
 
@@ -57,6 +57,14 @@ function initDB() {
                 database.createObjectStore('config', { keyPath: 'clave' });
             }
 
+            // Store: Historial de cambios
+            if (!database.objectStoreNames.contains('historial')) {
+                const historialStore = database.createObjectStore('historial', { keyPath: 'id', autoIncrement: true });
+                historialStore.createIndex('expedienteId', 'expedienteId', { unique: false });
+                historialStore.createIndex('fecha', 'fecha', { unique: false });
+                historialStore.createIndex('tipo', 'tipo', { unique: false });
+            }
+
             console.log('Stores de IndexedDB creados');
         };
     });
@@ -75,7 +83,16 @@ async function agregarExpediente(expediente) {
 
         const request = store.add(expediente);
 
-        request.onsuccess = () => resolve(request.result);
+        request.onsuccess = async () => {
+            const nuevoId = request.result;
+            // Registrar creación en historial
+            try {
+                await registrarCambioExpediente(nuevoId, 'creacion', null, expediente, 'Expediente creado');
+            } catch (e) {
+                console.error('Error al registrar historial de creación:', e);
+            }
+            resolve(nuevoId);
+        };
         request.onerror = () => reject(request.error);
     });
 }
@@ -113,13 +130,33 @@ async function actualizarExpediente(id, cambios) {
             return;
         }
 
+        // Detectar qué campos cambiaron
+        const camposModificados = {};
+        const valoresAnteriores = {};
+        for (const [key, value] of Object.entries(cambios)) {
+            if (expediente[key] !== value && key !== 'fechaActualizacion' && key !== 'orden') {
+                valoresAnteriores[key] = expediente[key];
+                camposModificados[key] = value;
+            }
+        }
+
         const actualizado = { ...expediente, ...cambios, fechaActualizacion: new Date().toISOString() };
 
         const transaction = db.transaction(['expedientes'], 'readwrite');
         const store = transaction.objectStore('expedientes');
         const request = store.put(actualizado);
 
-        request.onsuccess = () => resolve(request.result);
+        request.onsuccess = async () => {
+            // Registrar cambio en historial (solo si hubo cambios significativos)
+            if (Object.keys(camposModificados).length > 0) {
+                try {
+                    await registrarCambioExpediente(id, 'edicion', valoresAnteriores, camposModificados);
+                } catch (e) {
+                    console.error('Error al registrar historial:', e);
+                }
+            }
+            resolve(request.result);
+        };
         request.onerror = () => reject(request.error);
     });
 }
@@ -391,4 +428,50 @@ async function obtenerEstadisticas() {
         eventos: eventosProximos.length,
         alertas: eventosConAlerta.length
     };
+}
+
+// ==================== HISTORIAL DE CAMBIOS ====================
+
+async function agregarHistorial(registro) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['historial'], 'readwrite');
+        const store = transaction.objectStore('historial');
+
+        registro.fecha = new Date().toISOString();
+
+        const request = store.add(registro);
+
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function obtenerHistorialExpediente(expedienteId) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['historial'], 'readonly');
+        const store = transaction.objectStore('historial');
+        const index = store.index('expedienteId');
+        const request = index.getAll(expedienteId);
+
+        request.onsuccess = () => {
+            // Ordenar por fecha descendente (más reciente primero)
+            const historial = request.result.sort((a, b) =>
+                new Date(b.fecha) - new Date(a.fecha)
+            );
+            resolve(historial);
+        };
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function registrarCambioExpediente(expedienteId, tipo, cambiosAnteriores, cambiosNuevos, descripcion = '') {
+    const registro = {
+        expedienteId,
+        tipo, // 'creacion', 'edicion', 'eliminacion'
+        cambiosAnteriores,
+        cambiosNuevos,
+        descripcion
+    };
+
+    return agregarHistorial(registro);
 }

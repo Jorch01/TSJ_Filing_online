@@ -306,6 +306,7 @@ async function cargarExpedientes() {
             <div class="expediente-footer">
                 <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
                 <div class="expediente-actions">
+                    <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
                     <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
                     <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
                 </div>
@@ -335,6 +336,7 @@ async function cargarExpedientes() {
                 <td class="comentario-cell" title="${exp.comentario || ''}">${exp.comentario || '-'}</td>
                 <td>${formatearFecha(exp.fechaCreacion)}</td>
                 <td class="acciones-cell">
+                    <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
                     <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
                     <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
                 </td>
@@ -701,6 +703,119 @@ async function filtrarExpedientes() {
     }
 
     count.textContent = `${expedientes.length} expediente${expedientes.length !== 1 ? 's' : ''}`;
+}
+
+// ==================== HISTORIAL DE EXPEDIENTES ====================
+
+async function verHistorialExpediente(id, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+
+    const expediente = await obtenerExpediente(id);
+    if (!expediente) {
+        mostrarToast('Expediente no encontrado', 'error');
+        return;
+    }
+
+    const historial = await obtenerHistorialExpediente(id);
+
+    const nombreExpediente = expediente.numero || expediente.nombre;
+
+    let contenidoHTML = '';
+
+    if (historial.length === 0) {
+        contenidoHTML = `
+            <div class="empty-state small" style="padding: 2rem;">
+                <span>📜</span>
+                <p>No hay cambios registrados</p>
+            </div>
+        `;
+    } else {
+        contenidoHTML = `
+            <div class="historial-lista">
+                ${historial.map(h => `
+                    <div class="historial-item ${h.tipo}">
+                        <div class="historial-header">
+                            <span class="historial-tipo">${obtenerIconoHistorial(h.tipo)} ${obtenerTextoTipo(h.tipo)}</span>
+                            <span class="historial-fecha">${formatearFechaHora(h.fecha)}</span>
+                        </div>
+                        ${h.tipo === 'edicion' ? generarDetallesCambios(h.cambiosAnteriores, h.cambiosNuevos) : ''}
+                        ${h.descripcion ? `<p class="historial-descripcion">${h.descripcion}</p>` : ''}
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    document.getElementById('modal-titulo').textContent = `📜 Historial: ${nombreExpediente}`;
+    document.getElementById('modal-body').innerHTML = contenidoHTML;
+    document.getElementById('modal-footer').innerHTML = `
+        <button class="btn btn-secondary" onclick="cerrarModal()">Cerrar</button>
+    `;
+    document.getElementById('modal-overlay').classList.add('active');
+}
+
+function obtenerIconoHistorial(tipo) {
+    const iconos = {
+        'creacion': '✨',
+        'edicion': '✏️',
+        'eliminacion': '🗑️'
+    };
+    return iconos[tipo] || '📝';
+}
+
+function obtenerTextoTipo(tipo) {
+    const textos = {
+        'creacion': 'Creación',
+        'edicion': 'Modificación',
+        'eliminacion': 'Eliminación'
+    };
+    return textos[tipo] || tipo;
+}
+
+function generarDetallesCambios(anteriores, nuevos) {
+    if (!anteriores || !nuevos) return '';
+
+    const etiquetas = {
+        'numero': 'Número',
+        'nombre': 'Nombre',
+        'juzgado': 'Juzgado',
+        'categoria': 'Categoría',
+        'comentario': 'Comentario'
+    };
+
+    let html = '<div class="cambios-detalle">';
+
+    for (const campo of Object.keys(nuevos)) {
+        const nombreCampo = etiquetas[campo] || campo;
+        const valorAnterior = anteriores[campo] || '(vacío)';
+        const valorNuevo = nuevos[campo] || '(vacío)';
+
+        html += `
+            <div class="cambio-item">
+                <span class="cambio-campo">${nombreCampo}:</span>
+                <span class="cambio-anterior">${valorAnterior}</span>
+                <span class="cambio-flecha">→</span>
+                <span class="cambio-nuevo">${valorNuevo}</span>
+            </div>
+        `;
+    }
+
+    html += '</div>';
+    return html;
+}
+
+function formatearFechaHora(fechaISO) {
+    const fecha = new Date(fechaISO);
+    return fecha.toLocaleString('es-MX', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
 }
 
 // ==================== NOTAS ====================
