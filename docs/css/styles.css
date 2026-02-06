@@ -2072,3 +2072,82 @@ textarea:focus {
 .btn-info:hover {
     background-color: #138496;
 }
+
+/* ==================== REPORTE DE FUSIÓN DE DUPLICADOS ==================== */
+.fusion-reporte {
+    padding: 1rem 0;
+}
+
+.fusion-resumen {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.fusion-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius);
+    min-width: 120px;
+}
+
+.fusion-numero {
+    font-size: 2rem;
+    font-weight: bold;
+    color: var(--primary);
+}
+
+.fusion-label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.fusion-lista {
+    max-height: 300px;
+    overflow-y: auto;
+    margin: 1rem 0;
+}
+
+.fusion-item {
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    background: var(--bg-secondary);
+    border-radius: var(--radius);
+    border-left: 3px solid var(--primary);
+}
+
+.fusion-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.25rem;
+}
+
+.fusion-badge {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.5rem;
+    background: var(--primary);
+    color: white;
+    border-radius: 10px;
+}
+
+.fusion-item-originales,
+.fusion-item-cambios {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.fusion-nota {
+    margin-top: 1rem;
+    padding: 0.75rem;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius);
+    color: var(--text-secondary);
+    text-align: center;
+}

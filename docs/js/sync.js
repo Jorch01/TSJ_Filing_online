@@ -120,11 +120,20 @@ async function sincronizarDatos() {
 
         // 3. Fusionar datos
         let datosFinales;
+        let huboDuplicados = false;
         if (datosRemotos && datosRemotos.metadata) {
             datosFinales = fusionarDatos(datosLocales, datosRemotos);
             // Aplicar datos fusionados localmente
             await aplicarDatosLocalmente(datosFinales);
-            mostrarToast('Datos sincronizados desde otro dispositivo', 'success');
+
+            // Verificar si hubo duplicados fusionados
+            huboDuplicados = reporteFusionDuplicados.expedientesFusionados.length > 0;
+
+            if (huboDuplicados) {
+                mostrarToast('Sincronización completada con fusión de duplicados', 'success');
+            } else {
+                mostrarToast('Datos sincronizados desde otro dispositivo', 'success');
+            }
         } else {
             datosFinales = datosLocales;
         }
@@ -137,6 +146,11 @@ async function sincronizarDatos() {
         localStorage.setItem('sync_last_sync', syncState.lastSync.toString());
 
         actualizarUISync('success');
+
+        // Mostrar reporte de duplicados si los hubo
+        if (huboDuplicados) {
+            setTimeout(() => mostrarReporteFusion(), 500);
+        }
 
     } catch (error) {
         console.error('Error en sincronización:', error);
@@ -234,6 +248,172 @@ function claveExpediente(exp) {
     return `${numero}|${nombre}|${juzgado}`;
 }
 
+// ==================== DETECCIÓN Y FUSIÓN INTELIGENTE DE DUPLICADOS ====================
+
+// Normalizar texto para comparación
+function normalizarTexto(texto) {
+    if (!texto) return '';
+    return texto.toString().trim().toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Quitar acentos
+        .replace(/[^a-z0-9]/g, ''); // Solo alfanuméricos
+}
+
+// Normalizar número de expediente (extraer solo dígitos y año)
+function normalizarNumeroExpediente(numero) {
+    if (!numero) return '';
+    // Extraer patrón común: números/año o números-año
+    const match = numero.match(/(\d+)[\/\-]?(\d{2,4})?/);
+    if (match) {
+        const num = match[1];
+        const year = match[2] || '';
+        return `${num}${year}`;
+    }
+    return numero.replace(/[^0-9]/g, '');
+}
+
+// Calcular similitud entre dos strings (algoritmo de Dice coefficient)
+function calcularSimilitud(str1, str2) {
+    if (!str1 || !str2) return 0;
+    const s1 = normalizarTexto(str1);
+    const s2 = normalizarTexto(str2);
+
+    if (s1 === s2) return 1;
+    if (s1.length < 2 || s2.length < 2) return 0;
+
+    const bigrams1 = new Set();
+    for (let i = 0; i < s1.length - 1; i++) {
+        bigrams1.add(s1.substring(i, i + 2));
+    }
+
+    let matches = 0;
+    for (let i = 0; i < s2.length - 1; i++) {
+        if (bigrams1.has(s2.substring(i, i + 2))) {
+            matches++;
+        }
+    }
+
+    return (2 * matches) / (s1.length - 1 + s2.length - 1);
+}
+
+// Detectar si dos expedientes son potencialmente duplicados
+function sonExpedientesDuplicados(exp1, exp2) {
+    // Misma clave exacta = definitivamente duplicados
+    if (claveExpediente(exp1) === claveExpediente(exp2)) {
+        return { esDuplicado: true, confianza: 1, razon: 'clave_exacta' };
+    }
+
+    const num1 = normalizarNumeroExpediente(exp1.numero);
+    const num2 = normalizarNumeroExpediente(exp2.numero);
+    const nombre1 = normalizarTexto(exp1.nombre);
+    const nombre2 = normalizarTexto(exp2.nombre);
+    const juzgado1 = normalizarTexto(exp1.juzgado);
+    const juzgado2 = normalizarTexto(exp2.juzgado);
+
+    // Mismo número de expediente y mismo juzgado = duplicados
+    if (num1 && num2 && num1 === num2 && juzgado1 === juzgado2) {
+        return { esDuplicado: true, confianza: 0.95, razon: 'numero_juzgado' };
+    }
+
+    // Mismo nombre exacto y mismo juzgado = duplicados
+    if (nombre1 && nombre2 && nombre1 === nombre2 && juzgado1 === juzgado2) {
+        return { esDuplicado: true, confianza: 0.9, razon: 'nombre_juzgado' };
+    }
+
+    // Nombre muy similar (>85%) y mismo juzgado
+    if (nombre1 && nombre2 && juzgado1 === juzgado2) {
+        const similitud = calcularSimilitud(nombre1, nombre2);
+        if (similitud > 0.85) {
+            return { esDuplicado: true, confianza: similitud * 0.9, razon: 'nombre_similar' };
+        }
+    }
+
+    // Mismo número y nombre similar
+    if (num1 && num2 && num1 === num2) {
+        const similitudNombre = calcularSimilitud(nombre1, nombre2);
+        if (similitudNombre > 0.7) {
+            return { esDuplicado: true, confianza: 0.85, razon: 'numero_nombre_similar' };
+        }
+    }
+
+    return { esDuplicado: false, confianza: 0, razon: null };
+}
+
+// Fusionar dos expedientes conservando la información más completa
+function fusionarExpedientesInteligente(exp1, exp2) {
+    const fusionado = { ...exp1 };
+    const cambios = [];
+
+    // Para cada campo, conservar el valor más completo/reciente
+    const campos = ['numero', 'nombre', 'juzgado', 'tipo', 'actor', 'demandado',
+                    'materia', 'estado', 'abogado', 'observaciones', 'etiquetas'];
+
+    campos.forEach(campo => {
+        const val1 = exp1[campo];
+        const val2 = exp2[campo];
+
+        // Si uno tiene valor y el otro no, usar el que tiene valor
+        if (!val1 && val2) {
+            fusionado[campo] = val2;
+            cambios.push({ campo, de: val1, a: val2, origen: 'exp2' });
+        } else if (val1 && val2 && val1 !== val2) {
+            // Ambos tienen valor diferente: usar el más largo/completo
+            if (typeof val1 === 'string' && typeof val2 === 'string') {
+                if (val2.length > val1.length) {
+                    fusionado[campo] = val2;
+                    cambios.push({ campo, de: val1, a: val2, origen: 'exp2_mas_completo' });
+                }
+            } else if (Array.isArray(val1) && Array.isArray(val2)) {
+                // Fusionar arrays (ej: etiquetas)
+                fusionado[campo] = [...new Set([...val1, ...val2])];
+                cambios.push({ campo, de: val1, a: fusionado[campo], origen: 'fusion_arrays' });
+            }
+        }
+    });
+
+    // Combinar historial si existe
+    if (exp1.historial || exp2.historial) {
+        const historial1 = exp1.historial || [];
+        const historial2 = exp2.historial || [];
+        fusionado.historial = [...historial1, ...historial2]
+            .sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+    }
+
+    // Usar la fecha de creación más antigua
+    if (exp1.fechaCreacion && exp2.fechaCreacion) {
+        fusionado.fechaCreacion = exp1.fechaCreacion < exp2.fechaCreacion
+            ? exp1.fechaCreacion : exp2.fechaCreacion;
+    }
+
+    // Usar la fecha de actualización más reciente
+    if (exp1.fechaActualizacion && exp2.fechaActualizacion) {
+        fusionado.fechaActualizacion = exp1.fechaActualizacion > exp2.fechaActualizacion
+            ? exp1.fechaActualizacion : exp2.fechaActualizacion;
+    } else {
+        fusionado.fechaActualizacion = new Date().toISOString();
+    }
+
+    // Conservar IDs originales para reasignar notas/eventos
+    fusionado._idsOriginales = [exp1.id, exp2.id].filter(Boolean);
+    fusionado._cambiosFusion = cambios;
+
+    return fusionado;
+}
+
+// Reporte de fusión de duplicados
+let reporteFusionDuplicados = {
+    expedientesFusionados: [],
+    notasReasignadas: 0,
+    eventosReasignados: 0
+};
+
+function limpiarReporteFusion() {
+    reporteFusionDuplicados = {
+        expedientesFusionados: [],
+        notasReasignadas: 0,
+        eventosReasignados: 0
+    };
+}
+
 // Generar clave única para nota
 function claveNota(nota) {
     const contenido = (nota.contenido || '').substring(0, 100).trim().toLowerCase();
@@ -250,96 +430,154 @@ function claveEvento(evento) {
     return `${titulo}|${fecha}|${expedienteId}`;
 }
 
-// Fusionar expedientes sin duplicar
+// Fusionar expedientes con detección inteligente de duplicados
 function fusionarExpedientes(locales, remotos) {
-    const mapa = new Map();
+    limpiarReporteFusion();
+    const todosExpedientes = [...remotos, ...locales];
+    const expedientesProcesados = [];
+    const indicesUsados = new Set();
 
-    // Primero agregar remotos
-    remotos.forEach(exp => {
-        const clave = claveExpediente(exp);
-        if (clave && clave !== '||') {
-            mapa.set(clave, { ...exp, _origen: 'remoto' });
-        }
-    });
+    // Comparar cada expediente con los demás para detectar duplicados
+    for (let i = 0; i < todosExpedientes.length; i++) {
+        if (indicesUsados.has(i)) continue;
 
-    // Luego procesar locales (sobrescribir si es más reciente)
-    locales.forEach(exp => {
-        const clave = claveExpediente(exp);
-        if (!clave || clave === '||') return;
+        let expedienteBase = { ...todosExpedientes[i] };
+        const duplicadosEncontrados = [];
 
-        const existente = mapa.get(clave);
-        if (!existente) {
-            mapa.set(clave, { ...exp, _origen: 'local' });
-        } else {
-            const fechaLocal = new Date(exp.fechaActualizacion || exp.fechaCreacion || 0);
-            const fechaExistente = new Date(existente.fechaActualizacion || existente.fechaCreacion || 0);
-            if (fechaLocal >= fechaExistente) {
-                mapa.set(clave, { ...exp, _origen: 'local' });
+        for (let j = i + 1; j < todosExpedientes.length; j++) {
+            if (indicesUsados.has(j)) continue;
+
+            const resultado = sonExpedientesDuplicados(expedienteBase, todosExpedientes[j]);
+
+            if (resultado.esDuplicado) {
+                duplicadosEncontrados.push({
+                    indice: j,
+                    expediente: todosExpedientes[j],
+                    confianza: resultado.confianza,
+                    razon: resultado.razon
+                });
+                indicesUsados.add(j);
             }
         }
-    });
 
-    // Limpiar campo temporal y devolver
-    return Array.from(mapa.values()).map(exp => {
-        delete exp._origen;
-        return exp;
-    });
+        // Si hay duplicados, fusionarlos
+        if (duplicadosEncontrados.length > 0) {
+            const nombresOriginales = [expedienteBase.nombre || expedienteBase.numero];
+
+            duplicadosEncontrados.forEach(dup => {
+                nombresOriginales.push(dup.expediente.nombre || dup.expediente.numero);
+                expedienteBase = fusionarExpedientesInteligente(expedienteBase, dup.expediente);
+            });
+
+            reporteFusionDuplicados.expedientesFusionados.push({
+                expedienteFinal: expedienteBase.numero || expedienteBase.nombre,
+                cantidadFusionados: duplicadosEncontrados.length + 1,
+                originales: nombresOriginales,
+                idsOriginales: expedienteBase._idsOriginales || [],
+                cambios: expedienteBase._cambiosFusion || []
+            });
+
+            // Limpiar campos temporales
+            delete expedienteBase._cambiosFusion;
+        }
+
+        indicesUsados.add(i);
+        expedientesProcesados.push(expedienteBase);
+    }
+
+    return expedientesProcesados;
 }
 
-// Fusionar notas sin duplicar
+// Crear mapa de IDs originales a ID final (para reasignar notas/eventos)
+function crearMapaReasignacion() {
+    const mapa = new Map();
+    reporteFusionDuplicados.expedientesFusionados.forEach(fusion => {
+        if (fusion.idsOriginales && fusion.idsOriginales.length > 1) {
+            const idFinal = fusion.idsOriginales[0]; // El primer ID será el principal
+            fusion.idsOriginales.forEach(idOriginal => {
+                if (idOriginal !== idFinal) {
+                    mapa.set(idOriginal, idFinal);
+                }
+            });
+        }
+    });
+    return mapa;
+}
+
+// Fusionar notas sin duplicar y reasignar de expedientes fusionados
 function fusionarNotas(locales, remotas) {
     const mapa = new Map();
+    const mapaReasignacion = crearMapaReasignacion();
 
-    remotas.forEach(nota => {
-        const clave = claveNota(nota);
-        if (clave) mapa.set(clave, { ...nota });
-    });
+    const todasNotas = [...remotas, ...locales];
 
-    locales.forEach(nota => {
-        const clave = claveNota(nota);
+    todasNotas.forEach(nota => {
+        // Reasignar expedienteId si el expediente fue fusionado
+        let notaProcesada = { ...nota };
+        if (nota.expedienteId && mapaReasignacion.has(nota.expedienteId)) {
+            notaProcesada.expedienteId = mapaReasignacion.get(nota.expedienteId);
+            notaProcesada._reasignada = true;
+            reporteFusionDuplicados.notasReasignadas++;
+        }
+
+        const clave = claveNota(notaProcesada);
         if (!clave) return;
 
         const existente = mapa.get(clave);
         if (!existente) {
-            mapa.set(clave, { ...nota });
+            mapa.set(clave, notaProcesada);
         } else {
-            const fechaLocal = new Date(nota.fechaActualizacion || nota.fechaCreacion || 0);
+            const fechaNueva = new Date(notaProcesada.fechaActualizacion || notaProcesada.fechaCreacion || 0);
             const fechaExistente = new Date(existente.fechaActualizacion || existente.fechaCreacion || 0);
-            if (fechaLocal >= fechaExistente) {
-                mapa.set(clave, { ...nota });
+            if (fechaNueva >= fechaExistente) {
+                mapa.set(clave, notaProcesada);
             }
         }
     });
 
-    return Array.from(mapa.values());
+    // Limpiar campos temporales
+    return Array.from(mapa.values()).map(nota => {
+        delete nota._reasignada;
+        return nota;
+    });
 }
 
-// Fusionar eventos sin duplicar
+// Fusionar eventos sin duplicar y reasignar de expedientes fusionados
 function fusionarEventos(locales, remotos) {
     const mapa = new Map();
+    const mapaReasignacion = crearMapaReasignacion();
 
-    remotos.forEach(evento => {
-        const clave = claveEvento(evento);
-        if (clave) mapa.set(clave, { ...evento });
-    });
+    const todosEventos = [...remotos, ...locales];
 
-    locales.forEach(evento => {
-        const clave = claveEvento(evento);
+    todosEventos.forEach(evento => {
+        // Reasignar expedienteId si el expediente fue fusionado
+        let eventoProcesado = { ...evento };
+        if (evento.expedienteId && mapaReasignacion.has(evento.expedienteId)) {
+            eventoProcesado.expedienteId = mapaReasignacion.get(evento.expedienteId);
+            eventoProcesado._reasignado = true;
+            reporteFusionDuplicados.eventosReasignados++;
+        }
+
+        const clave = claveEvento(eventoProcesado);
         if (!clave) return;
 
         const existente = mapa.get(clave);
         if (!existente) {
-            mapa.set(clave, { ...evento });
+            mapa.set(clave, eventoProcesado);
         } else {
-            const fechaLocal = new Date(evento.fechaCreacion || 0);
+            const fechaNueva = new Date(eventoProcesado.fechaCreacion || 0);
             const fechaExistente = new Date(existente.fechaCreacion || 0);
-            if (fechaLocal >= fechaExistente) {
-                mapa.set(clave, { ...evento });
+            if (fechaNueva >= fechaExistente) {
+                mapa.set(clave, eventoProcesado);
             }
         }
     });
 
-    return Array.from(mapa.values());
+    // Limpiar campos temporales
+    return Array.from(mapa.values()).map(evento => {
+        delete evento._reasignado;
+        return evento;
+    });
 }
 
 // Obtener todos los datos locales
@@ -349,6 +587,113 @@ async function obtenerTodosLosDatos() {
     const eventos = await obtenerEventos();
 
     return { expedientes, notas, eventos };
+}
+
+// Mostrar reporte de fusión de duplicados
+function mostrarReporteFusion() {
+    const r = reporteFusionDuplicados;
+
+    if (r.expedientesFusionados.length === 0) {
+        return; // No hay duplicados que reportar
+    }
+
+    let mensaje = `🔄 **Fusión de Duplicados Completada**\n\n`;
+    mensaje += `📁 **${r.expedientesFusionados.length}** expediente(s) duplicado(s) fusionado(s)\n`;
+
+    if (r.notasReasignadas > 0) {
+        mensaje += `📝 **${r.notasReasignadas}** nota(s) reasignada(s)\n`;
+    }
+    if (r.eventosReasignados > 0) {
+        mensaje += `📅 **${r.eventosReasignados}** evento(s) reasignado(s)\n`;
+    }
+
+    // Detalles de cada fusión
+    mensaje += `\n**Detalle:**\n`;
+    r.expedientesFusionados.forEach((fusion, idx) => {
+        mensaje += `${idx + 1}. "${fusion.expedienteFinal}" ← fusionó ${fusion.cantidadFusionados} registros\n`;
+    });
+
+    // Mostrar en modal
+    mostrarModalReporteFusion(r);
+
+    // También mostrar toast resumido
+    mostrarToast(
+        `Fusionados ${r.expedientesFusionados.length} expediente(s) duplicado(s)`,
+        'info'
+    );
+}
+
+// Modal de reporte de fusión
+function mostrarModalReporteFusion(reporte) {
+    const modalTitulo = document.getElementById('modal-titulo');
+    const modalBody = document.getElementById('modal-body');
+    const modalFooter = document.getElementById('modal-footer');
+
+    if (!modalTitulo || !modalBody) return;
+
+    modalTitulo.textContent = '🔄 Reporte de Fusión de Duplicados';
+
+    let html = `
+        <div class="fusion-reporte">
+            <div class="fusion-resumen">
+                <div class="fusion-stat">
+                    <span class="fusion-numero">${reporte.expedientesFusionados.length}</span>
+                    <span class="fusion-label">Expedientes fusionados</span>
+                </div>
+                <div class="fusion-stat">
+                    <span class="fusion-numero">${reporte.notasReasignadas}</span>
+                    <span class="fusion-label">Notas reasignadas</span>
+                </div>
+                <div class="fusion-stat">
+                    <span class="fusion-numero">${reporte.eventosReasignados}</span>
+                    <span class="fusion-label">Eventos reasignados</span>
+                </div>
+            </div>
+
+            <h4>Detalle de fusiones:</h4>
+            <div class="fusion-lista">
+    `;
+
+    reporte.expedientesFusionados.forEach((fusion, idx) => {
+        html += `
+            <div class="fusion-item">
+                <div class="fusion-item-header">
+                    <strong>${idx + 1}. ${escapeHtml(fusion.expedienteFinal)}</strong>
+                    <span class="fusion-badge">${fusion.cantidadFusionados} registros</span>
+                </div>
+                <div class="fusion-item-originales">
+                    <small>Originales: ${fusion.originales.map(o => escapeHtml(o)).join(', ')}</small>
+                </div>
+                ${fusion.cambios && fusion.cambios.length > 0 ? `
+                    <div class="fusion-item-cambios">
+                        <small>Campos completados: ${fusion.cambios.map(c => c.campo).join(', ')}</small>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    });
+
+    html += `
+            </div>
+            <p class="fusion-nota">
+                <small>Los datos de todos los registros duplicados han sido combinados en un único expediente,
+                conservando la información más completa de cada campo.</small>
+            </p>
+        </div>
+    `;
+
+    modalBody.innerHTML = html;
+    modalFooter.innerHTML = `<button class="btn btn-primary" onclick="cerrarModal()">Entendido</button>`;
+
+    document.getElementById('modal-overlay').classList.add('active');
+}
+
+// Escape HTML para evitar XSS
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // Aplicar datos a IndexedDB
@@ -592,3 +937,5 @@ window.guardarConfigSync = guardarConfigSync;
 window.sincronizarDespuesDeGuardar = sincronizarDespuesDeGuardar;
 window.actualizarVisibilidadSync = actualizarVisibilidadSync;
 window.cargarConfigSync = cargarConfigSync;
+window.mostrarReporteFusion = mostrarReporteFusion;
+window.sonExpedientesDuplicados = sonExpedientesDuplicados;
