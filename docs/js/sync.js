@@ -150,25 +150,69 @@ async function sincronizarDatos() {
 // Descargar datos del servidor
 async function descargarDatosRemotos() {
     const url = `${PREMIUM_CONFIG.apiUrl}?action=obtener_sync&codigo=${encodeURIComponent(estadoPremium.codigo)}`;
-    const response = await fetch(url);
-    const resultado = await response.json();
 
-    if (resultado.success && resultado.datos) {
-        return resultado.datos;
+    try {
+        const response = await fetch(url);
+        const texto = await response.text();
+
+        // Intentar parsear JSON
+        let resultado;
+        try {
+            resultado = JSON.parse(texto);
+        } catch (e) {
+            console.error('Respuesta no es JSON:', texto);
+            throw new Error('Respuesta inválida del servidor');
+        }
+
+        if (resultado.error) {
+            throw new Error(resultado.mensaje || 'Error del servidor');
+        }
+
+        if (resultado.success && resultado.datos) {
+            return resultado.datos;
+        }
+        return null;
+    } catch (error) {
+        console.error('Error descargando datos:', error);
+        throw error;
     }
-    return null;
 }
 
-// Subir datos al servidor
+// Subir datos al servidor (usando POST para datos grandes)
 async function subirDatosRemotos(datosCifrados) {
-    const url = `${PREMIUM_CONFIG.apiUrl}?action=guardar_sync&codigo=${encodeURIComponent(estadoPremium.codigo)}&datos=${encodeURIComponent(datosCifrados)}`;
-    const response = await fetch(url);
-    const resultado = await response.json();
+    const url = PREMIUM_CONFIG.apiUrl;
 
-    if (!resultado.success) {
-        throw new Error(resultado.mensaje || 'Error al guardar en servidor');
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                action: 'guardar_sync',
+                codigo: estadoPremium.codigo,
+                datos: datosCifrados
+            })
+        });
+
+        const texto = await response.text();
+
+        let resultado;
+        try {
+            resultado = JSON.parse(texto);
+        } catch (e) {
+            console.error('Respuesta no es JSON:', texto);
+            throw new Error('Respuesta inválida del servidor');
+        }
+
+        if (!resultado.success) {
+            throw new Error(resultado.mensaje || 'Error al guardar en servidor');
+        }
+        return resultado;
+    } catch (error) {
+        console.error('Error subiendo datos:', error);
+        throw error;
     }
-    return resultado;
 }
 
 // Fusionar datos locales y remotos
