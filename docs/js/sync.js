@@ -147,11 +147,6 @@ async function sincronizarDatos() {
 
         actualizarUISync('success');
 
-        // Mostrar reporte de duplicados si los hubo
-        if (huboDuplicados) {
-            setTimeout(() => mostrarReporteFusion(), 500);
-        }
-
     } catch (error) {
         console.error('Error en sincronización:', error);
         actualizarUISync('error', error.message);
@@ -587,105 +582,6 @@ async function obtenerTodosLosDatos() {
     const eventos = await obtenerEventos();
 
     return { expedientes, notas, eventos };
-}
-
-// Mostrar reporte de fusión de duplicados
-function mostrarReporteFusion() {
-    const r = reporteFusionDuplicados;
-
-    if (r.expedientesFusionados.length === 0) {
-        return; // No hay duplicados que reportar
-    }
-
-    let mensaje = `🔄 **Fusión de Duplicados Completada**\n\n`;
-    mensaje += `📁 **${r.expedientesFusionados.length}** expediente(s) duplicado(s) fusionado(s)\n`;
-
-    if (r.notasReasignadas > 0) {
-        mensaje += `📝 **${r.notasReasignadas}** nota(s) reasignada(s)\n`;
-    }
-    if (r.eventosReasignados > 0) {
-        mensaje += `📅 **${r.eventosReasignados}** evento(s) reasignado(s)\n`;
-    }
-
-    // Detalles de cada fusión
-    mensaje += `\n**Detalle:**\n`;
-    r.expedientesFusionados.forEach((fusion, idx) => {
-        mensaje += `${idx + 1}. "${fusion.expedienteFinal}" ← fusionó ${fusion.cantidadFusionados} registros\n`;
-    });
-
-    // Mostrar en modal
-    mostrarModalReporteFusion(r);
-
-    // También mostrar toast resumido
-    mostrarToast(
-        `Fusionados ${r.expedientesFusionados.length} expediente(s) duplicado(s)`,
-        'info'
-    );
-}
-
-// Modal de reporte de fusión
-function mostrarModalReporteFusion(reporte) {
-    const modalTitulo = document.getElementById('modal-titulo');
-    const modalBody = document.getElementById('modal-body');
-    const modalFooter = document.getElementById('modal-footer');
-
-    if (!modalTitulo || !modalBody) return;
-
-    modalTitulo.textContent = '🔄 Reporte de Fusión de Duplicados';
-
-    let html = `
-        <div class="fusion-reporte">
-            <div class="fusion-resumen">
-                <div class="fusion-stat">
-                    <span class="fusion-numero">${reporte.expedientesFusionados.length}</span>
-                    <span class="fusion-label">Expedientes fusionados</span>
-                </div>
-                <div class="fusion-stat">
-                    <span class="fusion-numero">${reporte.notasReasignadas}</span>
-                    <span class="fusion-label">Notas reasignadas</span>
-                </div>
-                <div class="fusion-stat">
-                    <span class="fusion-numero">${reporte.eventosReasignados}</span>
-                    <span class="fusion-label">Eventos reasignados</span>
-                </div>
-            </div>
-
-            <h4>Detalle de fusiones:</h4>
-            <div class="fusion-lista">
-    `;
-
-    reporte.expedientesFusionados.forEach((fusion, idx) => {
-        html += `
-            <div class="fusion-item">
-                <div class="fusion-item-header">
-                    <strong>${idx + 1}. ${escapeHtml(fusion.expedienteFinal)}</strong>
-                    <span class="fusion-badge">${fusion.cantidadFusionados} registros</span>
-                </div>
-                <div class="fusion-item-originales">
-                    <small>Originales: ${fusion.originales.map(o => escapeHtml(o)).join(', ')}</small>
-                </div>
-                ${fusion.cambios && fusion.cambios.length > 0 ? `
-                    <div class="fusion-item-cambios">
-                        <small>Campos completados: ${fusion.cambios.map(c => c.campo).join(', ')}</small>
-                    </div>
-                ` : ''}
-            </div>
-        `;
-    });
-
-    html += `
-            </div>
-            <p class="fusion-nota">
-                <small>Los datos de todos los registros duplicados han sido combinados en un único expediente,
-                conservando la información más completa de cada campo.</small>
-            </p>
-        </div>
-    `;
-
-    modalBody.innerHTML = html;
-    modalFooter.innerHTML = `<button class="btn btn-primary" onclick="cerrarModal()">Entendido</button>`;
-
-    document.getElementById('modal-overlay').classList.add('active');
 }
 
 // Escape HTML para evitar XSS

@@ -979,6 +979,7 @@ input:focus, textarea:focus, select:focus {
 .exp-info { display: flex; flex-direction: column; }
 .exp-numero { font-weight: 500; }
 .exp-juzgado { font-size: 0.8rem; color: var(--text-secondary); }
+.exp-comentario { font-size: 0.75rem; color: var(--text-secondary); font-style: italic; margin-top: 2px; }
 
 .selection-count { font-size: 0.875rem; color: var(--text-secondary); }
 .header-actions { display: flex; align-items: center; gap: 1rem; }
