@@ -50,6 +50,17 @@
                 <p class="subtitle">Bienvenido al Sistema de Gestión de Expedientes</p>
             </div>
 
+            <!-- Banner de anuncios (solo usuarios gratuitos) -->
+            <div class="ad-banner ad-banner-top" id="ad-banner-dashboard" style="display: none;">
+                <div class="ad-content">
+                    <span class="ad-label">Anuncio</span>
+                    <div class="ad-body" id="ad-body-dashboard">
+                        <!-- Contenido del anuncio se carga dinámicamente -->
+                    </div>
+                    <a href="#" class="ad-remove-link" onclick="mostrarOpcionQuitarAnuncios(event)">Quitar anuncios</a>
+                </div>
+            </div>
+
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-icon" style="background: #e3f2fd;">📁</div>
@@ -251,7 +262,7 @@
                 </div>
             </div>
 
-            <!-- Filtros -->
+            <!-- Filtros y Vista -->
             <div class="filters-section">
                 <div class="search-box">
                     <span class="search-icon">🔍</span>
@@ -260,10 +271,18 @@
                 <select id="filtro-categoria" onchange="filtrarExpedientes()">
                     <option value="">Todas las categorías</option>
                 </select>
+                <div class="view-toggle">
+                    <button class="view-btn active" data-view="cards" onclick="cambiarVistaExpedientes('cards')" title="Vista tarjetas">
+                        <span>▦</span>
+                    </button>
+                    <button class="view-btn" data-view="table" onclick="cambiarVistaExpedientes('table')" title="Vista tabla">
+                        <span>☰</span>
+                    </button>
+                </div>
                 <span class="results-count" id="count-expedientes">0 expedientes</span>
             </div>
 
-            <!-- Lista de Expedientes -->
+            <!-- Lista de Expedientes (Cards) -->
             <div class="expedientes-grid" id="lista-expedientes">
                 <div class="empty-state">
                     <span class="empty-icon">📂</span>
@@ -273,6 +292,25 @@
                         ➕ Agregar Expediente
                     </button>
                 </div>
+            </div>
+
+            <!-- Lista de Expedientes (Tabla) -->
+            <div class="expedientes-table-container" id="tabla-expedientes" style="display: none;">
+                <table class="expedientes-table">
+                    <thead>
+                        <tr>
+                            <th>Tipo</th>
+                            <th>Número/Nombre</th>
+                            <th>Juzgado</th>
+                            <th>Categoría</th>
+                            <th>Comentario</th>
+                            <th>Fecha</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-expedientes-body">
+                    </tbody>
+                </table>
             </div>
         </section>
 
@@ -537,9 +575,34 @@
                         <label>Número de expediente</label>
                         <input type="text" id="ia-expediente-custom" placeholder="Ej: 123/2025">
                     </div>
+
+                    <!-- Opción de imagen/foto -->
+                    <div class="form-group">
+                        <label>📷 Subir imagen del acuerdo (opcional)</label>
+                        <div class="image-upload-container">
+                            <input type="file" id="ia-imagen-acuerdo" accept="image/*" capture="environment" onchange="procesarImagenAcuerdo(event)" style="display: none;">
+                            <div class="image-upload-buttons">
+                                <button type="button" class="btn btn-secondary" onclick="document.getElementById('ia-imagen-acuerdo').click()">
+                                    📁 Seleccionar imagen
+                                </button>
+                                <button type="button" class="btn btn-secondary" onclick="capturarFotoAcuerdo()">
+                                    📸 Tomar foto
+                                </button>
+                            </div>
+                            <div id="ia-imagen-preview" class="image-preview" style="display: none;">
+                                <img id="ia-imagen-preview-img" src="" alt="Preview">
+                                <button type="button" class="btn-remove-image" onclick="eliminarImagenAcuerdo()">✕</button>
+                            </div>
+                            <div id="ia-ocr-status" class="ocr-status" style="display: none;">
+                                <span class="loading-spinner"></span> Extrayendo texto de la imagen...
+                            </div>
+                        </div>
+                        <p class="form-help">Puedes tomar una foto o subir una imagen del acuerdo. El texto será extraído automáticamente.</p>
+                    </div>
+
                     <div class="form-group">
                         <label>Texto del Acuerdo</label>
-                        <textarea id="ia-texto-acuerdo" rows="8" placeholder="Pega aquí el texto del acuerdo copiado del sitio del TSJ..."></textarea>
+                        <textarea id="ia-texto-acuerdo" rows="8" placeholder="Pega aquí el texto del acuerdo copiado del sitio del TSJ, o sube una imagen arriba..."></textarea>
                     </div>
                 </div>
                 <div class="card-footer">
@@ -569,6 +632,20 @@
             <div class="page-header">
                 <h2>⚙️ Configuración</h2>
                 <p class="subtitle">Personaliza tu experiencia</p>
+            </div>
+
+            <div class="config-section">
+                <h3>🎨 Apariencia</h3>
+                <div class="config-item">
+                    <div class="config-info">
+                        <h4>Tema oscuro</h4>
+                        <p>Reduce la fatiga visual en ambientes con poca luz</p>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="config-tema-oscuro" onchange="toggleTemaOscuro()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
             </div>
 
             <div class="config-section">
@@ -783,6 +860,37 @@
                         <button type="button" class="btn btn-secondary" onclick="probarEmail()">📧 Probar</button>
                     </div>
                 </form>
+
+                <!-- Configuración de recordatorios -->
+                <div class="reminder-config" style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color);">
+                    <h4 style="margin-bottom: 1rem;">Recordatorios de Eventos</h4>
+                    <div class="form-group">
+                        <label>Enviar recordatorio:</label>
+                        <div class="reminder-options">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="reminder-1day" onchange="guardarConfigRecordatorios()">
+                                <span>1 día antes</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="reminder-3days" onchange="guardarConfigRecordatorios()">
+                                <span>3 días antes</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="reminder-1week" onchange="guardarConfigRecordatorios()">
+                                <span>1 semana antes</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-top: 1rem;">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="reminder-suscripcion" onchange="guardarConfigRecordatorios()">
+                            <span>Recordar renovación de suscripción (7 días antes)</span>
+                        </label>
+                    </div>
+                    <button type="button" class="btn btn-secondary" onclick="verificarRecordatoriosPendientes()" style="margin-top: 0.5rem;">
+                        🔍 Verificar recordatorios pendientes
+                    </button>
+                </div>
             </div>
 
             <div class="config-section premium-section" id="premium-section">
@@ -915,6 +1023,21 @@
                             <p class="text-muted" id="premium-user" style="font-size: 0.75rem;"></p>
                         </div>
                     </div>
+
+                    <!-- Opciones Premium -->
+                    <div class="premium-options" style="margin-top: 1rem;">
+                        <div class="config-item" id="config-anuncios-section">
+                            <div class="config-info">
+                                <h4>🚫 Ocultar anuncios</h4>
+                                <p>Navega sin distracciones publicitarias</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="config-ocultar-anuncios" onchange="toggleAnunciosPremium()">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
                     <button class="btn btn-secondary btn-sm" onclick="desactivarPremium()" style="margin-top: 0.5rem;">
                         Desactivar Premium
                     </button>

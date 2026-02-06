@@ -6,6 +6,66 @@
 let expedientesSeleccionados = [];
 let fechaCalendario = new Date();
 let diaSeleccionado = null;
+let vistaExpedientes = localStorage.getItem('vistaExpedientes') || 'cards'; // 'cards' o 'table'
+let diasInhabilesTSJ = []; // Días inhábiles del tribunal
+
+// Días inhábiles fijos del TSJQROO (formato MM-DD)
+const DIAS_INHABILES_FIJOS = [
+    { fecha: '01-01', nombre: 'Año Nuevo' },
+    { fecha: '02-05', nombre: 'Día de la Constitución' },
+    { fecha: '03-21', nombre: 'Natalicio de Benito Juárez' },
+    { fecha: '05-01', nombre: 'Día del Trabajo' },
+    { fecha: '09-16', nombre: 'Independencia de México' },
+    { fecha: '11-20', nombre: 'Revolución Mexicana' },
+    { fecha: '12-25', nombre: 'Navidad' },
+    // Semana Santa y otras fechas variables se agregan dinámicamente
+];
+
+// Períodos de vacaciones judiciales (formato: { inicio: 'MM-DD', fin: 'MM-DD' })
+const VACACIONES_JUDICIALES = [
+    { inicio: '07-16', fin: '07-31', nombre: 'Primer período vacacional' },
+    { inicio: '12-16', fin: '12-31', nombre: 'Segundo período vacacional' },
+];
+
+// Verificar si una fecha es día inhábil
+function esDiaInhabil(fecha) {
+    const mesdia = `${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
+    const year = fecha.getFullYear();
+
+    // Verificar fines de semana
+    if (fecha.getDay() === 0 || fecha.getDay() === 6) {
+        return { inhabil: true, razon: fecha.getDay() === 0 ? 'Domingo' : 'Sábado' };
+    }
+
+    // Verificar días fijos
+    const diaFijo = DIAS_INHABILES_FIJOS.find(d => d.fecha === mesdia);
+    if (diaFijo) {
+        return { inhabil: true, razon: diaFijo.nombre };
+    }
+
+    // Verificar vacaciones
+    for (const vac of VACACIONES_JUDICIALES) {
+        const [iniMes, iniDia] = vac.inicio.split('-').map(Number);
+        const [finMes, finDia] = vac.fin.split('-').map(Number);
+        const inicio = new Date(year, iniMes - 1, iniDia);
+        const fin = new Date(year, finMes - 1, finDia);
+
+        if (fecha >= inicio && fecha <= fin) {
+            return { inhabil: true, razon: vac.nombre };
+        }
+    }
+
+    // Verificar días inhábiles dinámicos (cargados de configuración)
+    const diaPersonalizado = diasInhabilesTSJ.find(d => {
+        const fechaInhabil = new Date(d.fecha);
+        return fechaInhabil.toDateString() === fecha.toDateString();
+    });
+    if (diaPersonalizado) {
+        return { inhabil: true, razon: diaPersonalizado.nombre };
+    }
+
+    return { inhabil: false };
+}
 
 // ==================== INICIALIZACIÓN ====================
 
@@ -24,6 +84,11 @@ async function inicializarApp() {
     // Poblar selects
     poblarSelectJuzgados('expediente-juzgado');
     poblarSelectCategorias('filtro-categoria');
+
+    // Inicializar vista de expedientes
+    document.querySelectorAll('.view-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === vistaExpedientes);
+    });
 
     // Cargar datos
     await cargarEstadisticas();
@@ -173,15 +238,26 @@ async function cargarExpedientes() {
     const count = document.getElementById('count-expedientes');
     const totalExpedientes = expedientes.length;
 
+    // Ordenar por orden personalizado (si existe) o por fecha
+    expedientes = [...expedientes].sort((a, b) => {
+        // Si ambos tienen orden, usar orden
+        if (a.orden !== undefined && b.orden !== undefined) {
+            return a.orden - b.orden;
+        }
+        // Si solo uno tiene orden, ese va primero
+        if (a.orden !== undefined) return -1;
+        if (b.orden !== undefined) return 1;
+        // Si ninguno tiene orden, ordenar por fecha
+        return new Date(b.fechaModificacion || b.fechaCreacion || 0) - new Date(a.fechaModificacion || a.fechaCreacion || 0);
+    });
+
     // Verificar si usuario NO es premium y tiene más de 10 expedientes
     const esPremium = estadoPremium && estadoPremium.activo;
     let mostrandoLimitados = false;
 
     if (!esPremium && totalExpedientes > PREMIUM_CONFIG.limiteExpedientes) {
-        // Ordenar por fecha de modificación/creación (más recientes primero) y tomar solo 10
-        expedientes = [...expedientes]
-            .sort((a, b) => new Date(b.fechaModificacion || b.fechaCreacion || 0) - new Date(a.fechaModificacion || a.fechaCreacion || 0))
-            .slice(0, PREMIUM_CONFIG.limiteExpedientes);
+        // Tomar solo los primeros 10 (ya ordenados)
+        expedientes = expedientes.slice(0, PREMIUM_CONFIG.limiteExpedientes);
         mostrandoLimitados = true;
     }
 
@@ -215,8 +291,9 @@ async function cargarExpedientes() {
         `;
     }
 
-    lista.innerHTML = advertenciaHTML + expedientes.map(exp => `
-        <div class="expediente-card" data-id="${exp.id}">
+    lista.innerHTML = advertenciaHTML + expedientes.map((exp, index) => `
+        <div class="expediente-card" data-id="${exp.id}" data-orden="${exp.orden || index}" draggable="true">
+            <div class="drag-handle" title="Arrastra para reordenar">⋮⋮</div>
             <div class="expediente-header">
                 <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
                 <span class="expediente-categoria">${exp.categoria || 'General'}</span>
@@ -229,12 +306,16 @@ async function cargarExpedientes() {
             <div class="expediente-footer">
                 <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
                 <div class="expediente-actions">
-                    <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id})">✏️</button>
+                    <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
+                    <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
                     <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
                 </div>
             </div>
         </div>
     `).join('');
+
+    // Inicializar drag and drop
+    inicializarDragAndDrop();
 
     // Mostrar conteo real vs visible
     if (mostrandoLimitados) {
@@ -243,11 +324,147 @@ async function cargarExpedientes() {
         count.textContent = `${expedientes.length} expediente${expedientes.length !== 1 ? 's' : ''}`;
     }
 
+    // Poblar tabla
+    const tablaBody = document.getElementById('tabla-expedientes-body');
+    if (tablaBody) {
+        tablaBody.innerHTML = expedientes.map(exp => `
+            <tr data-id="${exp.id}">
+                <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
+                <td><strong>${exp.numero || exp.nombre}</strong></td>
+                <td>${exp.juzgado}</td>
+                <td><span class="categoria-badge">${exp.categoria || 'General'}</span></td>
+                <td class="comentario-cell" title="${exp.comentario || ''}">${exp.comentario || '-'}</td>
+                <td>${formatearFecha(exp.fechaCreacion)}</td>
+                <td class="acciones-cell">
+                    <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
+                    <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
+                    <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    // Aplicar vista actual
+    aplicarVistaExpedientes();
+
     // Actualizar select de expedientes en notas
     actualizarSelectExpedientes();
 
     // Actualizar expedientes recientes en dashboard
     actualizarExpedientesRecientes(expedientes);
+}
+
+// Cambiar vista de expedientes
+function cambiarVistaExpedientes(vista) {
+    vistaExpedientes = vista;
+    localStorage.setItem('vistaExpedientes', vista);
+
+    // Actualizar botones
+    document.querySelectorAll('.view-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === vista);
+    });
+
+    aplicarVistaExpedientes();
+}
+
+// Aplicar vista actual
+function aplicarVistaExpedientes() {
+    const listaCards = document.getElementById('lista-expedientes');
+    const tablaContainer = document.getElementById('tabla-expedientes');
+
+    if (vistaExpedientes === 'table') {
+        listaCards.style.display = 'none';
+        if (tablaContainer) tablaContainer.style.display = 'block';
+    } else {
+        listaCards.style.display = 'grid';
+        if (tablaContainer) tablaContainer.style.display = 'none';
+    }
+}
+
+// ==================== DRAG AND DROP EXPEDIENTES ====================
+
+let draggedElement = null;
+
+function inicializarDragAndDrop() {
+    const lista = document.getElementById('lista-expedientes');
+    const cards = lista.querySelectorAll('.expediente-card');
+
+    cards.forEach(card => {
+        card.addEventListener('dragstart', handleDragStart);
+        card.addEventListener('dragend', handleDragEnd);
+        card.addEventListener('dragover', handleDragOver);
+        card.addEventListener('dragenter', handleDragEnter);
+        card.addEventListener('dragleave', handleDragLeave);
+        card.addEventListener('drop', handleDrop);
+    });
+}
+
+function handleDragStart(e) {
+    draggedElement = this;
+    this.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', this.dataset.id);
+}
+
+function handleDragEnd(e) {
+    this.classList.remove('dragging');
+    document.querySelectorAll('.expediente-card').forEach(card => {
+        card.classList.remove('drag-over');
+    });
+    draggedElement = null;
+}
+
+function handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+}
+
+function handleDragEnter(e) {
+    e.preventDefault();
+    if (this !== draggedElement) {
+        this.classList.add('drag-over');
+    }
+}
+
+function handleDragLeave(e) {
+    this.classList.remove('drag-over');
+}
+
+async function handleDrop(e) {
+    e.preventDefault();
+    this.classList.remove('drag-over');
+
+    if (this === draggedElement) return;
+
+    const lista = document.getElementById('lista-expedientes');
+    const cards = [...lista.querySelectorAll('.expediente-card')];
+    const draggedIndex = cards.indexOf(draggedElement);
+    const targetIndex = cards.indexOf(this);
+
+    // Reordenar visualmente
+    if (draggedIndex < targetIndex) {
+        this.parentNode.insertBefore(draggedElement, this.nextSibling);
+    } else {
+        this.parentNode.insertBefore(draggedElement, this);
+    }
+
+    // Guardar nuevo orden
+    await guardarOrdenExpedientes();
+    mostrarToast('Orden actualizado', 'success');
+}
+
+async function guardarOrdenExpedientes() {
+    const lista = document.getElementById('lista-expedientes');
+    const cards = lista.querySelectorAll('.expediente-card');
+
+    for (let i = 0; i < cards.length; i++) {
+        const id = parseInt(cards[i].dataset.id);
+        const expediente = await obtenerExpedientePorId(id);
+        if (expediente) {
+            expediente.orden = i;
+            await actualizarExpediente(expediente);
+        }
+    }
 }
 
 function actualizarExpedientesRecientes(expedientes) {
@@ -312,19 +529,42 @@ function cerrarFormularioExpediente() {
     formContainer.style.display = 'none';
 }
 
-async function editarExpediente(id) {
-    const exp = await obtenerExpediente(id);
-    if (!exp) return;
+async function editarExpediente(id, event) {
+    // Prevenir propagación del evento (fix para Firefox)
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
 
-    document.getElementById('form-expediente').style.display = 'block';
-    document.getElementById('form-expediente-titulo').textContent = 'Editar Expediente';
-    document.getElementById('expediente-id').value = id;
-    document.getElementById('expediente-valor').value = exp.numero || exp.nombre;
-    document.getElementById('expediente-juzgado').value = exp.juzgado;
-    document.getElementById('expediente-comentario').value = exp.comentario || '';
+    try {
+        const exp = await obtenerExpediente(id);
+        if (!exp) {
+            mostrarToast('Expediente no encontrado', 'error');
+            return;
+        }
 
-    const tipo = exp.numero ? 'numero' : 'nombre';
-    document.querySelector(`input[name="tipo-busqueda"][value="${tipo}"]`).checked = true;
+        const formContainer = document.getElementById('form-expediente');
+        if (!formContainer) {
+            console.error('Formulario no encontrado');
+            return;
+        }
+
+        formContainer.style.display = 'block';
+        document.getElementById('form-expediente-titulo').textContent = 'Editar Expediente';
+        document.getElementById('expediente-id').value = id;
+        document.getElementById('expediente-valor').value = exp.numero || exp.nombre;
+        document.getElementById('expediente-juzgado').value = exp.juzgado;
+        document.getElementById('expediente-comentario').value = exp.comentario || '';
+
+        const tipo = exp.numero ? 'numero' : 'nombre';
+        document.querySelector(`input[name="tipo-busqueda"][value="${tipo}"]`).checked = true;
+
+        // Scroll al formulario
+        formContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (error) {
+        console.error('Error al editar expediente:', error);
+        mostrarToast('Error al cargar expediente', 'error');
+    }
 }
 
 async function guardarExpediente(event) {
@@ -454,7 +694,7 @@ async function filtrarExpedientes() {
                 <div class="expediente-footer">
                     <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
                     <div class="expediente-actions">
-                        <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id})">✏️</button>
+                        <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
                         <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
                     </div>
                 </div>
@@ -463,6 +703,119 @@ async function filtrarExpedientes() {
     }
 
     count.textContent = `${expedientes.length} expediente${expedientes.length !== 1 ? 's' : ''}`;
+}
+
+// ==================== HISTORIAL DE EXPEDIENTES ====================
+
+async function verHistorialExpediente(id, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+
+    const expediente = await obtenerExpediente(id);
+    if (!expediente) {
+        mostrarToast('Expediente no encontrado', 'error');
+        return;
+    }
+
+    const historial = await obtenerHistorialExpediente(id);
+
+    const nombreExpediente = expediente.numero || expediente.nombre;
+
+    let contenidoHTML = '';
+
+    if (historial.length === 0) {
+        contenidoHTML = `
+            <div class="empty-state small" style="padding: 2rem;">
+                <span>📜</span>
+                <p>No hay cambios registrados</p>
+            </div>
+        `;
+    } else {
+        contenidoHTML = `
+            <div class="historial-lista">
+                ${historial.map(h => `
+                    <div class="historial-item ${h.tipo}">
+                        <div class="historial-header">
+                            <span class="historial-tipo">${obtenerIconoHistorial(h.tipo)} ${obtenerTextoTipo(h.tipo)}</span>
+                            <span class="historial-fecha">${formatearFechaHora(h.fecha)}</span>
+                        </div>
+                        ${h.tipo === 'edicion' ? generarDetallesCambios(h.cambiosAnteriores, h.cambiosNuevos) : ''}
+                        ${h.descripcion ? `<p class="historial-descripcion">${h.descripcion}</p>` : ''}
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    document.getElementById('modal-titulo').textContent = `📜 Historial: ${nombreExpediente}`;
+    document.getElementById('modal-body').innerHTML = contenidoHTML;
+    document.getElementById('modal-footer').innerHTML = `
+        <button class="btn btn-secondary" onclick="cerrarModal()">Cerrar</button>
+    `;
+    document.getElementById('modal-overlay').classList.add('active');
+}
+
+function obtenerIconoHistorial(tipo) {
+    const iconos = {
+        'creacion': '✨',
+        'edicion': '✏️',
+        'eliminacion': '🗑️'
+    };
+    return iconos[tipo] || '📝';
+}
+
+function obtenerTextoTipo(tipo) {
+    const textos = {
+        'creacion': 'Creación',
+        'edicion': 'Modificación',
+        'eliminacion': 'Eliminación'
+    };
+    return textos[tipo] || tipo;
+}
+
+function generarDetallesCambios(anteriores, nuevos) {
+    if (!anteriores || !nuevos) return '';
+
+    const etiquetas = {
+        'numero': 'Número',
+        'nombre': 'Nombre',
+        'juzgado': 'Juzgado',
+        'categoria': 'Categoría',
+        'comentario': 'Comentario'
+    };
+
+    let html = '<div class="cambios-detalle">';
+
+    for (const campo of Object.keys(nuevos)) {
+        const nombreCampo = etiquetas[campo] || campo;
+        const valorAnterior = anteriores[campo] || '(vacío)';
+        const valorNuevo = nuevos[campo] || '(vacío)';
+
+        html += `
+            <div class="cambio-item">
+                <span class="cambio-campo">${nombreCampo}:</span>
+                <span class="cambio-anterior">${valorAnterior}</span>
+                <span class="cambio-flecha">→</span>
+                <span class="cambio-nuevo">${valorNuevo}</span>
+            </div>
+        `;
+    }
+
+    html += '</div>';
+    return html;
+}
+
+function formatearFechaHora(fechaISO) {
+    const fecha = new Date(fechaISO);
+    return fecha.toLocaleString('es-MX', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
 }
 
 // ==================== NOTAS ====================
@@ -960,10 +1313,12 @@ function generarDiasDelMes(fecha, eventos) {
             const fechaEvento = new Date(e.fechaInicio);
             return fechaEvento.toDateString() === dia.toDateString();
         });
+        const infoInhabil = esDiaInhabil(dia);
 
         let clases = 'dia-cell';
         if (esHoy) clases += ' es-hoy';
         if (diaSeleccionado && dia.getTime() === diaSeleccionado.getTime()) clases += ' seleccionado';
+        if (infoInhabil.inhabil) clases += ' dia-inhabil';
 
         let dotsHtml = '';
         if (eventosDelDia.length > 0) {
@@ -973,9 +1328,12 @@ function generarDiasDelMes(fecha, eventos) {
             </div>`;
         }
 
+        const tooltipInhabil = infoInhabil.inhabil ? ` title="${infoInhabil.razon}"` : '';
+
         diasHtml.push(`
-            <div class="${clases}" onclick="seleccionarDia(${dia.getTime()})" ondblclick="crearEventoEnDia(${dia.getTime()})">
+            <div class="${clases}"${tooltipInhabil} onclick="seleccionarDia(${dia.getTime()})" ondblclick="crearEventoEnDia(${dia.getTime()})">
                 <span class="dia-numero">${i}</span>
+                ${infoInhabil.inhabil ? '<span class="dia-inhabil-badge">⛔</span>' : ''}
                 ${dotsHtml}
             </div>
         `);
@@ -1444,7 +1802,52 @@ async function cargarConfiguracion() {
     if (emailPublicKey) document.getElementById('email-public-key').value = emailPublicKey;
     if (emailTemplateId) document.getElementById('email-template-id').value = emailTemplateId;
     if (emailDestino) document.getElementById('email-destino').value = emailDestino;
+
+    // Cargar tema
+    const temaOscuro = await obtenerConfig('tema_oscuro');
+    const checkTema = document.getElementById('config-tema-oscuro');
+    if (checkTema) {
+        checkTema.checked = temaOscuro === 'true';
+    }
+    aplicarTema();
+
+    // Cargar preferencia de anuncios (para premium, ocultos por defecto)
+    const ocultarAnuncios = await obtenerConfig('ocultar_anuncios');
+    const checkAnuncios = document.getElementById('config-ocultar-anuncios');
+    if (checkAnuncios) {
+        // Para premium: checked por defecto a menos que explícitamente quiera ver anuncios
+        checkAnuncios.checked = ocultarAnuncios !== 'false';
+    }
+
+    // Cargar configuración de recordatorios
+    await cargarConfigRecordatorios();
+
+    // Verificar recordatorios automáticamente
+    verificarRecordatoriosAutomatico();
 }
+
+// ==================== TEMA OSCURO ====================
+
+function aplicarTema() {
+    const temaOscuro = localStorage.getItem('tema_oscuro') === 'true';
+    document.documentElement.setAttribute('data-theme', temaOscuro ? 'dark' : 'light');
+}
+
+async function toggleTemaOscuro() {
+    const activado = document.getElementById('config-tema-oscuro').checked;
+    localStorage.setItem('tema_oscuro', activado ? 'true' : 'false');
+    await guardarConfig('tema_oscuro', activado ? 'true' : 'false');
+    aplicarTema();
+    mostrarToast(`Tema ${activado ? 'oscuro' : 'claro'} activado`, 'success');
+}
+
+// Aplicar tema al cargar (antes de que el DOM esté listo para evitar flash)
+(function() {
+    const temaOscuro = localStorage.getItem('tema_oscuro') === 'true';
+    if (temaOscuro) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+    }
+})();
 
 async function toggleNotificaciones() {
     const activado = document.getElementById('config-notificaciones').checked;
@@ -1531,6 +1934,240 @@ function cargarEmailJS() {
         script.onerror = reject;
         document.head.appendChild(script);
     });
+}
+
+// ==================== SISTEMA DE RECORDATORIOS ====================
+
+// Guardar configuración de recordatorios
+async function guardarConfigRecordatorios() {
+    const config = {
+        unDia: document.getElementById('reminder-1day')?.checked || false,
+        tresDias: document.getElementById('reminder-3days')?.checked || false,
+        unaSemana: document.getElementById('reminder-1week')?.checked || false,
+        suscripcion: document.getElementById('reminder-suscripcion')?.checked || false
+    };
+
+    await guardarConfig('recordatorios_config', JSON.stringify(config));
+    mostrarToast('Configuración de recordatorios guardada', 'success');
+}
+
+// Cargar configuración de recordatorios
+async function cargarConfigRecordatorios() {
+    const configStr = await obtenerConfig('recordatorios_config');
+    if (configStr) {
+        try {
+            const config = JSON.parse(configStr);
+            const el1day = document.getElementById('reminder-1day');
+            const el3days = document.getElementById('reminder-3days');
+            const el1week = document.getElementById('reminder-1week');
+            const elSuscripcion = document.getElementById('reminder-suscripcion');
+
+            if (el1day) el1day.checked = config.unDia || false;
+            if (el3days) el3days.checked = config.tresDias || false;
+            if (el1week) el1week.checked = config.unaSemana || false;
+            if (elSuscripcion) elSuscripcion.checked = config.suscripcion || false;
+        } catch (e) {
+            console.error('Error cargando config de recordatorios:', e);
+        }
+    }
+}
+
+// Verificar y enviar recordatorios pendientes
+async function verificarRecordatoriosPendientes() {
+    // Verificar que EmailJS está configurado
+    const serviceId = await obtenerConfig('email_service_id');
+    const publicKey = await obtenerConfig('email_public_key');
+    const templateId = await obtenerConfig('email_template_id');
+    const emailDestino = await obtenerConfig('email_destino');
+
+    if (!serviceId || !publicKey || !templateId || !emailDestino) {
+        mostrarToast('Configura EmailJS primero para recibir recordatorios', 'warning');
+        return;
+    }
+
+    const configStr = await obtenerConfig('recordatorios_config');
+    if (!configStr) {
+        mostrarToast('Configura los recordatorios primero', 'warning');
+        return;
+    }
+
+    const config = JSON.parse(configStr);
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    // Obtener eventos
+    const eventos = await obtenerEventos();
+    const recordatoriosEnviados = JSON.parse(localStorage.getItem('recordatorios_enviados') || '{}');
+
+    let pendientes = [];
+    let enviados = 0;
+
+    for (const evento of eventos) {
+        const fechaEvento = new Date(evento.fecha);
+        fechaEvento.setHours(0, 0, 0, 0);
+        const diasRestantes = Math.ceil((fechaEvento - hoy) / (1000 * 60 * 60 * 24));
+
+        // Solo eventos futuros
+        if (diasRestantes < 0) continue;
+
+        // Verificar si debe enviar recordatorio
+        const deberiasEnviar = (
+            (config.unDia && diasRestantes === 1) ||
+            (config.tresDias && diasRestantes === 3) ||
+            (config.unaSemana && diasRestantes === 7)
+        );
+
+        if (deberiasEnviar) {
+            const claveRecordatorio = `${evento.id}_${diasRestantes}`;
+
+            if (!recordatoriosEnviados[claveRecordatorio]) {
+                pendientes.push({
+                    evento,
+                    diasRestantes,
+                    clave: claveRecordatorio
+                });
+            }
+        }
+    }
+
+    // Verificar recordatorio de suscripción
+    if (config.suscripcion && estadoPremium.activo && estadoPremium.expiracion) {
+        const fechaExp = new Date(estadoPremium.expiracion);
+        const diasParaExpirar = Math.ceil((fechaExp - hoy) / (1000 * 60 * 60 * 24));
+
+        if (diasParaExpirar === 7 && !recordatoriosEnviados['suscripcion_7dias']) {
+            pendientes.push({
+                tipo: 'suscripcion',
+                diasRestantes: diasParaExpirar,
+                clave: 'suscripcion_7dias'
+            });
+        }
+    }
+
+    if (pendientes.length === 0) {
+        mostrarToast('No hay recordatorios pendientes', 'info');
+        return;
+    }
+
+    // Enviar recordatorios
+    mostrarToast(`Enviando ${pendientes.length} recordatorio(s)...`, 'info');
+
+    for (const item of pendientes) {
+        try {
+            if (item.tipo === 'suscripcion') {
+                await enviarRecordatorioSuscripcion(serviceId, publicKey, templateId, emailDestino);
+            } else {
+                await enviarRecordatorioEvento(item.evento, item.diasRestantes, serviceId, publicKey, templateId, emailDestino);
+            }
+
+            recordatoriosEnviados[item.clave] = Date.now();
+            enviados++;
+        } catch (error) {
+            console.error('Error enviando recordatorio:', error);
+        }
+    }
+
+    localStorage.setItem('recordatorios_enviados', JSON.stringify(recordatoriosEnviados));
+    mostrarToast(`✅ ${enviados} recordatorio(s) enviado(s)`, 'success');
+}
+
+// Enviar recordatorio de evento por email
+async function enviarRecordatorioEvento(evento, diasRestantes, serviceId, publicKey, templateId, emailDestino) {
+    if (typeof emailjs === 'undefined') {
+        await cargarEmailJS();
+    }
+
+    emailjs.init(publicKey);
+
+    const diasTexto = diasRestantes === 1 ? '1 día' : `${diasRestantes} días`;
+    const fechaEvento = new Date(evento.fecha).toLocaleDateString('es-MX', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+
+    const templateParams = {
+        to_email: emailDestino,
+        subject: `📅 Recordatorio: ${evento.titulo} en ${diasTexto}`,
+        message: `
+RECORDATORIO DE EVENTO
+
+Evento: ${evento.titulo}
+Fecha: ${fechaEvento}
+Faltan: ${diasTexto}
+
+${evento.descripcion || ''}
+
+---
+TSJ Filing Online
+        `.trim(),
+        from_name: 'TSJ Filing Online'
+    };
+
+    await emailjs.send(serviceId, templateId, templateParams);
+}
+
+// Enviar recordatorio de suscripción
+async function enviarRecordatorioSuscripcion(serviceId, publicKey, templateId, emailDestino) {
+    if (typeof emailjs === 'undefined') {
+        await cargarEmailJS();
+    }
+
+    emailjs.init(publicKey);
+
+    const fechaExp = new Date(estadoPremium.expiracion).toLocaleDateString('es-MX', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+
+    const templateParams = {
+        to_email: emailDestino,
+        subject: '⚠️ Tu suscripción Premium vence pronto',
+        message: `
+RECORDATORIO DE SUSCRIPCIÓN
+
+Tu suscripción Premium de TSJ Filing Online vence el ${fechaExp}.
+
+Renueva antes de esa fecha para no perder acceso a:
+- Expedientes ilimitados
+- Búsquedas ilimitadas
+- Sin anuncios
+- Soporte prioritario
+
+Contacta para renovar tu suscripción.
+
+---
+TSJ Filing Online
+        `.trim(),
+        from_name: 'TSJ Filing Online'
+    };
+
+    await emailjs.send(serviceId, templateId, templateParams);
+}
+
+// Verificar recordatorios automáticamente al cargar
+async function verificarRecordatoriosAutomatico() {
+    const ultimaVerificacion = localStorage.getItem('ultima_verificacion_recordatorios');
+    const hoy = new Date().toDateString();
+
+    // Solo verificar una vez al día
+    if (ultimaVerificacion === hoy) return;
+
+    // Verificar que EmailJS está configurado
+    const serviceId = await obtenerConfig('email_service_id');
+    if (!serviceId) return;
+
+    const configStr = await obtenerConfig('recordatorios_config');
+    if (!configStr) return;
+
+    // Verificar en segundo plano
+    setTimeout(async () => {
+        await verificarRecordatoriosPendientes();
+        localStorage.setItem('ultima_verificacion_recordatorios', hoy);
+    }, 5000);
 }
 
 async function exportarDatos() {
@@ -2065,6 +2702,135 @@ async function probarIA() {
     }
 }
 
+// ==================== PROCESAMIENTO DE IMÁGENES PARA IA ====================
+
+let imagenAcuerdoActual = null;
+
+// Procesar imagen seleccionada
+async function procesarImagenAcuerdo(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Validar tipo de archivo
+    if (!file.type.startsWith('image/')) {
+        mostrarToast('Por favor selecciona una imagen válida', 'error');
+        return;
+    }
+
+    // Validar tamaño (máx 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+        mostrarToast('La imagen es muy grande. Máximo 10MB', 'error');
+        return;
+    }
+
+    // Mostrar preview
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        const previewContainer = document.getElementById('ia-imagen-preview');
+        const previewImg = document.getElementById('ia-imagen-preview-img');
+
+        previewImg.src = e.target.result;
+        previewContainer.style.display = 'block';
+        imagenAcuerdoActual = e.target.result;
+
+        // Extraer texto de la imagen usando IA
+        await extraerTextoDeImagen(e.target.result);
+    };
+    reader.readAsDataURL(file);
+}
+
+// Capturar foto con la cámara
+function capturarFotoAcuerdo() {
+    const input = document.getElementById('ia-imagen-acuerdo');
+    // Forzar modo captura
+    input.setAttribute('capture', 'environment');
+    input.click();
+}
+
+// Extraer texto de imagen usando Groq Vision
+async function extraerTextoDeImagen(imagenBase64) {
+    const apiKey = await obtenerConfig('groq_api_key');
+
+    if (!apiKey) {
+        mostrarToast('Configura tu API Key de Groq para usar OCR', 'warning');
+        return;
+    }
+
+    const statusEl = document.getElementById('ia-ocr-status');
+    statusEl.style.display = 'flex';
+
+    try {
+        // Usar modelo de visión de Groq
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+                model: 'llama-3.2-90b-vision-preview',
+                messages: [{
+                    role: 'user',
+                    content: [
+                        {
+                            type: 'text',
+                            text: 'Extrae todo el texto que puedas leer de esta imagen de un documento judicial. Transcribe el texto exactamente como aparece, manteniendo el formato y los párrafos. Solo devuelve el texto extraído, sin explicaciones adicionales.'
+                        },
+                        {
+                            type: 'image_url',
+                            image_url: {
+                                url: imagenBase64
+                            }
+                        }
+                    ]
+                }],
+                max_tokens: 4096
+            })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            const textoExtraido = data.choices[0]?.message?.content || '';
+
+            if (textoExtraido) {
+                // Agregar texto extraído al textarea
+                const textarea = document.getElementById('ia-texto-acuerdo');
+                textarea.value = textoExtraido;
+                mostrarToast('Texto extraído correctamente', 'success');
+            } else {
+                mostrarToast('No se pudo extraer texto de la imagen', 'warning');
+            }
+        } else {
+            const error = await response.json();
+            console.error('Error OCR:', error);
+
+            // Si el modelo de visión no está disponible, intentar con OCR básico
+            if (error.error?.message?.includes('model')) {
+                mostrarToast('El modelo de visión no está disponible. Usa texto manual.', 'warning');
+            } else {
+                mostrarToast('Error al procesar imagen: ' + (error.error?.message || 'Error desconocido'), 'error');
+            }
+        }
+    } catch (error) {
+        console.error('Error al extraer texto:', error);
+        mostrarToast('Error al procesar la imagen', 'error');
+    } finally {
+        statusEl.style.display = 'none';
+    }
+}
+
+// Eliminar imagen seleccionada
+function eliminarImagenAcuerdo() {
+    const previewContainer = document.getElementById('ia-imagen-preview');
+    const input = document.getElementById('ia-imagen-acuerdo');
+
+    previewContainer.style.display = 'none';
+    input.value = '';
+    imagenAcuerdoActual = null;
+}
+
+// ==================== ANÁLISIS CON IA ====================
+
 async function analizarAcuerdoConIA() {
     const texto = document.getElementById('ia-texto-acuerdo').value.trim();
     const expedienteSelect = document.getElementById('ia-expediente').value;
@@ -2265,21 +3031,62 @@ async function guardarResultadosIA() {
     const resultado = resultadosIAActuales;
     let guardados = 0;
 
+    // Si hay un expediente personalizado, crearlo automáticamente
+    if (resultado.expedienteTexto && !resultado.expedienteId) {
+        try {
+            // Verificar si ya existe un expediente con ese número
+            const expedientes = await obtenerExpedientes();
+            const existente = expedientes.find(e =>
+                (e.numero && e.numero.toLowerCase() === resultado.expedienteTexto.toLowerCase()) ||
+                (e.nombre && e.nombre.toLowerCase() === resultado.expedienteTexto.toLowerCase())
+            );
+
+            if (existente) {
+                // Ya existe, usar su ID
+                resultado.expedienteId = existente.id;
+                mostrarToast(`Expediente "${resultado.expedienteTexto}" ya existe, vinculando...`, 'info');
+            } else {
+                // Crear nuevo expediente
+                const nuevoExp = {
+                    numero: resultado.expedienteTexto,
+                    juzgado: 'Por determinar',
+                    categoria: 'General',
+                    comentario: 'Creado automáticamente desde análisis IA'
+                };
+                const idNuevo = await agregarExpediente(nuevoExp);
+                resultado.expedienteId = idNuevo;
+                guardados++;
+                mostrarToast(`Expediente "${resultado.expedienteTexto}" creado automáticamente`, 'success');
+            }
+        } catch (e) {
+            console.error('Error al crear expediente:', e);
+        }
+    }
+
     // Guardar eventos/fechas seleccionados
     if (resultado.fechas) {
         for (let i = 0; i < resultado.fechas.length; i++) {
             const checkbox = document.getElementById(`ia-fecha-${i}`);
             if (checkbox && checkbox.checked) {
                 const fecha = resultado.fechas[i];
+                // Obtener info del expediente para mostrar en el título
+                let expedienteInfo = '';
+                if (resultado.expedienteId) {
+                    const exp = await obtenerExpediente(resultado.expedienteId);
+                    if (exp) expedienteInfo = ` [${exp.numero || exp.nombre}]`;
+                } else if (resultado.expedienteTexto) {
+                    expedienteInfo = ` [${resultado.expedienteTexto}]`;
+                }
+
                 const evento = {
-                    titulo: fecha.descripcion,
+                    titulo: `${fecha.descripcion}${expedienteInfo}`,
                     tipo: fecha.tipo === 'audiencia' ? 'audiencia' :
                           fecha.tipo === 'vencimiento' ? 'vencimiento' : 'recordatorio',
                     fechaInicio: new Date(fecha.fecha + (fecha.hora ? `T${fecha.hora}` : 'T09:00')).toISOString(),
                     todoElDia: !fecha.hora,
                     expedienteId: resultado.expedienteId,
-                    expedienteTexto: resultado.expedienteTexto, // Soporte para expediente personalizado
-                    descripcion: `Extraído automáticamente por IA`,
+                    expedienteTexto: resultado.expedienteTexto,
+                    descripcion: `Expediente: ${resultado.expedienteTexto || 'N/A'}\nExtraído automáticamente por IA`,
                     alerta: true,
                     color: fecha.tipo === 'audiencia' ? '#3788d8' :
                            fecha.tipo === 'vencimiento' ? '#dc3545' : '#ffc107'
@@ -2344,6 +3151,7 @@ async function guardarResultadosIA() {
     }
 
     // Actualizar UI
+    await cargarExpedientes(); // También actualizar expedientes por si se creó uno nuevo
     await cargarEventos();
     await cargarNotas();
     await cargarEstadisticas();
@@ -2351,6 +3159,7 @@ async function guardarResultadosIA() {
 
     document.getElementById('resultados-ia').style.display = 'none';
     document.getElementById('ia-texto-acuerdo').value = '';
+    eliminarImagenAcuerdo(); // Limpiar imagen si había
     resultadosIAActuales = null;
 
     mostrarToast(`${guardados} elementos guardados`, 'success');
@@ -3235,4 +4044,200 @@ async function ejecutarTransferencia() {
         mostrarToast(resultado.mensaje, 'error');
     }
 }
+
+// ==================== EVENT DELEGATION (FIX FIREFOX) ====================
+// Delegación de eventos para botones en contenido dinámico
+document.addEventListener('click', function(event) {
+    // Buscar si el click fue en un botón de editar expediente
+    const editBtn = event.target.closest('.expediente-actions .btn-secondary');
+    if (editBtn && !event.defaultPrevented) {
+        const card = editBtn.closest('.expediente-card');
+        if (card) {
+            const id = parseInt(card.dataset.id);
+            if (!isNaN(id)) {
+                event.preventDefault();
+                event.stopPropagation();
+                editarExpediente(id, event);
+            }
+        }
+    }
+
+    // Buscar si el click fue en un botón de eliminar expediente
+    const deleteBtn = event.target.closest('.expediente-actions .btn-danger');
+    if (deleteBtn && !event.defaultPrevented) {
+        const card = deleteBtn.closest('.expediente-card');
+        if (card) {
+            const id = parseInt(card.dataset.id);
+            if (!isNaN(id)) {
+                event.preventDefault();
+                event.stopPropagation();
+                confirmarEliminarExpediente(id, event);
+            }
+        }
+    }
+}, true); // Usar capture phase para mejor compatibilidad con Firefox
+
+// ==================== HOURLY SUBSCRIPTION CHECK ====================
+// Verificar suscripción cada hora
+setInterval(async () => {
+    if (estadoPremium.activo && estadoPremium.codigo) {
+        console.log('Verificando estado de suscripción...');
+        await verificarLicenciaPeriodica();
+    }
+}, 60 * 60 * 1000); // Cada hora
+
+// ==================== SISTEMA DE ANUNCIOS ====================
+
+// Configuración de anuncios (pueden ser cargados de un servidor o configurados manualmente)
+const ANUNCIOS_CONFIG = [
+    {
+        id: 'ad1',
+        tipo: 'texto',
+        contenido: '¿Necesitas un abogado especializado? Contáctanos en abogados@ejemplo.com',
+        enlace: 'mailto:abogados@ejemplo.com',
+        activo: true
+    },
+    {
+        id: 'ad2',
+        tipo: 'texto',
+        contenido: '📋 Software de gestión jurídica profesional - Prueba gratis',
+        enlace: '#',
+        activo: true
+    },
+    {
+        id: 'placeholder',
+        tipo: 'placeholder',
+        contenido: '📢 Espacio disponible para anunciantes',
+        enlace: 'mailto:publicidad@tsjfiling.com?subject=Anuncio en TSJ Filing',
+        activo: true
+    }
+];
+
+// Inicializar sistema de anuncios
+async function inicializarAnuncios() {
+    const ocultarAnuncios = await obtenerConfig('ocultar_anuncios');
+    const esPremium = estadoPremium && estadoPremium.activo;
+
+    if (esPremium) {
+        // Premium: ocultar anuncios por defecto, mostrar solo si explícitamente quiere
+        if (ocultarAnuncios === 'false') {
+            // Usuario premium que quiere ver anuncios (raro pero posible)
+            document.body.classList.remove('ads-hidden');
+            mostrarAnuncios();
+        } else {
+            // Por defecto, premium no ve anuncios
+            document.body.classList.add('ads-hidden');
+        }
+    } else {
+        // No premium: siempre mostrar anuncios
+        document.body.classList.remove('ads-hidden');
+        mostrarAnuncios();
+    }
+}
+
+// Mostrar anuncios en los contenedores
+function mostrarAnuncios() {
+    const anunciosActivos = ANUNCIOS_CONFIG.filter(a => a.activo);
+    if (anunciosActivos.length === 0) return;
+
+    // Rotar anuncios aleatoriamente
+    const anuncioAleatorio = () => anunciosActivos[Math.floor(Math.random() * anunciosActivos.length)];
+
+    // Mostrar en cada contenedor de anuncios
+    const contenedores = document.querySelectorAll('.ad-banner');
+    contenedores.forEach(contenedor => {
+        contenedor.style.display = 'block';
+        const bodyEl = contenedor.querySelector('.ad-body');
+        if (bodyEl) {
+            const anuncio = anuncioAleatorio();
+            bodyEl.innerHTML = generarHTMLAnuncio(anuncio);
+        }
+    });
+}
+
+// Generar HTML para un anuncio
+function generarHTMLAnuncio(anuncio) {
+    if (anuncio.tipo === 'imagen') {
+        return `
+            <a href="${anuncio.enlace}" target="_blank" class="ad-image-link">
+                <img src="${anuncio.imagen}" alt="${anuncio.contenido}">
+            </a>
+        `;
+    } else {
+        return `
+            <a href="${anuncio.enlace}" ${anuncio.enlace.startsWith('http') ? 'target="_blank"' : ''} class="ad-text-link">
+                <span class="ad-text">${anuncio.contenido}</span>
+            </a>
+        `;
+    }
+}
+
+// Mostrar opción de quitar anuncios
+function mostrarOpcionQuitarAnuncios(event) {
+    event.preventDefault();
+
+    if (estadoPremium && estadoPremium.activo) {
+        // Usuario premium - puede quitar anuncios
+        if (confirm('¿Deseas ocultar los anuncios? Puedes reactivarlos en Configuración.')) {
+            guardarConfig('ocultar_anuncios', 'true');
+            document.body.classList.add('ads-hidden');
+            mostrarToast('Anuncios ocultados. Puedes reactivarlos en Configuración.', 'success');
+        }
+    } else {
+        // Usuario gratuito - mostrar info de premium
+        document.getElementById('modal-titulo').textContent = '⭐ Quitar Anuncios';
+        document.getElementById('modal-body').innerHTML = `
+            <div style="text-align: center; padding: 1rem;">
+                <p style="font-size: 1.1rem; margin-bottom: 1rem;">
+                    Los anuncios ayudan a mantener este servicio gratuito.
+                </p>
+                <p style="margin-bottom: 1.5rem;">
+                    Con <strong>Premium</strong> puedes quitar los anuncios y disfrutar de todas las funciones sin límites.
+                </p>
+                <button class="btn btn-primary btn-lg" onclick="cerrarModal(); mostrarSeccion('configuracion');">
+                    ⭐ Ver planes Premium
+                </button>
+            </div>
+        `;
+        document.getElementById('modal-footer').innerHTML = `
+            <button class="btn btn-secondary" onclick="cerrarModal()">Cerrar</button>
+        `;
+        document.getElementById('modal-overlay').classList.add('active');
+    }
+}
+
+// Toggle anuncios para usuarios premium
+async function toggleAnunciosPremium() {
+    const checkbox = document.getElementById('config-ocultar-anuncios');
+    const ocultar = checkbox.checked;
+
+    await guardarConfig('ocultar_anuncios', ocultar ? 'true' : 'false');
+
+    if (ocultar) {
+        document.body.classList.add('ads-hidden');
+        mostrarToast('Anuncios ocultados', 'success');
+    } else {
+        document.body.classList.remove('ads-hidden');
+        mostrarAnuncios();
+        mostrarToast('Anuncios visibles', 'success');
+    }
+}
+
+// Inicializar anuncios cuando cambia el estado premium
+const actualizarUIPremiumOriginal2 = actualizarUIPremium;
+actualizarUIPremium = async function() {
+    await actualizarUIPremiumOriginal2();
+    await inicializarAnuncios();
+
+    // Mostrar/ocultar opción de quitar anuncios según estado premium
+    const opcionAnuncios = document.getElementById('config-anuncios-section');
+    if (opcionAnuncios) {
+        opcionAnuncios.style.display = estadoPremium.activo ? 'block' : 'none';
+    }
+};
+
+// Inicializar al cargar
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(inicializarAnuncios, 500);
+});
 
