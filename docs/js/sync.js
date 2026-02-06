@@ -500,3 +500,5 @@ setTimeout(() => {
 window.sincronizarDatos = sincronizarDatos;
 window.guardarConfigSync = guardarConfigSync;
 window.sincronizarDespuesDeGuardar = sincronizarDespuesDeGuardar;
+window.actualizarVisibilidadSync = actualizarVisibilidadSync;
+window.cargarConfigSync = cargarConfigSync;

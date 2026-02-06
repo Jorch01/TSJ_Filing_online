@@ -2755,7 +2755,8 @@ function capturarFotoAcuerdo() {
 // Modelos de visión disponibles en Groq (intentar en orden)
 const GROQ_VISION_MODELS = [
     'llama-3.2-11b-vision-preview',
-    'llama-3.2-90b-vision-preview'
+    'llama-3.2-90b-vision-preview',
+    'llava-v1.5-7b-4096-preview'
 ];
 
 // Extraer texto de imagen usando Groq Vision
@@ -2768,10 +2769,11 @@ async function extraerTextoDeImagen(imagenBase64) {
     }
 
     const statusEl = document.getElementById('ia-ocr-status');
-    statusEl.style.display = 'flex';
+    if (statusEl) statusEl.style.display = 'flex';
 
     let textoExtraido = null;
     let ultimoError = null;
+    let errorMensaje = '';
 
     // Intentar con cada modelo de visión
     for (const modelo of GROQ_VISION_MODELS) {
@@ -2813,18 +2815,20 @@ async function extraerTextoDeImagen(imagenBase64) {
                     // Éxito - agregar texto extraído al textarea
                     const textarea = document.getElementById('ia-texto-acuerdo');
                     textarea.value = textoExtraido;
-                    mostrarToast('Texto extraído correctamente', 'success');
+                    mostrarToast('Texto extraído correctamente con ' + modelo, 'success');
                     break; // Salir del loop si tuvo éxito
                 }
             } else {
                 const error = await response.json();
                 console.warn(`Modelo ${modelo} falló:`, error);
                 ultimoError = error;
+                errorMensaje = error.error?.message || 'Error desconocido';
                 // Continuar con el siguiente modelo
             }
         } catch (error) {
             console.warn(`Error con modelo ${modelo}:`, error);
             ultimoError = error;
+            errorMensaje = error.message || 'Error de conexión';
             // Continuar con el siguiente modelo
         }
     }
@@ -2832,16 +2836,30 @@ async function extraerTextoDeImagen(imagenBase64) {
     // Si ningún modelo funcionó
     if (!textoExtraido) {
         console.error('Ningún modelo de visión funcionó:', ultimoError);
-        mostrarToast('OCR no disponible. Por favor, copia el texto manualmente en el cuadro de abajo.', 'warning');
+
+        // Mostrar error detallado
+        let mensajeError = 'OCR no disponible.';
+        if (errorMensaje.includes('model')) {
+            mensajeError = 'Los modelos de visión no están disponibles en tu cuenta de Groq.';
+        } else if (errorMensaje.includes('rate') || errorMensaje.includes('limit')) {
+            mensajeError = 'Límite de uso alcanzado. Intenta más tarde.';
+        } else if (errorMensaje.includes('invalid') || errorMensaje.includes('key')) {
+            mensajeError = 'API Key inválida. Verifica tu configuración.';
+        }
+
+        mostrarToast(mensajeError + ' Copia el texto manualmente.', 'warning');
 
         // Mostrar mensaje de ayuda en el textarea
         const textarea = document.getElementById('ia-texto-acuerdo');
-        if (!textarea.value) {
-            textarea.placeholder = 'El OCR no está disponible. Pega aquí el texto del acuerdo manualmente...';
+        if (textarea && !textarea.value) {
+            textarea.placeholder = mensajeError + ' Pega aquí el texto del acuerdo manualmente...';
         }
+
+        // Mostrar detalle del error en consola
+        console.log('Error detallado OCR:', errorMensaje);
     }
 
-    statusEl.style.display = 'none';
+    if (statusEl) statusEl.style.display = 'none';
 }
 
 // Eliminar imagen seleccionada
@@ -4269,6 +4287,14 @@ actualizarUIPremium = async function() {
     if (opcionAnuncios) {
         opcionAnuncios.style.display = estadoPremium.activo ? 'block' : 'none';
     }
+
+    // Actualizar visibilidad de sincronización
+    if (typeof actualizarVisibilidadSync === 'function') {
+        actualizarVisibilidadSync();
+    }
+
+    // Debug: mostrar estado de sync
+    console.log('Estado Premium:', estadoPremium.activo, '- Sync visible:', estadoPremium.activo);
 };
 
 // Inicializar al cargar
