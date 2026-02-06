@@ -198,6 +198,136 @@
     color: #90caf9;
 }
 
+/* Dark theme - Warning info banner (cream/yellow background) */
+[data-theme="dark"] .info-banner.warning {
+    background: linear-gradient(135deg, #3d3520 0%, #4a4020 100%);
+    border-left-color: #ffb74d;
+}
+
+[data-theme="dark"] .info-banner.warning h4 {
+    color: #ffcc80;
+}
+
+[data-theme="dark"] .info-banner.warning p {
+    color: #e0e0e0;
+}
+
+/* Dark theme - Toast warning (cream background) */
+[data-theme="dark"] .toast-warning {
+    background: #3d3520;
+    color: #ffe082;
+    border: 1px solid #5a4a00;
+}
+
+/* Dark theme - Pricing best row (yellow/cream background) */
+[data-theme="dark"] .pricing-row.best {
+    background: linear-gradient(135deg, #4a4020 0%, #5a4a00 100%);
+    color: #ffe082;
+}
+
+[data-theme="dark"] .pricing-row.best span {
+    color: #ffe082;
+}
+
+/* Dark theme - Premium section (cream/yellow gradient) */
+[data-theme="dark"] .premium-section {
+    background: linear-gradient(135deg, #2d2820 0%, #3d3020 100%);
+    border-color: #ffb74d;
+}
+
+/* Dark theme - Premium badge gold */
+[data-theme="dark"] .plan-badge.premium {
+    background: linear-gradient(135deg, #c68400 0%, #b67500 100%);
+    color: #ffffff;
+}
+
+/* Dark theme - Premium activation section */
+[data-theme="dark"] .premium-activation {
+    border-top-color: #4a4a4a;
+}
+
+/* Dark theme - Limit bars */
+[data-theme="dark"] .limit-bar {
+    background: #2d2d44;
+}
+
+[data-theme="dark"] .limit-fill.warning {
+    background: #c9a227;
+}
+
+/* Dark theme - Premium options (ad toggle) enhanced */
+[data-theme="dark"] .premium-options {
+    background: rgba(255, 193, 7, 0.08);
+    border-color: rgba(255, 193, 7, 0.2);
+}
+
+/* Dark theme - Expediente day cell for holidays (red/cream) */
+[data-theme="dark"] .dia-cell.es-hoy {
+    background: #1e3a5f;
+}
+
+/* Dark theme - Calendar highlight */
+[data-theme="dark"] .expediente-seleccion-item.selected {
+    border-color: var(--primary);
+    background: #1e3a5f;
+}
+
+/* Dark theme - Limit warning modal */
+[data-theme="dark"] .limit-warning h3 {
+    color: #f48fb1;
+}
+
+[data-theme="dark"] .limit-warning p {
+    color: #b0b0b0;
+}
+
+/* Dark theme - All remaining cream/yellow text elements */
+[data-theme="dark"] .premium-buy a {
+    color: #64b5f6;
+}
+
+[data-theme="dark"] .premium-active {
+    color: #e0e0e0;
+}
+
+/* Dark theme - Stat icons with inline light backgrounds */
+[data-theme="dark"] .stat-icon {
+    background: var(--bg-tertiary) !important;
+}
+
+/* Dark theme - Premium active banner (inline yellow gradient) */
+[data-theme="dark"] .premium-active .info-banner {
+    background: linear-gradient(135deg, #3d3520 0%, #5a4a00 100%) !important;
+    border-left-color: #ffb74d !important;
+}
+
+[data-theme="dark"] .premium-active .info-banner h4 {
+    color: #ffe082;
+}
+
+[data-theme="dark"] .premium-active .info-banner p {
+    color: #d0d0d0;
+}
+
+[data-theme="dark"] .premium-active .info-banner .text-muted {
+    color: #a0a0a0 !important;
+}
+
+/* Dark theme - Legend colors visibility */
+[data-theme="dark"] .leyenda-item {
+    color: var(--text-primary);
+}
+
+/* Dark theme - Day cell today (blue light background) */
+[data-theme="dark"] .dia-cell.es-hoy {
+    background: #1e3a5f !important;
+}
+
+[data-theme="dark"] .dia-cell.es-hoy .dia-numero {
+    background: var(--primary);
+    color: white;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
