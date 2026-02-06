@@ -40,37 +40,63 @@ const COL = {
 // ==================== FUNCIONES PRINCIPALES ====================
 
 function doGet(e) {
-  const action = e.parameter.action;
+  return procesarSolicitud(e.parameter);
+}
+
+function doPost(e) {
+  // Obtener parámetros de POST
+  let params = {};
+
+  // Si viene como form data
+  if (e.parameter) {
+    params = e.parameter;
+  }
+
+  // Si viene como JSON en el body
+  if (e.postData && e.postData.contents) {
+    try {
+      const postParams = JSON.parse(e.postData.contents);
+      params = { ...params, ...postParams };
+    } catch (err) {
+      // No es JSON, puede ser form-urlencoded que ya está en e.parameter
+    }
+  }
+
+  return procesarSolicitud(params);
+}
+
+function procesarSolicitud(params) {
+  const action = params.action;
   let resultado;
 
   try {
     switch (action) {
       case 'verificar':
-        resultado = verificarCodigo(e.parameter);
+        resultado = verificarCodigo(params);
         break;
       case 'registrar_dispositivo':
-        resultado = registrarDispositivo(e.parameter);
+        resultado = registrarDispositivo(params);
         break;
       case 'desvincular_dispositivo':
-        resultado = desvincularDispositivo(e.parameter);
+        resultado = desvincularDispositivo(params);
         break;
       case 'heartbeat':
-        resultado = verificarHeartbeat(e.parameter);
+        resultado = verificarHeartbeat(params);
         break;
       case 'transferir':
-        resultado = transferirLicencia(e.parameter);
+        resultado = transferirLicencia(params);
         break;
       case 'obtener_dispositivos':
-        resultado = obtenerDispositivos(e.parameter);
+        resultado = obtenerDispositivos(params);
         break;
       case 'obtener_sync':
-        resultado = obtenerDatosSync(e.parameter);
+        resultado = obtenerDatosSync(params);
         break;
       case 'guardar_sync':
-        resultado = guardarDatosSync(e.parameter);
+        resultado = guardarDatosSync(params);
         break;
       default:
-        resultado = { error: true, mensaje: 'Acción no válida' };
+        resultado = { error: true, mensaje: 'Acción no válida: ' + (action || 'ninguna') };
     }
   } catch (error) {
     resultado = { error: true, mensaje: error.message };
