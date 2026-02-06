@@ -218,33 +218,123 @@ async function subirDatosRemotos(datosCifrados) {
 // Fusionar datos locales y remotos
 function fusionarDatos(local, remoto) {
     const resultado = {
-        expedientes: fusionarColeccion(local.expedientes || [], remoto.expedientes || []),
-        notas: fusionarColeccion(local.notas || [], remoto.notas || []),
-        eventos: fusionarColeccion(local.eventos || [], remoto.eventos || []),
+        expedientes: fusionarExpedientes(local.expedientes || [], remoto.expedientes || []),
+        notas: fusionarNotas(local.notas || [], remoto.notas || []),
+        eventos: fusionarEventos(local.eventos || [], remoto.eventos || []),
         metadata: local.metadata
     };
     return resultado;
 }
 
-function fusionarColeccion(local, remoto) {
+// Generar clave única para expediente (basada en contenido, no ID)
+function claveExpediente(exp) {
+    const numero = (exp.numero || '').trim().toLowerCase();
+    const nombre = (exp.nombre || '').trim().toLowerCase();
+    const juzgado = (exp.juzgado || '').trim().toLowerCase();
+    return `${numero}|${nombre}|${juzgado}`;
+}
+
+// Generar clave única para nota
+function claveNota(nota) {
+    const contenido = (nota.contenido || '').substring(0, 100).trim().toLowerCase();
+    const expedienteId = nota.expedienteId || 'sin-exp';
+    const fecha = nota.fechaCreacion || '';
+    return `${expedienteId}|${contenido}|${fecha.substring(0, 10)}`;
+}
+
+// Generar clave única para evento
+function claveEvento(evento) {
+    const titulo = (evento.titulo || '').trim().toLowerCase();
+    const fecha = (evento.fecha || evento.fechaInicio || '').substring(0, 10);
+    const expedienteId = evento.expedienteId || 'sin-exp';
+    return `${titulo}|${fecha}|${expedienteId}`;
+}
+
+// Fusionar expedientes sin duplicar
+function fusionarExpedientes(locales, remotos) {
     const mapa = new Map();
 
-    // Agregar remotos
-    remoto.forEach(item => {
-        if (item.id) mapa.set(item.id, item);
+    // Primero agregar remotos
+    remotos.forEach(exp => {
+        const clave = claveExpediente(exp);
+        if (clave && clave !== '||') {
+            mapa.set(clave, { ...exp, _origen: 'remoto' });
+        }
     });
 
-    // Sobrescribir con locales más recientes
-    local.forEach(item => {
-        if (!item.id) return;
-        const existente = mapa.get(item.id);
+    // Luego procesar locales (sobrescribir si es más reciente)
+    locales.forEach(exp => {
+        const clave = claveExpediente(exp);
+        if (!clave || clave === '||') return;
+
+        const existente = mapa.get(clave);
         if (!existente) {
-            mapa.set(item.id, item);
+            mapa.set(clave, { ...exp, _origen: 'local' });
         } else {
-            const fechaLocal = new Date(item.fechaModificacion || item.fechaCreacion || 0);
-            const fechaRemoto = new Date(existente.fechaModificacion || existente.fechaCreacion || 0);
-            if (fechaLocal >= fechaRemoto) {
-                mapa.set(item.id, item);
+            const fechaLocal = new Date(exp.fechaActualizacion || exp.fechaCreacion || 0);
+            const fechaExistente = new Date(existente.fechaActualizacion || existente.fechaCreacion || 0);
+            if (fechaLocal >= fechaExistente) {
+                mapa.set(clave, { ...exp, _origen: 'local' });
+            }
+        }
+    });
+
+    // Limpiar campo temporal y devolver
+    return Array.from(mapa.values()).map(exp => {
+        delete exp._origen;
+        return exp;
+    });
+}
+
+// Fusionar notas sin duplicar
+function fusionarNotas(locales, remotas) {
+    const mapa = new Map();
+
+    remotas.forEach(nota => {
+        const clave = claveNota(nota);
+        if (clave) mapa.set(clave, { ...nota });
+    });
+
+    locales.forEach(nota => {
+        const clave = claveNota(nota);
+        if (!clave) return;
+
+        const existente = mapa.get(clave);
+        if (!existente) {
+            mapa.set(clave, { ...nota });
+        } else {
+            const fechaLocal = new Date(nota.fechaActualizacion || nota.fechaCreacion || 0);
+            const fechaExistente = new Date(existente.fechaActualizacion || existente.fechaCreacion || 0);
+            if (fechaLocal >= fechaExistente) {
+                mapa.set(clave, { ...nota });
+            }
+        }
+    });
+
+    return Array.from(mapa.values());
+}
+
+// Fusionar eventos sin duplicar
+function fusionarEventos(locales, remotos) {
+    const mapa = new Map();
+
+    remotos.forEach(evento => {
+        const clave = claveEvento(evento);
+        if (clave) mapa.set(clave, { ...evento });
+    });
+
+    locales.forEach(evento => {
+        const clave = claveEvento(evento);
+        if (!clave) return;
+
+        const existente = mapa.get(clave);
+        if (!existente) {
+            mapa.set(clave, { ...evento });
+        } else {
+            const fechaLocal = new Date(evento.fechaCreacion || 0);
+            const fechaExistente = new Date(existente.fechaCreacion || 0);
+            if (fechaLocal >= fechaExistente) {
+                mapa.set(clave, { ...evento });
             }
         }
     });
