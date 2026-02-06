@@ -3812,12 +3812,21 @@ async function verificarConAPI(codigo, deviceId, usuario) {
 // Registrar dispositivo en la API
 async function registrarDispositivoEnAPI(codigo, deviceId, usuario) {
     try {
-        const url = `${PREMIUM_CONFIG.apiUrl}?action=registrar&codigo=${encodeURIComponent(codigo)}&dispositivo_id=${encodeURIComponent(deviceId)}&usuario=${encodeURIComponent(usuario || '')}`;
+        const tipoDispositivo = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
+        const nombreDispositivo = navigator.userAgent.split(/[()]/)[1] || 'Dispositivo';
+
+        const url = `${PREMIUM_CONFIG.apiUrl}?action=registrar_dispositivo&codigo=${encodeURIComponent(codigo)}&dispositivo_id=${encodeURIComponent(deviceId)}&usuario=${encodeURIComponent(usuario || '')}&tipo_dispositivo=${encodeURIComponent(tipoDispositivo)}&nombre_dispositivo=${encodeURIComponent(nombreDispositivo)}`;
         const response = await fetch(url);
         const resultado = await response.json();
 
-        if (resultado.exito) {
-            return { valido: true, fechaExpiracion: resultado.fechaExpiracion };
+        if (resultado.success) {
+            return {
+                valido: true,
+                fechaExpiracion: resultado.fechaExpiracion,
+                perpetua: resultado.perpetua,
+                dispositivos: resultado.dispositivos,
+                maxDispositivos: resultado.maxDispositivos
+            };
         }
 
         return { valido: false, mensaje: resultado.mensaje };
@@ -3830,22 +3839,21 @@ async function registrarDispositivoEnAPI(codigo, deviceId, usuario) {
 // Transferir licencia a nuevo dispositivo
 async function transferirLicencia(codigo, nuevoDeviceId, usuario, motivo) {
     if (!PREMIUM_CONFIG.apiUrl) {
-        return { exito: false, mensaje: 'Transferencia no disponible sin API configurada. Contacta soporte: jorge_clemente@empirica.mx' };
+        return { success: false, mensaje: 'Transferencia no disponible sin API configurada. Contacta soporte: jorge_clemente@empirica.mx' };
     }
 
     try {
-        const url = `${PREMIUM_CONFIG.apiUrl}?action=transferir&codigo=${encodeURIComponent(codigo)}&dispositivo_id=${encodeURIComponent(nuevoDeviceId)}&usuario=${encodeURIComponent(usuario || '')}&motivo=${encodeURIComponent(motivo || '')}`;
+        const tipoDispositivo = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
+        const nombreDispositivo = navigator.userAgent.split(/[()]/)[1] || 'Dispositivo';
+
+        const url = `${PREMIUM_CONFIG.apiUrl}?action=transferir&codigo=${encodeURIComponent(codigo)}&nuevo_dispositivo_id=${encodeURIComponent(nuevoDeviceId)}&usuario=${encodeURIComponent(usuario || '')}&tipo_dispositivo=${encodeURIComponent(tipoDispositivo)}&nombre_dispositivo=${encodeURIComponent(nombreDispositivo)}`;
         const response = await fetch(url);
         const resultado = await response.json();
-
-        if (resultado.cooldown) {
-            mostrarToast(`Debes esperar ${resultado.diasRestantes} días para transferir`, 'warning');
-        }
 
         return resultado;
     } catch (error) {
         console.error('Error al transferir licencia:', error);
-        return { exito: false, mensaje: 'Error de conexión' };
+        return { success: false, mensaje: 'Error de conexión' };
     }
 }
 
