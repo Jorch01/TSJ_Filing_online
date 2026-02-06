@@ -580,10 +580,13 @@
                     <div class="form-group">
                         <label>📷 Subir imagen del acuerdo (opcional)</label>
                         <div class="image-upload-container">
-                            <input type="file" id="ia-imagen-acuerdo" accept="image/*" capture="environment" onchange="procesarImagenAcuerdo(event)" style="display: none;">
+                            <!-- Input para seleccionar del álbum (sin capture) -->
+                            <input type="file" id="ia-imagen-album" accept="image/*" onchange="procesarImagenAcuerdo(event)" style="display: none;">
+                            <!-- Input para cámara (con capture) -->
+                            <input type="file" id="ia-imagen-camara" accept="image/*" capture="environment" onchange="procesarImagenAcuerdo(event)" style="display: none;">
                             <div class="image-upload-buttons">
-                                <button type="button" class="btn btn-secondary" onclick="document.getElementById('ia-imagen-acuerdo').click()">
-                                    📁 Seleccionar imagen
+                                <button type="button" class="btn btn-secondary" onclick="seleccionarImagenAlbum()">
+                                    🖼️ Álbum de fotos
                                 </button>
                                 <button type="button" class="btn btn-secondary" onclick="capturarFotoAcuerdo()">
                                     📸 Tomar foto

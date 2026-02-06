@@ -2737,15 +2737,26 @@ async function procesarImagenAcuerdo(event) {
         await extraerTextoDeImagen(e.target.result);
     };
     reader.readAsDataURL(file);
+
+    // Limpiar el input para permitir seleccionar el mismo archivo de nuevo
+    event.target.value = '';
 }
 
-// Capturar foto con la cámara
-function capturarFotoAcuerdo() {
-    const input = document.getElementById('ia-imagen-acuerdo');
-    // Forzar modo captura
-    input.setAttribute('capture', 'environment');
-    input.click();
+// Seleccionar imagen del álbum de fotos (sin capture - abre galería)
+function seleccionarImagenAlbum() {
+    document.getElementById('ia-imagen-album').click();
 }
+
+// Capturar foto con la cámara (con capture - abre cámara)
+function capturarFotoAcuerdo() {
+    document.getElementById('ia-imagen-camara').click();
+}
+
+// Modelos de visión disponibles en Groq (intentar en orden)
+const GROQ_VISION_MODELS = [
+    'llama-3.2-11b-vision-preview',
+    'llama-3.2-90b-vision-preview'
+];
 
 // Extraer texto de imagen usando Groq Vision
 async function extraerTextoDeImagen(imagenBase64) {
@@ -2759,73 +2770,89 @@ async function extraerTextoDeImagen(imagenBase64) {
     const statusEl = document.getElementById('ia-ocr-status');
     statusEl.style.display = 'flex';
 
-    try {
-        // Usar modelo de visión de Groq
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-                model: 'llama-3.2-90b-vision-preview',
-                messages: [{
-                    role: 'user',
-                    content: [
-                        {
-                            type: 'text',
-                            text: 'Extrae todo el texto que puedas leer de esta imagen de un documento judicial. Transcribe el texto exactamente como aparece, manteniendo el formato y los párrafos. Solo devuelve el texto extraído, sin explicaciones adicionales.'
-                        },
-                        {
-                            type: 'image_url',
-                            image_url: {
-                                url: imagenBase64
+    let textoExtraido = null;
+    let ultimoError = null;
+
+    // Intentar con cada modelo de visión
+    for (const modelo of GROQ_VISION_MODELS) {
+        try {
+            console.log(`Intentando OCR con modelo: ${modelo}`);
+
+            const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: modelo,
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            {
+                                type: 'text',
+                                text: 'Extrae todo el texto que puedas leer de esta imagen de un documento judicial. Transcribe el texto exactamente como aparece, manteniendo el formato y los párrafos. Solo devuelve el texto extraído, sin explicaciones adicionales.'
+                            },
+                            {
+                                type: 'image_url',
+                                image_url: {
+                                    url: imagenBase64
+                                }
                             }
-                        }
-                    ]
-                }],
-                max_tokens: 4096
-            })
-        });
+                        ]
+                    }],
+                    max_tokens: 4096
+                })
+            });
 
-        if (response.ok) {
-            const data = await response.json();
-            const textoExtraido = data.choices[0]?.message?.content || '';
+            if (response.ok) {
+                const data = await response.json();
+                textoExtraido = data.choices[0]?.message?.content || '';
 
-            if (textoExtraido) {
-                // Agregar texto extraído al textarea
-                const textarea = document.getElementById('ia-texto-acuerdo');
-                textarea.value = textoExtraido;
-                mostrarToast('Texto extraído correctamente', 'success');
+                if (textoExtraido) {
+                    // Éxito - agregar texto extraído al textarea
+                    const textarea = document.getElementById('ia-texto-acuerdo');
+                    textarea.value = textoExtraido;
+                    mostrarToast('Texto extraído correctamente', 'success');
+                    break; // Salir del loop si tuvo éxito
+                }
             } else {
-                mostrarToast('No se pudo extraer texto de la imagen', 'warning');
+                const error = await response.json();
+                console.warn(`Modelo ${modelo} falló:`, error);
+                ultimoError = error;
+                // Continuar con el siguiente modelo
             }
-        } else {
-            const error = await response.json();
-            console.error('Error OCR:', error);
-
-            // Si el modelo de visión no está disponible, intentar con OCR básico
-            if (error.error?.message?.includes('model')) {
-                mostrarToast('El modelo de visión no está disponible. Usa texto manual.', 'warning');
-            } else {
-                mostrarToast('Error al procesar imagen: ' + (error.error?.message || 'Error desconocido'), 'error');
-            }
+        } catch (error) {
+            console.warn(`Error con modelo ${modelo}:`, error);
+            ultimoError = error;
+            // Continuar con el siguiente modelo
         }
-    } catch (error) {
-        console.error('Error al extraer texto:', error);
-        mostrarToast('Error al procesar la imagen', 'error');
-    } finally {
-        statusEl.style.display = 'none';
     }
+
+    // Si ningún modelo funcionó
+    if (!textoExtraido) {
+        console.error('Ningún modelo de visión funcionó:', ultimoError);
+        mostrarToast('OCR no disponible. Por favor, copia el texto manualmente en el cuadro de abajo.', 'warning');
+
+        // Mostrar mensaje de ayuda en el textarea
+        const textarea = document.getElementById('ia-texto-acuerdo');
+        if (!textarea.value) {
+            textarea.placeholder = 'El OCR no está disponible. Pega aquí el texto del acuerdo manualmente...';
+        }
+    }
+
+    statusEl.style.display = 'none';
 }
 
 // Eliminar imagen seleccionada
 function eliminarImagenAcuerdo() {
     const previewContainer = document.getElementById('ia-imagen-preview');
-    const input = document.getElementById('ia-imagen-acuerdo');
+    const inputAlbum = document.getElementById('ia-imagen-album');
+    const inputCamara = document.getElementById('ia-imagen-camara');
 
     previewContainer.style.display = 'none';
-    input.value = '';
+    if (inputAlbum) inputAlbum.value = '';
+    if (inputCamara) inputCamara.value = '';
     imagenAcuerdoActual = null;
 }
 
