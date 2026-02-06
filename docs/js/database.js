@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = 'TSJFilingDB';
-const DB_VERSION = 2; // Incrementado para agregar store de historial
+const DB_VERSION = 3; // Incrementado para agregar store de eliminados
 
 let db = null;
 
@@ -63,6 +63,13 @@ function initDB() {
                 historialStore.createIndex('expedienteId', 'expedienteId', { unique: false });
                 historialStore.createIndex('fecha', 'fecha', { unique: false });
                 historialStore.createIndex('tipo', 'tipo', { unique: false });
+            }
+
+            // Store: Registro de eliminaciones (para sincronización)
+            if (!database.objectStoreNames.contains('eliminados')) {
+                const eliminadosStore = database.createObjectStore('eliminados', { keyPath: 'clave' });
+                eliminadosStore.createIndex('fecha', 'fecha', { unique: false });
+                eliminadosStore.createIndex('tipo', 'tipo', { unique: false });
             }
 
             console.log('Stores de IndexedDB creados');
@@ -162,8 +169,16 @@ async function actualizarExpediente(id, cambios) {
 }
 
 async function eliminarExpediente(id, permanente = false) {
+    // Obtener datos del expediente antes de eliminar para registrar
+    const expediente = await obtenerExpediente(id);
+
     if (permanente) {
-        return new Promise((resolve, reject) => {
+        return new Promise(async (resolve, reject) => {
+            // Registrar eliminación para sincronización
+            if (expediente) {
+                await registrarEliminacion('expediente', expediente);
+            }
+
             const transaction = db.transaction(['expedientes'], 'readwrite');
             const store = transaction.objectStore('expedientes');
             const request = store.delete(id);
@@ -172,8 +187,75 @@ async function eliminarExpediente(id, permanente = false) {
             request.onerror = () => reject(request.error);
         });
     } else {
+        // Soft delete también se registra
+        if (expediente) {
+            await registrarEliminacion('expediente', expediente);
+        }
         return actualizarExpediente(id, { activo: false });
     }
+}
+
+// Registrar eliminación para sincronización
+async function registrarEliminacion(tipo, registro) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['eliminados'], 'readwrite');
+        const store = transaction.objectStore('eliminados');
+
+        // Generar clave única basada en contenido (no ID, porque cambia entre dispositivos)
+        let clave;
+        if (tipo === 'expediente') {
+            const numero = (registro.numero || '').trim().toLowerCase();
+            const nombre = (registro.nombre || '').trim().toLowerCase();
+            const juzgado = (registro.juzgado || '').trim().toLowerCase();
+            clave = `exp|${numero}|${nombre}|${juzgado}`;
+        } else if (tipo === 'nota') {
+            clave = `nota|${registro.expedienteId}|${(registro.contenido || '').substring(0, 50)}`;
+        } else if (tipo === 'evento') {
+            clave = `evento|${registro.expedienteId}|${registro.titulo}|${registro.fecha || registro.fechaInicio}`;
+        }
+
+        const eliminado = {
+            clave,
+            tipo,
+            fecha: new Date().toISOString(),
+            datos: {
+                numero: registro.numero,
+                nombre: registro.nombre,
+                juzgado: registro.juzgado
+            }
+        };
+
+        const request = store.put(eliminado);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+}
+
+// Obtener todos los registros de eliminación
+async function obtenerEliminados() {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['eliminados'], 'readonly');
+        const store = transaction.objectStore('eliminados');
+        const request = store.getAll();
+
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+// Agregar eliminados desde sincronización remota
+async function agregarEliminados(eliminados) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['eliminados'], 'readwrite');
+        const store = transaction.objectStore('eliminados');
+
+        for (const eliminado of eliminados) {
+            store.put(eliminado);
+        }
+
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+    });
 }
 
 // ==================== DETECCIÓN Y ELIMINACIÓN DE DUPLICADOS ====================
