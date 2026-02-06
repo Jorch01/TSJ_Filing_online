@@ -226,13 +226,47 @@ async function subirDatosRemotos(datosCifrados) {
 
 // Fusionar datos locales y remotos
 function fusionarDatos(local, remoto) {
+    // Fusionar eliminados primero (unir ambas listas)
+    const eliminadosFusionados = fusionarEliminados(
+        local.eliminados || [],
+        remoto.eliminados || []
+    );
+
+    // Crear set de claves eliminadas para filtrar
+    const clavesEliminadas = new Set(eliminadosFusionados.map(e => e.clave));
+
     const resultado = {
-        expedientes: fusionarExpedientes(local.expedientes || [], remoto.expedientes || []),
+        expedientes: fusionarExpedientes(
+            local.expedientes || [],
+            remoto.expedientes || [],
+            clavesEliminadas
+        ),
         notas: fusionarNotas(local.notas || [], remoto.notas || []),
         eventos: fusionarEventos(local.eventos || [], remoto.eventos || []),
+        eliminados: eliminadosFusionados,
         metadata: local.metadata
     };
     return resultado;
+}
+
+// Fusionar listas de eliminados
+function fusionarEliminados(locales, remotos) {
+    const mapa = new Map();
+
+    // Agregar remotos primero
+    for (const e of remotos) {
+        mapa.set(e.clave, e);
+    }
+
+    // Agregar/actualizar con locales (los más recientes ganan)
+    for (const e of locales) {
+        const existente = mapa.get(e.clave);
+        if (!existente || new Date(e.fecha) > new Date(existente.fecha)) {
+            mapa.set(e.clave, e);
+        }
+    }
+
+    return Array.from(mapa.values());
 }
 
 // Generar clave única para expediente (basada en contenido, no ID)
@@ -425,10 +459,23 @@ function claveEvento(evento) {
     return `${titulo}|${fecha}|${expedienteId}`;
 }
 
+// Generar clave de eliminación para un expediente
+function claveEliminacionExpediente(exp) {
+    const numero = (exp.numero || '').trim().toLowerCase();
+    const nombre = (exp.nombre || '').trim().toLowerCase();
+    const juzgado = (exp.juzgado || '').trim().toLowerCase();
+    return `exp|${numero}|${nombre}|${juzgado}`;
+}
+
 // Fusionar expedientes con detección inteligente de duplicados
-function fusionarExpedientes(locales, remotos) {
+function fusionarExpedientes(locales, remotos, clavesEliminadas = new Set()) {
     limpiarReporteFusion();
-    const todosExpedientes = [...remotos, ...locales];
+
+    // Filtrar expedientes que han sido eliminados
+    const localesFiltrados = locales.filter(exp => !clavesEliminadas.has(claveEliminacionExpediente(exp)));
+    const remotosFiltrados = remotos.filter(exp => !clavesEliminadas.has(claveEliminacionExpediente(exp)));
+
+    const todosExpedientes = [...remotosFiltrados, ...localesFiltrados];
     const expedientesProcesados = [];
     const indicesUsados = new Set();
 
@@ -580,8 +627,9 @@ async function obtenerTodosLosDatos() {
     const expedientes = await obtenerExpedientes();
     const notas = await obtenerNotas();
     const eventos = await obtenerEventos();
+    const eliminados = await obtenerEliminados();
 
-    return { expedientes, notas, eventos };
+    return { expedientes, notas, eventos, eliminados };
 }
 
 // Escape HTML para evitar XSS
@@ -600,17 +648,19 @@ async function aplicarDatosLocalmente(datos) {
         request.onerror = () => reject(request.error);
     });
 
-    const tx = db.transaction(['expedientes', 'notas', 'eventos'], 'readwrite');
+    const tx = db.transaction(['expedientes', 'notas', 'eventos', 'eliminados'], 'readwrite');
 
     // Limpiar y repoblar
     const storeExp = tx.objectStore('expedientes');
     const storeNotas = tx.objectStore('notas');
     const storeEventos = tx.objectStore('eventos');
+    const storeEliminados = tx.objectStore('eliminados');
 
     await Promise.all([
         new Promise(r => { storeExp.clear().onsuccess = r; }),
         new Promise(r => { storeNotas.clear().onsuccess = r; }),
-        new Promise(r => { storeEventos.clear().onsuccess = r; })
+        new Promise(r => { storeEventos.clear().onsuccess = r; }),
+        new Promise(r => { storeEliminados.clear().onsuccess = r; })
     ]);
 
     for (const exp of datos.expedientes || []) {
@@ -621,6 +671,9 @@ async function aplicarDatosLocalmente(datos) {
     }
     for (const evento of datos.eventos || []) {
         storeEventos.put(evento);
+    }
+    for (const eliminado of datos.eliminados || []) {
+        storeEliminados.put(eliminado);
     }
 
     await new Promise((resolve, reject) => {
