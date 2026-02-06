@@ -1090,7 +1090,7 @@
                             <span id="sync-status">
                                 <span class="sync-dot offline"></span> No sincronizado
                             </span>
-                            <button class="btn btn-primary" onclick="sincronizarDatos()" id="btn-sync">
+                            <button class="btn btn-primary btn-lg" onclick="sincronizarDatos()" id="btn-sync">
                                 🔄 Sincronizar ahora
                             </button>
                         </div>
@@ -1099,6 +1099,33 @@
                             <div class="sync-info-item">
                                 <span class="sync-info-label">Última sincronización:</span>
                                 <span class="sync-info-value" id="sync-last-time">Nunca</span>
+                            </div>
+                        </div>
+
+                        <!-- Opciones de sincronización automática -->
+                        <div class="sync-options" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                            <h4 style="margin-bottom: 0.75rem; font-size: 0.95rem;">Opciones de sincronización</h4>
+
+                            <div class="config-item">
+                                <div class="config-info">
+                                    <h4>🚀 Sincronizar al iniciar</h4>
+                                    <p>Descarga cambios de otros dispositivos al abrir la app</p>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="sync-on-load" onchange="guardarConfigSync()">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+
+                            <div class="config-item">
+                                <div class="config-info">
+                                    <h4>📤 Sincronizar al guardar</h4>
+                                    <p>Sube cambios automáticamente al crear/editar datos</p>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="sync-on-save" onchange="guardarConfigSync()">
+                                    <span class="slider"></span>
+                                </label>
                             </div>
                         </div>
                     </div>

@@ -370,12 +370,133 @@ function actualizarVisibilidadSync() {
     }
 }
 
+// ==================== CONFIGURACIÓN DE AUTO-SYNC ====================
+
+// Guardar configuración de sincronización
+async function guardarConfigSync() {
+    const syncOnLoad = document.getElementById('sync-on-load')?.checked || false;
+    const syncOnSave = document.getElementById('sync-on-save')?.checked || false;
+
+    localStorage.setItem('sync_on_load', syncOnLoad ? 'true' : 'false');
+    localStorage.setItem('sync_on_save', syncOnSave ? 'true' : 'false');
+
+    mostrarToast('Configuración de sincronización guardada', 'success');
+}
+
+// Cargar configuración de sincronización
+function cargarConfigSync() {
+    const syncOnLoad = localStorage.getItem('sync_on_load') === 'true';
+    const syncOnSave = localStorage.getItem('sync_on_save') === 'true';
+
+    const checkOnLoad = document.getElementById('sync-on-load');
+    const checkOnSave = document.getElementById('sync-on-save');
+
+    if (checkOnLoad) checkOnLoad.checked = syncOnLoad;
+    if (checkOnSave) checkOnSave.checked = syncOnSave;
+}
+
+// Verificar si debe sincronizar al cargar
+async function verificarSyncAlCargar() {
+    if (!estadoPremium.activo) return;
+
+    const syncOnLoad = localStorage.getItem('sync_on_load') === 'true';
+    if (!syncOnLoad) return;
+
+    // Esperar un poco para que la app termine de cargar
+    setTimeout(async () => {
+        try {
+            // Preguntar al usuario si quiere sincronizar
+            const datosRemotos = await verificarDatosRemotos();
+
+            if (datosRemotos) {
+                const confirmar = confirm(
+                    '🔄 Se encontraron datos en otro dispositivo.\n\n' +
+                    '¿Deseas sincronizar ahora?\n\n' +
+                    '• Sí: Combina los datos de ambos dispositivos\n' +
+                    '• No: Continuar solo con datos locales'
+                );
+
+                if (confirmar) {
+                    await sincronizarDatos();
+                }
+            }
+        } catch (error) {
+            console.log('No hay datos remotos o error al verificar:', error.message);
+        }
+    }, 2000);
+}
+
+// Verificar si hay datos remotos (sin descargar todo)
+async function verificarDatosRemotos() {
+    const url = `${PREMIUM_CONFIG.apiUrl}?action=obtener_sync&codigo=${encodeURIComponent(estadoPremium.codigo)}`;
+
+    try {
+        const response = await fetch(url);
+        const resultado = await response.json();
+
+        if (resultado.success && resultado.datos) {
+            return true;
+        }
+        return false;
+    } catch (error) {
+        return false;
+    }
+}
+
+// Sincronizar después de guardar (llamar desde otras partes del código)
+async function sincronizarDespuesDeGuardar() {
+    if (!estadoPremium.activo) return;
+
+    const syncOnSave = localStorage.getItem('sync_on_save') === 'true';
+    if (!syncOnSave) return;
+
+    // Sincronizar en segundo plano sin mostrar toast de inicio
+    try {
+        syncState.syncInProgress = true;
+
+        const datosLocales = await obtenerTodosLosDatos();
+        datosLocales.metadata = {
+            ultimaModificacion: Date.now(),
+            dispositivo: obtenerDeviceId(),
+            version: '2.0'
+        };
+
+        const datosCifrados = await cifrarDatos(datosLocales, estadoPremium.codigo);
+        await subirDatosRemotos(datosCifrados);
+
+        syncState.lastSync = Date.now();
+        localStorage.setItem('sync_last_sync', syncState.lastSync.toString());
+        actualizarUISync('success');
+
+        console.log('Sincronización automática completada');
+    } catch (error) {
+        console.error('Error en sincronización automática:', error);
+    } finally {
+        syncState.syncInProgress = false;
+    }
+}
+
 // Inicializar cuando el DOM esté listo
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', inicializarSync);
+    document.addEventListener('DOMContentLoaded', () => {
+        inicializarSync();
+        cargarConfigSync();
+    });
 } else {
-    setTimeout(inicializarSync, 100);
+    setTimeout(() => {
+        inicializarSync();
+        cargarConfigSync();
+    }, 100);
 }
+
+// Verificar sync al cargar (después de que premium esté verificado)
+setTimeout(() => {
+    if (typeof estadoPremium !== 'undefined' && estadoPremium.activo) {
+        verificarSyncAlCargar();
+    }
+}, 3000);
 
 // Exportar funciones globales
 window.sincronizarDatos = sincronizarDatos;
+window.guardarConfigSync = guardarConfigSync;
+window.sincronizarDespuesDeGuardar = sincronizarDespuesDeGuardar;
