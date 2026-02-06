@@ -258,6 +258,45 @@ async function agregarEliminados(eliminados) {
     });
 }
 
+// Aplicar eliminaciones remotas: eliminar expedientes que están en la lista de eliminados
+async function aplicarEliminacionesRemotas(eliminadosRemotos) {
+    if (!eliminadosRemotos || eliminadosRemotos.length === 0) return 0;
+
+    const expedientes = await obtenerExpedientes();
+    let eliminadosCount = 0;
+
+    // Crear set de claves eliminadas
+    const clavesEliminadas = new Set(
+        eliminadosRemotos
+            .filter(e => e.tipo === 'expediente')
+            .map(e => e.clave)
+    );
+
+    for (const exp of expedientes) {
+        const numero = (exp.numero || '').trim().toLowerCase();
+        const nombre = (exp.nombre || '').trim().toLowerCase();
+        const juzgado = (exp.juzgado || '').trim().toLowerCase();
+        const clave = `exp|${numero}|${nombre}|${juzgado}`;
+
+        if (clavesEliminadas.has(clave)) {
+            // Eliminar sin registrar (ya está registrado remotamente)
+            await new Promise((resolve, reject) => {
+                const transaction = db.transaction(['expedientes'], 'readwrite');
+                const store = transaction.objectStore('expedientes');
+                const request = store.delete(exp.id);
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            });
+            eliminadosCount++;
+        }
+    }
+
+    // Guardar los eliminados remotos localmente
+    await agregarEliminados(eliminadosRemotos);
+
+    return eliminadosCount;
+}
+
 // ==================== DETECCIÓN Y ELIMINACIÓN DE DUPLICADOS ====================
 
 async function eliminarExpedientesDuplicados() {

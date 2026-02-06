@@ -118,24 +118,39 @@ async function sincronizarDatos() {
             version: '2.0'
         };
 
-        // 3. Fusionar datos
+        // 3. Aplicar eliminaciones remotas primero (si hay datos remotos)
+        let eliminadosAplicados = 0;
+        if (datosRemotos && datosRemotos.eliminados && datosRemotos.eliminados.length > 0) {
+            eliminadosAplicados = await aplicarEliminacionesRemotas(datosRemotos.eliminados);
+            if (eliminadosAplicados > 0) {
+                console.log(`Se eliminaron ${eliminadosAplicados} expediente(s) por sincronización remota`);
+            }
+        }
+
+        // 4. Obtener datos locales actualizados (después de aplicar eliminaciones)
+        const datosLocalesActualizados = await obtenerTodosLosDatos();
+        datosLocalesActualizados.metadata = datosLocales.metadata;
+
+        // 5. Fusionar datos
         let datosFinales;
         let huboDuplicados = false;
         if (datosRemotos && datosRemotos.metadata) {
-            datosFinales = fusionarDatos(datosLocales, datosRemotos);
+            datosFinales = fusionarDatos(datosLocalesActualizados, datosRemotos);
             // Aplicar datos fusionados localmente
             await aplicarDatosLocalmente(datosFinales);
 
             // Verificar si hubo duplicados fusionados
             huboDuplicados = reporteFusionDuplicados.expedientesFusionados.length > 0;
 
-            if (huboDuplicados) {
+            if (eliminadosAplicados > 0) {
+                mostrarToast(`Sincronización completada. ${eliminadosAplicados} expediente(s) eliminado(s)`, 'success');
+            } else if (huboDuplicados) {
                 mostrarToast('Sincronización completada con fusión de duplicados', 'success');
             } else {
                 mostrarToast('Datos sincronizados desde otro dispositivo', 'success');
             }
         } else {
-            datosFinales = datosLocales;
+            datosFinales = datosLocalesActualizados;
         }
 
         // 4. Subir datos cifrados
