@@ -1421,10 +1421,19 @@ function generarDiasDelMes(fecha, eventos) {
 
         const tooltipInhabil = infoInhabil.inhabil ? ` title="${infoInhabil.razon}"` : '';
 
+        // Etiqueta visible del día inhábil
+        let inhabilLabelHtml = '';
+        if (infoInhabil.inhabil) {
+            inhabilLabelHtml = `<span class="dia-inhabil-label">${infoInhabil.razon}</span>`;
+        }
+
         diasHtml.push(`
             <div class="${clases}"${tooltipInhabil} onclick="seleccionarDia(${dia.getTime()})" ondblclick="crearEventoEnDia(${dia.getTime()})">
-                <span class="dia-numero">${i}</span>
-                ${infoInhabil.inhabil ? '<span class="dia-inhabil-badge">⛔</span>' : ''}
+                <div class="dia-header">
+                    <span class="dia-numero">${i}</span>
+                    ${infoInhabil.inhabil ? '<span class="dia-inhabil-icon">⛔</span>' : ''}
+                </div>
+                ${inhabilLabelHtml}
                 ${dotsHtml}
             </div>
         `);
