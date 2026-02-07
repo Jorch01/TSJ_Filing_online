@@ -2,6 +2,80 @@
  * TSJ Filing Online - Aplicación Principal
  */
 
+// ==================== LOGGING SEGURO ====================
+
+/**
+ * Sistema de logging seguro que oculta logs en producción
+ * Evita exponer información sensible en la consola del navegador
+ */
+const Logger = {
+    // Modo debug: true en desarrollo, false en producción (GitHub Pages)
+    isDebug: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1',
+
+    log: function(...args) {
+        if (this.isDebug) console.log('[TSJ]', ...args);
+    },
+
+    warn: function(...args) {
+        if (this.isDebug) console.warn('[TSJ]', ...args);
+    },
+
+    error: function(...args) {
+        // Los errores siempre se muestran pero sin detalles sensibles en producción
+        if (this.isDebug) {
+            console.error('[TSJ]', ...args);
+        } else {
+            // En producción, solo mostrar mensaje genérico
+            console.error('[TSJ] Ha ocurrido un error. Contacta soporte si persiste.');
+        }
+    }
+};
+
+// ==================== SEGURIDAD ====================
+
+/**
+ * Sanitiza HTML para prevenir ataques XSS
+ * Usa DOMPurify si está disponible, de lo contrario escapa caracteres peligrosos
+ * @param {string} dirty - HTML sin sanitizar
+ * @returns {string} HTML sanitizado
+ */
+function sanitizeHTML(dirty) {
+    if (typeof DOMPurify !== 'undefined') {
+        return DOMPurify.sanitize(dirty, {
+            ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'p', 'br', 'ul', 'ol', 'li', 'span', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'small', 'code', 'pre'],
+            ALLOWED_ATTR: ['href', 'target', 'class', 'id', 'style'],
+            ALLOW_DATA_ATTR: false
+        });
+    }
+    // Fallback: escapar caracteres HTML peligrosos
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return String(dirty).replace(/[&<>"']/g, m => map[m]);
+}
+
+/**
+ * Escapa texto para inserción segura (sin permitir HTML)
+ * @param {string} text - Texto a escapar
+ * @returns {string} Texto escapado
+ */
+function escapeText(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return String(text || '').replace(/[&<>"']/g, m => map[m]);
+}
+
+// ==================== ESTADO GLOBAL ====================
+
 // Estado global
 let expedientesSeleccionados = [];
 let fechaCalendario = new Date();
@@ -84,9 +158,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         await initDB();
         await inicializarApp();
-        console.log('Aplicación inicializada correctamente');
+        Logger.log('Aplicación inicializada correctamente');
     } catch (error) {
-        console.error('Error al inicializar:', error);
+        Logger.error('Error al inicializar:', error);
         mostrarToast('Error al cargar la aplicación', 'error');
     }
 });
@@ -247,7 +321,7 @@ async function cargarExpedientes() {
     // Eliminar duplicados automáticamente
     const duplicadosEliminados = await eliminarExpedientesDuplicados();
     if (duplicadosEliminados > 0) {
-        console.log(`Se eliminaron ${duplicadosEliminados} expediente(s) duplicado(s)`);
+        Logger.log(`Se eliminaron ${duplicadosEliminados} expediente(s) duplicado(s)`);
     }
 
     let expedientes = await obtenerExpedientes();
@@ -313,12 +387,12 @@ async function cargarExpedientes() {
             <div class="drag-handle" title="Arrastra para reordenar">⋮⋮</div>
             <div class="expediente-header">
                 <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
-                <span class="expediente-categoria">${exp.categoria || 'General'}</span>
+                <span class="expediente-categoria">${escapeText(exp.categoria || 'General')}</span>
             </div>
             <div class="expediente-body">
-                <h3 class="expediente-titulo">${exp.numero || exp.nombre}</h3>
-                <p class="expediente-juzgado">${exp.juzgado}</p>
-                ${exp.comentario ? `<p class="expediente-comentario">${exp.comentario}</p>` : ''}
+                <h3 class="expediente-titulo">${escapeText(exp.numero || exp.nombre)}</h3>
+                <p class="expediente-juzgado">${escapeText(exp.juzgado)}</p>
+                ${exp.comentario ? `<p class="expediente-comentario">${escapeText(exp.comentario)}</p>` : ''}
             </div>
             <div class="expediente-footer">
                 <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
@@ -347,10 +421,10 @@ async function cargarExpedientes() {
         tablaBody.innerHTML = expedientes.map(exp => `
             <tr data-id="${exp.id}">
                 <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
-                <td><strong>${exp.numero || exp.nombre}</strong></td>
-                <td>${exp.juzgado}</td>
-                <td><span class="categoria-badge">${exp.categoria || 'General'}</span></td>
-                <td class="comentario-cell" title="${exp.comentario || ''}">${exp.comentario || '-'}</td>
+                <td><strong>${escapeText(exp.numero || exp.nombre)}</strong></td>
+                <td>${escapeText(exp.juzgado)}</td>
+                <td><span class="categoria-badge">${escapeText(exp.categoria || 'General')}</span></td>
+                <td class="comentario-cell" title="${escapeText(exp.comentario || '')}">${escapeText(exp.comentario || '-')}</td>
                 <td>${formatearFecha(exp.fechaCreacion)}</td>
                 <td class="acciones-cell">
                     <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
@@ -501,8 +575,8 @@ function actualizarExpedientesRecientes(expedientes) {
     container.innerHTML = recientes.map(exp => `
         <div class="list-item">
             <div class="list-item-info">
-                <span class="list-item-title">${exp.numero || exp.nombre}</span>
-                <span class="list-item-subtitle">${exp.juzgado}</span>
+                <span class="list-item-title">${escapeText(exp.numero || exp.nombre)}</span>
+                <span class="list-item-subtitle">${escapeText(exp.juzgado)}</span>
             </div>
         </div>
     `).join('');
@@ -515,7 +589,7 @@ function actualizarSelectExpedientes() {
             select.innerHTML = '<option value="">Todos</option>' +
                 '<option value="__general__">📋 Generales (sin expediente)</option>' +
                 '<option value="__custom__">✏️ Personalizados</option>' +
-                expedientes.map(e => `<option value="${e.id}">${e.numero || e.nombre}</option>`).join('');
+                expedientes.map(e => `<option value="${e.id}">${escapeText(e.numero || e.nombre)}</option>`).join('');
         }
     });
 }
@@ -562,7 +636,7 @@ async function editarExpediente(id, event) {
 
         const formContainer = document.getElementById('form-expediente');
         if (!formContainer) {
-            console.error('Formulario no encontrado');
+            Logger.error('Formulario no encontrado');
             return;
         }
 
@@ -579,7 +653,7 @@ async function editarExpediente(id, event) {
         // Scroll al formulario
         formContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (error) {
-        console.error('Error al editar expediente:', error);
+        Logger.error('Error al editar expediente:', error);
         mostrarToast('Error al cargar expediente', 'error');
     }
 }
@@ -662,7 +736,7 @@ function confirmarEliminarExpediente(id, event) {
                 return Promise.all([cargarExpedientes(), cargarEstadisticas()]);
             })
             .catch(err => {
-                console.error('Error al eliminar expediente:', err);
+                Logger.error('Error al eliminar expediente:', err);
                 mostrarToast('Error al eliminar: ' + (err.message || 'Error desconocido'), 'error');
             });
     }
@@ -753,13 +827,13 @@ async function verHistorialExpediente(id, event) {
         contenidoHTML = `
             <div class="historial-lista">
                 ${historial.map(h => `
-                    <div class="historial-item ${h.tipo}">
+                    <div class="historial-item ${escapeText(h.tipo)}">
                         <div class="historial-header">
                             <span class="historial-tipo">${obtenerIconoHistorial(h.tipo)} ${obtenerTextoTipo(h.tipo)}</span>
                             <span class="historial-fecha">${formatearFechaHora(h.fecha)}</span>
                         </div>
                         ${h.tipo === 'edicion' ? generarDetallesCambios(h.cambiosAnteriores, h.cambiosNuevos) : ''}
-                        ${h.descripcion ? `<p class="historial-descripcion">${h.descripcion}</p>` : ''}
+                        ${h.descripcion ? `<p class="historial-descripcion">${escapeText(h.descripcion)}</p>` : ''}
                     </div>
                 `).join('')}
             </div>
@@ -863,14 +937,14 @@ async function cargarNotas() {
     lista.innerHTML = notas.map(nota => {
         const exp = expMap[nota.expedienteId];
         return `
-            <div class="nota-card" style="background-color: ${nota.color || '#fff3cd'}" onclick="editarNota(${nota.id})">
+            <div class="nota-card" style="background-color: ${escapeText(nota.color || '#fff3cd')}" onclick="editarNota(${nota.id})">
                 <div class="nota-header">
-                    <h3 class="nota-titulo">${nota.titulo}</h3>
+                    <h3 class="nota-titulo">${escapeText(nota.titulo)}</h3>
                     ${nota.recordatorio ? '<span class="nota-recordatorio">🔔</span>' : ''}
                 </div>
-                <p class="nota-contenido">${nota.contenido || 'Sin contenido'}</p>
+                <p class="nota-contenido">${escapeText(nota.contenido || 'Sin contenido')}</p>
                 <div class="nota-footer">
-                    <span class="nota-expediente">📁 ${exp ? (exp.numero || exp.nombre) : 'Sin expediente'}</span>
+                    <span class="nota-expediente">📁 ${exp ? escapeText(exp.numero || exp.nombre) : 'Sin expediente'}</span>
                     <span class="nota-fecha">${formatearFecha(nota.fechaCreacion)}</span>
                 </div>
             </div>
@@ -1402,9 +1476,9 @@ async function actualizarPanelEventos(eventos) {
         `;
     } else {
         panel.innerHTML = eventosAMostrar.map(e => `
-            <div class="evento-item" onclick="editarEvento(${e.id})" style="border-left: 3px solid ${e.color || '#3788d8'}">
+            <div class="evento-item" onclick="editarEvento(${e.id})" style="border-left: 3px solid ${escapeText(e.color || '#3788d8')}">
                 <div class="evento-info">
-                    <span class="evento-titulo">${e.titulo}</span>
+                    <span class="evento-titulo">${escapeText(e.titulo)}</span>
                     <span class="evento-hora">${e.todoElDia ? 'Todo el día' : new Date(e.fechaInicio).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
                 ${e.alerta ? '<span class="evento-alerta">🔔</span>' : ''}
@@ -1933,7 +2007,7 @@ async function probarEmail() {
             mostrarToast('Error al enviar email', 'error');
         }
     } catch (error) {
-        console.error('Error EmailJS:', error);
+        Logger.error('Error EmailJS:', error);
         mostrarToast(`Error: ${error.text || error.message || 'Verifica tu configuración'}`, 'error');
     }
 }
@@ -1985,7 +2059,7 @@ async function cargarConfigRecordatorios() {
             if (el1week) el1week.checked = config.unaSemana || false;
             if (elSuscripcion) elSuscripcion.checked = config.suscripcion || false;
         } catch (e) {
-            console.error('Error cargando config de recordatorios:', e);
+            Logger.error('Error cargando config de recordatorios:', e);
         }
     }
 }
@@ -2081,7 +2155,7 @@ async function verificarRecordatoriosPendientes() {
             recordatoriosEnviados[item.clave] = Date.now();
             enviados++;
         } catch (error) {
-            console.error('Error enviando recordatorio:', error);
+            Logger.error('Error enviando recordatorio:', error);
         }
     }
 
@@ -2344,7 +2418,7 @@ async function realizarRespaldoAutomatico() {
 
         // Verificar si hay datos para respaldar
         if (!datos.expedientes?.length && !datos.notas?.length && !datos.eventos?.length) {
-            console.log('No hay datos para respaldar');
+            Logger.log('No hay datos para respaldar');
             return;
         }
 
@@ -2367,7 +2441,7 @@ async function realizarRespaldoAutomatico() {
         actualizarInfoUltimoRespaldo();
         mostrarToast('📦 Respaldo automático descargado', 'success');
     } catch (error) {
-        console.error('Error en respaldo automático:', error);
+        Logger.error('Error en respaldo automático:', error);
     }
 }
 
@@ -2509,7 +2583,7 @@ async function importarExpedientesCSV(event) {
 
         // Mostrar errores si hay
         if (errores.length > 0) {
-            console.warn('Errores en importación:', errores);
+            Logger.warn('Errores en importación:', errores);
             if (expedientesValidos.length === 0) {
                 mostrarToast(`Error: ${errores[0]}`, 'error');
                 event.target.value = '';
@@ -2534,7 +2608,7 @@ async function importarExpedientesCSV(event) {
                 await agregarExpediente(exp);
                 importados++;
             } catch (e) {
-                console.error('Error al agregar expediente:', e);
+                Logger.error('Error al agregar expediente:', e);
             }
         }
 
@@ -2544,7 +2618,7 @@ async function importarExpedientesCSV(event) {
         mostrarToast(`${importados} expedientes importados correctamente`, 'success');
 
     } catch (error) {
-        console.error('Error al importar:', error);
+        Logger.error('Error al importar:', error);
         mostrarToast('Error al procesar el archivo: ' + error.message, 'error');
     }
 
@@ -2790,7 +2864,7 @@ async function extraerTextoConTesseract(imagenBase64) {
             throw new Error('Tesseract.js no está cargado');
         }
 
-        console.log('Iniciando OCR con Tesseract.js...');
+        Logger.log('Iniciando OCR con Tesseract.js...');
 
         // Actualizar mensaje de estado
         if (statusText) {
@@ -2820,14 +2894,14 @@ async function extraerTextoConTesseract(imagenBase64) {
             const textarea = document.getElementById('ia-texto-acuerdo');
             textarea.value = textoExtraido;
             mostrarToast('Texto extraído correctamente con OCR del navegador', 'success');
-            console.log('OCR Tesseract exitoso, caracteres extraídos:', textoExtraido.length);
+            Logger.log('OCR Tesseract exitoso, caracteres extraídos:', textoExtraido.length);
             return true;
         } else {
-            console.warn('Tesseract no pudo extraer texto significativo');
+            Logger.warn('Tesseract no pudo extraer texto significativo');
             return false;
         }
     } catch (error) {
-        console.error('Error en Tesseract OCR:', error);
+        Logger.error('Error en Tesseract OCR:', error);
         return false;
     }
 }
@@ -2842,7 +2916,7 @@ async function extraerTextoDeImagen(imagenBase64) {
         if (statusText) statusText.textContent = ' Extrayendo texto con OCR...';
     }
 
-    console.log('Extrayendo texto con Tesseract.js...');
+    Logger.log('Extrayendo texto con Tesseract.js...');
     mostrarToast('Procesando imagen con OCR...', 'info');
 
     const tesseractSuccess = await extraerTextoConTesseract(imagenBase64);
@@ -2977,7 +3051,7 @@ Si algún campo no tiene información, usa un array vacío [] o null según corr
         mostrarToast('Análisis completado', 'success');
 
     } catch (error) {
-        console.error('Error al analizar:', error);
+        Logger.error('Error al analizar:', error);
         mostrarToast('Error: ' + error.message, 'error');
     } finally {
         btn.innerHTML = '🤖 Analizar con IA';
@@ -2989,13 +3063,13 @@ function mostrarResultadosIA(resultado) {
     const container = document.getElementById('resultados-ia-contenido');
     let html = '';
 
-    // Resumen
+    // Resumen (sanitizar respuesta de API externa)
     if (resultado.resumen) {
         html += `
             <div class="ia-resultado-item">
                 <h4>📋 Resumen</h4>
-                <p>${resultado.resumen}</p>
-                <p><small>Tipo: ${resultado.tipo_acuerdo || 'No especificado'}</small></p>
+                <p>${escapeText(resultado.resumen)}</p>
+                <p><small>Tipo: ${escapeText(resultado.tipo_acuerdo || 'No especificado')}</small></p>
             </div>
         `;
     }
@@ -3006,12 +3080,12 @@ function mostrarResultadosIA(resultado) {
             <h4>📅 Fechas y Eventos Detectados</h4>`;
 
         resultado.fechas.forEach((fecha, i) => {
-            const fechaStr = fecha.fecha + (fecha.hora ? ` a las ${fecha.hora}` : '');
+            const fechaStr = escapeText(fecha.fecha) + (fecha.hora ? ` a las ${escapeText(fecha.hora)}` : '');
             html += `
                 <div class="ia-resultado-check">
                     <input type="checkbox" id="ia-fecha-${i}" checked>
                     <label for="ia-fecha-${i}">
-                        <strong>${fecha.tipo?.toUpperCase()}:</strong> ${fecha.descripcion}
+                        <strong>${escapeText(fecha.tipo?.toUpperCase() || '')}:</strong> ${escapeText(fecha.descripcion)}
                         <br><small>📆 ${fechaStr}</small>
                     </label>
                 </div>
@@ -3029,7 +3103,7 @@ function mostrarResultadosIA(resultado) {
             html += `
                 <div class="ia-resultado-check">
                     <input type="checkbox" id="ia-punto-${i}" checked>
-                    <label for="ia-punto-${i}">${punto}</label>
+                    <label for="ia-punto-${i}">${escapeText(punto)}</label>
                 </div>
             `;
         });
@@ -3045,7 +3119,7 @@ function mostrarResultadosIA(resultado) {
             html += `
                 <div class="ia-resultado-check">
                     <input type="checkbox" id="ia-accion-${i}" checked>
-                    <label for="ia-accion-${i}">${accion}</label>
+                    <label for="ia-accion-${i}">${escapeText(accion)}</label>
                 </div>
             `;
         });
@@ -3058,7 +3132,7 @@ function mostrarResultadosIA(resultado) {
             <h4>💰 Montos Mencionados</h4>`;
 
         resultado.montos.forEach(monto => {
-            html += `<p><strong>${monto.concepto}:</strong> ${monto.cantidad}</p>`;
+            html += `<p><strong>${escapeText(monto.concepto)}:</strong> ${escapeText(monto.cantidad)}</p>`;
         });
         html += `</div>`;
     }
@@ -3101,7 +3175,7 @@ async function guardarResultadosIA() {
                 mostrarToast(`Expediente "${resultado.expedienteTexto}" creado automáticamente`, 'success');
             }
         } catch (e) {
-            console.error('Error al crear expediente:', e);
+            Logger.error('Error al crear expediente:', e);
         }
     }
 
@@ -3138,7 +3212,7 @@ async function guardarResultadosIA() {
                     await agregarEvento(evento);
                     guardados++;
                 } catch (e) {
-                    console.error('Error al guardar evento:', e);
+                    Logger.error('Error al guardar evento:', e);
                 }
             }
         }
@@ -3188,7 +3262,7 @@ async function guardarResultadosIA() {
             await agregarNota(nota);
             guardados++;
         } catch (e) {
-            console.error('Error al guardar nota:', e);
+            Logger.error('Error al guardar nota:', e);
         }
     }
 
@@ -3260,7 +3334,7 @@ async function iniciarBusquedasAuto() {
         await ejecutarBusquedaAhora();
     }, frecuenciaMs);
 
-    console.log(`Búsquedas automáticas iniciadas: cada ${frecuenciaMin} minutos`);
+    Logger.log(`Búsquedas automáticas iniciadas: cada ${frecuenciaMin} minutos`);
 }
 
 function detenerBusquedasAuto() {
@@ -3531,7 +3605,7 @@ async function cargarEstadoPremium() {
                 const deviceIdActual = obtenerDeviceId();
                 if (estadoPremium.dispositivoId && estadoPremium.dispositivoId !== deviceIdActual) {
                     // Dispositivo diferente, invalidar premium
-                    console.warn('Premium inválido: dispositivo diferente');
+                    Logger.warn('Premium inválido: dispositivo diferente');
                     estadoPremium.activo = false;
                     estadoPremium.codigo = null;
                     estadoPremium.fechaExpiracion = null;
@@ -3559,7 +3633,7 @@ async function cargarEstadoPremium() {
 
         actualizarUIPremium();
     } catch (error) {
-        console.error('Error al cargar estado premium:', error);
+        Logger.error('Error al cargar estado premium:', error);
     }
 }
 
@@ -3773,7 +3847,7 @@ async function activarPremium() {
             mostrarToast(resultado.mensaje || 'Código inválido o ya utilizado', 'error');
         }
     } catch (error) {
-        console.error('Error al verificar código:', error);
+        Logger.error('Error al verificar código:', error);
         mostrarToast('Error al verificar. Intenta de nuevo.', 'error');
     }
 }
@@ -3818,7 +3892,7 @@ async function verificarConAPI(codigo, deviceId, usuario) {
 
         return resultado;
     } catch (error) {
-        console.error('Error al verificar con API:', error);
+        Logger.error('Error al verificar con API:', error);
         // Fallback a CSV si la API falla
         return await verificarConCSV(codigo, deviceId);
     }
@@ -3846,7 +3920,7 @@ async function registrarDispositivoEnAPI(codigo, deviceId, usuario) {
 
         return { valido: false, mensaje: resultado.mensaje };
     } catch (error) {
-        console.error('Error al registrar dispositivo:', error);
+        Logger.error('Error al registrar dispositivo:', error);
         return { valido: false, mensaje: 'Error de conexión al registrar dispositivo' };
     }
 }
@@ -3867,7 +3941,7 @@ async function transferirLicencia(codigo, nuevoDeviceId, usuario, motivo) {
 
         return resultado;
     } catch (error) {
-        console.error('Error al transferir licencia:', error);
+        Logger.error('Error al transferir licencia:', error);
         return { success: false, mensaje: 'Error de conexión' };
     }
 }
@@ -3893,7 +3967,7 @@ async function verificarLicenciaPeriodica() {
 
             if (!resultado.valido) {
                 // Licencia ya no es válida
-                console.warn('Verificación periódica falló:', resultado.razon);
+                Logger.warn('Verificación periódica falló:', resultado.razon);
 
                 if (resultado.razon === 'dispositivo_diferente') {
                     mostrarToast('Tu licencia fue transferida a otro dispositivo', 'warning');
@@ -3920,7 +3994,7 @@ async function verificarLicenciaPeriodica() {
 
             localStorage.setItem('_tsjLastVerif', Date.now().toString());
         } catch (error) {
-            console.error('Error en verificación periódica:', error);
+            Logger.error('Error en verificación periódica:', error);
         }
     }
 }
@@ -3975,7 +4049,7 @@ async function verificarConCSV(codigo, deviceId) {
 
                 // Código válido - Advertir que sin API no se puede registrar
                 if (!dispositivoRegistrado || dispositivoRegistrado === '') {
-                    console.warn('Advertencia: Sin API configurada, no se puede vincular el dispositivo');
+                    Logger.warn('Advertencia: Sin API configurada, no se puede vincular el dispositivo');
                 }
 
                 return { valido: true };
@@ -3984,7 +4058,7 @@ async function verificarConCSV(codigo, deviceId) {
 
         return { valido: false, mensaje: 'Código no encontrado' };
     } catch (error) {
-        console.error('Error al verificar con Google Sheets:', error);
+        Logger.error('Error al verificar con Google Sheets:', error);
         return { valido: false, mensaje: 'Error de conexión. Intenta de nuevo.' };
     }
 }
@@ -3993,7 +4067,7 @@ async function verificarConCSV(codigo, deviceId) {
 function configurarGoogleSheet(url) {
     PREMIUM_CONFIG.googleSheetUrl = url;
     localStorage.setItem('_tsjgs', _encode(url));
-    console.log('URL de Google Sheet configurada');
+    Logger.log('URL de Google Sheet configurada');
 }
 
 // Cargar URL de Google Sheets
@@ -4131,7 +4205,7 @@ document.addEventListener('click', function(event) {
 // Verificar suscripción cada hora
 setInterval(async () => {
     if (estadoPremium.activo && estadoPremium.codigo) {
-        console.log('Verificando estado de suscripción...');
+        Logger.log('Verificando estado de suscripción...');
         await verificarLicenciaPeriodica();
     }
 }, 60 * 60 * 1000); // Cada hora
@@ -4205,18 +4279,22 @@ function mostrarAnuncios() {
     });
 }
 
-// Generar HTML para un anuncio
+// Generar HTML para un anuncio (con sanitización)
 function generarHTMLAnuncio(anuncio) {
-    if (anuncio.tipo === 'imagen') {
+    // Sanitizar URLs para prevenir javascript: y data: schemes
+    const enlaceSanitizado = anuncio.enlace && anuncio.enlace.match(/^https?:\/\//) ? escapeText(anuncio.enlace) : '#';
+    const imagenSanitizada = anuncio.imagen && anuncio.imagen.match(/^https?:\/\//) ? escapeText(anuncio.imagen) : '';
+
+    if (anuncio.tipo === 'imagen' && imagenSanitizada) {
         return `
-            <a href="${anuncio.enlace}" target="_blank" class="ad-image-link">
-                <img src="${anuncio.imagen}" alt="${anuncio.contenido}">
+            <a href="${enlaceSanitizado}" target="_blank" rel="noopener noreferrer" class="ad-image-link">
+                <img src="${imagenSanitizada}" alt="${escapeText(anuncio.contenido || '')}">
             </a>
         `;
     } else {
         return `
-            <a href="${anuncio.enlace}" ${anuncio.enlace.startsWith('http') ? 'target="_blank"' : ''} class="ad-text-link">
-                <span class="ad-text">${anuncio.contenido}</span>
+            <a href="${enlaceSanitizado}" ${enlaceSanitizado.startsWith('http') ? 'target="_blank" rel="noopener noreferrer"' : ''} class="ad-text-link">
+                <span class="ad-text">${escapeText(anuncio.contenido || '')}</span>
             </a>
         `;
     }
@@ -4291,7 +4369,7 @@ actualizarUIPremium = async function() {
     }
 
     // Debug: mostrar estado de sync
-    console.log('Estado Premium:', estadoPremium.activo, '- Sync visible:', estadoPremium.activo);
+    Logger.log('Estado Premium:', estadoPremium.activo, '- Sync visible:', estadoPremium.activo);
 };
 
 // Inicializar al cargar
