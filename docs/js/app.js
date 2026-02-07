@@ -9,22 +9,33 @@ let diaSeleccionado = null;
 let vistaExpedientes = localStorage.getItem('vistaExpedientes') || 'cards'; // 'cards' o 'table'
 let diasInhabilesTSJ = []; // Días inhábiles del tribunal
 
-// Días inhábiles fijos del TSJQROO (formato MM-DD)
+// Días inhábiles fijos del TSJQROO (formato MM-DD) - Calendario 2026
 const DIAS_INHABILES_FIJOS = [
     { fecha: '01-01', nombre: 'Año Nuevo' },
-    { fecha: '02-05', nombre: 'Día de la Constitución' },
-    { fecha: '03-21', nombre: 'Natalicio de Benito Juárez' },
+    { fecha: '02-02', nombre: 'Aniversario de la Constitución' },
+    { fecha: '02-16', nombre: 'Fiestas Carnestolendas' },
+    { fecha: '02-17', nombre: 'Fiestas Carnestolendas' },
+    { fecha: '02-18', nombre: 'Fiestas Carnestolendas' },
+    { fecha: '03-16', nombre: 'Natalicio de Benito Juárez' },
+    { fecha: '03-30', nombre: 'Semana Santa' },
+    { fecha: '03-31', nombre: 'Semana Santa' },
+    { fecha: '04-01', nombre: 'Semana Santa' },
+    { fecha: '04-02', nombre: 'Semana Santa' },
+    { fecha: '04-03', nombre: 'Semana Santa' },
     { fecha: '05-01', nombre: 'Día del Trabajo' },
+    { fecha: '05-04', nombre: 'Batalla de Puebla' },
+    { fecha: '06-12', nombre: 'Día del Empleado Estatal' },
     { fecha: '09-16', nombre: 'Independencia de México' },
-    { fecha: '11-20', nombre: 'Revolución Mexicana' },
+    { fecha: '11-16', nombre: 'Revolución Mexicana' },
     { fecha: '12-25', nombre: 'Navidad' },
-    // Semana Santa y otras fechas variables se agregan dinámicamente
 ];
 
-// Períodos de vacaciones judiciales (formato: { inicio: 'MM-DD', fin: 'MM-DD' })
+// Períodos de vacaciones judiciales del TSJQROO (formato: { inicio: 'MM-DD', fin: 'MM-DD' })
 const VACACIONES_JUDICIALES = [
+    { inicio: '01-01', fin: '01-07', nombre: 'Primer período vacacional (continuación)' },
+    { inicio: '01-19', fin: '01-30', nombre: 'Segundo período vacacional (primer semestre)' },
     { inicio: '07-16', fin: '07-31', nombre: 'Primer período vacacional' },
-    { inicio: '12-16', fin: '12-31', nombre: 'Segundo período vacacional' },
+    { inicio: '12-22', fin: '12-31', nombre: 'Primer período vacacional (segundo semestre)' },
 ];
 
 // Verificar si una fecha es día inhábil
@@ -2821,99 +2832,27 @@ async function extraerTextoConTesseract(imagenBase64) {
     }
 }
 
-// Extraer texto de imagen - Intenta Groq Vision primero, luego Tesseract.js como fallback
+// Extraer texto de imagen usando Tesseract.js (OCR del navegador)
 async function extraerTextoDeImagen(imagenBase64) {
-    const apiKey = await obtenerConfig('groq_api_key');
     const statusEl = document.getElementById('ia-ocr-status');
 
     if (statusEl) {
         statusEl.style.display = 'flex';
         const statusText = statusEl.querySelector('span:not(.loading-spinner)');
-        if (statusText) statusText.textContent = ' Extrayendo texto de la imagen...';
+        if (statusText) statusText.textContent = ' Extrayendo texto con OCR...';
     }
 
-    let textoExtraido = null;
-    let groqFailed = false;
+    console.log('Extrayendo texto con Tesseract.js...');
+    mostrarToast('Procesando imagen con OCR...', 'info');
 
-    // Primero intentar con Groq Vision API (si hay API key)
-    if (apiKey) {
-        for (const modelo of GROQ_VISION_MODELS) {
-            try {
-                console.log(`Intentando OCR con modelo: ${modelo}`);
+    const tesseractSuccess = await extraerTextoConTesseract(imagenBase64);
 
-                const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${apiKey}`
-                    },
-                    body: JSON.stringify({
-                        model: modelo,
-                        messages: [{
-                            role: 'user',
-                            content: [
-                                {
-                                    type: 'text',
-                                    text: 'Extrae todo el texto que puedas leer de esta imagen de un documento judicial. Transcribe el texto exactamente como aparece, manteniendo el formato y los párrafos. Solo devuelve el texto extraído, sin explicaciones adicionales.'
-                                },
-                                {
-                                    type: 'image_url',
-                                    image_url: {
-                                        url: imagenBase64
-                                    }
-                                }
-                            ]
-                        }],
-                        max_tokens: 4096
-                    })
-                });
+    if (!tesseractSuccess) {
+        mostrarToast('No se pudo extraer texto. Intenta con una imagen más clara o copia el texto manualmente.', 'warning');
 
-                if (response.ok) {
-                    const data = await response.json();
-                    textoExtraido = data.choices[0]?.message?.content || '';
-
-                    if (textoExtraido) {
-                        // Éxito con Groq Vision
-                        const textarea = document.getElementById('ia-texto-acuerdo');
-                        textarea.value = textoExtraido;
-                        mostrarToast('Texto extraído correctamente con IA', 'success');
-                        if (statusEl) statusEl.style.display = 'none';
-                        return;
-                    }
-                } else {
-                    const error = await response.json();
-                    console.warn(`Modelo ${modelo} falló:`, error);
-                    groqFailed = true;
-                }
-            } catch (error) {
-                console.warn(`Error con modelo ${modelo}:`, error);
-                groqFailed = true;
-            }
-        }
-    } else {
-        groqFailed = true;
-        console.log('No hay API Key de Groq, usando OCR del navegador directamente');
-    }
-
-    // Si Groq falló o no hay API key, usar Tesseract.js como fallback
-    if (!textoExtraido) {
-        console.log('Groq Vision no disponible, intentando con Tesseract.js...');
-
-        if (apiKey && groqFailed) {
-            mostrarToast('API de visión no disponible, usando OCR del navegador...', 'info');
-        } else if (!apiKey) {
-            mostrarToast('Usando OCR del navegador (sin API Key)...', 'info');
-        }
-
-        const tesseractSuccess = await extraerTextoConTesseract(imagenBase64);
-
-        if (!tesseractSuccess) {
-            mostrarToast('No se pudo extraer texto. Intenta con una imagen más clara o copia el texto manualmente.', 'warning');
-
-            const textarea = document.getElementById('ia-texto-acuerdo');
-            if (textarea && !textarea.value) {
-                textarea.placeholder = 'No se pudo extraer texto automáticamente. Pega aquí el texto del acuerdo manualmente...';
-            }
+        const textarea = document.getElementById('ia-texto-acuerdo');
+        if (textarea && !textarea.value) {
+            textarea.placeholder = 'No se pudo extraer texto automáticamente. Pega aquí el texto del acuerdo manualmente...';
         }
     }
 
