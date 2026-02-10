@@ -1039,6 +1039,16 @@ input:focus, textarea:focus, select:focus {
 .evento-hora { font-size: 0.75rem; color: var(--text-secondary); }
 .evento-alerta { font-size: 0.875rem; }
 
+/* Botón agregar evento en panel */
+.panel-agregar-evento {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px dashed var(--border-color);
+}
+.btn-agregar-evento {
+    width: 100%;
+}
+
 .leyenda { border-top: 1px solid var(--border-color); padding-top: 1rem; }
 .leyenda h4 { font-size: 0.8rem; color: var(--text-secondary); margin: 0 0 0.5rem; }
 .leyenda-items { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.25rem; }
@@ -1265,6 +1275,22 @@ input:checked + .slider:before { transform: translateX(22px); }
     .dia-cell { min-height: 50px; padding: 0.25rem; }
     .calendario-header div { font-size: 0.7rem; padding: 0.5rem 0.25rem; }
 
+    /* Calendario móvil: permitir scroll horizontal */
+    .calendario {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .calendario-header,
+    .calendario-body {
+        min-width: 320px;
+    }
+
+    .dia-inhabil-label {
+        font-size: 0.5rem;
+        -webkit-line-clamp: 1;
+    }
+
     .form-row { flex-direction: column; }
     .url-item { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
     .url-actions { width: 100%; justify-content: flex-end; }
@@ -1272,6 +1298,103 @@ input:checked + .slider:before { transform: translateX(22px); }
     .config-item { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
     .data-card { flex-direction: column; text-align: center; }
     .danger-item { flex-direction: column; text-align: center; }
+}
+
+/* Móvil vertical pequeño (480px y menos) */
+@media (max-width: 480px) {
+    /* Calendario responsivo vertical */
+    .calendario-container {
+        gap: 1rem;
+    }
+
+    .calendario {
+        overflow-x: auto;
+        overflow-y: visible;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-x pan-y;
+    }
+
+    .calendario-header,
+    .calendario-body {
+        min-width: 280px;
+    }
+
+    .dia-cell {
+        min-height: 42px;
+        min-width: 40px;
+        padding: 0.15rem;
+        font-size: 0.8rem;
+    }
+
+    .dia-numero {
+        font-size: 0.75rem;
+    }
+
+    .dia-header {
+        flex-wrap: nowrap;
+    }
+
+    .dia-inhabil-icon {
+        font-size: 0.55rem;
+    }
+
+    .dia-inhabil-label {
+        display: none; /* Ocultar en pantallas muy pequeñas */
+    }
+
+    .evento-dot {
+        width: 5px;
+        height: 5px;
+    }
+
+    .eventos-mas {
+        font-size: 0.55rem;
+    }
+
+    .calendario-nav {
+        gap: 0.5rem;
+    }
+
+    .calendario-nav h3 {
+        font-size: 1rem;
+        min-width: 140px;
+    }
+
+    .calendario-nav .btn {
+        padding: 0.4rem 0.6rem;
+        font-size: 0.85rem;
+    }
+
+    .calendario-header div {
+        font-size: 0.6rem;
+        padding: 0.4rem 0.15rem;
+    }
+
+    /* Panel de eventos compacto */
+    .eventos-panel {
+        padding: 0.75rem;
+    }
+
+    .eventos-panel h3 {
+        font-size: 0.9rem;
+    }
+
+    .eventos-lista {
+        max-height: 200px;
+    }
+
+    .evento-item {
+        padding: 0.4rem;
+        gap: 0.5rem;
+    }
+
+    .evento-titulo {
+        font-size: 0.8rem;
+    }
+
+    .evento-hora {
+        font-size: 0.7rem;
+    }
 }
 
 /* Section Divider */
