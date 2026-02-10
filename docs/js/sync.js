@@ -171,12 +171,61 @@ async function sincronizarDatos() {
     }
 }
 
+// Función auxiliar para fetch con timeout y reintentos
+async function fetchConReintentos(url, opciones = {}, maxReintentos = 3) {
+    const timeout = opciones.timeout || 30000; // 30 segundos por defecto
+
+    for (let intento = 0; intento <= maxReintentos; intento++) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+            const response = await fetch(url, {
+                ...opciones,
+                signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            return response;
+        } catch (error) {
+            const esErrorRed = error.name === 'TypeError' ||
+                               error.name === 'AbortError' ||
+                               error.message.includes('NetworkError') ||
+                               error.message.includes('Failed to fetch') ||
+                               error.message.includes('Load failed') ||
+                               error.message.includes('network');
+
+            if (esErrorRed && intento < maxReintentos) {
+                // Esperar con backoff exponencial: 2s, 4s, 8s
+                const espera = Math.pow(2, intento + 1) * 1000;
+                console.log(`Reintentando en ${espera/1000}s (intento ${intento + 1}/${maxReintentos})...`);
+                await new Promise(r => setTimeout(r, espera));
+                continue;
+            }
+
+            // Dar mensaje más amigable para errores de red
+            if (esErrorRed) {
+                throw new Error('No se pudo conectar. Verifica tu conexión a internet e intenta de nuevo.');
+            }
+            throw error;
+        }
+    }
+}
+
 // Descargar datos del servidor
 async function descargarDatosRemotos() {
     const url = `${PREMIUM_CONFIG.apiUrl}?action=obtener_sync&codigo=${encodeURIComponent(estadoPremium.codigo)}`;
 
     try {
-        const response = await fetch(url);
+        const response = await fetchConReintentos(url, {
+            method: 'GET',
+            timeout: 30000
+        });
         const texto = await response.text();
 
         // Intentar parsear JSON
@@ -207,7 +256,7 @@ async function subirDatosRemotos(datosCifrados) {
     const url = PREMIUM_CONFIG.apiUrl;
 
     try {
-        const response = await fetch(url, {
+        const response = await fetchConReintentos(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
@@ -216,7 +265,8 @@ async function subirDatosRemotos(datosCifrados) {
                 action: 'guardar_sync',
                 codigo: estadoPremium.codigo,
                 datos: datosCifrados
-            })
+            }),
+            timeout: 60000 // 60 segundos para subida (datos grandes)
         });
 
         const texto = await response.text();
@@ -830,7 +880,11 @@ async function verificarDatosRemotos() {
     const url = `${PREMIUM_CONFIG.apiUrl}?action=obtener_sync&codigo=${encodeURIComponent(estadoPremium.codigo)}`;
 
     try {
-        const response = await fetch(url);
+        const response = await fetchConReintentos(url, {
+            method: 'GET',
+            timeout: 15000 // 15 segundos para verificación rápida
+        }, 2); // Solo 2 reintentos para verificación
+
         const resultado = await response.json();
 
         if (resultado.success && resultado.datos) {
@@ -838,6 +892,7 @@ async function verificarDatosRemotos() {
         }
         return false;
     } catch (error) {
+        console.log('Error verificando datos remotos:', error.message);
         return false;
     }
 }

@@ -1377,6 +1377,64 @@ async function renderizarCalendario() {
 
     // Actualizar panel de eventos
     actualizarPanelEventos(eventos);
+
+    // Inicializar soporte touch para el calendario
+    inicializarTouchCalendario();
+}
+
+// Variables para el soporte touch del calendario
+let touchStartX = 0;
+let touchEndX = 0;
+let touchStartY = 0;
+let touchEndY = 0;
+let isSwiping = false;
+
+function inicializarTouchCalendario() {
+    const calendario = document.querySelector('.calendario');
+    if (!calendario || calendario.dataset.touchInit === 'true') return;
+
+    calendario.dataset.touchInit = 'true';
+
+    calendario.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+        touchStartY = e.changedTouches[0].screenY;
+        isSwiping = true;
+    }, { passive: true });
+
+    calendario.addEventListener('touchmove', (e) => {
+        if (!isSwiping) return;
+        const currentX = e.changedTouches[0].screenX;
+        const currentY = e.changedTouches[0].screenY;
+        const diffX = Math.abs(currentX - touchStartX);
+        const diffY = Math.abs(currentY - touchStartY);
+
+        // Si el movimiento es más horizontal que vertical, es un swipe para cambiar mes
+        if (diffX > diffY && diffX > 30) {
+            e.preventDefault();
+        }
+    }, { passive: false });
+
+    calendario.addEventListener('touchend', (e) => {
+        if (!isSwiping) return;
+        isSwiping = false;
+
+        touchEndX = e.changedTouches[0].screenX;
+        touchEndY = e.changedTouches[0].screenY;
+
+        const diffX = touchEndX - touchStartX;
+        const diffY = Math.abs(touchEndY - touchStartY);
+
+        // Solo procesar swipe si es más horizontal que vertical
+        if (Math.abs(diffX) > 50 && Math.abs(diffX) > diffY) {
+            if (diffX < 0) {
+                // Swipe izquierda → siguiente mes
+                mesSiguiente();
+            } else {
+                // Swipe derecha → mes anterior
+                mesAnterior();
+            }
+        }
+    }, { passive: true });
 }
 
 function generarDiasDelMes(fecha, eventos) {
@@ -1475,12 +1533,17 @@ async function actualizarPanelEventos(eventos) {
         });
     }
 
+    // Botón para agregar evento (siempre visible)
+    const btnAgregar = diaSeleccionado
+        ? `<button class="btn btn-sm btn-primary btn-agregar-evento" onclick="crearEventoEnDia(${diaSeleccionado.getTime()})">➕ Agregar evento</button>`
+        : `<button class="btn btn-sm btn-primary btn-agregar-evento" onclick="mostrarFormularioEvento()">➕ Agregar evento</button>`;
+
     if (eventosAMostrar.length === 0) {
         panel.innerHTML = `
             <div class="empty-state small">
                 <span>📭</span>
                 <p>No hay eventos</p>
-                <button class="btn btn-sm btn-outline" onclick="mostrarFormularioEvento()">Crear evento</button>
+                ${btnAgregar}
             </div>
         `;
     } else {
@@ -1492,7 +1555,7 @@ async function actualizarPanelEventos(eventos) {
                 </div>
                 ${e.alerta ? '<span class="evento-alerta">🔔</span>' : ''}
             </div>
-        `).join('');
+        `).join('') + `<div class="panel-agregar-evento">${btnAgregar}</div>`;
     }
 }
 
