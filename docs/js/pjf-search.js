@@ -7,36 +7,21 @@ let pjfOrganismos = [];
 let pjfDatosCargados = false;
 let pjfCargando = false;
 
-// Mapping de id_sise a Cir= URL parameter para DGEJ
-const PJF_CIRCUITO_URL_MAP = {
-    1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10,
-    41: 41, 43: 43, 46: 46, 38: 38, 42: 42, 45: 45, 44: 44, 40: 40, 39: 39,
-    20: 20,
-    51: 51, 53: 53, 56: 56, 48: 48, 52: 52, 55: 55, 54: 54, 50: 50, 49: 49,
-    30: 30,
-    47: 47, 109: 109
-};
+// URL base para consulta directa de expedientes SISE
+const PJF_SISE_URL = 'https://www.dgej.cjf.gob.mx/siseinternet/reportes/vercaptura.aspx';
 
-// URLs del PJF
-const PJF_URLS = {
-    dgejCircuitos: 'https://www.dgej.cjf.gob.mx/internet/expedientes/circuitos.asp',
-    siseSentencias: 'https://sise.cjf.gob.mx/consultasvp/default.aspx',
-    juicioEnLinea: 'https://www.serviciosenlinea.pjf.gob.mx/juicioenlinea/'
-};
-
-// Tipos de asunto disponibles
+// Tipos de asunto con su ID del SISE
 const PJF_TIPOS_ASUNTO = [
-    { id: 'amparo_indirecto', nombre: 'Amparo Indirecto' },
-    { id: 'amparo_directo', nombre: 'Amparo Directo' },
-    { id: 'amparo_revision', nombre: 'Amparo en Revisión' },
-    { id: 'queja', nombre: 'Queja' },
-    { id: 'revision_fiscal', nombre: 'Revisión Fiscal' },
-    { id: 'conflicto_competencial', nombre: 'Conflicto Competencial' },
-    { id: 'recurso_reclamacion', nombre: 'Recurso de Reclamación' },
-    { id: 'causa_penal', nombre: 'Causa Penal' },
-    { id: 'juicio_oral_mercantil', nombre: 'Juicio Oral Mercantil' },
-    { id: 'incidente', nombre: 'Incidente' },
-    { id: 'otro', nombre: 'Otro (campo libre)' }
+    { id: 8, nombre: 'Amparo Indirecto' },
+    { id: 1, nombre: 'Amparo Directo' },
+    { id: 2, nombre: 'Amparo en Revisión' },
+    { id: 3, nombre: 'Queja' },
+    { id: 4, nombre: 'Revisión Fiscal' },
+    { id: 5, nombre: 'Conflicto Competencial' },
+    { id: 6, nombre: 'Recurso de Reclamación' },
+    { id: 14, nombre: 'Causa Penal' },
+    { id: 10, nombre: 'Juicio Oral Mercantil' },
+    { id: 13, nombre: 'Incidente' }
 ];
 
 /**
@@ -65,7 +50,6 @@ async function cargarCatalogosPJF() {
 
         poblarSelectCircuitos();
         poblarSelectTipoAsunto();
-        poblarSelectAnio();
 
     } catch (error) {
         console.error('Error cargando catálogos PJF:', error);
@@ -79,7 +63,7 @@ async function cargarCatalogosPJF() {
 }
 
 /**
- * Pobla el dropdown de circuitos
+ * Pobla el dropdown de circuitos usando numero_circuito como value
  */
 function poblarSelectCircuitos() {
     const select = document.getElementById('pjf-circuito');
@@ -89,7 +73,8 @@ function poblarSelectCircuitos() {
 
     pjfCircuitos.forEach(c => {
         const option = document.createElement('option');
-        option.value = c.id_sise;
+        option.value = c.numero_circuito;
+        option.dataset.idSise = c.id_sise;
         option.textContent = `${c.numero_circuito}. ${c.nombre}`;
         select.appendChild(option);
     });
@@ -113,40 +98,22 @@ function poblarSelectTipoAsunto() {
 }
 
 /**
- * Pobla el selector de año (2000-2026)
- */
-function poblarSelectAnio() {
-    const select = document.getElementById('pjf-anio');
-    if (!select) return;
-
-    select.innerHTML = '<option value="">-- Año --</option>';
-
-    const anioActual = new Date().getFullYear();
-    const anioMax = Math.max(anioActual, 2026);
-
-    for (let a = anioMax; a >= 2000; a--) {
-        const option = document.createElement('option');
-        option.value = a;
-        option.textContent = a;
-        select.appendChild(option);
-    }
-}
-
-/**
  * Filtra organismos por circuito seleccionado (dropdown en cascada)
+ * Usa numero_circuito que es lo que organismos.circuito_id realmente contiene
  */
 function filtrarOrganismosPorCircuito() {
-    const circuitoId = parseInt(document.getElementById('pjf-circuito').value);
+    const numCircuito = parseInt(document.getElementById('pjf-circuito').value);
     const selectOrg = document.getElementById('pjf-organismo');
 
     selectOrg.innerHTML = '<option value="">-- Selecciona un organismo --</option>';
 
-    if (!circuitoId) {
+    if (!numCircuito) {
         selectOrg.disabled = true;
+        document.getElementById('pjf-org-count').textContent = '';
         return;
     }
 
-    const organismosFiltrados = pjfOrganismos.filter(o => o.circuito_id === circuitoId);
+    const organismosFiltrados = pjfOrganismos.filter(o => o.circuito_id === numCircuito);
 
     organismosFiltrados.forEach(o => {
         const option = document.createElement('option');
@@ -157,7 +124,6 @@ function filtrarOrganismosPorCircuito() {
 
     selectOrg.disabled = false;
 
-    // Actualizar contador
     const contador = document.getElementById('pjf-org-count');
     if (contador) {
         contador.textContent = `${organismosFiltrados.length} organismos disponibles`;
@@ -165,68 +131,84 @@ function filtrarOrganismosPorCircuito() {
 }
 
 /**
- * Muestra/oculta el campo libre de tipo de asunto
+ * Construye la URL directa del SISE para ver un expediente
+ * Formato: https://www.dgej.cjf.gob.mx/siseinternet/reportes/vercaptura.aspx
+ *          ?tipoasunto={id}&organismo={org_id}&expediente={num%2Fanio}&tipoprocedimiento=0
  */
-function toggleTipoAsuntoLibre() {
-    const select = document.getElementById('pjf-tipo-asunto');
-    const campoLibre = document.getElementById('pjf-tipo-asunto-otro-group');
-    if (campoLibre) {
-        campoLibre.style.display = select.value === 'otro' ? 'block' : 'none';
-    }
+function construirUrlSISE(tipoAsuntoId, organismoId, expediente) {
+    const params = new URLSearchParams();
+    params.set('tipoasunto', tipoAsuntoId || 0);
+    params.set('organismo', organismoId || 0);
+    params.set('expediente', expediente);
+    params.set('tipoprocedimiento', 0);
+    return `${PJF_SISE_URL}?${params.toString()}`;
 }
 
 /**
- * Construye la URL de consulta en el portal DGEJ del PJF
+ * Abre la URL del SISE en una ventana popup
  */
-function construirUrlPJF(circuitoIdSise) {
-    const cirParam = PJF_CIRCUITO_URL_MAP[circuitoIdSise] || circuitoIdSise;
-    return `${PJF_URLS.dgejCircuitos}?Cir=${cirParam}&Exp=1`;
+function abrirPopupPJF(url, titulo) {
+    const w = 900;
+    const h = 650;
+    const left = (screen.width - w) / 2;
+    const top = (screen.height - h) / 2;
+    window.open(url, titulo || 'PJF_Consulta', `width=${w},height=${h},left=${left},top=${top},scrollbars=yes,resizable=yes`);
 }
 
 /**
- * Ejecuta la búsqueda PJF
+ * Ejecuta la búsqueda PJF: valida campos y abre popup con URL directa
  */
 function ejecutarBusquedaPJF() {
-    const circuitoId = document.getElementById('pjf-circuito').value;
+    const numCircuito = document.getElementById('pjf-circuito').value;
     const organismoId = document.getElementById('pjf-organismo').value;
-    const tipoAsunto = document.getElementById('pjf-tipo-asunto').value;
-    const tipoAsuntoOtro = document.getElementById('pjf-tipo-asunto-otro')?.value || '';
+    const tipoAsuntoId = document.getElementById('pjf-tipo-asunto').value;
     const numExpediente = document.getElementById('pjf-num-expediente').value.trim();
-    const nombrePartes = document.getElementById('pjf-nombre-partes').value.trim();
-    const anio = document.getElementById('pjf-anio').value;
 
-    // Validación mínima
-    if (!circuitoId) {
+    // Validaciones
+    if (!organismoId) {
         if (typeof mostrarToast === 'function') {
-            mostrarToast('Selecciona al menos un circuito para buscar.', 'warning');
+            mostrarToast('Selecciona un organismo jurisdiccional.', 'warning');
         }
         return;
     }
 
-    // Obtener datos del circuito y organismo seleccionados
-    const circuito = pjfCircuitos.find(c => c.id_sise === parseInt(circuitoId));
-    const organismo = organismoId ? pjfOrganismos.find(o => o.id === parseInt(organismoId)) : null;
-    const tipoAsuntoTexto = tipoAsunto === 'otro' ? tipoAsuntoOtro :
-        (PJF_TIPOS_ASUNTO.find(t => t.id === tipoAsunto)?.nombre || '');
+    if (!tipoAsuntoId) {
+        if (typeof mostrarToast === 'function') {
+            mostrarToast('Selecciona un tipo de asunto.', 'warning');
+        }
+        return;
+    }
 
-    // Construir parámetros de búsqueda
-    const parametros = {
-        circuito: circuito,
-        organismo: organismo,
-        tipoAsunto: tipoAsuntoTexto,
-        numExpediente: numExpediente,
-        nombrePartes: nombrePartes,
-        anio: anio
-    };
+    if (!numExpediente) {
+        if (typeof mostrarToast === 'function') {
+            mostrarToast('Ingresa el número de expediente (ej: 123/2024).', 'warning');
+        }
+        return;
+    }
 
-    // Mostrar resultados con enlaces al portal
-    mostrarResultadosPJF(parametros);
+    // Obtener datos para mostrar en la tabla
+    const circuito = pjfCircuitos.find(c => c.numero_circuito === parseInt(numCircuito));
+    const organismo = pjfOrganismos.find(o => o.id === parseInt(organismoId));
+    const tipoAsunto = PJF_TIPOS_ASUNTO.find(t => t.id === parseInt(tipoAsuntoId));
+
+    // Construir URL directa y abrir popup
+    const url = construirUrlSISE(tipoAsuntoId, organismoId, numExpediente);
+    abrirPopupPJF(url, 'PJF_Expediente');
+
+    // Mostrar resultado en tabla
+    mostrarResultadosPJF({
+        circuito,
+        organismo,
+        tipoAsunto,
+        numExpediente,
+        url
+    });
 }
 
 /**
- * Muestra los resultados de búsqueda con enlaces al portal del PJF
+ * Muestra el resultado de búsqueda en la tabla
  */
-function mostrarResultadosPJF(parametros) {
+function mostrarResultadosPJF(params) {
     const contenedor = document.getElementById('pjf-resultados');
     const card = document.getElementById('pjf-resultados-card');
 
@@ -234,127 +216,32 @@ function mostrarResultadosPJF(parametros) {
 
     card.style.display = 'block';
 
-    // URL principal de consulta DGEJ
-    const urlDGEJ = construirUrlPJF(parametros.circuito.id_sise);
-    const urlSISE = PJF_URLS.siseSentencias;
+    const safeUrl = escapeAttrPJF(params.url);
 
-    // Construir resumen de búsqueda
-    let resumenHTML = '<div class="pjf-search-summary">';
-    resumenHTML += '<h4>Resumen de Búsqueda</h4>';
-    resumenHTML += '<div class="pjf-summary-grid">';
-
-    resumenHTML += `<div class="pjf-summary-item">
-        <span class="pjf-summary-label">Circuito:</span>
-        <span class="pjf-summary-value">${escapeTextPJF(parametros.circuito.nombre)}</span>
-    </div>`;
-
-    if (parametros.organismo) {
-        resumenHTML += `<div class="pjf-summary-item">
-            <span class="pjf-summary-label">Organismo:</span>
-            <span class="pjf-summary-value">${escapeTextPJF(parametros.organismo.nombre)}</span>
-        </div>`;
-    }
-
-    if (parametros.tipoAsunto) {
-        resumenHTML += `<div class="pjf-summary-item">
-            <span class="pjf-summary-label">Tipo de Asunto:</span>
-            <span class="pjf-summary-value">${escapeTextPJF(parametros.tipoAsunto)}</span>
-        </div>`;
-    }
-
-    if (parametros.numExpediente) {
-        resumenHTML += `<div class="pjf-summary-item">
-            <span class="pjf-summary-label">Expediente:</span>
-            <span class="pjf-summary-value">${escapeTextPJF(parametros.numExpediente)}</span>
-        </div>`;
-    }
-
-    if (parametros.nombrePartes) {
-        resumenHTML += `<div class="pjf-summary-item">
-            <span class="pjf-summary-label">Nombre de las Partes:</span>
-            <span class="pjf-summary-value">${escapeTextPJF(parametros.nombrePartes)}</span>
-        </div>`;
-    }
-
-    if (parametros.anio) {
-        resumenHTML += `<div class="pjf-summary-item">
-            <span class="pjf-summary-label">Año:</span>
-            <span class="pjf-summary-value">${escapeTextPJF(parametros.anio)}</span>
-        </div>`;
-    }
-
-    resumenHTML += '</div></div>';
-
-    // Construir sección de enlaces al portal
-    let enlacesHTML = '<div class="pjf-portal-links">';
-    enlacesHTML += '<h4>Consultar en Portales del PJF</h4>';
-    enlacesHTML += '<p class="section-desc">Los siguientes enlaces te llevarán a los portales oficiales del Poder Judicial de la Federación donde podrás completar tu consulta.</p>';
-
-    enlacesHTML += '<div class="pjf-links-grid">';
-
-    // Enlace DGEJ - Acuerdos por expediente
-    enlacesHTML += `<a href="${escapeAttrPJF(urlDGEJ)}" target="_blank" rel="noopener noreferrer" class="pjf-link-card">
-        <div class="pjf-link-icon">📋</div>
-        <div class="pjf-link-info">
-            <strong>Consulta de Acuerdos (DGEJ)</strong>
-            <p>Buscar acuerdos y publicaciones del ${escapeTextPJF(parametros.circuito.nombre)}</p>
-        </div>
-        <span class="pjf-link-arrow">→</span>
-    </a>`;
-
-    // Enlace SISE - Consulta de sentencias
-    enlacesHTML += `<a href="${escapeAttrPJF(urlSISE)}" target="_blank" rel="noopener noreferrer" class="pjf-link-card">
-        <div class="pjf-link-icon">⚖️</div>
-        <div class="pjf-link-info">
-            <strong>Consulta de Sentencias (SISE)</strong>
-            <p>Consultar sentencias y versiones públicas del CJF</p>
-        </div>
-        <span class="pjf-link-arrow">→</span>
-    </a>`;
-
-    // Enlace Juicio en Línea
-    enlacesHTML += `<a href="${escapeAttrPJF(PJF_URLS.juicioEnLinea)}" target="_blank" rel="noopener noreferrer" class="pjf-link-card">
-        <div class="pjf-link-icon">💻</div>
-        <div class="pjf-link-info">
-            <strong>Juicio en Línea</strong>
-            <p>Portal de servicios en línea del PJF</p>
-        </div>
-        <span class="pjf-link-arrow">→</span>
-    </a>`;
-
-    enlacesHTML += '</div></div>';
-
-    // Tabla de referencia con la información proporcionada
-    let tablaHTML = '<div class="pjf-reference-table">';
-    tablaHTML += '<h4>Datos de Referencia para la Consulta</h4>';
-    tablaHTML += '<div class="table-responsive"><table class="pjf-table">';
-    tablaHTML += `<thead><tr>
+    let html = '<div class="table-responsive"><table class="pjf-table">';
+    html += `<thead><tr>
         <th>Expediente</th>
         <th>Órgano Jurisdiccional</th>
         <th>Tipo de Asunto</th>
-        <th>Año</th>
         <th>Circuito</th>
         <th>Acciones</th>
     </tr></thead>`;
-    tablaHTML += '<tbody>';
-    tablaHTML += `<tr>
-        <td>${escapeTextPJF(parametros.numExpediente || 'No especificado')}</td>
-        <td>${escapeTextPJF(parametros.organismo ? parametros.organismo.nombre : 'No especificado')}</td>
-        <td>${escapeTextPJF(parametros.tipoAsunto || 'No especificado')}</td>
-        <td>${escapeTextPJF(parametros.anio || 'No especificado')}</td>
-        <td>${escapeTextPJF(parametros.circuito.nombre)}</td>
+    html += '<tbody>';
+    html += `<tr>
+        <td><strong>${escapeTextPJF(params.numExpediente)}</strong></td>
+        <td>${escapeTextPJF(params.organismo ? params.organismo.nombre : '-')}</td>
+        <td>${escapeTextPJF(params.tipoAsunto ? params.tipoAsunto.nombre : '-')}</td>
+        <td>${escapeTextPJF(params.circuito ? params.circuito.nombre : '-')}</td>
         <td>
-            <button class="btn btn-sm btn-primary" onclick="window.open('${escapeAttrPJF(urlDGEJ)}', '_blank')">
-                Ver en DGEJ
+            <button class="btn btn-sm btn-primary" onclick="abrirPopupPJF('${safeUrl}', 'PJF_Expediente')">
+                Ver Expediente
             </button>
         </td>
     </tr>`;
-    tablaHTML += '</tbody></table></div>';
-    tablaHTML += '</div>';
+    html += '</tbody></table></div>';
 
-    contenedor.innerHTML = resumenHTML + enlacesHTML + tablaHTML;
+    contenedor.innerHTML = html;
 
-    // Scroll al resultado
     card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -367,38 +254,12 @@ function limpiarFormularioPJF() {
     document.getElementById('pjf-organismo').disabled = true;
     document.getElementById('pjf-tipo-asunto').value = '';
     document.getElementById('pjf-num-expediente').value = '';
-    document.getElementById('pjf-nombre-partes').value = '';
-    document.getElementById('pjf-anio').value = '';
-
-    const campoLibre = document.getElementById('pjf-tipo-asunto-otro-group');
-    if (campoLibre) campoLibre.style.display = 'none';
-
-    const otroInput = document.getElementById('pjf-tipo-asunto-otro');
-    if (otroInput) otroInput.value = '';
 
     const orgCount = document.getElementById('pjf-org-count');
     if (orgCount) orgCount.textContent = '';
 
     const resultadosCard = document.getElementById('pjf-resultados-card');
     if (resultadosCard) resultadosCard.style.display = 'none';
-}
-
-/**
- * Filtra opciones en un select basándose en texto de búsqueda
- */
-function filtrarSelectPJF(inputId, selectId) {
-    const input = document.getElementById(inputId);
-    const select = document.getElementById(selectId);
-
-    if (!input || !select) return;
-
-    const filtro = input.value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-    Array.from(select.options).forEach((option, index) => {
-        if (index === 0) return; // Skip placeholder
-        const texto = option.textContent.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        option.style.display = texto.includes(filtro) ? '' : 'none';
-    });
 }
 
 /**
