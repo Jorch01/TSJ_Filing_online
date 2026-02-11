@@ -1,35 +1,82 @@
 // ==================== BÚSQUEDA PJF FEDERAL ====================
-// Sistema de búsqueda de expedientes del Poder Judicial de la Federación
-// Utiliza catálogos de circuitos y organismos cargados desde JSON
+// Búsqueda de expedientes del PJF usando la API pública de serviciosenlinea.pjf.gob.mx
+// Los dropdowns de órgano y tipo de asunto se cargan dinámicamente de la API.
+// Requiere un proxy CORS (Cloudflare Worker) para funcionar desde el navegador.
 
 let pjfCircuitos = [];
-let pjfOrganismos = [];
 let pjfDatosCargados = false;
 let pjfCargando = false;
 
-// URL base para consulta directa de expedientes SISE
-const PJF_SISE_URL = 'https://www.dgej.cjf.gob.mx/siseinternet/reportes/vercaptura.aspx';
+// PJF API
+const PJF_API_BASE = 'https://www.serviciosenlinea.pjf.gob.mx';
+const PJF_ENDPOINTS = {
+    datosPublicos: '/juicioenlinea/Expediente/ObtenerDatosPublicos',
+    datosExpediente: '/juicioenlinea/juicioenlinea/Expediente/ObtenerDatosExpediente?Length=10'
+};
 
-// Tipos de asunto con su ID REAL del SISE
-// NOTA: Solo "Amparo Indirecto" (id=1) está verificado contra el portal SISE.
-// Los demás IDs provienen del catálogo referencial y podrían no coincidir.
-// Si un tipo no funciona, usa el campo "ID manual" para ingresar el ID correcto.
-const PJF_TIPOS_ASUNTO = [
-    { id: 1, nombre: 'Amparo Indirecto', verificado: true },
-    { id: 2, nombre: 'Amparo Directo', verificado: false },
-    { id: 3, nombre: 'Queja', verificado: false },
-    { id: 4, nombre: 'Revisión Fiscal', verificado: false },
-    { id: 5, nombre: 'Conflicto Competencial', verificado: false },
-    { id: 6, nombre: 'Recurso de Reclamación', verificado: false },
-    { id: 7, nombre: 'Amparo en Revisión', verificado: false },
-    { id: 8, nombre: 'Causa Penal', verificado: false },
-    { id: 9, nombre: 'Juicio Oral Mercantil', verificado: false },
-    { id: 10, nombre: 'Incidente', verificado: false }
-];
+// ==================== PROXY CONFIG ====================
 
-/**
- * Carga los catálogos JSON de circuitos y organismos
- */
+function getPjfProxyUrl() {
+    return localStorage.getItem('pjf_proxy_url') || '';
+}
+
+function setPjfProxyUrl(url) {
+    localStorage.setItem('pjf_proxy_url', url.replace(/\/+$/, ''));
+}
+
+function guardarProxyPJF() {
+    const input = document.getElementById('pjf-proxy-url');
+    const url = input.value.trim();
+    setPjfProxyUrl(url);
+    if (typeof mostrarToast === 'function') {
+        mostrarToast(url ? 'URL del proxy guardada.' : 'Proxy desactivado.', 'success');
+    }
+}
+
+// ==================== API FETCH ====================
+
+function pjfApiUrl(path) {
+    const proxy = getPjfProxyUrl();
+    if (proxy) {
+        return proxy + path;
+    }
+    return PJF_API_BASE + path;
+}
+
+async function fetchPJF(path, formBody) {
+    const url = pjfApiUrl(path);
+    const options = {
+        method: formBody ? 'POST' : 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    };
+    if (formBody) {
+        options.headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+        options.body = formBody;
+    }
+
+    const response = await fetch(url, options);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.text();
+}
+
+// ==================== HTML PARSING ====================
+
+function parseSelectOptions(html, selectId) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const select = doc.querySelector(`#${selectId}`);
+    if (!select) return [];
+    return Array.from(select.querySelectorAll('option'))
+        .filter(opt => opt.value && opt.value.trim() !== '')
+        .map(opt => ({
+            id: opt.value.trim(),
+            nombre: opt.textContent.trim()
+        }));
+}
+
+// ==================== INICIALIZACIÓN ====================
+
 async function cargarCatalogosPJF() {
     if (pjfDatosCargados || pjfCargando) return;
     pjfCargando = true;
@@ -38,26 +85,22 @@ async function cargarCatalogosPJF() {
     if (spinner) spinner.style.display = 'flex';
 
     try {
-        const [circuitosRes, organismosRes] = await Promise.all([
-            fetch('data/circuitos.json'),
-            fetch('data/organismos.json')
-        ]);
-
-        if (!circuitosRes.ok || !organismosRes.ok) {
-            throw new Error('Error al cargar catálogos');
-        }
-
-        pjfCircuitos = await circuitosRes.json();
-        pjfOrganismos = await organismosRes.json();
+        const res = await fetch('data/circuitos.json');
+        if (!res.ok) throw new Error('Error cargando circuitos');
+        pjfCircuitos = await res.json();
         pjfDatosCargados = true;
 
         poblarSelectCircuitos();
-        poblarSelectTipoAsunto();
 
+        // Cargar proxy URL guardada
+        const proxyInput = document.getElementById('pjf-proxy-url');
+        if (proxyInput) {
+            proxyInput.value = getPjfProxyUrl();
+        }
     } catch (error) {
-        console.error('Error cargando catálogos PJF:', error);
+        console.error('Error:', error);
         if (typeof mostrarToast === 'function') {
-            mostrarToast('Error al cargar catálogos del PJF. Intenta recargar la página.', 'error');
+            mostrarToast('Error al cargar catálogos del PJF.', 'error');
         }
     } finally {
         pjfCargando = false;
@@ -65,9 +108,8 @@ async function cargarCatalogosPJF() {
     }
 }
 
-/**
- * Pobla el dropdown de circuitos usando numero_circuito como value
- */
+// ==================== DROPDOWNS ====================
+
 function poblarSelectCircuitos() {
     const select = document.getElementById('pjf-circuito');
     if (!select) return;
@@ -76,231 +118,235 @@ function poblarSelectCircuitos() {
 
     pjfCircuitos.forEach(c => {
         const option = document.createElement('option');
-        option.value = c.numero_circuito;
-        option.dataset.idSise = c.id_sise;
+        option.value = c.id_sise;
         option.textContent = `${c.numero_circuito}. ${c.nombre}`;
         select.appendChild(option);
     });
 }
 
 /**
- * Pobla el dropdown de tipos de asunto y muestra cuáles están verificados
+ * Circuito seleccionado → fetch órganos y tipos de asunto desde la API
  */
-function poblarSelectTipoAsunto() {
-    const select = document.getElementById('pjf-tipo-asunto');
-    if (!select) return;
-
-    select.innerHTML = '<option value="">-- Selecciona tipo de asunto --</option>';
-
-    PJF_TIPOS_ASUNTO.forEach(t => {
-        const option = document.createElement('option');
-        option.value = t.id;
-        option.textContent = t.verificado ? `${t.nombre}` : `${t.nombre} (ID sin verificar)`;
-        select.appendChild(option);
-    });
-}
-
-/**
- * Actualiza el campo de ID manual cuando se selecciona un tipo de asunto del dropdown
- */
-function sincronizarIdTipoAsunto() {
-    const select = document.getElementById('pjf-tipo-asunto');
-    const inputId = document.getElementById('pjf-tipo-asunto-id');
-    if (select.value) {
-        inputId.value = select.value;
-    }
-}
-
-/**
- * Filtra organismos por circuito seleccionado (dropdown en cascada)
- * Usa numero_circuito que es lo que organismos.circuito_id realmente contiene
- */
-function filtrarOrganismosPorCircuito() {
-    const numCircuito = parseInt(document.getElementById('pjf-circuito').value);
+async function onPjfCircuitoChange() {
+    const idCircuito = document.getElementById('pjf-circuito').value;
     const selectOrg = document.getElementById('pjf-organismo');
+    const selectTipo = document.getElementById('pjf-tipo-asunto');
 
+    // Reset downstream
     selectOrg.innerHTML = '<option value="">-- Selecciona un organismo --</option>';
+    selectOrg.disabled = true;
+    selectTipo.innerHTML = '<option value="">-- Selecciona tipo de asunto --</option>';
+    selectTipo.disabled = true;
+    document.getElementById('pjf-org-count').textContent = '';
+    ocultarResultadosPJF();
 
-    if (!numCircuito) {
-        selectOrg.disabled = true;
-        document.getElementById('pjf-org-count').textContent = '';
-        return;
-    }
+    if (!idCircuito) return;
 
-    const organismosFiltrados = pjfOrganismos.filter(o => o.circuito_id === numCircuito);
-
-    organismosFiltrados.forEach(o => {
-        const option = document.createElement('option');
-        option.value = o.id;
-        option.textContent = o.nombre;
-        selectOrg.appendChild(option);
-    });
-
-    selectOrg.disabled = false;
-
-    const contador = document.getElementById('pjf-org-count');
-    if (contador) {
-        contador.textContent = `${organismosFiltrados.length} organismos disponibles`;
-    }
-}
-
-/**
- * Construye la URL directa del SISE para ver un expediente
- */
-function construirUrlSISE(tipoAsuntoId, organismoId, expediente) {
-    const params = new URLSearchParams();
-    params.set('tipoasunto', tipoAsuntoId || 0);
-    params.set('organismo', organismoId || 0);
-    params.set('expediente', expediente);
-    params.set('tipoprocedimiento', 0);
-    return `${PJF_SISE_URL}?${params.toString()}`;
-}
-
-/**
- * Abre la URL del SISE en una ventana popup
- */
-function abrirPopupPJF(url, titulo) {
-    const w = 900;
-    const h = 650;
-    const left = (screen.width - w) / 2;
-    const top = (screen.height - h) / 2;
-    window.open(url, titulo || 'PJF_Consulta', `width=${w},height=${h},left=${left},top=${top},scrollbars=yes,resizable=yes`);
-}
-
-/**
- * Ejecuta la búsqueda PJF: valida campos y abre popup con URL directa
- */
-function ejecutarBusquedaPJF() {
-    const numCircuito = document.getElementById('pjf-circuito').value;
-    const organismoId = document.getElementById('pjf-organismo').value;
-    const tipoAsuntoIdManual = document.getElementById('pjf-tipo-asunto-id').value.trim();
-    const tipoAsuntoSelect = document.getElementById('pjf-tipo-asunto').value;
-    const numExpediente = document.getElementById('pjf-num-expediente').value.trim();
-
-    // El ID manual tiene prioridad sobre el dropdown
-    const tipoAsuntoId = tipoAsuntoIdManual || tipoAsuntoSelect;
-
-    // Validaciones
-    if (!organismoId) {
+    if (!getPjfProxyUrl()) {
+        selectOrg.innerHTML = '<option value="">Configura el proxy CORS primero</option>';
         if (typeof mostrarToast === 'function') {
-            mostrarToast('Selecciona un organismo jurisdiccional.', 'warning');
+            mostrarToast('Configura la URL del proxy CORS para conectar con el PJF.', 'warning');
         }
         return;
     }
 
-    if (!tipoAsuntoId) {
-        if (typeof mostrarToast === 'function') {
-            mostrarToast('Selecciona un tipo de asunto o ingresa el ID manualmente.', 'warning');
+    selectOrg.innerHTML = '<option value="">Cargando organismos...</option>';
+
+    try {
+        const html = await fetchPJF(
+            PJF_ENDPOINTS.datosPublicos,
+            `IdCircuito=${idCircuito}`
+        );
+
+        // Parsear órganos
+        const organos = parseSelectOptions(html, 'ddlOrgano');
+        selectOrg.innerHTML = '<option value="">-- Selecciona un organismo --</option>';
+        organos.forEach(o => {
+            const opt = document.createElement('option');
+            opt.value = o.id;
+            opt.textContent = o.nombre;
+            selectOrg.appendChild(opt);
+        });
+        selectOrg.disabled = false;
+        document.getElementById('pjf-org-count').textContent = `${organos.length} organismos`;
+
+        // Parsear tipos de asunto (vienen para el primer órgano por default)
+        const tipos = parseSelectOptions(html, 'ddlTipoAsunto');
+        selectTipo.innerHTML = '<option value="">-- Selecciona tipo de asunto --</option>';
+        tipos.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.id;
+            opt.textContent = t.nombre;
+            selectTipo.appendChild(opt);
+        });
+        selectTipo.disabled = false;
+
+    } catch (error) {
+        console.error('Error fetching PJF organs:', error);
+        selectOrg.innerHTML = '<option value="">Error al cargar</option>';
+
+        if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
+            if (typeof mostrarToast === 'function') {
+                mostrarToast('Error de conexión. Verifica la URL del proxy CORS.', 'error');
+            }
+        } else {
+            if (typeof mostrarToast === 'function') {
+                mostrarToast('Error al consultar PJF: ' + error.message, 'error');
+            }
         }
-        return;
     }
-
-    if (!numExpediente) {
-        if (typeof mostrarToast === 'function') {
-            mostrarToast('Ingresa el número de expediente (ej: 67/2021).', 'warning');
-        }
-        return;
-    }
-
-    // Obtener datos para mostrar en la tabla
-    const circuito = pjfCircuitos.find(c => c.numero_circuito === parseInt(numCircuito));
-    const organismo = pjfOrganismos.find(o => o.id === parseInt(organismoId));
-    const tipoAsunto = PJF_TIPOS_ASUNTO.find(t => t.id === parseInt(tipoAsuntoId));
-
-    // Construir URL directa y abrir popup
-    const url = construirUrlSISE(tipoAsuntoId, organismoId, numExpediente);
-    abrirPopupPJF(url, 'PJF_Expediente');
-
-    // Mostrar resultado en tabla
-    mostrarResultadosPJF({
-        circuito,
-        organismo,
-        tipoAsunto,
-        tipoAsuntoId,
-        numExpediente,
-        url
-    });
 }
 
 /**
- * Muestra el resultado de búsqueda en la tabla
+ * Órgano seleccionado → fetch tipos de asunto actualizados para ese órgano
  */
-function mostrarResultadosPJF(params) {
+async function onPjfOrganoChange() {
+    const idOrgano = document.getElementById('pjf-organismo').value;
+    const selectTipo = document.getElementById('pjf-tipo-asunto');
+
+    selectTipo.innerHTML = '<option value="">-- Selecciona tipo de asunto --</option>';
+    selectTipo.disabled = true;
+    ocultarResultadosPJF();
+
+    if (!idOrgano) return;
+
+    selectTipo.innerHTML = '<option value="">Cargando tipos de asunto...</option>';
+
+    try {
+        const html = await fetchPJF(
+            PJF_ENDPOINTS.datosExpediente,
+            `IdOrgano=${idOrgano}&IdTipoAsunto=1&IdTipoPropiedad=&IdSubNivel=&IdSubNivelInc=`
+        );
+
+        const tipos = parseSelectOptions(html, 'ddlTipoAsunto');
+        selectTipo.innerHTML = '<option value="">-- Selecciona tipo de asunto --</option>';
+        tipos.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.id;
+            opt.textContent = t.nombre;
+            selectTipo.appendChild(opt);
+        });
+        selectTipo.disabled = false;
+
+    } catch (error) {
+        console.error('Error fetching tipos asunto:', error);
+        selectTipo.innerHTML = '<option value="">Error al cargar tipos</option>';
+    }
+}
+
+// ==================== BÚSQUEDA ====================
+
+async function ejecutarBusquedaPJF() {
+    const idOrgano = document.getElementById('pjf-organismo').value;
+    const idTipoAsunto = document.getElementById('pjf-tipo-asunto').value;
+    const expediente = document.getElementById('pjf-num-expediente').value.trim();
+
+    if (!idOrgano) {
+        if (typeof mostrarToast === 'function') mostrarToast('Selecciona un organismo.', 'warning');
+        return;
+    }
+    if (!idTipoAsunto) {
+        if (typeof mostrarToast === 'function') mostrarToast('Selecciona un tipo de asunto.', 'warning');
+        return;
+    }
+    if (!expediente) {
+        if (typeof mostrarToast === 'function') mostrarToast('Ingresa el número de expediente.', 'warning');
+        return;
+    }
+
+    const card = document.getElementById('pjf-resultados-card');
+    const contenedor = document.getElementById('pjf-resultados');
+    card.style.display = 'block';
+    contenedor.innerHTML = '<div class="pjf-loading"><span class="loading-spinner"></span><span>Buscando expediente...</span></div>';
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    try {
+        const html = await fetchPJF(
+            PJF_ENDPOINTS.datosExpediente,
+            `IdOrgano=${idOrgano}&IdTipoAsunto=${idTipoAsunto}&NoExpediente=${expediente}&IdTipoPropiedad=&IdSubNivel=&IdSubNivelInc=`
+        );
+
+        renderizarResultadosPJF(html);
+
+    } catch (error) {
+        console.error('Error searching:', error);
+        contenedor.innerHTML = `<div class="empty-state small"><span>❌</span><p>Error al buscar: ${escapeTextPJF(error.message)}</p></div>`;
+    }
+}
+
+// ==================== RESULTADOS ====================
+
+function renderizarResultadosPJF(html) {
     const contenedor = document.getElementById('pjf-resultados');
     const card = document.getElementById('pjf-resultados-card');
 
     if (!contenedor || !card) return;
-
     card.style.display = 'block';
 
-    const safeUrl = escapeAttrPJF(params.url);
-    const tipoNombre = params.tipoAsunto
-        ? params.tipoAsunto.nombre
-        : `ID: ${params.tipoAsuntoId}`;
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const bodyText = doc.body ? doc.body.textContent : '';
 
-    let html = '<div class="table-responsive"><table class="pjf-table">';
-    html += `<thead><tr>
-        <th>Expediente</th>
-        <th>Órgano Jurisdiccional</th>
-        <th>Tipo de Asunto</th>
-        <th>Circuito</th>
-        <th>Acciones</th>
-    </tr></thead>`;
-    html += '<tbody>';
-    html += `<tr>
-        <td><strong>${escapeTextPJF(params.numExpediente)}</strong></td>
-        <td>${escapeTextPJF(params.organismo ? params.organismo.nombre : '-')}</td>
-        <td>${escapeTextPJF(tipoNombre)} <small>(ID: ${escapeTextPJF(String(params.tipoAsuntoId))})</small></td>
-        <td>${escapeTextPJF(params.circuito ? params.circuito.nombre : '-')}</td>
-        <td>
-            <button class="btn btn-sm btn-primary" onclick="abrirPopupPJF('${safeUrl}', 'PJF_Expediente')">
-                Ver Expediente
-            </button>
-        </td>
-    </tr>`;
-    html += '</tbody></table></div>';
+    // Verificar si no se encontró
+    if (bodyText.includes('no existe') || bodyText.includes('No existe') ||
+        bodyText.includes('no se encontr') || bodyText.includes('No se encontr')) {
+        contenedor.innerHTML = '<div class="empty-state small"><span>📭</span><p>No se encontró el expediente. Verifica los datos e intenta de nuevo.</p></div>';
+        return;
+    }
 
-    contenedor.innerHTML = html;
+    // Limpiar: remover scripts, forms internos, inputs hidden, botones del form original
+    const cleanDoc = doc.cloneNode(true);
+    cleanDoc.querySelectorAll('script, style, link').forEach(el => el.remove());
+
+    // Remover los selects y inputs del formulario de búsqueda (no los datos)
+    cleanDoc.querySelectorAll('select, input[type="hidden"]').forEach(el => el.remove());
+
+    let resultHTML = cleanDoc.body ? cleanDoc.body.innerHTML : '';
+
+    // Sanitizar con DOMPurify si está disponible
+    if (typeof DOMPurify !== 'undefined') {
+        resultHTML = DOMPurify.sanitize(resultHTML, {
+            ALLOWED_TAGS: ['div', 'span', 'p', 'table', 'thead', 'tbody', 'tfoot',
+                           'tr', 'th', 'td', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                           'strong', 'b', 'em', 'i', 'br', 'hr', 'ul', 'ol', 'li',
+                           'a', 'label', 'small', 'dl', 'dt', 'dd', 'fieldset', 'legend',
+                           'img', 'caption', 'col', 'colgroup'],
+            ALLOWED_ATTR: ['class', 'id', 'href', 'target', 'rel', 'colspan', 'rowspan',
+                           'src', 'alt', 'width', 'height']
+        });
+    }
+
+    if (resultHTML.trim()) {
+        contenedor.innerHTML = `<div class="pjf-result-content">${resultHTML}</div>`;
+    } else {
+        contenedor.innerHTML = '<div class="empty-state small"><span>📭</span><p>La respuesta no contiene datos del expediente.</p></div>';
+    }
 
     card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-/**
- * Limpia el formulario de búsqueda PJF
- */
+function ocultarResultadosPJF() {
+    const card = document.getElementById('pjf-resultados-card');
+    if (card) card.style.display = 'none';
+}
+
+// ==================== LIMPIAR ====================
+
 function limpiarFormularioPJF() {
     document.getElementById('pjf-circuito').value = '';
     document.getElementById('pjf-organismo').innerHTML = '<option value="">-- Selecciona un organismo --</option>';
     document.getElementById('pjf-organismo').disabled = true;
-    document.getElementById('pjf-tipo-asunto').value = '';
-    document.getElementById('pjf-tipo-asunto-id').value = '';
+    document.getElementById('pjf-tipo-asunto').innerHTML = '<option value="">-- Selecciona tipo de asunto --</option>';
+    document.getElementById('pjf-tipo-asunto').disabled = true;
     document.getElementById('pjf-num-expediente').value = '';
-
-    const orgCount = document.getElementById('pjf-org-count');
-    if (orgCount) orgCount.textContent = '';
-
-    const resultadosCard = document.getElementById('pjf-resultados-card');
-    if (resultadosCard) resultadosCard.style.display = 'none';
+    document.getElementById('pjf-org-count').textContent = '';
+    ocultarResultadosPJF();
 }
 
-/**
- * Escape de texto para prevenir XSS
- */
+// ==================== UTILIDADES ====================
+
 function escapeTextPJF(text) {
     if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
-}
-
-/**
- * Escape de atributos para prevenir XSS
- */
-function escapeAttrPJF(text) {
-    if (!text) return '';
-    return text.replace(/&/g, '&amp;')
-               .replace(/"/g, '&quot;')
-               .replace(/'/g, '&#39;')
-               .replace(/</g, '&lt;')
-               .replace(/>/g, '&gt;');
 }
