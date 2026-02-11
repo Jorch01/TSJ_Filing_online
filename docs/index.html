@@ -26,6 +26,7 @@
             <button class="nav-btn" data-page="calendario">📅 Calendario</button>
             <button class="nav-btn" data-page="notas">📝 Notas</button>
             <button class="nav-btn" data-page="busqueda">🔍 Búsqueda</button>
+            <button class="nav-btn" data-page="pjf">🏛️ PJF Federal</button>
             <button class="nav-btn" data-page="config">⚙️</button>
         </nav>
         <button class="menu-toggle" id="menuToggle">☰</button>
@@ -38,6 +39,7 @@
         <button class="nav-btn" data-page="calendario">📅 Calendario</button>
         <button class="nav-btn" data-page="notas">📝 Notas</button>
         <button class="nav-btn" data-page="busqueda">🔍 Búsqueda</button>
+        <button class="nav-btn" data-page="pjf">🏛️ PJF Federal</button>
         <button class="nav-btn" data-page="config">⚙️ Configuración</button>
     </nav>
 
@@ -682,6 +684,154 @@
             </div>
         </section>
 
+        <!-- Página Búsqueda PJF Federal -->
+        <section class="page" id="page-pjf">
+            <div class="page-header">
+                <div>
+                    <h2>🏛️ Búsqueda PJF Federal</h2>
+                    <p class="subtitle">Consulta expedientes del Poder Judicial de la Federación a nivel nacional</p>
+                </div>
+            </div>
+
+            <!-- Loading spinner -->
+            <div class="pjf-loading" id="pjf-loading" style="display: none;">
+                <span class="loading-spinner"></span>
+                <span>Cargando catálogos del PJF...</span>
+            </div>
+
+            <!-- Formulario de Búsqueda -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="header-with-help">
+                        <h3>🔍 Consulta de Expedientes Federales</h3>
+                        <div class="tooltip-container">
+                            <button class="help-btn" type="button">?</button>
+                            <div class="tooltip-content tooltip-left">
+                                <h4>¿Cómo funciona?</h4>
+                                <p>El PJF cuenta con el <strong>SISE</strong> (Sistema Integral de Seguimiento de Expedientes) donde se consultan expedientes de los 32 circuitos jurisdiccionales.</p>
+                                <p><strong>Pasos:</strong></p>
+                                <ul>
+                                    <li>Selecciona un circuito jurisdiccional</li>
+                                    <li>Elige el órgano jurisdiccional (se filtra automáticamente)</li>
+                                    <li>Completa los datos del expediente que buscas</li>
+                                    <li>Haz clic en "Buscar" para generar los enlaces de consulta</li>
+                                </ul>
+                                <p><strong>Nota:</strong> La búsqueda genera enlaces a los portales oficiales del PJF (DGEJ, SISE, Juicio en Línea).</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <p class="section-desc">Selecciona los criterios de búsqueda. Los campos de Circuito y Organismo funcionan en cascada: al elegir un circuito se filtran los organismos disponibles.</p>
+
+                    <!-- Dropdowns en cascada -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="pjf-circuito">Circuito Jurisdiccional *</label>
+                            <select id="pjf-circuito" onchange="filtrarOrganismosPorCircuito()" required>
+                                <option value="">-- Selecciona un circuito --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="pjf-organismo">Órgano Jurisdiccional</label>
+                            <select id="pjf-organismo" disabled>
+                                <option value="">-- Selecciona un organismo --</option>
+                            </select>
+                            <span class="form-help" id="pjf-org-count"></span>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="pjf-tipo-asunto">Tipo de Asunto</label>
+                            <select id="pjf-tipo-asunto" onchange="toggleTipoAsuntoLibre()">
+                                <option value="">-- Selecciona tipo de asunto --</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="pjf-tipo-asunto-otro-group" style="display: none;">
+                            <label for="pjf-tipo-asunto-otro">Especifica el tipo de asunto</label>
+                            <input type="text" id="pjf-tipo-asunto-otro" placeholder="Escribe el tipo de asunto">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="pjf-num-expediente">Número de Expediente</label>
+                            <input type="text" id="pjf-num-expediente" placeholder="Ej: 123/2024" pattern="[0-9]+/[0-9]{4}">
+                            <span class="form-help">Formato: número/año (ej: 123/2024)</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="pjf-anio">Año</label>
+                            <select id="pjf-anio">
+                                <option value="">-- Año --</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 1;">
+                            <label for="pjf-nombre-partes">Nombre de las Partes</label>
+                            <input type="text" id="pjf-nombre-partes" placeholder="Buscar por nombre de las partes">
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button class="btn btn-secondary" onclick="limpiarFormularioPJF()">
+                        🗑️ Limpiar
+                    </button>
+                    <button class="btn btn-primary btn-lg" onclick="ejecutarBusquedaPJF()">
+                        🔍 Buscar en PJF
+                    </button>
+                </div>
+            </div>
+
+            <!-- Resultados de Búsqueda PJF -->
+            <div class="card" id="pjf-resultados-card" style="display: none;">
+                <div class="card-header">
+                    <h3>📊 Resultados de Búsqueda PJF</h3>
+                </div>
+                <div class="card-body" id="pjf-resultados">
+                    <!-- Resultados generados por JS -->
+                </div>
+            </div>
+
+            <!-- Información de referencia -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>ℹ️ Portales de Consulta del PJF</h3>
+                </div>
+                <div class="card-body">
+                    <p class="section-desc">Accede directamente a los portales oficiales del Poder Judicial de la Federación:</p>
+                    <div class="pjf-links-grid">
+                        <a href="https://www.dgej.cjf.gob.mx/internet/expedientes/circuitos.asp" target="_blank" rel="noopener noreferrer" class="pjf-link-card">
+                            <div class="pjf-link-icon">📋</div>
+                            <div class="pjf-link-info">
+                                <strong>DGEJ - Acuerdos por Expediente</strong>
+                                <p>Consulta acuerdos y listas de todos los circuitos</p>
+                            </div>
+                            <span class="pjf-link-arrow">→</span>
+                        </a>
+                        <a href="https://sise.cjf.gob.mx/consultasvp/default.aspx" target="_blank" rel="noopener noreferrer" class="pjf-link-card">
+                            <div class="pjf-link-icon">⚖️</div>
+                            <div class="pjf-link-info">
+                                <strong>SISE - Sentencias</strong>
+                                <p>Consulta de sentencias y versiones públicas</p>
+                            </div>
+                            <span class="pjf-link-arrow">→</span>
+                        </a>
+                        <a href="https://www.serviciosenlinea.pjf.gob.mx/juicioenlinea/" target="_blank" rel="noopener noreferrer" class="pjf-link-card">
+                            <div class="pjf-link-icon">💻</div>
+                            <div class="pjf-link-info">
+                                <strong>Juicio en Línea</strong>
+                                <p>Portal de servicios en línea del PJF</p>
+                            </div>
+                            <span class="pjf-link-arrow">→</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Página Configuración -->
         <section class="page" id="page-config">
             <div class="page-header">
@@ -1294,6 +1444,7 @@
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script src="js/juzgados.js"></script>
     <script src="js/database.js"></script>
+    <script src="js/pjf-search.js"></script>
     <script src="js/app.js"></script>
     <script src="js/sync.js"></script>
 </body>

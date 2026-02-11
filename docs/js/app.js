@@ -301,6 +301,8 @@ function navegarA(pagina) {
         renderizarCalendario();
     } else if (pagina === 'busqueda') {
         cargarExpedientesParaBusqueda();
+    } else if (pagina === 'pjf') {
+        cargarCatalogosPJF();
     }
 }
 
