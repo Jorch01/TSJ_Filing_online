@@ -10,18 +10,21 @@ let pjfCargando = false;
 // URL base para consulta directa de expedientes SISE
 const PJF_SISE_URL = 'https://www.dgej.cjf.gob.mx/siseinternet/reportes/vercaptura.aspx';
 
-// Tipos de asunto con su ID del SISE
+// Tipos de asunto con su ID REAL del SISE
+// NOTA: Solo "Amparo Indirecto" (id=1) está verificado contra el portal SISE.
+// Los demás IDs provienen del catálogo referencial y podrían no coincidir.
+// Si un tipo no funciona, usa el campo "ID manual" para ingresar el ID correcto.
 const PJF_TIPOS_ASUNTO = [
-    { id: 8, nombre: 'Amparo Indirecto' },
-    { id: 1, nombre: 'Amparo Directo' },
-    { id: 2, nombre: 'Amparo en Revisión' },
-    { id: 3, nombre: 'Queja' },
-    { id: 4, nombre: 'Revisión Fiscal' },
-    { id: 5, nombre: 'Conflicto Competencial' },
-    { id: 6, nombre: 'Recurso de Reclamación' },
-    { id: 14, nombre: 'Causa Penal' },
-    { id: 10, nombre: 'Juicio Oral Mercantil' },
-    { id: 13, nombre: 'Incidente' }
+    { id: 1, nombre: 'Amparo Indirecto', verificado: true },
+    { id: 2, nombre: 'Amparo Directo', verificado: false },
+    { id: 3, nombre: 'Queja', verificado: false },
+    { id: 4, nombre: 'Revisión Fiscal', verificado: false },
+    { id: 5, nombre: 'Conflicto Competencial', verificado: false },
+    { id: 6, nombre: 'Recurso de Reclamación', verificado: false },
+    { id: 7, nombre: 'Amparo en Revisión', verificado: false },
+    { id: 8, nombre: 'Causa Penal', verificado: false },
+    { id: 9, nombre: 'Juicio Oral Mercantil', verificado: false },
+    { id: 10, nombre: 'Incidente', verificado: false }
 ];
 
 /**
@@ -81,7 +84,7 @@ function poblarSelectCircuitos() {
 }
 
 /**
- * Pobla el dropdown de tipos de asunto
+ * Pobla el dropdown de tipos de asunto y muestra cuáles están verificados
  */
 function poblarSelectTipoAsunto() {
     const select = document.getElementById('pjf-tipo-asunto');
@@ -92,9 +95,20 @@ function poblarSelectTipoAsunto() {
     PJF_TIPOS_ASUNTO.forEach(t => {
         const option = document.createElement('option');
         option.value = t.id;
-        option.textContent = t.nombre;
+        option.textContent = t.verificado ? `${t.nombre}` : `${t.nombre} (ID sin verificar)`;
         select.appendChild(option);
     });
+}
+
+/**
+ * Actualiza el campo de ID manual cuando se selecciona un tipo de asunto del dropdown
+ */
+function sincronizarIdTipoAsunto() {
+    const select = document.getElementById('pjf-tipo-asunto');
+    const inputId = document.getElementById('pjf-tipo-asunto-id');
+    if (select.value) {
+        inputId.value = select.value;
+    }
 }
 
 /**
@@ -132,8 +146,6 @@ function filtrarOrganismosPorCircuito() {
 
 /**
  * Construye la URL directa del SISE para ver un expediente
- * Formato: https://www.dgej.cjf.gob.mx/siseinternet/reportes/vercaptura.aspx
- *          ?tipoasunto={id}&organismo={org_id}&expediente={num%2Fanio}&tipoprocedimiento=0
  */
 function construirUrlSISE(tipoAsuntoId, organismoId, expediente) {
     const params = new URLSearchParams();
@@ -161,8 +173,12 @@ function abrirPopupPJF(url, titulo) {
 function ejecutarBusquedaPJF() {
     const numCircuito = document.getElementById('pjf-circuito').value;
     const organismoId = document.getElementById('pjf-organismo').value;
-    const tipoAsuntoId = document.getElementById('pjf-tipo-asunto').value;
+    const tipoAsuntoIdManual = document.getElementById('pjf-tipo-asunto-id').value.trim();
+    const tipoAsuntoSelect = document.getElementById('pjf-tipo-asunto').value;
     const numExpediente = document.getElementById('pjf-num-expediente').value.trim();
+
+    // El ID manual tiene prioridad sobre el dropdown
+    const tipoAsuntoId = tipoAsuntoIdManual || tipoAsuntoSelect;
 
     // Validaciones
     if (!organismoId) {
@@ -174,14 +190,14 @@ function ejecutarBusquedaPJF() {
 
     if (!tipoAsuntoId) {
         if (typeof mostrarToast === 'function') {
-            mostrarToast('Selecciona un tipo de asunto.', 'warning');
+            mostrarToast('Selecciona un tipo de asunto o ingresa el ID manualmente.', 'warning');
         }
         return;
     }
 
     if (!numExpediente) {
         if (typeof mostrarToast === 'function') {
-            mostrarToast('Ingresa el número de expediente (ej: 123/2024).', 'warning');
+            mostrarToast('Ingresa el número de expediente (ej: 67/2021).', 'warning');
         }
         return;
     }
@@ -200,6 +216,7 @@ function ejecutarBusquedaPJF() {
         circuito,
         organismo,
         tipoAsunto,
+        tipoAsuntoId,
         numExpediente,
         url
     });
@@ -217,6 +234,9 @@ function mostrarResultadosPJF(params) {
     card.style.display = 'block';
 
     const safeUrl = escapeAttrPJF(params.url);
+    const tipoNombre = params.tipoAsunto
+        ? params.tipoAsunto.nombre
+        : `ID: ${params.tipoAsuntoId}`;
 
     let html = '<div class="table-responsive"><table class="pjf-table">';
     html += `<thead><tr>
@@ -230,7 +250,7 @@ function mostrarResultadosPJF(params) {
     html += `<tr>
         <td><strong>${escapeTextPJF(params.numExpediente)}</strong></td>
         <td>${escapeTextPJF(params.organismo ? params.organismo.nombre : '-')}</td>
-        <td>${escapeTextPJF(params.tipoAsunto ? params.tipoAsunto.nombre : '-')}</td>
+        <td>${escapeTextPJF(tipoNombre)} <small>(ID: ${escapeTextPJF(String(params.tipoAsuntoId))})</small></td>
         <td>${escapeTextPJF(params.circuito ? params.circuito.nombre : '-')}</td>
         <td>
             <button class="btn btn-sm btn-primary" onclick="abrirPopupPJF('${safeUrl}', 'PJF_Expediente')">
@@ -253,6 +273,7 @@ function limpiarFormularioPJF() {
     document.getElementById('pjf-organismo').innerHTML = '<option value="">-- Selecciona un organismo --</option>';
     document.getElementById('pjf-organismo').disabled = true;
     document.getElementById('pjf-tipo-asunto').value = '';
+    document.getElementById('pjf-tipo-asunto-id').value = '';
     document.getElementById('pjf-num-expediente').value = '';
 
     const orgCount = document.getElementById('pjf-org-count');
