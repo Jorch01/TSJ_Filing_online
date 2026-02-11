@@ -1,0 +1,162 @@
+[
+  {
+    "id_sise": 1,
+    "nombre": "PRIMER CIRCUITO",
+    "numero_circuito": 1
+  },
+  {
+    "id_sise": 2,
+    "nombre": "SEGUNDO CIRCUITO",
+    "numero_circuito": 2
+  },
+  {
+    "id_sise": 3,
+    "nombre": "TERCER CIRCUITO",
+    "numero_circuito": 3
+  },
+  {
+    "id_sise": 4,
+    "nombre": "CUARTO CIRCUITO",
+    "numero_circuito": 4
+  },
+  {
+    "id_sise": 5,
+    "nombre": "QUINTO CIRCUITO",
+    "numero_circuito": 5
+  },
+  {
+    "id_sise": 6,
+    "nombre": "SEXTO CIRCUITO",
+    "numero_circuito": 6
+  },
+  {
+    "id_sise": 7,
+    "nombre": "SÉPTIMO CIRCUITO",
+    "numero_circuito": 7
+  },
+  {
+    "id_sise": 8,
+    "nombre": "OCTAVO CIRCUITO",
+    "numero_circuito": 8
+  },
+  {
+    "id_sise": 9,
+    "nombre": "NOVENO CIRCUITO",
+    "numero_circuito": 9
+  },
+  {
+    "id_sise": 10,
+    "nombre": "DÉCIMO CIRCUITO",
+    "numero_circuito": 10
+  },
+  {
+    "id_sise": 41,
+    "nombre": "DÉCIMO PRIMER CIRCUITO",
+    "numero_circuito": 11
+  },
+  {
+    "id_sise": 43,
+    "nombre": "DÉCIMO SEGUNDO CIRCUITO",
+    "numero_circuito": 12
+  },
+  {
+    "id_sise": 46,
+    "nombre": "DÉCIMO TERCER CIRCUITO",
+    "numero_circuito": 13
+  },
+  {
+    "id_sise": 38,
+    "nombre": "DÉCIMO CUARTO CIRCUITO",
+    "numero_circuito": 14
+  },
+  {
+    "id_sise": 42,
+    "nombre": "DÉCIMO QUINTO CIRCUITO",
+    "numero_circuito": 15
+  },
+  {
+    "id_sise": 45,
+    "nombre": "DÉCIMO SEXTO CIRCUITO",
+    "numero_circuito": 16
+  },
+  {
+    "id_sise": 44,
+    "nombre": "DÉCIMO SÉPTIMO CIRCUITO",
+    "numero_circuito": 17
+  },
+  {
+    "id_sise": 40,
+    "nombre": "DÉCIMO OCTAVO CIRCUITO",
+    "numero_circuito": 18
+  },
+  {
+    "id_sise": 39,
+    "nombre": "DÉCIMO NOVENO CIRCUITO",
+    "numero_circuito": 19
+  },
+  {
+    "id_sise": 20,
+    "nombre": "VIGÉSIMO CIRCUITO",
+    "numero_circuito": 20
+  },
+  {
+    "id_sise": 51,
+    "nombre": "VIGÉSIMO PRIMER CIRCUITO",
+    "numero_circuito": 21
+  },
+  {
+    "id_sise": 53,
+    "nombre": "VIGÉSIMO SEGUNDO CIRCUITO",
+    "numero_circuito": 22
+  },
+  {
+    "id_sise": 56,
+    "nombre": "VIGÉSIMO TERCER CIRCUITO",
+    "numero_circuito": 23
+  },
+  {
+    "id_sise": 48,
+    "nombre": "VIGÉSIMO CUARTO CIRCUITO",
+    "numero_circuito": 24
+  },
+  {
+    "id_sise": 52,
+    "nombre": "VIGÉSIMO QUINTO CIRCUITO",
+    "numero_circuito": 25
+  },
+  {
+    "id_sise": 55,
+    "nombre": "VIGÉSIMO SEXTO CIRCUITO",
+    "numero_circuito": 26
+  },
+  {
+    "id_sise": 54,
+    "nombre": "VIGÉSIMO SÉPTIMO CIRCUITO",
+    "numero_circuito": 27
+  },
+  {
+    "id_sise": 50,
+    "nombre": "VIGÉSIMO OCTAVO CIRCUITO",
+    "numero_circuito": 28
+  },
+  {
+    "id_sise": 49,
+    "nombre": "VIGÉSIMO NOVENO CIRCUITO",
+    "numero_circuito": 29
+  },
+  {
+    "id_sise": 30,
+    "nombre": "TRIGÉSIMO CIRCUITO",
+    "numero_circuito": 30
+  },
+  {
+    "id_sise": 47,
+    "nombre": "TRIGÉSIMO PRIMER CIRCUITO",
+    "numero_circuito": 31
+  },
+  {
+    "id_sise": 109,
+    "nombre": "TRIGÉSIMO SEGUNDO CIRCUITO",
+    "numero_circuito": 32
+  }
+]

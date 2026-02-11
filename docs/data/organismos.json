@@ -1,0 +1,4717 @@
+[
+  {
+    "id": 930,
+    "nombre": "Comisión de Conflictos Laborales del Poder Judicial de la Federación",
+    "circuito_id": 1
+  },
+  {
+    "id": 1374,
+    "nombre": "Cuarto Tribunal Colegiado de Circuito del Centro Auxiliar de la Primera Región, en su carácter de ordinario",
+    "circuito_id": 1
+  },
+  {
+    "id": 36,
+    "nombre": "Cuarto Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 37,
+    "nombre": "Cuarto Tribunal Colegiado en Materia Civil del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 39,
+    "nombre": "Cuarto Tribunal Colegiado en Materia Penal del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 38,
+    "nombre": "Cuarto Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 4263,
+    "nombre": "Cuarto Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 1442,
+    "nombre": "Decimonoveno Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 792,
+    "nombre": "Decimosexto Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 4011,
+    "nombre": "Decimosexto Tribunal Colegiado en Materia Civil del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 1417,
+    "nombre": "Decimosexto Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 933,
+    "nombre": "Decimoséptimo Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 586,
+    "nombre": "Décimo Cuarto Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 498,
+    "nombre": "Décimo Cuarto Tribunal Colegiado en Materia Civil del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 496,
+    "nombre": "Décimo Cuarto Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 4273,
+    "nombre": "Décimo Cuarto Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 1148,
+    "nombre": "Décimo Octavo Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 84,
+    "nombre": "Décimo Primer Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 85,
+    "nombre": "Décimo Primer Tribunal Colegiado en Materia Civil del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 86,
+    "nombre": "Décimo Primer Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 4270,
+    "nombre": "Décimo Primer Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 708,
+    "nombre": "Décimo Quinto Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 3844,
+    "nombre": "Décimo Quinto Tribunal Colegiado en Materia Civil del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 497,
+    "nombre": "Décimo Quinto Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 4274,
+    "nombre": "Décimo Quinto Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 88,
+    "nombre": "Décimo Segundo Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 89,
+    "nombre": "Décimo Segundo Tribunal Colegiado en Materia Civil del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 90,
+    "nombre": "Décimo Segundo Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 4271,
+    "nombre": "Décimo Segundo Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 4472,
+    "nombre": "Décimo Sexto Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 4473,
+    "nombre": "Décimo Séptimo Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 92,
+    "nombre": "Décimo Tercer Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 93,
+    "nombre": "Décimo Tercer Tribunal Colegiado en Materia Civil del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 495,
+    "nombre": "Décimo Tercer Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 4272,
+    "nombre": "Décimo Tercero Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 79,
+    "nombre": "Décimo Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 80,
+    "nombre": "Décimo Tribunal Colegiado en Materia Civil del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 1671,
+    "nombre": "Décimo Tribunal Colegiado en Materia Penal del Primer Circuito.",
+    "circuito_id": 1
+  },
+  {
+    "id": 81,
+    "nombre": "Décimo Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 4269,
+    "nombre": "Décimo Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 2418,
+    "nombre": "Juzgado Cuarto de Distrito Especializado en Ejecución de Penas",
+    "circuito_id": 1
+  },
+  {
+    "id": 41,
+    "nombre": "Juzgado Cuarto de Distrito en Materia Administrativa en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 43,
+    "nombre": "Juzgado Cuarto de Distrito en Materia Civil en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 765,
+    "nombre": "Juzgado Cuarto de Distrito en Materia Penal en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 4005,
+    "nombre": "Juzgado Cuarto de Distrito en Materia de Extinción de Dominio con Competencia en la República Mexicana y Especializado en Juicios Orales Mercantiles en el Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 652,
+    "nombre": "Juzgado Cuarto de Distrito en Materia de Trabajo en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 1424,
+    "nombre": "Juzgado Decimocuarto de Distrito en Materia Civil en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 939,
+    "nombre": "Juzgado Decimocuarto de Distrito en Materia Penal en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 772,
+    "nombre": "Juzgado Decimoprimero de Distrito en Materia Penal en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 1467,
+    "nombre": "Juzgado Decimoquinto de Distrito en Materia Penal en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 773,
+    "nombre": "Juzgado Decimosegundo de Distrito en Materia Penal en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 1468,
+    "nombre": "Juzgado Decimosexto de Distrito en Materia Penal en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 4012,
+    "nombre": "Juzgado Decimoséptimo de Distrito en Materia Administrativa en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 759,
+    "nombre": "Juzgado Decimotercero de Distrito en Materia Civil en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 938,
+    "nombre": "Juzgado Decimotercero de Distrito en Materia Penal en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 733,
+    "nombre": "Juzgado Décimo Cuarto de Distrito en Materia Administrativa en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 576,
+    "nombre": "Juzgado Décimo Primero de Distrito en Materia Administrativa en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 87,
+    "nombre": "Juzgado Décimo Primero de Distrito en Materia Civil en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 734,
+    "nombre": "Juzgado Décimo Quinto de Distrito en Materia Administrativa en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 731,
+    "nombre": "Juzgado Décimo Segundo de Distrito en Materia Administrativa en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 91,
+    "nombre": "Juzgado Décimo Segundo de Distrito en Materia Civil en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 735,
+    "nombre": "Juzgado Décimo Sexto de Distrito en Materia Administrativa en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 732,
+    "nombre": "Juzgado Décimo Tercero de Distrito en Materia Administrativa en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 730,
+    "nombre": "Juzgado Décimo de Distrito en Materia Administrativa en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 83,
+    "nombre": "Juzgado Décimo de Distrito en Materia Civil en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 771,
+    "nombre": "Juzgado Décimo de Distrito en Materia Penal en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 76,
+    "nombre": "Juzgado Noveno de Distrito en Materia Administrativa en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 77,
+    "nombre": "Juzgado Noveno de Distrito en Materia Civil en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 770,
+    "nombre": "Juzgado Noveno de Distrito en Materia Penal en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 1427,
+    "nombre": "Juzgado Noveno de Distrito en Materia de Trabajo en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 729,
+    "nombre": "Juzgado Octavo de Distrito en Materia Administrativa en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 71,
+    "nombre": "Juzgado Octavo de Distrito en Materia Civil en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 769,
+    "nombre": "Juzgado Octavo de Distrito en Materia Penal en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 1426,
+    "nombre": "Juzgado Octavo de Distrito en Materia de Trabajo en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 1194,
+    "nombre": "Juzgado Primero de Distrito Especializado en Ejecución de Penas",
+    "circuito_id": 1
+  },
+  {
+    "id": 555,
+    "nombre": "Juzgado Primero de Distrito de Procesos Penales Federales en la Ciudad de México (13/12/2001 - 31/08/2024)",
+    "circuito_id": 1
+  },
+  {
+    "id": 949,
+    "nombre": "Juzgado Primero de Distrito del Centro Auxiliar de la Primera Región, con residencia en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 10,
+    "nombre": "Juzgado Primero de Distrito en Materia Administrativa en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 1301,
+    "nombre": "Juzgado Primero de Distrito en Materia Administrativa, Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones, con residencia en la Ciudad de México y Jurisdicción en toda la República",
+    "circuito_id": 1
+  },
+  {
+    "id": 12,
+    "nombre": "Juzgado Primero de Distrito en Materia Civil en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 762,
+    "nombre": "Juzgado Primero de Distrito en Materia Penal en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 4157,
+    "nombre": "Juzgado Primero de Distrito en Materia de Concursos Mercantiles, con residencia en la Ciudad de México y jurisdicción en toda la República Mexicana",
+    "circuito_id": 1
+  },
+  {
+    "id": 4002,
+    "nombre": "Juzgado Primero de Distrito en Materia de Extinción de Dominio con Competencia en la República Mexicana y Especializado en Juicios Orales Mercantiles en el Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 527,
+    "nombre": "Juzgado Primero de Distrito en Materia de Trabajo en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 2419,
+    "nombre": "Juzgado Quinto de Distrito Especializado en Ejecución de Penas",
+    "circuito_id": 1
+  },
+  {
+    "id": 52,
+    "nombre": "Juzgado Quinto de Distrito de Procesos Penales Federales en la Ciudad de México (02/04/2001 - 31/08/2024)",
+    "circuito_id": 1
+  },
+  {
+    "id": 727,
+    "nombre": "Juzgado Quinto de Distrito en Materia Administrativa en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 51,
+    "nombre": "Juzgado Quinto de Distrito en Materia Civil en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 766,
+    "nombre": "Juzgado Quinto de Distrito en Materia Penal en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 4006,
+    "nombre": "Juzgado Quinto de Distrito en Materia de Extinción de Dominio con Competencia en la República Mexicana y Especializado en Juicios Orales Mercantiles en el Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 782,
+    "nombre": "Juzgado Quinto de Distrito en Materia de Trabajo en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 1195,
+    "nombre": "Juzgado Segundo de Distrito Especializado en Ejecución de Penas",
+    "circuito_id": 1
+  },
+  {
+    "id": 25,
+    "nombre": "Juzgado Segundo de Distrito de Procesos Penales Federales en la Ciudad de México (02/04/2001 - 31/08/2024)",
+    "circuito_id": 1
+  },
+  {
+    "id": 964,
+    "nombre": "Juzgado Segundo de Distrito del Centro Auxiliar de la Primera Región, con residencia en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 726,
+    "nombre": "Juzgado Segundo de Distrito en Materia Administrativa en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 1302,
+    "nombre": "Juzgado Segundo de Distrito en Materia Administrativa, Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones, con residencia en la Ciudad de México y Jurisdicción en toda la República",
+    "circuito_id": 1
+  },
+  {
+    "id": 23,
+    "nombre": "Juzgado Segundo de Distrito en Materia Civil en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 763,
+    "nombre": "Juzgado Segundo de Distrito en Materia Penal en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 4158,
+    "nombre": "Juzgado Segundo de Distrito en Materia de Concursos Mercantiles, con residencia en la Ciudad de México y jurisdicción en toda la República Mexicana",
+    "circuito_id": 1
+  },
+  {
+    "id": 4003,
+    "nombre": "Juzgado Segundo de Distrito en Materia de Extinción de Dominio con Competencia en la República Mexicana y Especializado en Juicios Orales Mercantiles en el Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 535,
+    "nombre": "Juzgado Segundo de Distrito en Materia de Trabajo en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 3999,
+    "nombre": "Juzgado Sexto de Distrito Especializado en Ejecución de Penas",
+    "circuito_id": 1
+  },
+  {
+    "id": 60,
+    "nombre": "Juzgado Sexto de Distrito de Procesos Penales Federales en la Ciudad de México (02/04/2001 - 31/08/2024)",
+    "circuito_id": 1
+  },
+  {
+    "id": 728,
+    "nombre": "Juzgado Sexto de Distrito en Materia Administrativa en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 59,
+    "nombre": "Juzgado Sexto de Distrito en Materia Civil en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 767,
+    "nombre": "Juzgado Sexto de Distrito en Materia Penal en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 4007,
+    "nombre": "Juzgado Sexto de Distrito en Materia de Extinción de Dominio con Competencia en la República Mexicana y Especializado en Juicios Orales Mercantiles en el Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 935,
+    "nombre": "Juzgado Sexto de Distrito en Materia de Trabajo en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 64,
+    "nombre": "Juzgado Séptimo de Distrito en Materia Administrativa en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 758,
+    "nombre": "Juzgado Séptimo de Distrito en Materia Civil en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 768,
+    "nombre": "Juzgado Séptimo de Distrito en Materia Penal en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 1425,
+    "nombre": "Juzgado Séptimo de Distrito en Materia de Trabajo en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 1196,
+    "nombre": "Juzgado Tercero de Distrito Especializado en Ejecución de Penas",
+    "circuito_id": 1
+  },
+  {
+    "id": 534,
+    "nombre": "Juzgado Tercero de Distrito en Materia Administrativa en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 4138,
+    "nombre": "Juzgado Tercero de Distrito en Materia Administrativa, Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones, con residencia en la Ciudad de México y Jurisdicción en toda la República",
+    "circuito_id": 1
+  },
+  {
+    "id": 33,
+    "nombre": "Juzgado Tercero de Distrito en Materia Civil en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 764,
+    "nombre": "Juzgado Tercero de Distrito en Materia Penal en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 4004,
+    "nombre": "Juzgado Tercero de Distrito en Materia de Extinción de Dominio con Competencia en la República Mexicana y Especializado en Juicios Orales Mercantiles en el Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 781,
+    "nombre": "Juzgado Tercero de Distrito en Materia de Trabajo en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 73,
+    "nombre": "Noveno Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 74,
+    "nombre": "Noveno Tribunal Colegiado en Materia Civil del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 501,
+    "nombre": "Noveno Tribunal Colegiado en Materia Penal del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 75,
+    "nombre": "Noveno Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 4268,
+    "nombre": "Noveno Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 67,
+    "nombre": "Octavo Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 68,
+    "nombre": "Octavo Tribunal Colegiado en Materia Civil del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 500,
+    "nombre": "Octavo Tribunal Colegiado en Materia Penal del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 69,
+    "nombre": "Octavo Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 4267,
+    "nombre": "Octavo Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 4393,
+    "nombre": "Pleno Regional Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones",
+    "circuito_id": 1
+  },
+  {
+    "id": 4386,
+    "nombre": "Pleno Regional en Materias Administrativa y Civil de la Región Centro-Norte, con residencia en la Ciudad de México.",
+    "circuito_id": 1
+  },
+  {
+    "id": 4612,
+    "nombre": "Pleno Regional en Materias Administrativa y Civil de la Región Centro-Sur, con residencia en la Ciudad de México.",
+    "circuito_id": 1
+  },
+  {
+    "id": 4385,
+    "nombre": "Pleno Regional en Materias Penal y de Trabajo de la Región Centro-Norte, con residencia en la Ciudad de México.",
+    "circuito_id": 1
+  },
+  {
+    "id": 4392,
+    "nombre": "Pleno Regional en Materias Penal y de Trabajo de la Región Centro-Sur, con residencia en la Ciudad de México.",
+    "circuito_id": 1
+  },
+  {
+    "id": 4343,
+    "nombre": "Primer Tribunal Colegiado de Apelación en Materia Penal del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 4341,
+    "nombre": "Primer Tribunal Colegiado de Apelación en Materias Civil, Administrativa y Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 1372,
+    "nombre": "Primer Tribunal Colegiado de Circuito del Centro Auxiliar de la Primera Región, en su carácter de ordinario",
+    "circuito_id": 1
+  },
+  {
+    "id": 1304,
+    "nombre": "Primer Tribunal Colegiado de Circuito en Materia Administrativa, Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones, con residencia en la Ciudad de México y Jurisdicción en toda la República",
+    "circuito_id": 1
+  },
+  {
+    "id": 4,
+    "nombre": "Primer Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 5,
+    "nombre": "Primer Tribunal Colegiado en Materia Civil del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 7,
+    "nombre": "Primer Tribunal Colegiado en Materia Penal del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 6,
+    "nombre": "Primer Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 4260,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 45,
+    "nombre": "Quinto Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 46,
+    "nombre": "Quinto Tribunal Colegiado en Materia Civil del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 48,
+    "nombre": "Quinto Tribunal Colegiado en Materia Penal del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 47,
+    "nombre": "Quinto Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 4264,
+    "nombre": "Quinto Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 4344,
+    "nombre": "Segundo Tribunal Colegiado de Apelación en Materia Penal del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 4342,
+    "nombre": "Segundo Tribunal Colegiado de Apelación en Materias Civil, Administrativa y Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 1305,
+    "nombre": "Segundo Tribunal Colegiado de Circuito en Materia Administrativa, Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones, con residencia en la Ciudad de México y Jurisdicción en toda la República",
+    "circuito_id": 1
+  },
+  {
+    "id": 15,
+    "nombre": "Segundo Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 16,
+    "nombre": "Segundo Tribunal Colegiado en Materia Civil del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 18,
+    "nombre": "Segundo Tribunal Colegiado en Materia Penal del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 17,
+    "nombre": "Segundo Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 4261,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 53,
+    "nombre": "Sexto Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 54,
+    "nombre": "Sexto Tribunal Colegiado en Materia Civil del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 56,
+    "nombre": "Sexto Tribunal Colegiado en Materia Penal del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 55,
+    "nombre": "Sexto Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 4265,
+    "nombre": "Sexto Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 61,
+    "nombre": "Séptimo Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 62,
+    "nombre": "Séptimo Tribunal Colegiado en Materia Civil del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 499,
+    "nombre": "Séptimo Tribunal Colegiado en Materia Penal del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 63,
+    "nombre": "Séptimo Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 4266,
+    "nombre": "Séptimo Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 26,
+    "nombre": "Tercer Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 27,
+    "nombre": "Tercer Tribunal Colegiado en Materia Civil del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 29,
+    "nombre": "Tercer Tribunal Colegiado en Materia Penal del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 28,
+    "nombre": "Tercer Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 4262,
+    "nombre": "Tercer Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 3986,
+    "nombre": "Tribunal Laboral Federal de asuntos colectivos, con sede en la Ciudad de México",
+    "circuito_id": 1
+  },
+  {
+    "id": 6207,
+    "nombre": "Unidad de Instrucción de la Comisión de Conflictos Laborales del Tribunal de Disciplina Judicial",
+    "circuito_id": 1
+  },
+  {
+    "id": 4327,
+    "nombre": "Vigésimo Cuarto Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 2456,
+    "nombre": "Vigésimo Primer Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 3894,
+    "nombre": "Vigésimo Segundo Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 3895,
+    "nombre": "Vigésimo Tercer Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 1443,
+    "nombre": "Vigésimo Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+    "circuito_id": 1
+  },
+  {
+    "id": 1085,
+    "nombre": "Cuarto Tribunal Colegiado en Materia Administrativa del Segundo Circuito",
+    "circuito_id": 2
+  },
+  {
+    "id": 426,
+    "nombre": "Cuarto Tribunal Colegiado en Materia Civil del Segundo Circuito",
+    "circuito_id": 2
+  },
+  {
+    "id": 794,
+    "nombre": "Cuarto Tribunal Colegiado en Materia Penal del Segundo Circuito",
+    "circuito_id": 2
+  },
+  {
+    "id": 4589,
+    "nombre": "Cuarto Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Naucalpan",
+    "circuito_id": 2
+  },
+  {
+    "id": 5604,
+    "nombre": "Décimo Primer Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Naucalpan",
+    "circuito_id": 2
+  },
+  {
+    "id": 4595,
+    "nombre": "Décimo Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Naucalpan",
+    "circuito_id": 2
+  },
+  {
+    "id": 5851,
+    "nombre": "Juzgado Cuarto de Distrito en Materia Penal en el Estado de México, con residencia en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 5842,
+    "nombre": "Juzgado Cuarto de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de México, con residencia en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 668,
+    "nombre": "Juzgado Cuarto de Distrito en Materias de Amparo y Juicios Federales en el Estado de México (28/10/2003- 30/09/2024)",
+    "circuito_id": 2
+  },
+  {
+    "id": 942,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de México",
+    "circuito_id": 2
+  },
+  {
+    "id": 1270,
+    "nombre": "Juzgado Decimocuarto de Distrito en el Estado de México",
+    "circuito_id": 2
+  },
+  {
+    "id": 940,
+    "nombre": "Juzgado Decimoprimero de Distrito en el Estado de México",
+    "circuito_id": 2
+  },
+  {
+    "id": 3835,
+    "nombre": "Juzgado Decimoquinto de Distrito en el Estado de México, con residencia en Naucalpan de Juárez",
+    "circuito_id": 2
+  },
+  {
+    "id": 1014,
+    "nombre": "Juzgado Decimosegundo de Distrito en el Estado de México",
+    "circuito_id": 2
+  },
+  {
+    "id": 3836,
+    "nombre": "Juzgado Decimosexto de Distrito en el Estado de México, con residencia en Naucalpan de Juárez",
+    "circuito_id": 2
+  },
+  {
+    "id": 4137,
+    "nombre": "Juzgado Decimoséptimo de Distrito en el Estado de México, con residencia en Nezahualcóyotl",
+    "circuito_id": 2
+  },
+  {
+    "id": 1269,
+    "nombre": "Juzgado Decimotercero de Distrito en el Estado de México",
+    "circuito_id": 2
+  },
+  {
+    "id": 943,
+    "nombre": "Juzgado Décimo de Distrito en el Estado de México",
+    "circuito_id": 2
+  },
+  {
+    "id": 5847,
+    "nombre": "Juzgado Noveno de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de México, con residencia en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 3875,
+    "nombre": "Juzgado Noveno de Distrito en Materias de Amparo y Juicios Federales en el Estado de México (16/10/2019- 30/09/2024)",
+    "circuito_id": 2
+  },
+  {
+    "id": 673,
+    "nombre": "Juzgado Noveno de Distrito en el Estado de México",
+    "circuito_id": 2
+  },
+  {
+    "id": 5846,
+    "nombre": "Juzgado Octavo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de México, con residencia en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 3874,
+    "nombre": "Juzgado Octavo de Distrito en Materias de Amparo y Juicios Federales en el Estado de México (16/10/2019- 30/09/2024)",
+    "circuito_id": 2
+  },
+  {
+    "id": 690,
+    "nombre": "Juzgado Octavo de Distrito en el Estado de México",
+    "circuito_id": 2
+  },
+  {
+    "id": 659,
+    "nombre": "Juzgado Primero de Distrito de Procesos Penales Federales en el Estado de México (28/10/2003- 30/09/2024)",
+    "circuito_id": 2
+  },
+  {
+    "id": 5848,
+    "nombre": "Juzgado Primero de Distrito en Materia Penal en el Estado de México, con residencia en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 5839,
+    "nombre": "Juzgado Primero de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de México, con residencia en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 665,
+    "nombre": "Juzgado Primero de Distrito en Materias de Amparo y Juicios Federales en el Estado de México (28/10/2003- 30/09/2024)",
+    "circuito_id": 2
+  },
+  {
+    "id": 100,
+    "nombre": "Juzgado Primero de Distrito en el Estado de México",
+    "circuito_id": 2
+  },
+  {
+    "id": 663,
+    "nombre": "Juzgado Quinto de Distrito de Procesos Penales Federales en el Estado de México (28/10/2003- 30/09/2024)",
+    "circuito_id": 2
+  },
+  {
+    "id": 5843,
+    "nombre": "Juzgado Quinto de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de México, con residencia en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 803,
+    "nombre": "Juzgado Quinto de Distrito en Materias de Amparo y Juicios Federales en el Estado de México (01/08/2006- 30/09/2024)",
+    "circuito_id": 2
+  },
+  {
+    "id": 691,
+    "nombre": "Juzgado Quinto de Distrito en el Estado de México",
+    "circuito_id": 2
+  },
+  {
+    "id": 660,
+    "nombre": "Juzgado Segundo de Distrito de Procesos Penales Federales en el Estado de México (28/10/2003- 30/09/2024)",
+    "circuito_id": 2
+  },
+  {
+    "id": 5849,
+    "nombre": "Juzgado Segundo de Distrito en Materia Penal en el Estado de México, con residencia en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 5840,
+    "nombre": "Juzgado Segundo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de México, con residencia en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 666,
+    "nombre": "Juzgado Segundo de Distrito en Materias de Amparo y Juicios Federales en el Estado de México (28/10/2003- 30/09/2024)",
+    "circuito_id": 2
+  },
+  {
+    "id": 107,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de México",
+    "circuito_id": 2
+  },
+  {
+    "id": 5844,
+    "nombre": "Juzgado Sexto de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de México, con residencia en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 2411,
+    "nombre": "Juzgado Sexto de Distrito en Materias de Amparo y Juicios Federales en el Estado de México (16/10/2017- 30/09/2024)",
+    "circuito_id": 2
+  },
+  {
+    "id": 115,
+    "nombre": "Juzgado Sexto de Distrito en el Estado de México",
+    "circuito_id": 2
+  },
+  {
+    "id": 3449,
+    "nombre": "Juzgado Séptimo de Distrito en Materia de Amparo y Juicios Federales en el Estado de México (01/10/2018- 30/09/2024)",
+    "circuito_id": 2
+  },
+  {
+    "id": 5845,
+    "nombre": "Juzgado Séptimo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de México, con residencia en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 116,
+    "nombre": "Juzgado Séptimo de Distrito en el Estado de México",
+    "circuito_id": 2
+  },
+  {
+    "id": 661,
+    "nombre": "Juzgado Tercero de Distrito de Procesos Penales Federales en el Estado de México (28/10/2003- 30/09/2024)",
+    "circuito_id": 2
+  },
+  {
+    "id": 5850,
+    "nombre": "Juzgado Tercero de Distrito en Materia Penal en el Estado de México, con residencia en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 5841,
+    "nombre": "Juzgado Tercero de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de México, con residencia en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 667,
+    "nombre": "Juzgado Tercero de Distrito en Materias de Amparo y Juicios Federales en el Estado de México (28/10/2003- 30/09/2024)",
+    "circuito_id": 2
+  },
+  {
+    "id": 111,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de México",
+    "circuito_id": 2
+  },
+  {
+    "id": 2741,
+    "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de México, con residencia en Naucalpan de Juárez",
+    "circuito_id": 2
+  },
+  {
+    "id": 3824,
+    "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de México, con residencia en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 4594,
+    "nombre": "Noveno Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Naucalpan",
+    "circuito_id": 2
+  },
+  {
+    "id": 4593,
+    "nombre": "Octavo Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Naucalpan",
+    "circuito_id": 2
+  },
+  {
+    "id": 4387,
+    "nombre": "Pleno Regional en Materia Civil de la Región Centro-Norte, con residencia en la Ciudad de México (16/01/2023-15/01/2024)",
+    "circuito_id": 2
+  },
+  {
+    "id": 4388,
+    "nombre": "Pleno Regional en Materia de Trabajo de la Región Centro-Norte, con residencia en Monterrey, Nuevo León (16/01/2023-15/01/2024)",
+    "circuito_id": 2
+  },
+  {
+    "id": 4345,
+    "nombre": "Primer Tribunal Colegiado de Apelación del Segundo Circuito, con residencia en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 1150,
+    "nombre": "Primer Tribunal Colegiado del Segundo Circuito, con residencia en Nezahualcóyotl, Estado de México",
+    "circuito_id": 2
+  },
+  {
+    "id": 94,
+    "nombre": "Primer Tribunal Colegiado en Materia Administrativa del Segundo Circuito",
+    "circuito_id": 2
+  },
+  {
+    "id": 95,
+    "nombre": "Primer Tribunal Colegiado en Materia Civil del Segundo Circuito",
+    "circuito_id": 2
+  },
+  {
+    "id": 97,
+    "nombre": "Primer Tribunal Colegiado en Materia Penal del Segundo Circuito",
+    "circuito_id": 2
+  },
+  {
+    "id": 96,
+    "nombre": "Primer Tribunal Colegiado en Materia de Trabajo del Segundo Circuito",
+    "circuito_id": 2
+  },
+  {
+    "id": 4444,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 4590,
+    "nombre": "Quinto Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Naucalpan",
+    "circuito_id": 2
+  },
+  {
+    "id": 4346,
+    "nombre": "Segundo Tribunal Colegiado de Apelación del Segundo Circuito, con residencia en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 1271,
+    "nombre": "Segundo Tribunal Colegiado del Segundo Circuito, con residencia en Nezahualcóyotl, Estado de México",
+    "circuito_id": 2
+  },
+  {
+    "id": 102,
+    "nombre": "Segundo Tribunal Colegiado en Materia Administrativa del Segundo Circuito",
+    "circuito_id": 2
+  },
+  {
+    "id": 103,
+    "nombre": "Segundo Tribunal Colegiado en Materia Civil del Segundo Circuito",
+    "circuito_id": 2
+  },
+  {
+    "id": 104,
+    "nombre": "Segundo Tribunal Colegiado en Materia Penal del Segundo Circuito",
+    "circuito_id": 2
+  },
+  {
+    "id": 1103,
+    "nombre": "Segundo Tribunal Colegiado en Materia de Trabajo del Segundo Circuito",
+    "circuito_id": 2
+  },
+  {
+    "id": 4445,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 4591,
+    "nombre": "Sexto Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Naucalpan",
+    "circuito_id": 2
+  },
+  {
+    "id": 4592,
+    "nombre": "Séptimo Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Naucalpan",
+    "circuito_id": 2
+  },
+  {
+    "id": 428,
+    "nombre": "Tercer Tribunal Colegiado en Materia Administrativa del Segundo Circuito",
+    "circuito_id": 2
+  },
+  {
+    "id": 109,
+    "nombre": "Tercer Tribunal Colegiado en Materia Civil del Segundo Circuito",
+    "circuito_id": 2
+  },
+  {
+    "id": 706,
+    "nombre": "Tercer Tribunal Colegiado en Materia Penal del Segundo Circuito",
+    "circuito_id": 2
+  },
+  {
+    "id": 4408,
+    "nombre": "Tercer Tribunal Colegiado en Materia de Trabajo del Segundo Circuito",
+    "circuito_id": 2
+  },
+  {
+    "id": 4446,
+    "nombre": "Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 4347,
+    "nombre": "Tribunal Colegiado de Apelación del Segundo Circuito, con residencia en Nezahualcóyotl",
+    "circuito_id": 2
+  },
+  {
+    "id": 3989,
+    "nombre": "Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Naucalpan",
+    "circuito_id": 2
+  },
+  {
+    "id": 3988,
+    "nombre": "Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Toluca",
+    "circuito_id": 2
+  },
+  {
+    "id": 795,
+    "nombre": "Cuarto Tribunal Colegiado en Materia Administrativa del Tercer Circuito",
+    "circuito_id": 3
+  },
+  {
+    "id": 141,
+    "nombre": "Cuarto Tribunal Colegiado en Materia Civil del Tercer Circuito",
+    "circuito_id": 3
+  },
+  {
+    "id": 3458,
+    "nombre": "Cuarto Tribunal Colegiado en Materia Penal del Tercer Circuito, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 1257,
+    "nombre": "Cuarto Tribunal Colegiado en Materia de Trabajo del Tercer Circuito, con residencia en Zapopan, Jalisco",
+    "circuito_id": 3
+  },
+  {
+    "id": 4288,
+    "nombre": "Cuarto Tribunal Laboral Federal de asuntos individuales en el Estado de Jalisco, con sede en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 1234,
+    "nombre": "Juzgado Cuarto de Distrito de Amparo en Materia Penal en el Estado de Jalisco, con residencia en Zapopan (16/10/2012 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 1227,
+    "nombre": "Juzgado Cuarto de Distrito de Procesos Penales Federales en el Estado de Jalisco, con residencia en Puente Grande, Municipio de Juanacatlán (16/10/2012 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 5744,
+    "nombre": "Juzgado Cuarto de Distrito en Materia Administrativa en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 5752,
+    "nombre": "Juzgado Cuarto de Distrito en Materia Civil en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 5768,
+    "nombre": "Juzgado Cuarto de Distrito en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande",
+    "circuito_id": 3
+  },
+  {
+    "id": 5760,
+    "nombre": "Juzgado Cuarto de Distrito en Materia de Trabajo en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 695,
+    "nombre": "Juzgado Cuarto de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(29/03/2004 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 3879,
+    "nombre": "Juzgado Decimoctavo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan (16/10/2019 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 681,
+    "nombre": "Juzgado Decimocuarto de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan. (01/03/2004 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 3880,
+    "nombre": "Juzgado Decimonoveno de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan(16/10/2019 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 693,
+    "nombre": "Juzgado Decimoprimero de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(02/04/2001 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 1187,
+    "nombre": "Juzgado Decimoquinto de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan. (01/03/2012 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 139,
+    "nombre": "Juzgado Decimosegundo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(02/04/2001 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 1409,
+    "nombre": "Juzgado Decimosexto de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan. (01/11/2014 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 3878,
+    "nombre": "Juzgado Decimoséptimo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan (16/10/2019 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 142,
+    "nombre": "Juzgado Decimotercero de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan. (02/04/2001 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 692,
+    "nombre": "Juzgado Décimo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(02/04/2001 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 3825,
+    "nombre": "Juzgado Noveno de Distrito de Amparo en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande (12/11/2018 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 2414,
+    "nombre": "Juzgado Noveno de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan(02/04/2001 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 2745,
+    "nombre": "Juzgado Octavo de Distrito de Amparo en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande(02/04/2001 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 5748,
+    "nombre": "Juzgado Octavo de Distrito en Materia Administrativa en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 5756,
+    "nombre": "Juzgado Octavo de Distrito en Materia Civil en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 5764,
+    "nombre": "Juzgado Octavo de Distrito en Materia de Trabajo en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 1408,
+    "nombre": "Juzgado Octavo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(02/04/2001 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 147,
+    "nombre": "Juzgado Primero de Distrito de Amparo en Materia Penal en el Estado de Jalisco, con residencia en Zapopan(02/04/2001 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 1224,
+    "nombre": "Juzgado Primero de Distrito de Procesos Penales Federales en el Estado de Jalisco, con residencia en Puente Grande, Municipio de Juanacatlán (16/10/2012 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 5741,
+    "nombre": "Juzgado Primero de Distrito en Materia Administrativa en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 5749,
+    "nombre": "Juzgado Primero de Distrito en Materia Civil en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 1287,
+    "nombre": "Juzgado Primero de Distrito en Materia Mercantil Federal en el Estado de Jalisco, Especializado en Juicios Orales, con sede en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 5765,
+    "nombre": "Juzgado Primero de Distrito en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande",
+    "circuito_id": 3
+  },
+  {
+    "id": 5757,
+    "nombre": "Juzgado Primero de Distrito en Materia de Trabajo en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 694,
+    "nombre": "Juzgado Primero de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(29/03/2004 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 1312,
+    "nombre": "Juzgado Quinto de Distrito de Amparo en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande (16/10/2019 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 5745,
+    "nombre": "Juzgado Quinto de Distrito en Materia Administrativa en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 5753,
+    "nombre": "Juzgado Quinto de Distrito en Materia Civil en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 5769,
+    "nombre": "Juzgado Quinto de Distrito en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande",
+    "circuito_id": 3
+  },
+  {
+    "id": 5761,
+    "nombre": "Juzgado Quinto de Distrito en Materia de Trabajo en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 680,
+    "nombre": "Juzgado Quinto de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(01/03/2004 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 148,
+    "nombre": "Juzgado Segundo de Distrito de Amparo en Materia Penal en el Estado de Jalisco, con residencia en Zapopan (16/10/2012 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 5742,
+    "nombre": "Juzgado Segundo de Distrito en Materia Administrativa en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 5750,
+    "nombre": "Juzgado Segundo de Distrito en Materia Civil en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 2742,
+    "nombre": "Juzgado Segundo de Distrito en Materia Mercantil Federal en el Estado de Jalisco, Especializado en Juicios Orales, con sede en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 5766,
+    "nombre": "Juzgado Segundo de Distrito en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande",
+    "circuito_id": 3
+  },
+  {
+    "id": 5758,
+    "nombre": "Juzgado Segundo de Distrito en Materia de Trabajo en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 513,
+    "nombre": "Juzgado Segundo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(05/11/2001 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 1313,
+    "nombre": "Juzgado Sexto de Distrito de Amparo en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande (16/10/2019 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 5746,
+    "nombre": "Juzgado Sexto de Distrito en Materia Administrativa en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 5754,
+    "nombre": "Juzgado Sexto de Distrito en Materia Civil en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 5770,
+    "nombre": "Juzgado Sexto de Distrito en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande",
+    "circuito_id": 3
+  },
+  {
+    "id": 5762,
+    "nombre": "Juzgado Sexto de Distrito en Materia de Trabajo en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 1250,
+    "nombre": "Juzgado Sexto de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(16/10/2012 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 1667,
+    "nombre": "Juzgado Séptimo de Distrito de Amparo en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande (16/10/2019 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 5747,
+    "nombre": "Juzgado Séptimo de Distrito en Materia Administrativa en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 5755,
+    "nombre": "Juzgado Séptimo de Distrito en Materia Civil en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 5771,
+    "nombre": "Juzgado Séptimo de Distrito en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande",
+    "circuito_id": 3
+  },
+  {
+    "id": 5763,
+    "nombre": "Juzgado Séptimo de Distrito en Materia de Trabajo en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 1300,
+    "nombre": "Juzgado Séptimo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan. (01/09/2013 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 1233,
+    "nombre": "Juzgado Tercero de Distrito de Amparo en Materia Penal en el Estado de Jalisco, con residencia en Zapopan(16/10/2012 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 1226,
+    "nombre": "Juzgado Tercero de Distrito de Procesos Penales Federales en el Estado de Jalisco, con residencia en Puente Grande, Municipio de Juanacatlán (16/10/2012 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 5743,
+    "nombre": "Juzgado Tercero de Distrito en Materia Administrativa en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 5751,
+    "nombre": "Juzgado Tercero de Distrito en Materia Civil en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 5767,
+    "nombre": "Juzgado Tercero de Distrito en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande",
+    "circuito_id": 3
+  },
+  {
+    "id": 5759,
+    "nombre": "Juzgado Tercero de Distrito en Materia de Trabajo en el Estado de Jalisco, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 679,
+    "nombre": "Juzgado Tercero de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(01/03/2004 - 01/09/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 4292,
+    "nombre": "Octavo Tribunal Laboral Federal de asuntos individuales en el Estado de Jalisco, con sede en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 4390,
+    "nombre": "Pleno Regional en Materia Administrativa de la Región Centro-Sur, con residencia en Cuernavaca, Morelos (16/01/2023-15/01/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 4391,
+    "nombre": "Pleno Regional en Materia Civil de la Región Centro-Sur, con residencia en Guadalajara, Jalisco (16/01/2023-15/01/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 4389,
+    "nombre": "Pleno Regional en Materia Penal de la Región Centro-Sur, con residencia en San Andrés Cholula, Puebla (16/01/2023-15/01/2024)",
+    "circuito_id": 3
+  },
+  {
+    "id": 4348,
+    "nombre": "Primer Tribunal Colegiado de Apelación del Tercer Circuito, con residencia en Zapopan, Jalisco",
+    "circuito_id": 3
+  },
+  {
+    "id": 118,
+    "nombre": "Primer Tribunal Colegiado en Materia Administrativa del Tercer Circuito",
+    "circuito_id": 3
+  },
+  {
+    "id": 119,
+    "nombre": "Primer Tribunal Colegiado en Materia Civil del Tercer Circuito",
+    "circuito_id": 3
+  },
+  {
+    "id": 121,
+    "nombre": "Primer Tribunal Colegiado en Materia Penal del Tercer Circuito",
+    "circuito_id": 3
+  },
+  {
+    "id": 120,
+    "nombre": "Primer Tribunal Colegiado en Materia de Trabajo del Tercer Circuito",
+    "circuito_id": 3
+  },
+  {
+    "id": 4285,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Jalisco, con sede en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 1386,
+    "nombre": "Quinto Tribunal Colegiado en Materia Administrativa del Tercer Circuito",
+    "circuito_id": 3
+  },
+  {
+    "id": 475,
+    "nombre": "Quinto Tribunal Colegiado en Materia Civil del Tercer Circuito",
+    "circuito_id": 3
+  },
+  {
+    "id": 1888,
+    "nombre": "Quinto Tribunal Colegiado en Materia de Trabajo del Tercer Circuito, con residencia en Zapopan, Jalisco",
+    "circuito_id": 3
+  },
+  {
+    "id": 4289,
+    "nombre": "Quinto Tribunal Laboral Federal de asuntos individuales en el Estado de Jalisco, con sede en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 4396,
+    "nombre": "Segundo Tribunal Colegiado de Apelación del Tercer Circuito, con residencia en Zapopan, Jalisco",
+    "circuito_id": 3
+  },
+  {
+    "id": 127,
+    "nombre": "Segundo Tribunal Colegiado en Materia Administrativa del Tercer Circuito",
+    "circuito_id": 3
+  },
+  {
+    "id": 128,
+    "nombre": "Segundo Tribunal Colegiado en Materia Civil del Tercer Circuito",
+    "circuito_id": 3
+  },
+  {
+    "id": 130,
+    "nombre": "Segundo Tribunal Colegiado en Materia Penal del Tercer Circuito",
+    "circuito_id": 3
+  },
+  {
+    "id": 129,
+    "nombre": "Segundo Tribunal Colegiado en Materia de Trabajo del Tercer Circuito",
+    "circuito_id": 3
+  },
+  {
+    "id": 4286,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Jalisco, con sede en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 1886,
+    "nombre": "Sexto Tribunal Colegiado en Materia Administrativa del Tercer Circuito",
+    "circuito_id": 3
+  },
+  {
+    "id": 2885,
+    "nombre": "Sexto Tribunal Colegiado en Materia Civil del Tercer Circuito, con residencia en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 3997,
+    "nombre": "Sexto Tribunal Colegiado en Materia de Trabajo del Tercer Circuito, con residencia en Zapopan, Jalisco",
+    "circuito_id": 3
+  },
+  {
+    "id": 4290,
+    "nombre": "Sexto Tribunal Laboral Federal de asuntos individuales en el Estado de Jalisco, con sede en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 1887,
+    "nombre": "Séptimo Tribunal Colegiado en Materia Administrativa del Tercer Circuito",
+    "circuito_id": 3
+  },
+  {
+    "id": 4291,
+    "nombre": "Séptimo Tribunal Laboral Federal de asuntos individuales en el Estado de Jalisco, con sede en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 473,
+    "nombre": "Tercer Tribunal Colegiado en Materia Administrativa del Tercer Circuito",
+    "circuito_id": 3
+  },
+  {
+    "id": 136,
+    "nombre": "Tercer Tribunal Colegiado en Materia Civil del Tercer Circuito",
+    "circuito_id": 3
+  },
+  {
+    "id": 1258,
+    "nombre": "Tercer Tribunal Colegiado en Materia Penal del Tercer Circuito, con residencia en Zapopan, Jalisco",
+    "circuito_id": 3
+  },
+  {
+    "id": 1241,
+    "nombre": "Tercer Tribunal Colegiado en Materia de Trabajo del Tercer Circuito",
+    "circuito_id": 3
+  },
+  {
+    "id": 4287,
+    "nombre": "Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Jalisco, con sede en Zapopan",
+    "circuito_id": 3
+  },
+  {
+    "id": 1366,
+    "nombre": "Cuarto Tribunal Colegiado en Materia de Trabajo del Cuarto Circuito",
+    "circuito_id": 4
+  },
+  {
+    "id": 4299,
+    "nombre": "Cuarto Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",
+    "circuito_id": 4
+  },
+  {
+    "id": 4305,
+    "nombre": "Décimo Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",
+    "circuito_id": 4
+  },
+  {
+    "id": 4236,
+    "nombre": "Juzgado Cuarto de Distrito en Materia Administrativa en el Estado de Nuevo León",
+    "circuito_id": 4
+  },
+  {
+    "id": 561,
+    "nombre": "Juzgado Cuarto de Distrito en Materia Penal en el Estado de Nuevo León",
+    "circuito_id": 4
+  },
+  {
+    "id": 683,
+    "nombre": "Juzgado Cuarto de Distrito en Materias Civil y de Trabajo en el Estado de Nuevo León",
+    "circuito_id": 4
+  },
+  {
+    "id": 562,
+    "nombre": "Juzgado Primero de Distrito en Materia Administrativa en el Estado de Nuevo León",
+    "circuito_id": 4
+  },
+  {
+    "id": 696,
+    "nombre": "Juzgado Primero de Distrito en Materia Civil y de Trabajo en el Estado de Nuevo León",
+    "circuito_id": 4
+  },
+  {
+    "id": 558,
+    "nombre": "Juzgado Primero de Distrito en Materia Penal en el Estado de Nuevo León",
+    "circuito_id": 4
+  },
+  {
+    "id": 1268,
+    "nombre": "Juzgado Quinto de Distrito en Materia Civil y de Trabajo en el Estado de Nuevo León, con residencia en Monterrey",
+    "circuito_id": 4
+  },
+  {
+    "id": 682,
+    "nombre": "Juzgado Quinto de Distrito en Materia Penal en el Estado de Nuevo León",
+    "circuito_id": 4
+  },
+  {
+    "id": 698,
+    "nombre": "Juzgado Segundo de Distrito en Materia Administrativa en el estado de Nuevo León",
+    "circuito_id": 4
+  },
+  {
+    "id": 697,
+    "nombre": "Juzgado Segundo de Distrito en Materia Civil y de Trabajo en el Estado de Nuevo León",
+    "circuito_id": 4
+  },
+  {
+    "id": 559,
+    "nombre": "Juzgado Segundo de Distrito en Materia Penal en el Estado de Nuevo León",
+    "circuito_id": 4
+  },
+  {
+    "id": 1082,
+    "nombre": "Juzgado Sexto de Distrito en Materia Penal en el Estado de Nuevo León",
+    "circuito_id": 4
+  },
+  {
+    "id": 4565,
+    "nombre": "Juzgado Sexto de Distrito en Materias Civil y de Trabajo en el Estado de Nuevo León, con residencia en Monterrey",
+    "circuito_id": 4
+  },
+  {
+    "id": 2425,
+    "nombre": "Juzgado Tercero de Distrito en Materia Administrativa en el Estado de Nuevo León",
+    "circuito_id": 4
+  },
+  {
+    "id": 569,
+    "nombre": "Juzgado Tercero de Distrito en Materias Civil y de Trabajo en el Estado de Nuevo León",
+    "circuito_id": 4
+  },
+  {
+    "id": 4564,
+    "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de Nuevo León, con residencia en Monterrey",
+    "circuito_id": 4
+  },
+  {
+    "id": 4304,
+    "nombre": "Noveno Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",
+    "circuito_id": 4
+  },
+  {
+    "id": 4303,
+    "nombre": "Octavo Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",
+    "circuito_id": 4
+  },
+  {
+    "id": 149,
+    "nombre": "Primer Tribunal Colegiado en Materia Administrativa del Cuarto Circuito",
+    "circuito_id": 4
+  },
+  {
+    "id": 150,
+    "nombre": "Primer Tribunal Colegiado en Materia Civil del Cuarto Circuito",
+    "circuito_id": 4
+  },
+  {
+    "id": 152,
+    "nombre": "Primer Tribunal Colegiado en Materia Penal del Cuarto Circuito",
+    "circuito_id": 4
+  },
+  {
+    "id": 151,
+    "nombre": "Primer Tribunal Colegiado en Materia de Trabajo del Cuarto Circuito",
+    "circuito_id": 4
+  },
+  {
+    "id": 4296,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",
+    "circuito_id": 4
+  },
+  {
+    "id": 4093,
+    "nombre": "Quinto Tribunal Colegiado en Materia de Trabajo del Cuarto Circuito",
+    "circuito_id": 4
+  },
+  {
+    "id": 4300,
+    "nombre": "Quinto Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",
+    "circuito_id": 4
+  },
+  {
+    "id": 155,
+    "nombre": "Segundo Tribunal Colegiado en Materia Administrativa del Cuarto Circuito",
+    "circuito_id": 4
+  },
+  {
+    "id": 156,
+    "nombre": "Segundo Tribunal Colegiado en Materia Civil del Cuarto Circuito",
+    "circuito_id": 4
+  },
+  {
+    "id": 507,
+    "nombre": "Segundo Tribunal Colegiado en Materia Penal del Cuarto Circuito",
+    "circuito_id": 4
+  },
+  {
+    "id": 157,
+    "nombre": "Segundo Tribunal Colegiado en Materia de Trabajo del Cuarto Circuito",
+    "circuito_id": 4
+  },
+  {
+    "id": 4297,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",
+    "circuito_id": 4
+  },
+  {
+    "id": 4301,
+    "nombre": "Sexto Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",
+    "circuito_id": 4
+  },
+  {
+    "id": 4302,
+    "nombre": "Séptimo Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",
+    "circuito_id": 4
+  },
+  {
+    "id": 647,
+    "nombre": "Tercer Tribunal Colegiado en Materia Administrativa del Cuarto Circuito",
+    "circuito_id": 4
+  },
+  {
+    "id": 506,
+    "nombre": "Tercer Tribunal Colegiado en Materia Civil del Cuarto Circuito",
+    "circuito_id": 4
+  },
+  {
+    "id": 160,
+    "nombre": "Tercer Tribunal Colegiado en Materia de Trabajo del Cuarto Circuito",
+    "circuito_id": 4
+  },
+  {
+    "id": 4298,
+    "nombre": "Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",
+    "circuito_id": 4
+  },
+  {
+    "id": 4349,
+    "nombre": "Tribunal Colegiado de Apelación del Cuarto Circuito, con residencia en Monterrey, Nuevo León",
+    "circuito_id": 4
+  },
+  {
+    "id": 4571,
+    "nombre": "Cuarto Tribunal Colegiado en Materias Penal y Administrativa del Quinto Circuito",
+    "circuito_id": 5
+  },
+  {
+    "id": 176,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de Sonora",
+    "circuito_id": 5
+  },
+  {
+    "id": 4259,
+    "nombre": "Juzgado Decimocuarto de Distrito en el Estado de Sonora, con residencia en Hermosillo",
+    "circuito_id": 5
+  },
+  {
+    "id": 1533,
+    "nombre": "Juzgado Decimoprimero de Distrito en el Estado de Sonora",
+    "circuito_id": 5
+  },
+  {
+    "id": 1534,
+    "nombre": "Juzgado Decimosegundo de Distrito en el Estado de Sonora",
+    "circuito_id": 5
+  },
+  {
+    "id": 3851,
+    "nombre": "Juzgado Decimotercero de Distrito en el Estado de Sonora",
+    "circuito_id": 5
+  },
+  {
+    "id": 181,
+    "nombre": "Juzgado Décimo de Distrito en el Estado de Sonora",
+    "circuito_id": 5
+  },
+  {
+    "id": 180,
+    "nombre": "Juzgado Noveno de Distrito en el Estado de Sonora",
+    "circuito_id": 5
+  },
+  {
+    "id": 412,
+    "nombre": "Juzgado Octavo de Distrito en el Estado de Sonora",
+    "circuito_id": 5
+  },
+  {
+    "id": 168,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Sonora",
+    "circuito_id": 5
+  },
+  {
+    "id": 177,
+    "nombre": "Juzgado Quinto de Distrito en el Estado de Sonora",
+    "circuito_id": 5
+  },
+  {
+    "id": 171,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Sonora",
+    "circuito_id": 5
+  },
+  {
+    "id": 179,
+    "nombre": "Juzgado Séptimo de Distrito en el Estado de Sonora",
+    "circuito_id": 5
+  },
+  {
+    "id": 174,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Sonora",
+    "circuito_id": 5
+  },
+  {
+    "id": 778,
+    "nombre": "Primer Tribunal Colegiado en Materias Civil y de Trabajo del Quinto Circuito",
+    "circuito_id": 5
+  },
+  {
+    "id": 775,
+    "nombre": "Primer Tribunal Colegiado en Materias Penal y Administrativa del Quinto Circuito",
+    "circuito_id": 5
+  },
+  {
+    "id": 4308,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Sonora, con sede en Hermosillo",
+    "circuito_id": 5
+  },
+  {
+    "id": 779,
+    "nombre": "Segundo Tribunal Colegiado en Materias Civil y de Trabajo del Quinto Circuito",
+    "circuito_id": 5
+  },
+  {
+    "id": 776,
+    "nombre": "Segundo Tribunal Colegiado en Materias Penal y Administrativa del Quinto Circuito",
+    "circuito_id": 5
+  },
+  {
+    "id": 4309,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Sonora, con sede en Hermosillo",
+    "circuito_id": 5
+  },
+  {
+    "id": 1441,
+    "nombre": "Tercer Tribunal Colegiado en Materias Civil y de Trabajo del Quinto Circuito",
+    "circuito_id": 5
+  },
+  {
+    "id": 777,
+    "nombre": "Tercer Tribunal Colegiado en Materias Penal y Administrativa del Quinto Circuito",
+    "circuito_id": 5
+  },
+  {
+    "id": 4350,
+    "nombre": "Tribunal Colegiado de Apelación del Quinto Circuito, con residencia en Hermosillo",
+    "circuito_id": 5
+  },
+  {
+    "id": 4109,
+    "nombre": "Cuarto Tribunal Laboral Federal de asuntos Individuales en el Estado de Puebla, con sede en Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 1457,
+    "nombre": "Juzgado Cuarto de Distrito en Materia Penal en el Estado de Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 1450,
+    "nombre": "Juzgado Cuarto de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y Juicios Federales en el Estado de Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 4422,
+    "nombre": "Juzgado Décimo de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y Juicios Federales en el Estado de Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 3900,
+    "nombre": "Juzgado Noveno de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 3457,
+    "nombre": "Juzgado Octavo de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y Juicios Federales en el Estado de Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 1288,
+    "nombre": "Juzgado Primero de Distrito del Centro Auxiliar de la Segunda Región, en su carácter de Ordinario",
+    "circuito_id": 6
+  },
+  {
+    "id": 1238,
+    "nombre": "Juzgado Primero de Distrito en Materia Mercantil Federal en el Estado de Puebla, Especializado en Juicios Orales",
+    "circuito_id": 6
+  },
+  {
+    "id": 1453,
+    "nombre": "Juzgado Primero de Distrito en Materia Penal en el Estado de Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 1447,
+    "nombre": "Juzgado Primero de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y de Juicios Federales en el Estado de Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 1458,
+    "nombre": "Juzgado Quinto de Distrito en Materia Penal en el Estado de Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 1451,
+    "nombre": "Juzgado Quinto de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y Juicios Federales en el Estado de Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 1293,
+    "nombre": "Juzgado Segundo de Distrito del Centro Auxiliar de la Segunda Región, en su carácter de Ordinario",
+    "circuito_id": 6
+  },
+  {
+    "id": 4420,
+    "nombre": "Juzgado Segundo de Distrito en Materia Mercantil Federal en el Estado de Puebla, Especializado en Juicios Orales",
+    "circuito_id": 6
+  },
+  {
+    "id": 1455,
+    "nombre": "Juzgado Segundo de Distrito en Materia Penal en el Estado de Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 1448,
+    "nombre": "Juzgado Segundo de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y Juicios Federales en el Estado de Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 1277,
+    "nombre": "Juzgado Sexto de Distrito del Centro Auxiliar de la Segunda Región, en su carácter de Ordinario",
+    "circuito_id": 6
+  },
+  {
+    "id": 1452,
+    "nombre": "Juzgado Sexto de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y Juicios Federales en el Estado de Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 3456,
+    "nombre": "Juzgado Séptimo de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y Juicios Federales en el Estado de Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 1275,
+    "nombre": "Juzgado Tercero de Distrito del Centro Auxiliar de la Segunda Región, en su carácter de Ordinario",
+    "circuito_id": 6
+  },
+  {
+    "id": 1456,
+    "nombre": "Juzgado Tercero de Distrito en Materia Penal en el Estado de Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 1449,
+    "nombre": "Juzgado Tercero de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y Juicios Federales en el Estado de Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 1294,
+    "nombre": "Primer Tribunal Colegiado de Circuito del Centro Auxiliar de la Segunda Región, en su carácter de Ordinario",
+    "circuito_id": 6
+  },
+  {
+    "id": 182,
+    "nombre": "Primer Tribunal Colegiado en Materia Administrativa del Sexto Circuito",
+    "circuito_id": 6
+  },
+  {
+    "id": 183,
+    "nombre": "Primer Tribunal Colegiado en Materia Civil del Sexto Circuito",
+    "circuito_id": 6
+  },
+  {
+    "id": 185,
+    "nombre": "Primer Tribunal Colegiado en Materia Penal del Sexto Circuito",
+    "circuito_id": 6
+  },
+  {
+    "id": 184,
+    "nombre": "Primer Tribunal Colegiado en Materia de Trabajo del Sexto Circuito",
+    "circuito_id": 6
+  },
+  {
+    "id": 4106,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Puebla, con sede en Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 1295,
+    "nombre": "Segundo Tribunal Colegiado de Circuito del Centro Auxiliar de la Segunda Región, en su carácter de Ordinario",
+    "circuito_id": 6
+  },
+  {
+    "id": 188,
+    "nombre": "Segundo Tribunal Colegiado en Materia Administrativa del Sexto Circuito",
+    "circuito_id": 6
+  },
+  {
+    "id": 189,
+    "nombre": "Segundo Tribunal Colegiado en Materia Civil del Sexto Circuito",
+    "circuito_id": 6
+  },
+  {
+    "id": 191,
+    "nombre": "Segundo Tribunal Colegiado en Materia Penal del Sexto Circuito",
+    "circuito_id": 6
+  },
+  {
+    "id": 1332,
+    "nombre": "Segundo Tribunal Colegiado en Materia de Trabajo del Sexto Circuito, con residencia en Puebla, Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 4107,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Puebla, con sede en Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 193,
+    "nombre": "Tercer Tribunal Colegiado en Materia Administrativa del Sexto Circuito",
+    "circuito_id": 6
+  },
+  {
+    "id": 194,
+    "nombre": "Tercer Tribunal Colegiado en Materia Civil del Sexto Circuito",
+    "circuito_id": 6
+  },
+  {
+    "id": 1335,
+    "nombre": "Tercer Tribunal Colegiado en Materia Penal del Sexto Circuito, con residencia en San Andrés Cholula, Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 4108,
+    "nombre": "Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Puebla, con sede en Puebla",
+    "circuito_id": 6
+  },
+  {
+    "id": 4351,
+    "nombre": "Tribunal Colegiado de Apelación del Sexto Circuito, con residencia en San Andrés Cholula",
+    "circuito_id": 6
+  },
+  {
+    "id": 4121,
+    "nombre": "Cuarto Tribunal Laboral Federal de asuntos individuales en el Estado de Veracruz, con sede en Boca del Río",
+    "circuito_id": 7
+  },
+  {
+    "id": 210,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de Veracruz",
+    "circuito_id": 7
+  },
+  {
+    "id": 1571,
+    "nombre": "Juzgado Decimoctavo de Distrito en el Estado de Veracruz, con residencia en Xalapa",
+    "circuito_id": 7
+  },
+  {
+    "id": 760,
+    "nombre": "Juzgado Decimoquinto de Distrito en el Estado de Veracruz",
+    "circuito_id": 7
+  },
+  {
+    "id": 936,
+    "nombre": "Juzgado Decimosexto de Distrito en el Estado de Veracruz",
+    "circuito_id": 7
+  },
+  {
+    "id": 1314,
+    "nombre": "Juzgado Decimoséptimo de Distrito en el Estado de Veracruz, con residencia en Xalapa",
+    "circuito_id": 7
+  },
+  {
+    "id": 585,
+    "nombre": "Juzgado Décimo Primero de Distrito en el Estado de Veracruz",
+    "circuito_id": 7
+  },
+  {
+    "id": 709,
+    "nombre": "Juzgado Décimo Segundo de Distrito en el Estado de Veracruz",
+    "circuito_id": 7
+  },
+  {
+    "id": 714,
+    "nombre": "Juzgado Décimo Tercero de Distrito en el Estado de Veracruz",
+    "circuito_id": 7
+  },
+  {
+    "id": 214,
+    "nombre": "Juzgado Octavo de Distrito en el Estado de Veracruz",
+    "circuito_id": 7
+  },
+  {
+    "id": 3876,
+    "nombre": "Juzgado Primero de Distrito de Procesos Penales Federales y de Amparo en Materia Penal en el Estado de Veracruz, con residencia en Villa Aldama",
+    "circuito_id": 7
+  },
+  {
+    "id": 203,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Veracruz",
+    "circuito_id": 7
+  },
+  {
+    "id": 211,
+    "nombre": "Juzgado Quinto de Distrito en el Estado de Veracruz",
+    "circuito_id": 7
+  },
+  {
+    "id": 3877,
+    "nombre": "Juzgado Segundo de Distrito de Procesos Penales Federales y de Amparo en Materia Penal en el Estado de Veracruz, con residencia en Villa Aldama",
+    "circuito_id": 7
+  },
+  {
+    "id": 207,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Veracruz",
+    "circuito_id": 7
+  },
+  {
+    "id": 212,
+    "nombre": "Juzgado Sexto de Distrito en el Estado de Veracruz",
+    "circuito_id": 7
+  },
+  {
+    "id": 213,
+    "nombre": "Juzgado Séptimo de Distrito en el Estado de Veracruz",
+    "circuito_id": 7
+  },
+  {
+    "id": 209,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Veracruz",
+    "circuito_id": 7
+  },
+  {
+    "id": 2951,
+    "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de Veracruz, con residencia en Boca del Río",
+    "circuito_id": 7
+  },
+  {
+    "id": 3842,
+    "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de Veracruz, con residencia en Xalapa",
+    "circuito_id": 7
+  },
+  {
+    "id": 4129,
+    "nombre": "Noveno Tribunal Laboral Federal de asuntos individuales en el Estado de Veracruz, con sede en Xalapa",
+    "circuito_id": 7
+  },
+  {
+    "id": 4128,
+    "nombre": "Octavo Tribunal Laboral Federal de asuntos individuales en el Estado de Veracruz, con sede en Xalapa",
+    "circuito_id": 7
+  },
+  {
+    "id": 956,
+    "nombre": "Primer Tribunal Colegiado en Materia Administrativa del Séptimo Circuito",
+    "circuito_id": 7
+  },
+  {
+    "id": 200,
+    "nombre": "Primer Tribunal Colegiado en Materia Civil del Séptimo Circuito",
+    "circuito_id": 7
+  },
+  {
+    "id": 1412,
+    "nombre": "Primer Tribunal Colegiado en Materia Penal del Séptimo Circuito, con residencia en Boca del Río, Veracruz",
+    "circuito_id": 7
+  },
+  {
+    "id": 1414,
+    "nombre": "Primer Tribunal Colegiado en Materia de Trabajo del Séptimo Circuito, con residencia en Xalapa, Veracruz",
+    "circuito_id": 7
+  },
+  {
+    "id": 4122,
+    "nombre": "Quinto Tribunal Laboral Federal de asuntos individuales en el Estado de Veracruz, con sede en Boca del Río",
+    "circuito_id": 7
+  },
+  {
+    "id": 957,
+    "nombre": "Segundo Tribunal Colegiado en Materia Administrativa del Séptimo Circuito",
+    "circuito_id": 7
+  },
+  {
+    "id": 205,
+    "nombre": "Segundo Tribunal Colegiado en Materia Civil del Séptimo Circuito",
+    "circuito_id": 7
+  },
+  {
+    "id": 1413,
+    "nombre": "Segundo Tribunal Colegiado en Materia Penal del Séptimo Circuito, con residencia en Boca del Río, Veracruz",
+    "circuito_id": 7
+  },
+  {
+    "id": 1415,
+    "nombre": "Segundo Tribunal Colegiado en Materia de Trabajo del Séptimo Circuito, con residencia en Xalapa, Veracruz",
+    "circuito_id": 7
+  },
+  {
+    "id": 4125,
+    "nombre": "Sexto Tribunal Laboral Federal de asuntos individuales en el Estado de Veracruz, con sede en Xalapa",
+    "circuito_id": 7
+  },
+  {
+    "id": 4126,
+    "nombre": "Séptimo Tribunal Laboral Federal de asuntos individuales en el Estado de Veracruz, con sede en Xalapa",
+    "circuito_id": 7
+  },
+  {
+    "id": 4123,
+    "nombre": "Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Veracruz, con sede en Boca del Río",
+    "circuito_id": 7
+  },
+  {
+    "id": 4352,
+    "nombre": "Tribunal Colegiado de Apelación del Séptimo Circuito, con residencia en Xalapa, Veracruz",
+    "circuito_id": 7
+  },
+  {
+    "id": 4278,
+    "nombre": "Cuarto Tribunal Laboral Federal de asuntos individuales en el Estado de Coahuila, con sede en Saltillo",
+    "circuito_id": 8
+  },
+  {
+    "id": 932,
+    "nombre": "Juzgado Cuarto de Distrito en La Laguna",
+    "circuito_id": 8
+  },
+  {
+    "id": 223,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de Coahuila",
+    "circuito_id": 8
+  },
+  {
+    "id": 712,
+    "nombre": "Juzgado Primero de Distrito en La Laguna",
+    "circuito_id": 8
+  },
+  {
+    "id": 217,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Coahuila",
+    "circuito_id": 8
+  },
+  {
+    "id": 1711,
+    "nombre": "Juzgado Quinto de Distrito en La Laguna",
+    "circuito_id": 8
+  },
+  {
+    "id": 4145,
+    "nombre": "Juzgado Quinto de Distrito en el estado de Coahuila de Zaragoza, con residencia en Saltillo",
+    "circuito_id": 8
+  },
+  {
+    "id": 931,
+    "nombre": "Juzgado Segundo de Distrito en La Laguna",
+    "circuito_id": 8
+  },
+  {
+    "id": 220,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Coahuila",
+    "circuito_id": 8
+  },
+  {
+    "id": 1712,
+    "nombre": "Juzgado Sexto de Distrito en La Laguna",
+    "circuito_id": 8
+  },
+  {
+    "id": 3861,
+    "nombre": "Juzgado Séptimo de Distrito en La Laguna, con residencia en Torreón",
+    "circuito_id": 8
+  },
+  {
+    "id": 713,
+    "nombre": "Juzgado Tercero de Distrito en La Laguna",
+    "circuito_id": 8
+  },
+  {
+    "id": 222,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Coahuila",
+    "circuito_id": 8
+  },
+  {
+    "id": 3822,
+    "nombre": "Juzgado de Distrito en Materia Mercantil Federal en la Laguna, con residencia en Torreón, Coahuila de Zaragoza",
+    "circuito_id": 8
+  },
+  {
+    "id": 1144,
+    "nombre": "Primer Tribunal Colegiado en Materias Civil y de Trabajo del Octavo Circuito",
+    "circuito_id": 8
+  },
+  {
+    "id": 1143,
+    "nombre": "Primer Tribunal Colegiado en Materias Penal y Administrativa del Octavo Circuito",
+    "circuito_id": 8
+  },
+  {
+    "id": 4275,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Coahuila, con sede en Saltillo",
+    "circuito_id": 8
+  },
+  {
+    "id": 4279,
+    "nombre": "Quinto Tribunal Laboral Federal de asuntos individuales en el Estado de Coahuila, con sede en Torreón",
+    "circuito_id": 8
+  },
+  {
+    "id": 1331,
+    "nombre": "Segundo Tribunal Colegiado en Materias Civil y de Trabajo del Octavo Circuito, con residencia en Torreón, Coah.",
+    "circuito_id": 8
+  },
+  {
+    "id": 1145,
+    "nombre": "Segundo Tribunal Colegiado en Materias Penal y Administrativa del Octavo Circuito",
+    "circuito_id": 8
+  },
+  {
+    "id": 4276,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Coahuila, con sede en Saltillo",
+    "circuito_id": 8
+  },
+  {
+    "id": 4280,
+    "nombre": "Sexto Tribunal Laboral Federal de asuntos individuales en el Estado de Coahuila, con sede en Torreón",
+    "circuito_id": 8
+  },
+  {
+    "id": 4281,
+    "nombre": "Séptimo Tribunal Laboral Federal de asuntos individuales en el Estado de Coahuila, con sede en Torreón",
+    "circuito_id": 8
+  },
+  {
+    "id": 4575,
+    "nombre": "Tercer Tribunal Colegiado en Materias Civil y de Trabajo del Octavo Circuito, con residencia en Torreón, Coahuila de Zaragoza",
+    "circuito_id": 8
+  },
+  {
+    "id": 2954,
+    "nombre": "Tercer Tribunal Colegiado en Materias Penal y Administrativa del Octavo Circuito",
+    "circuito_id": 8
+  },
+  {
+    "id": 4277,
+    "nombre": "Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Coahuila, con sede en Saltillo",
+    "circuito_id": 8
+  },
+  {
+    "id": 4353,
+    "nombre": "Tribunal Colegiado de Apelación del Octavo Circuito, con residencia en Torreón",
+    "circuito_id": 8
+  },
+  {
+    "id": 1147,
+    "nombre": "Tribunal Colegiado en Materias Administrativa y Civil del Octavo Circuito",
+    "circuito_id": 8
+  },
+  {
+    "id": 1146,
+    "nombre": "Tribunal Colegiado en Materias Penal y de Trabajo del Octavo Circuito",
+    "circuito_id": 8
+  },
+  {
+    "id": 230,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de San Luis Potosí",
+    "circuito_id": 9
+  },
+  {
+    "id": 2071,
+    "nombre": "Juzgado Octavo de Distrito en el Estado de San Luis Potosí",
+    "circuito_id": 9
+  },
+  {
+    "id": 226,
+    "nombre": "Juzgado Primero de Distrito en el Estado de San Luis Potosí",
+    "circuito_id": 9
+  },
+  {
+    "id": 471,
+    "nombre": "Juzgado Quinto de Distrito en el Estado de San Luis Potosí",
+    "circuito_id": 9
+  },
+  {
+    "id": 228,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de San Luis Potosí",
+    "circuito_id": 9
+  },
+  {
+    "id": 974,
+    "nombre": "Juzgado Sexto de Distrito en el Estado de San Luis Potosí",
+    "circuito_id": 9
+  },
+  {
+    "id": 1216,
+    "nombre": "Juzgado Séptimo de Distrito en el Estado de San Luis Potosí",
+    "circuito_id": 9
+  },
+  {
+    "id": 229,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de San Luis Potosí",
+    "circuito_id": 9
+  },
+  {
+    "id": 3459,
+    "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de San Luis Potosí",
+    "circuito_id": 9
+  },
+  {
+    "id": 1560,
+    "nombre": "Primer Tribunal Colegiado en Materias Civil y Administrativa del Noveno Circuito",
+    "circuito_id": 9
+  },
+  {
+    "id": 4586,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de San Luis Potosí, con sede en San Luis Potosí",
+    "circuito_id": 9
+  },
+  {
+    "id": 1561,
+    "nombre": "Segundo Tribunal Colegiado en Materias Civil y Administrativa del Noveno Circuito",
+    "circuito_id": 9
+  },
+  {
+    "id": 4587,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de San Luis Potosí, con sede en San Luis Potosí",
+    "circuito_id": 9
+  },
+  {
+    "id": 4588,
+    "nombre": "Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de San Luis Potosí, con sede en San Luis Potosí",
+    "circuito_id": 9
+  },
+  {
+    "id": 4354,
+    "nombre": "Tribunal Colegiado de Apelación del Noveno Circuito, con residencia en San Luis Potosí, San Luis Potosí",
+    "circuito_id": 9
+  },
+  {
+    "id": 1557,
+    "nombre": "Tribunal Colegiado en Materia Penal del Noveno Circuito",
+    "circuito_id": 9
+  },
+  {
+    "id": 1558,
+    "nombre": "Tribunal Colegiado en Materia de Trabajo del Noveno Circuito",
+    "circuito_id": 9
+  },
+  {
+    "id": 3985,
+    "nombre": "Tribunal Laboral Federal de asuntos individuales en el Estado de San Luis Potosí, con sede en San Luis Potosí",
+    "circuito_id": 9
+  },
+  {
+    "id": 4453,
+    "nombre": "Cuarto Tribunal Laboral Federal de asuntos individuales en el Estado de Tabasco, con sede en Villahermosa",
+    "circuito_id": 10
+  },
+  {
+    "id": 467,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de Tabasco",
+    "circuito_id": 10
+  },
+  {
+    "id": 717,
+    "nombre": "Juzgado Decimocuarto de Distrito en el Estado de Veracruz",
+    "circuito_id": 10
+  },
+  {
+    "id": 2956,
+    "nombre": "Juzgado Décimo Noveno de Distrito en el Estado de Veracruz",
+    "circuito_id": 10
+  },
+  {
+    "id": 240,
+    "nombre": "Juzgado Décimo de Distrito en el Estado de Veracruz",
+    "circuito_id": 10
+  },
+  {
+    "id": 239,
+    "nombre": "Juzgado Noveno de Distrito en el Estado de Veracruz",
+    "circuito_id": 10
+  },
+  {
+    "id": 4001,
+    "nombre": "Juzgado Octavo de Distrito en el Estado de Tabasco",
+    "circuito_id": 10
+  },
+  {
+    "id": 3826,
+    "nombre": "Juzgado Primero de Distrito en Materia Mercantil Federal en el Estado de Tabasco",
+    "circuito_id": 10
+  },
+  {
+    "id": 233,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Tabasco",
+    "circuito_id": 10
+  },
+  {
+    "id": 1421,
+    "nombre": "Juzgado Quinto de Distrito en el Estado de Tabasco",
+    "circuito_id": 10
+  },
+  {
+    "id": 4401,
+    "nombre": "Juzgado Segundo de Distrito en Materia Mercantil Federal en el Estado de Tabasco",
+    "circuito_id": 10
+  },
+  {
+    "id": 517,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Tabasco",
+    "circuito_id": 10
+  },
+  {
+    "id": 1422,
+    "nombre": "Juzgado Sexto de Distrito en el Estado de Tabasco",
+    "circuito_id": 10
+  },
+  {
+    "id": 2886,
+    "nombre": "Juzgado Séptimo de Distrito en el Estado de Tabasco",
+    "circuito_id": 10
+  },
+  {
+    "id": 238,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Tabasco",
+    "circuito_id": 10
+  },
+  {
+    "id": 5609,
+    "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de Veracruz, con residencia en Coatzacoalcos",
+    "circuito_id": 10
+  },
+  {
+    "id": 1162,
+    "nombre": "Primer Tribunal Colegiado del Décimo Circuito, con residencia en Coatzacoalcos, Veracruz",
+    "circuito_id": 10
+  },
+  {
+    "id": 3852,
+    "nombre": "Primer Tribunal Colegiado en Materia de Trabajo del Décimo Circuito, con residencia en Villahermosa, Tabasco",
+    "circuito_id": 10
+  },
+  {
+    "id": 4450,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Tabasco, con sede en Villahermosa",
+    "circuito_id": 10
+  },
+  {
+    "id": 4118,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Veracruz, con sede en Coatzacoalcos",
+    "circuito_id": 10
+  },
+  {
+    "id": 4454,
+    "nombre": "Quinto Tribunal Laboral Federal de asuntos individuales en el Estado de Tabasco, con sede en Villahermosa",
+    "circuito_id": 10
+  },
+  {
+    "id": 3841,
+    "nombre": "Segundo Tribunal Colegiado del Décimo Circuito, con residencia en Coatzacoalcos, Veracruz",
+    "circuito_id": 10
+  },
+  {
+    "id": 3853,
+    "nombre": "Segundo Tribunal Colegiado en Materia de Trabajo del Décimo Circuito, con residencia en Villahermosa, Tabasco",
+    "circuito_id": 10
+  },
+  {
+    "id": 4451,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Tabasco, con sede en Villahermosa",
+    "circuito_id": 10
+  },
+  {
+    "id": 4119,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Veracruz, con sede en Coatzacoalcos",
+    "circuito_id": 10
+  },
+  {
+    "id": 4455,
+    "nombre": "Sexto Tribunal Laboral Federal de asuntos individuales en el Estado de Tabasco, con sede en Villahermosa",
+    "circuito_id": 10
+  },
+  {
+    "id": 4426,
+    "nombre": "Tercer Tribunal Colegiado en Materia de Trabajo del Décimo Circuito, con residencia en Villahermosa, Tabasco",
+    "circuito_id": 10
+  },
+  {
+    "id": 4452,
+    "nombre": "Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Tabasco, con sede en Villahermosa",
+    "circuito_id": 10
+  },
+  {
+    "id": 4355,
+    "nombre": "Tribunal Colegiado de Apelación del Décimo Circuito, con residencia en Villahermosa, Tabasco",
+    "circuito_id": 10
+  },
+  {
+    "id": 1064,
+    "nombre": "Tribunal Colegiado en Materia Administrativa del Décimo Circuito, con residencia en Villa Hermosa, Tabasco",
+    "circuito_id": 10
+  },
+  {
+    "id": 1062,
+    "nombre": "Tribunal Colegiado en Materia Civil del Décimo Circuito, con residencia en Villahermosa, Tabasco",
+    "circuito_id": 10
+  },
+  {
+    "id": 1063,
+    "nombre": "Tribunal Colegiado en Materia Penal del Décimo Circuito, con residencia en Villahermosa, Tabasco",
+    "circuito_id": 10
+  },
+  {
+    "id": 3992,
+    "nombre": "Tribunal Laboral Federal de asuntos individuales en el Estado de Tabasco, con sede en Villahermosa",
+    "circuito_id": 10
+  },
+  {
+    "id": 249,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de Michoacán",
+    "circuito_id": 11
+  },
+  {
+    "id": 707,
+    "nombre": "Juzgado Noveno de Distrito en el Estado de Michoacán",
+    "circuito_id": 11
+  },
+  {
+    "id": 460,
+    "nombre": "Juzgado Octavo de Distrito en el Estado de Michoacán",
+    "circuito_id": 11
+  },
+  {
+    "id": 243,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Michoacán",
+    "circuito_id": 11
+  },
+  {
+    "id": 250,
+    "nombre": "Juzgado Quinto de Distrito en el Estado de Michoacán",
+    "circuito_id": 11
+  },
+  {
+    "id": 246,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Michoacán",
+    "circuito_id": 11
+  },
+  {
+    "id": 251,
+    "nombre": "Juzgado Sexto de Distrito en el Estado de Michoacán",
+    "circuito_id": 11
+  },
+  {
+    "id": 941,
+    "nombre": "Juzgado Séptimo de Distrito en el Estado de Michoacán",
+    "circuito_id": 11
+  },
+  {
+    "id": 248,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Michoacán",
+    "circuito_id": 11
+  },
+  {
+    "id": 4409,
+    "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de Michoacán, con residencia en Morelia",
+    "circuito_id": 11
+  },
+  {
+    "id": 1040,
+    "nombre": "Primer Tribunal Colegiado en Materia Civil del Decimoprimer Circuito",
+    "circuito_id": 11
+  },
+  {
+    "id": 1041,
+    "nombre": "Primer Tribunal Colegiado en Materias Administrativa y de Trabajo del Decimoprimer Circuito",
+    "circuito_id": 11
+  },
+  {
+    "id": 4293,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Michoacán, con sede en Morelia",
+    "circuito_id": 11
+  },
+  {
+    "id": 1410,
+    "nombre": "Segundo Tribunal Colegiado en Materia Civil del Decimoprimer Circuito",
+    "circuito_id": 11
+  },
+  {
+    "id": 1042,
+    "nombre": "Segundo Tribunal Colegiado en Materias Administrativa y de Trabajo del Decimoprimer Circuito",
+    "circuito_id": 11
+  },
+  {
+    "id": 4294,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Michoacán, con sede en Morelia",
+    "circuito_id": 11
+  },
+  {
+    "id": 2423,
+    "nombre": "Tercer Tribunal Colegiado en Materias Administrativa y de Trabajo del Decimoprimer Circuito",
+    "circuito_id": 11
+  },
+  {
+    "id": 4356,
+    "nombre": "Tribunal Colegiado de Apelación del Decimoprimer, Circuito, con residencia en Morelia",
+    "circuito_id": 11
+  },
+  {
+    "id": 1043,
+    "nombre": "Tribunal Colegiado en Materia Penal del Decimoprimer Circuito",
+    "circuito_id": 11
+  },
+  {
+    "id": 263,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de Sinaloa",
+    "circuito_id": 12
+  },
+  {
+    "id": 270,
+    "nombre": "Juzgado Décimo de Distrito en el Estado de Sinaloa",
+    "circuito_id": 12
+  },
+  {
+    "id": 269,
+    "nombre": "Juzgado Noveno de Distrito en el Estado de Sinaloa",
+    "circuito_id": 12
+  },
+  {
+    "id": 268,
+    "nombre": "Juzgado Octavo de Distrito en el Estado de Sinaloa",
+    "circuito_id": 12
+  },
+  {
+    "id": 255,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Sinaloa",
+    "circuito_id": 12
+  },
+  {
+    "id": 265,
+    "nombre": "Juzgado Quinto de Distrito en el Estado de Sinaloa",
+    "circuito_id": 12
+  },
+  {
+    "id": 258,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Sinaloa",
+    "circuito_id": 12
+  },
+  {
+    "id": 266,
+    "nombre": "Juzgado Sexto de Distrito en el Estado de Sinaloa",
+    "circuito_id": 12
+  },
+  {
+    "id": 267,
+    "nombre": "Juzgado Séptimo de Distrito en el Estado de Sinaloa",
+    "circuito_id": 12
+  },
+  {
+    "id": 261,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Sinaloa",
+    "circuito_id": 12
+  },
+  {
+    "id": 4144,
+    "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el estado de Sinaloa, con residencia en Mazatlán",
+    "circuito_id": 12
+  },
+  {
+    "id": 1378,
+    "nombre": "Primer Tribunal Colegiado en Materia Administrativa del Decimosegundo Circuito",
+    "circuito_id": 12
+  },
+  {
+    "id": 1380,
+    "nombre": "Primer Tribunal Colegiado en Materia Civil del Decimosegundo Circuito",
+    "circuito_id": 12
+  },
+  {
+    "id": 4306,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Sinaloa, con sede en Culiacán",
+    "circuito_id": 12
+  },
+  {
+    "id": 1379,
+    "nombre": "Segundo Tribunal Colegiado en Materia Administrativa del Decimosegundo Circuito",
+    "circuito_id": 12
+  },
+  {
+    "id": 4397,
+    "nombre": "Segundo Tribunal Colegiado en Materia Civil del Decimosegundo Circuito",
+    "circuito_id": 12
+  },
+  {
+    "id": 4307,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Sinaloa, con sede en Culiacán",
+    "circuito_id": 12
+  },
+  {
+    "id": 4357,
+    "nombre": "Tribunal Colegiado de Apelación del Decimosegundo Circuito, con residencia en Culiacán",
+    "circuito_id": 12
+  },
+  {
+    "id": 4395,
+    "nombre": "Tribunal Colegiado en Materia Penal del Décimo Segundo Circuito, con residencia en Culiacán, Sinaloa",
+    "circuito_id": 12
+  },
+  {
+    "id": 1381,
+    "nombre": "Tribunal Colegiado en Materia de Trabajo del Decimosegundo Circuito",
+    "circuito_id": 12
+  },
+  {
+    "id": 279,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de Oaxaca",
+    "circuito_id": 13
+  },
+  {
+    "id": 1890,
+    "nombre": "Juzgado Decimoprimero de Distrito en el Estado de Oaxaca, con residencia en San Bartolo Coyotepec",
+    "circuito_id": 13
+  },
+  {
+    "id": 1889,
+    "nombre": "Juzgado Décimo de Distrito en el Estado de Oaxaca, con residencia en San Bartolo Coyotepec",
+    "circuito_id": 13
+  },
+  {
+    "id": 1666,
+    "nombre": "Juzgado Noveno de Distrito en el Estado de Oaxaca, con residencia en San Bartolo Coyotepec",
+    "circuito_id": 13
+  },
+  {
+    "id": 466,
+    "nombre": "Juzgado Octavo de Distrito en el Estado de Oaxaca",
+    "circuito_id": 13
+  },
+  {
+    "id": 273,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Oaxaca",
+    "circuito_id": 13
+  },
+  {
+    "id": 483,
+    "nombre": "Juzgado Quinto de Distrito en el Estado de Oaxaca",
+    "circuito_id": 13
+  },
+  {
+    "id": 276,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Oaxaca",
+    "circuito_id": 13
+  },
+  {
+    "id": 281,
+    "nombre": "Juzgado Sexto de Distrito en el Estado de Oaxaca",
+    "circuito_id": 13
+  },
+  {
+    "id": 282,
+    "nombre": "Juzgado Séptimo de Distrito en el Estado de Oaxaca",
+    "circuito_id": 13
+  },
+  {
+    "id": 278,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Oaxaca",
+    "circuito_id": 13
+  },
+  {
+    "id": 3448,
+    "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de Oaxaca",
+    "circuito_id": 13
+  },
+  {
+    "id": 1057,
+    "nombre": "Primer Tribunal Colegiado en Materias Civil y Administrativa del Décimo Tercer Circuito, con residencia en Oaxaca, Oaxaca",
+    "circuito_id": 13
+  },
+  {
+    "id": 1058,
+    "nombre": "Primer Tribunal Colegiado en Materias Penal y de Trabajo del Decimotercer Circuito, con residencia en San Bartolo Coyotepec, Oaxaca",
+    "circuito_id": 13
+  },
+  {
+    "id": 4103,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Oaxaca, con sede en Oaxaca",
+    "circuito_id": 13
+  },
+  {
+    "id": 3858,
+    "nombre": "Segundo Tribunal Colegiado en Materias Civil y Administrativa del Decimotercer Circuito, con residencia en Oaxaca, Oaxaca",
+    "circuito_id": 13
+  },
+  {
+    "id": 1059,
+    "nombre": "Segundo Tribunal Colegiado en Materias Penal y de Trabajo del Decimotercer Circuito, con residencia en San Bartolo Coyotepec, Oaxaca",
+    "circuito_id": 13
+  },
+  {
+    "id": 4104,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Oaxaca, con sede en Oaxaca",
+    "circuito_id": 13
+  },
+  {
+    "id": 4358,
+    "nombre": "Tribunal Colegiado de Apelación del Decimotercer Circuito, con residencia en San Bartolo Coyotepec",
+    "circuito_id": 13
+  },
+  {
+    "id": 461,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de Yucatán",
+    "circuito_id": 14
+  },
+  {
+    "id": 420,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Yucatán",
+    "circuito_id": 14
+  },
+  {
+    "id": 1353,
+    "nombre": "Juzgado Quinto de Distrito en el Estado de Yucatán, con residencia en Mérida",
+    "circuito_id": 14
+  },
+  {
+    "id": 422,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Yucatán",
+    "circuito_id": 14
+  },
+  {
+    "id": 4403,
+    "nombre": "Juzgado Sexto de Distrito en el Estado de Yucatán, con residencia en Mérida",
+    "circuito_id": 14
+  },
+  {
+    "id": 290,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Yucatán",
+    "circuito_id": 14
+  },
+  {
+    "id": 3450,
+    "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de Yucatán",
+    "circuito_id": 14
+  },
+  {
+    "id": 4315,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Yucatán, con sede en Mérida",
+    "circuito_id": 14
+  },
+  {
+    "id": 4316,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Yucatán, con sede en Mérida",
+    "circuito_id": 14
+  },
+  {
+    "id": 4359,
+    "nombre": "Tribunal Colegiado de Apelación del Decimocuarto Circuito, con residencia en Mérida, Yucatán",
+    "circuito_id": 14
+  },
+  {
+    "id": 951,
+    "nombre": "Tribunal Colegiado en Materias Civil y Administrativa del Decimocuarto Circuito",
+    "circuito_id": 14
+  },
+  {
+    "id": 950,
+    "nombre": "Tribunal Colegiado en Materias Penal y Administrativa del Decimocuarto Circuito",
+    "circuito_id": 14
+  },
+  {
+    "id": 952,
+    "nombre": "Tribunal Colegiado en Materias de Trabajo y Administrativa del Decimocuarto Circuito",
+    "circuito_id": 14
+  },
+  {
+    "id": 703,
+    "nombre": "Cuarto Tribunal Colegiado del Décimo Quinto Circuito",
+    "circuito_id": 15
+  },
+  {
+    "id": 1357,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de Baja California, con residencia en Mexicali",
+    "circuito_id": 15
+  },
+  {
+    "id": 3460,
+    "nombre": "Juzgado Decimocuarto de Distrito en el Estado de Baja California, con residencia en Tijuana",
+    "circuito_id": 15
+  },
+  {
+    "id": 1344,
+    "nombre": "Juzgado Decimoprimero de Distrito en el Estado de Baja California, con residencia en Tijuana",
+    "circuito_id": 15
+  },
+  {
+    "id": 3886,
+    "nombre": "Juzgado Decimoquinto de Distrito en el Estado de Baja California, con residencia en Tijuana",
+    "circuito_id": 15
+  },
+  {
+    "id": 1345,
+    "nombre": "Juzgado Decimosegundo de Distrito en el Estado de Baja California, con residencia en Tijuana",
+    "circuito_id": 15
+  },
+  {
+    "id": 3887,
+    "nombre": "Juzgado Decimosexto de Distrito en el Estado de Baja California, con residencia en Tijuana",
+    "circuito_id": 15
+  },
+  {
+    "id": 5740,
+    "nombre": "Juzgado Decimoséptimo de Distrito en el Estado de Baja California, con residencia en Tijuana",
+    "circuito_id": 15
+  },
+  {
+    "id": 1351,
+    "nombre": "Juzgado Decimotercero de Distrito en el Estado de Baja California, con residencia en Tijuana",
+    "circuito_id": 15
+  },
+  {
+    "id": 1343,
+    "nombre": "Juzgado Décimo de Distrito en el Estado de Baja California, con residencia en Tijuana",
+    "circuito_id": 15
+  },
+  {
+    "id": 1361,
+    "nombre": "Juzgado Octavo de Distrito en el Estado de Baja California, con residencia en Ensenada",
+    "circuito_id": 15
+  },
+  {
+    "id": 3840,
+    "nombre": "Juzgado Primero de Distrito en Materia Mercantil Federal en el Estado de Baja California, con residencia en Mexicali",
+    "circuito_id": 15
+  },
+  {
+    "id": 293,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Baja California",
+    "circuito_id": 15
+  },
+  {
+    "id": 1358,
+    "nombre": "Juzgado Quinto de Distrito en el Estado de Baja California, con residencia en Mexicali",
+    "circuito_id": 15
+  },
+  {
+    "id": 4416,
+    "nombre": "Juzgado Segundo de Distrito en Materia Mercantil Federal en el Estado de Baja California, con residencia en Mexicali",
+    "circuito_id": 15
+  },
+  {
+    "id": 296,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Baja California",
+    "circuito_id": 15
+  },
+  {
+    "id": 1359,
+    "nombre": "Juzgado Sexto de Distrito en el Estado de Baja California, con residencia en Mexicali",
+    "circuito_id": 15
+  },
+  {
+    "id": 1360,
+    "nombre": "Juzgado Séptimo de Distrito en el Estado de Baja California, con residencia en Ensenada",
+    "circuito_id": 15
+  },
+  {
+    "id": 510,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Baja California",
+    "circuito_id": 15
+  },
+  {
+    "id": 291,
+    "nombre": "Primer Tribunal Colegiado del Décimo Quinto Circuito",
+    "circuito_id": 15
+  },
+  {
+    "id": 1673,
+    "nombre": "Primer Tribunal Colegiado en Materias Civil y de Trabajo del Decimoquinto Circuito",
+    "circuito_id": 15
+  },
+  {
+    "id": 4131,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Baja California, con sede en Ensenada",
+    "circuito_id": 15
+  },
+  {
+    "id": 1009,
+    "nombre": "Quinto Tribunal Colegiado del Décimo Quinto Circuito",
+    "circuito_id": 15
+  },
+  {
+    "id": 294,
+    "nombre": "Segundo Tribunal Colegiado del Décimo Quinto Circuito",
+    "circuito_id": 15
+  },
+  {
+    "id": 1674,
+    "nombre": "Segundo Tribunal Colegiado en Materias Civil y de Trabajo del Decimoquinto Circuito",
+    "circuito_id": 15
+  },
+  {
+    "id": 4132,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Baja California, con sede en Tijuana",
+    "circuito_id": 15
+  },
+  {
+    "id": 1387,
+    "nombre": "Sexto Tribunal Colegiado del Decimoquinto Circuito",
+    "circuito_id": 15
+  },
+  {
+    "id": 297,
+    "nombre": "Tercer Tribunal Colegiado del Décimo Quinto Circuito",
+    "circuito_id": 15
+  },
+  {
+    "id": 5603,
+    "nombre": "Tercer Tribunal Laboral de Asuntos Individuales en el Estado de Baja California con sede en Tijuana",
+    "circuito_id": 15
+  },
+  {
+    "id": 4360,
+    "nombre": "Tribunal Colegiado de Apelación del Decimoquinto Circuito, con residencia en Tijuana",
+    "circuito_id": 15
+  },
+  {
+    "id": 4457,
+    "nombre": "Cuarto Tribunal Laboral Federal de asuntos individuales en el Estado de Guanajuato, con sede en Guanajuato",
+    "circuito_id": 16
+  },
+  {
+    "id": 319,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de Guanajuato",
+    "circuito_id": 16
+  },
+  {
+    "id": 1364,
+    "nombre": "Juzgado Decimoprimero de Distrito en el Estado de Guanajuato",
+    "circuito_id": 16
+  },
+  {
+    "id": 2743,
+    "nombre": "Juzgado Decimosegundo de Distrito en el Estado de Guanajuato",
+    "circuito_id": 16
+  },
+  {
+    "id": 1245,
+    "nombre": "Juzgado Décimo de Distrito en el Estado de Guanajuato",
+    "circuito_id": 16
+  },
+  {
+    "id": 1243,
+    "nombre": "Juzgado Noveno de Distrito en el Estado de Guanajuato",
+    "circuito_id": 16
+  },
+  {
+    "id": 1000,
+    "nombre": "Juzgado Octavo de Distrito en el Estado de Guanajuato",
+    "circuito_id": 16
+  },
+  {
+    "id": 313,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Guanajuato",
+    "circuito_id": 16
+  },
+  {
+    "id": 321,
+    "nombre": "Juzgado Quinto de Distrito en el Estado de Guanajuato",
+    "circuito_id": 16
+  },
+  {
+    "id": 315,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Guanajuato",
+    "circuito_id": 16
+  },
+  {
+    "id": 322,
+    "nombre": "Juzgado Sexto de Distrito en el Estado de Guanajuato",
+    "circuito_id": 16
+  },
+  {
+    "id": 463,
+    "nombre": "Juzgado Séptimo de Distrito en el Estado de Guanajuato",
+    "circuito_id": 16
+  },
+  {
+    "id": 317,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Guanajuato",
+    "circuito_id": 16
+  },
+  {
+    "id": 1320,
+    "nombre": "Primer Tribunal Colegiado en Materia Administrativa del Decimosexto Circuito, con residencia en Guanajuato, Gto",
+    "circuito_id": 16
+  },
+  {
+    "id": 1323,
+    "nombre": "Primer Tribunal Colegiado en Materia Civil del Decimosexto Circuito, con residencia en Guanajuato, Gto",
+    "circuito_id": 16
+  },
+  {
+    "id": 786,
+    "nombre": "Primer Tribunal Colegiado en Materia Penal del Decimosexto Circuito",
+    "circuito_id": 16
+  },
+  {
+    "id": 1326,
+    "nombre": "Primer Tribunal Colegiado en Materia de Trabajo del Decimosexto Circuito, con residencia en Guanajuato, Gto",
+    "circuito_id": 16
+  },
+  {
+    "id": 4096,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Guanajuato, con sede en Guanajuato",
+    "circuito_id": 16
+  },
+  {
+    "id": 1321,
+    "nombre": "Segundo Tribunal Colegiado en Materia Administrativa del Decimosexto Circuito, con residencia en Guanajuato, Gto",
+    "circuito_id": 16
+  },
+  {
+    "id": 1324,
+    "nombre": "Segundo Tribunal Colegiado en Materia Civil del Decimosexto Circuito, con residencia en Guanajuato, Gto",
+    "circuito_id": 16
+  },
+  {
+    "id": 1891,
+    "nombre": "Segundo Tribunal Colegiado en Materia Penal del Decimosexto Circuito",
+    "circuito_id": 16
+  },
+  {
+    "id": 1318,
+    "nombre": "Segundo Tribunal Colegiado en Materia de Trabajo del Decimosexto Circuito, con residencia en la Ciudad de Guanajuato",
+    "circuito_id": 16
+  },
+  {
+    "id": 4097,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Guanajuato, con sede en Guanajuato",
+    "circuito_id": 16
+  },
+  {
+    "id": 1325,
+    "nombre": "Tercer Tribunal Colegiado en Materia Civil del Decimosexto Circuito, con residencia en Guanajuato, Gto",
+    "circuito_id": 16
+  },
+  {
+    "id": 4098,
+    "nombre": "Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Guanajuato, con sede en Guanajuato",
+    "circuito_id": 16
+  },
+  {
+    "id": 4361,
+    "nombre": "Tribunal Colegiado de Apelación del Decimosexto Circuito, con residencia en Guanajuato, Guanajuato",
+    "circuito_id": 16
+  },
+  {
+    "id": 557,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de Chihuahua",
+    "circuito_id": 17
+  },
+  {
+    "id": 2406,
+    "nombre": "Juzgado Decimoprimero de Distrito en Estado de Chihuahua",
+    "circuito_id": 17
+  },
+  {
+    "id": 3993,
+    "nombre": "Juzgado Decimosegundo de Distrito en el Estado de Chihuahua",
+    "circuito_id": 17
+  },
+  {
+    "id": 761,
+    "nombre": "Juzgado Décimo de Distrito en el Estado de Chihuahua",
+    "circuito_id": 17
+  },
+  {
+    "id": 654,
+    "nombre": "Juzgado Noveno de Distrito en el Estado de Chihuahua",
+    "circuito_id": 17
+  },
+  {
+    "id": 653,
+    "nombre": "Juzgado Octavo de Distrito en el Estado de Chihuahua",
+    "circuito_id": 17
+  },
+  {
+    "id": 325,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Chihuahua",
+    "circuito_id": 17
+  },
+  {
+    "id": 476,
+    "nombre": "Juzgado Quinto de Distrito en el Estado de Chihuahua",
+    "circuito_id": 17
+  },
+  {
+    "id": 328,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Chihuahua",
+    "circuito_id": 17
+  },
+  {
+    "id": 334,
+    "nombre": "Juzgado Sexto de Distrito en el Estado de Chihuahua",
+    "circuito_id": 17
+  },
+  {
+    "id": 335,
+    "nombre": "Juzgado Séptimo de Distrito en el Estado de Chihuahua",
+    "circuito_id": 17
+  },
+  {
+    "id": 700,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Chihuahua",
+    "circuito_id": 17
+  },
+  {
+    "id": 484,
+    "nombre": "Primer Tribunal Colegiado del Decimoséptimo Circuito",
+    "circuito_id": 17
+  },
+  {
+    "id": 648,
+    "nombre": "Primer Tribunal Colegiado en Materias Civil y de Trabajo del Decimoséptimo Circuito",
+    "circuito_id": 17
+  },
+  {
+    "id": 649,
+    "nombre": "Primer Tribunal Colegiado en Materias Penal y Administrativa del Décimo Séptimo Circuito",
+    "circuito_id": 17
+  },
+  {
+    "id": 4282,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Chihuahua, con sede en Chihuahua",
+    "circuito_id": 17
+  },
+  {
+    "id": 2409,
+    "nombre": "Segundo Tribunal Colegiado del Decimoséptimo Circuito",
+    "circuito_id": 17
+  },
+  {
+    "id": 650,
+    "nombre": "Segundo Tribunal Colegiado en Materias Civil y de Trabajo del Decimoséptimo Circuito",
+    "circuito_id": 17
+  },
+  {
+    "id": 651,
+    "nombre": "Segundo Tribunal Colegiado en Materias Penal y Administrativa del Décimo Séptimo Circuito",
+    "circuito_id": 17
+  },
+  {
+    "id": 4283,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Chihuahua, con sede en Chihuahua",
+    "circuito_id": 17
+  },
+  {
+    "id": 1362,
+    "nombre": "Tercer Tribunal Colegiado en Materias Civil y de Trabajo del Decimoséptimo Circuito",
+    "circuito_id": 17
+  },
+  {
+    "id": 4284,
+    "nombre": "Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Chihuahua, con sede en Ciudad Juárez",
+    "circuito_id": 17
+  },
+  {
+    "id": 4362,
+    "nombre": "Tribunal Colegiado de Apelación del Decimoséptimo Circuito, con residencia en Chihuahua",
+    "circuito_id": 17
+  },
+  {
+    "id": 4399,
+    "nombre": "Tribunal Colegiado de Apelación del Decimoséptimo Circuito, con residencia en Ciudad Juárez",
+    "circuito_id": 17
+  },
+  {
+    "id": 342,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de Morelos",
+    "circuito_id": 18
+  },
+  {
+    "id": 4147,
+    "nombre": "Juzgado Décimo de Distrito en el Estado de Morelos, con residencia en Cuernavaca",
+    "circuito_id": 18
+  },
+  {
+    "id": 3837,
+    "nombre": "Juzgado Noveno de Distrito en el Estado de Morelos, con residencia en Cuernavaca",
+    "circuito_id": 18
+  },
+  {
+    "id": 1384,
+    "nombre": "Juzgado Octavo de Distrito en el Estado de Morelos",
+    "circuito_id": 18
+  },
+  {
+    "id": 338,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Morelos",
+    "circuito_id": 18
+  },
+  {
+    "id": 753,
+    "nombre": "Juzgado Quinto de Distrito en el Estado de Morelos",
+    "circuito_id": 18
+  },
+  {
+    "id": 340,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Morelos",
+    "circuito_id": 18
+  },
+  {
+    "id": 1173,
+    "nombre": "Juzgado Sexto de Distrito en el Estado de Morelos",
+    "circuito_id": 18
+  },
+  {
+    "id": 1253,
+    "nombre": "Juzgado Séptimo de Distrito en el Estado de Morelos, con residencia en Cuernavaca",
+    "circuito_id": 18
+  },
+  {
+    "id": 341,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Morelos",
+    "circuito_id": 18
+  },
+  {
+    "id": 1573,
+    "nombre": "Primer Tribunal Colegiado en Materia de Trabajo del Decimoctavo Circuito, con Residencia en Cuernavaca Morelos",
+    "circuito_id": 18
+  },
+  {
+    "id": 1576,
+    "nombre": "Primer Tribunal Colegiado en Materias Penal y Administrativa del Decimoctavo Circuito, con Residencia en Cuernavaca Morelos",
+    "circuito_id": 18
+  },
+  {
+    "id": 4100,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Morelos, con sede en Cuernavaca",
+    "circuito_id": 18
+  },
+  {
+    "id": 1574,
+    "nombre": "Segundo Tribunal Colegiado en Materia de Trabajo del Decimoctavo Circuito, con Residencia en Cuernavaca Morelos",
+    "circuito_id": 18
+  },
+  {
+    "id": 1577,
+    "nombre": "Segundo Tribunal Colegiado en Materias Penal y Administrativa del Decimoctavo Circuito, con Residencia en Cuernavaca Morelos",
+    "circuito_id": 18
+  },
+  {
+    "id": 4101,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Morelos, con sede en Cuernavaca",
+    "circuito_id": 18
+  },
+  {
+    "id": 2748,
+    "nombre": "Tercer Tribunal Colegiado en Materias Penal y Administrativa del Decimoctavo Circuito, con Residencia en Cuernavaca Morelos",
+    "circuito_id": 18
+  },
+  {
+    "id": 5858,
+    "nombre": "Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Morelos, con sede en Cuernavaca",
+    "circuito_id": 18
+  },
+  {
+    "id": 4363,
+    "nombre": "Tribunal Colegiado de Apelación del Decimoctavo Circuito, con residencia en Xochitepec, Morelos",
+    "circuito_id": 18
+  },
+  {
+    "id": 1579,
+    "nombre": "Tribunal Colegiado en Materia Civil del Decimoctavo Circuito, con residencia en Cuernavaca, Morelos",
+    "circuito_id": 18
+  },
+  {
+    "id": 4313,
+    "nombre": "Cuarto Tribunal Laboral Federal de asuntos individuales en el Estado de Tamaulipas, con sede en Reynosa",
+    "circuito_id": 19
+  },
+  {
+    "id": 5610,
+    "nombre": "Juzgado Decimocuarto de Distrito en el Estado de Tamaulipas, con residencia en Ciudad Victoria",
+    "circuito_id": 19
+  },
+  {
+    "id": 1668,
+    "nombre": "Juzgado Decimosegundo de Distrito en el Estado de Tamaulipas, con residencia en Ciudad Victoria",
+    "circuito_id": 19
+  },
+  {
+    "id": 780,
+    "nombre": "Juzgado Décimo Primero de Distrito en el Estado de Tamaulipas",
+    "circuito_id": 19
+  },
+  {
+    "id": 1669,
+    "nombre": "Juzgado Décimo Tercero de Distrito en el Estado de Tamaulipas",
+    "circuito_id": 19
+  },
+  {
+    "id": 360,
+    "nombre": "Juzgado Décimo de Distrito en el Estado de Tamaulipas",
+    "circuito_id": 19
+  },
+  {
+    "id": 359,
+    "nombre": "Juzgado Noveno de Distrito en el Estado de Tamaulipas",
+    "circuito_id": 19
+  },
+  {
+    "id": 358,
+    "nombre": "Juzgado Octavo de Distrito en el Estado de Tamaulipas",
+    "circuito_id": 19
+  },
+  {
+    "id": 1122,
+    "nombre": "Juzgado Primero de Distrito de Procesos Penales Federales en el Estado de Tamaulipas",
+    "circuito_id": 19
+  },
+  {
+    "id": 345,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Tamaulipas",
+    "circuito_id": 19
+  },
+  {
+    "id": 1123,
+    "nombre": "Juzgado Segundo de Distrito de Procesos Penales Federales en el Estado de Tamaulipas",
+    "circuito_id": 19
+  },
+  {
+    "id": 348,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Tamaulipas",
+    "circuito_id": 19
+  },
+  {
+    "id": 519,
+    "nombre": "Juzgado Séptimo de Distrito en el Estado de Tamaulipas",
+    "circuito_id": 19
+  },
+  {
+    "id": 1376,
+    "nombre": "Juzgado Tercero de Distrito de Procesos Penales Federales en el Estado de Tamaulipas",
+    "circuito_id": 19
+  },
+  {
+    "id": 351,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Tamaulipas",
+    "circuito_id": 19
+  },
+  {
+    "id": 1124,
+    "nombre": "Juzgado de Distrito en Materias de Amparo y Juicios Federales en el Estado de Tamaulipas",
+    "circuito_id": 19
+  },
+  {
+    "id": 508,
+    "nombre": "Primer Tribunal Colegiado del Decimonoveno Circuito",
+    "circuito_id": 19
+  },
+  {
+    "id": 744,
+    "nombre": "Primer Tribunal Colegiado en Materias Administrativa y Civil del Décimo Noveno Circuito",
+    "circuito_id": 19
+  },
+  {
+    "id": 746,
+    "nombre": "Primer Tribunal Colegiado en Materias Penal y de Trabajo del Décimo Noveno Circuito",
+    "circuito_id": 19
+  },
+  {
+    "id": 4310,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Tamaulipas, con sede en Ciudad Victoria",
+    "circuito_id": 19
+  },
+  {
+    "id": 4314,
+    "nombre": "Quinto Tribunal Laboral Federal de asuntos individuales en el Estado de Tamaulipas, con sede en Reynosa",
+    "circuito_id": 19
+  },
+  {
+    "id": 802,
+    "nombre": "Segundo Tribunal Colegiado del Decimonoveno Circuito",
+    "circuito_id": 19
+  },
+  {
+    "id": 745,
+    "nombre": "Segundo Tribunal Colegiado en Materias Administrativa y Civil del Décimo Noveno Circuito",
+    "circuito_id": 19
+  },
+  {
+    "id": 747,
+    "nombre": "Segundo Tribunal Colegiado en Materias Penal y de Trabajo del Décimo Noveno Circuito",
+    "circuito_id": 19
+  },
+  {
+    "id": 4311,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Tamaulipas, con sede en Tampico",
+    "circuito_id": 19
+  },
+  {
+    "id": 4418,
+    "nombre": "Tercer Tribunal Colegiado en Materias Penal y de Trabajo del Décimo Noveno Circuito",
+    "circuito_id": 19
+  },
+  {
+    "id": 4312,
+    "nombre": "Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Tamaulipas, con sede en Tampico",
+    "circuito_id": 19
+  },
+  {
+    "id": 4364,
+    "nombre": "Tribunal Colegiado de Apelación del Decimonoveno Circuito, con residencia en Matamoros, Tamaulipas",
+    "circuito_id": 19
+  },
+  {
+    "id": 1585,
+    "nombre": "Juzgado Cuarto de Distrito de Amparo y Juicios Federales en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",
+    "circuito_id": 20
+  },
+  {
+    "id": 3998,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de Chiapas, con residencia en Tapachula",
+    "circuito_id": 20
+  },
+  {
+    "id": 1582,
+    "nombre": "Juzgado Primero de Distrito de Amparo y Juicios Federales en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",
+    "circuito_id": 20
+  },
+  {
+    "id": 3888,
+    "nombre": "Juzgado Primero de Distrito de Procesos Penales Federales y de Amparo en Materia Penal en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",
+    "circuito_id": 20
+  },
+  {
+    "id": 1591,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Chiapas, con residencia en Tapachula",
+    "circuito_id": 20
+  },
+  {
+    "id": 1586,
+    "nombre": "Juzgado Quinto de Distrito de Amparo y Juicios Federales en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",
+    "circuito_id": 20
+  },
+  {
+    "id": 1583,
+    "nombre": "Juzgado Segundo de Distrito de Amparo y Juicios Federales en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",
+    "circuito_id": 20
+  },
+  {
+    "id": 3889,
+    "nombre": "Juzgado Segundo de Distrito de Procesos Penales Federales y de Amparo en Materia Penal en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",
+    "circuito_id": 20
+  },
+  {
+    "id": 1592,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Chiapas, con residencia en Tapachula",
+    "circuito_id": 20
+  },
+  {
+    "id": 1893,
+    "nombre": "Juzgado Sexto de Distrito de Amparo y Juicios Federales en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",
+    "circuito_id": 20
+  },
+  {
+    "id": 1894,
+    "nombre": "Juzgado Séptimo de Distrito de Amparo y Juicios Federales en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",
+    "circuito_id": 20
+  },
+  {
+    "id": 1584,
+    "nombre": "Juzgado Tercero de Distrito de Amparo y Juicios Federales en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",
+    "circuito_id": 20
+  },
+  {
+    "id": 3845,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Chiapas, con residencia en Tapachula",
+    "circuito_id": 20
+  },
+  {
+    "id": 3850,
+    "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",
+    "circuito_id": 20
+  },
+  {
+    "id": 1536,
+    "nombre": "Primer Tribunal Colegiado en Materias Penal y Civil del Vigésimo Circuito, con residencia en Tuxtla Gutiérrez, Chiapas",
+    "circuito_id": 20
+  },
+  {
+    "id": 4583,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Chiapas, con sede en Tuxtla Gutiérrez",
+    "circuito_id": 20
+  },
+  {
+    "id": 1537,
+    "nombre": "Segundo Tribunal Colegiado en Materias Penal y Civil del Vigésimo Circuito, con residencia en Tuxtla Gutiérrez, Chiapas",
+    "circuito_id": 20
+  },
+  {
+    "id": 4584,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Chiapas, con sede en Tuxtla Gutiérrez",
+    "circuito_id": 20
+  },
+  {
+    "id": 4585,
+    "nombre": "Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Chiapas, con sede en Tuxtla Gutiérrez",
+    "circuito_id": 20
+  },
+  {
+    "id": 4365,
+    "nombre": "Tribunal Colegiado de Apelación del Vigésimo Circuito, con residencia en Cintalapa de Figueroa, Chiapas",
+    "circuito_id": 20
+  },
+  {
+    "id": 1535,
+    "nombre": "Tribunal Colegiado en Materia Administrativa del Vigésimo Circuito, con residencia en Tuxtla Gutiérrez, Chiapas",
+    "circuito_id": 20
+  },
+  {
+    "id": 1538,
+    "nombre": "Tribunal Colegiado en Materia de Trabajo del Vigésimo Circuito, con residencia en Tuxtla Gutiérrez, Chiapas",
+    "circuito_id": 20
+  },
+  {
+    "id": 3982,
+    "nombre": "Tribunal Laboral Federal de asuntos individuales en el Estado de Chiapas, con sede en Tuxtla Gutiérrez",
+    "circuito_id": 20
+  },
+  {
+    "id": 382,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de Guerrero",
+    "circuito_id": 21
+  },
+  {
+    "id": 1330,
+    "nombre": "Juzgado Décimo de Distrito en el Estado de Guerrero, con residencia en Chilpancingo, Gro",
+    "circuito_id": 21
+  },
+  {
+    "id": 1215,
+    "nombre": "Juzgado Noveno de Distrito en el Estado de Guerrero, con residencia en Iguala",
+    "circuito_id": 21
+  },
+  {
+    "id": 722,
+    "nombre": "Juzgado Octavo de Distrito en el Estado de Guerrero",
+    "circuito_id": 21
+  },
+  {
+    "id": 375,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Guerrero",
+    "circuito_id": 21
+  },
+  {
+    "id": 383,
+    "nombre": "Juzgado Quinto de Distrito en el Estado de Guerrero",
+    "circuito_id": 21
+  },
+  {
+    "id": 378,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Guerrero",
+    "circuito_id": 21
+  },
+  {
+    "id": 384,
+    "nombre": "Juzgado Sexto de Distrito en el Estado de Guerrero",
+    "circuito_id": 21
+  },
+  {
+    "id": 721,
+    "nombre": "Juzgado Séptimo de Distrito en el Estado de Guerrero",
+    "circuito_id": 21
+  },
+  {
+    "id": 380,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Guerrero",
+    "circuito_id": 21
+  },
+  {
+    "id": 3823,
+    "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de Guerrero, con residencia en Acapulco",
+    "circuito_id": 21
+  },
+  {
+    "id": 749,
+    "nombre": "Primer Tribunal Colegiado en Materias Civil y de Trabajo del Vigésimo Primer Circuito",
+    "circuito_id": 21
+  },
+  {
+    "id": 751,
+    "nombre": "Primer Tribunal Colegiado en Materias Penal y Administrativa del Vigésimo Primer Circuito",
+    "circuito_id": 21
+  },
+  {
+    "id": 4135,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Guerrero, con sede en Acapulco",
+    "circuito_id": 21
+  },
+  {
+    "id": 750,
+    "nombre": "Segundo Tribunal Colegiado en Materias Civil y de Trabajo del Vigésimo Primer Circuito",
+    "circuito_id": 21
+  },
+  {
+    "id": 752,
+    "nombre": "Segundo Tribunal Colegiado en Materias Penal y Administrativa del Vigésimo Primer Circuito",
+    "circuito_id": 21
+  },
+  {
+    "id": 5601,
+    "nombre": "Segundo Tribunal Laboral Federal de Asuntos Individuales en el Estado de Guerrero con sede en Acapulco",
+    "circuito_id": 21
+  },
+  {
+    "id": 1404,
+    "nombre": "Tercer Tribunal Colegiado en Materias Civil y de Trabajo del Vigésimo Primer Circuito",
+    "circuito_id": 21
+  },
+  {
+    "id": 4366,
+    "nombre": "Tribunal Colegiado de Apelación del Vigésimo Primer Circuito, con residencia en Acapulco",
+    "circuito_id": 21
+  },
+  {
+    "id": 1395,
+    "nombre": "Juzgado Cuarto de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Querétaro",
+    "circuito_id": 22
+  },
+  {
+    "id": 3881,
+    "nombre": "Juzgado Primero de Distrito en Materia Penal en el Estado de Querétaro",
+    "circuito_id": 22
+  },
+  {
+    "id": 1391,
+    "nombre": "Juzgado Primero de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Querétaro",
+    "circuito_id": 22
+  },
+  {
+    "id": 1396,
+    "nombre": "Juzgado Quinto de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Querétaro",
+    "circuito_id": 22
+  },
+  {
+    "id": 3882,
+    "nombre": "Juzgado Segundo de Distrito en Materia Penal en el Estado de Querétaro",
+    "circuito_id": 22
+  },
+  {
+    "id": 1392,
+    "nombre": "Juzgado Segundo de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Querétaro",
+    "circuito_id": 22
+  },
+  {
+    "id": 1664,
+    "nombre": "Juzgado Sexto de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Querétaro",
+    "circuito_id": 22
+  },
+  {
+    "id": 1665,
+    "nombre": "Juzgado Séptimo de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Querétaro",
+    "circuito_id": 22
+  },
+  {
+    "id": 1393,
+    "nombre": "Juzgado Tercero de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Querétaro",
+    "circuito_id": 22
+  },
+  {
+    "id": 1589,
+    "nombre": "Primer Tribunal Colegiado en Materias Administrativa y Civil del Vigésimo Segundo Circuito, con residencia en Querétaro, Querétaro",
+    "circuito_id": 22
+  },
+  {
+    "id": 4111,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Querétaro, con sede en Querétaro",
+    "circuito_id": 22
+  },
+  {
+    "id": 1590,
+    "nombre": "Segundo Tribunal Colegiado en Materias Administrativa y Civil del Vigésimo Segundo Circuito, con residencia en Querétaro, Querétaro",
+    "circuito_id": 22
+  },
+  {
+    "id": 4112,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Querétaro, con sede en Querétaro",
+    "circuito_id": 22
+  },
+  {
+    "id": 2422,
+    "nombre": "Tercer Tribunal Colegiado en Materias Administrativa y Civil del Vigésimo Segundo Circuito, con residencia en Querétaro, Querétaro",
+    "circuito_id": 22
+  },
+  {
+    "id": 4367,
+    "nombre": "Tribunal Colegiado de Apelación del Vigésimo Segundo Circuito, con residencia en Querétaro, Querétaro",
+    "circuito_id": 22
+  },
+  {
+    "id": 1588,
+    "nombre": "Tribunal Colegiado en Materias Administrativa y de Trabajo del Vigésimo Segundo Circuito, con residencia en Querétaro, Querétaro",
+    "circuito_id": 22
+  },
+  {
+    "id": 1587,
+    "nombre": "Tribunal Colegiado en Materias Penal y Administrativa del Vigésimo Segundo Circuito, con residencia en Querétaro, Querétaro",
+    "circuito_id": 22
+  },
+  {
+    "id": 459,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Zacatecas",
+    "circuito_id": 23
+  },
+  {
+    "id": 396,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Zacatecas",
+    "circuito_id": 23
+  },
+  {
+    "id": 3832,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Zacatecas",
+    "circuito_id": 23
+  },
+  {
+    "id": 392,
+    "nombre": "Primer Tribunal Colegiado del Vigésimo Tercer Circuito",
+    "circuito_id": 23
+  },
+  {
+    "id": 4596,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Zacatecas, con sede en Zacatecas",
+    "circuito_id": 23
+  },
+  {
+    "id": 3896,
+    "nombre": "Segundo Tribunal Colegiado del Vigésimo Tercer Circuito",
+    "circuito_id": 23
+  },
+  {
+    "id": 4597,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Zacatecas, con sede en Zacatecas",
+    "circuito_id": 23
+  },
+  {
+    "id": 4368,
+    "nombre": "Tribunal Colegiado de Apelación del Vigésimo Tercer Circuito, con residencia en Zacatecas, Zacatecas",
+    "circuito_id": 23
+  },
+  {
+    "id": 3980,
+    "nombre": "Tribunal Laboral Federal de asuntos individuales en el Estado de Zacatecas, con sede en Zacatecas",
+    "circuito_id": 23
+  },
+  {
+    "id": 2427,
+    "nombre": "Juzgado Cuarto de Distrito de Amparo en Materia Penal en el Estado de Nayarit(16/11/2017 - 01/08/2023)",
+    "circuito_id": 24
+  },
+  {
+    "id": 4438,
+    "nombre": "Juzgado Cuarto de Distrito en Materia Penal en el Estado de Nayarit, con residencia en el Rincón, Municipio de Tepic",
+    "circuito_id": 24
+  },
+  {
+    "id": 4439,
+    "nombre": "Juzgado Cuarto de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Nayarit",
+    "circuito_id": 24
+  },
+  {
+    "id": 1083,
+    "nombre": "Juzgado Primero de Distrito en Materia Penal en el Estado de Nayarit",
+    "circuito_id": 24
+  },
+  {
+    "id": 1092,
+    "nombre": "Juzgado Primero de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Nayarit",
+    "circuito_id": 24
+  },
+  {
+    "id": 1084,
+    "nombre": "Juzgado Segundo de Distrito en Materia Penal en el Estado de Nayarit",
+    "circuito_id": 24
+  },
+  {
+    "id": 1093,
+    "nombre": "Juzgado Segundo de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Nayarit",
+    "circuito_id": 24
+  },
+  {
+    "id": 1178,
+    "nombre": "Juzgado Tercero de Distrito en Materia Penal en el Estado de Nayarit",
+    "circuito_id": 24
+  },
+  {
+    "id": 3890,
+    "nombre": "Juzgado Tercero de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Nayarit, con residencia en el Rincón, Municipio de Tepic",
+    "circuito_id": 24
+  },
+  {
+    "id": 3891,
+    "nombre": "Juzgado de Distrito de Procesos Penales Federales en el Estado de Nayarit, con residencia en el Rincón, Municipio de Tepic (16/03/2020 - 31/07/2023)",
+    "circuito_id": 24
+  },
+  {
+    "id": 399,
+    "nombre": "Primer Tribunal Colegiado del Vigésimo Cuarto Circuito",
+    "circuito_id": 24
+  },
+  {
+    "id": 1080,
+    "nombre": "Segundo Tribunal Colegiado del Vigésimo Cuarto Circuito",
+    "circuito_id": 24
+  },
+  {
+    "id": 4431,
+    "nombre": "Tercer Tribunal Colegiado del Vigésimo Cuarto Circuito",
+    "circuito_id": 24
+  },
+  {
+    "id": 4369,
+    "nombre": "Tribunal Colegiado de Apelación del Vigésimo Cuarto Circuito, con residencia en Tepic, Nayarit",
+    "circuito_id": 24
+  },
+  {
+    "id": 4295,
+    "nombre": "Tribunal Laboral Federal de asuntos individuales en el Estado de Nayarit, con sede en Tepic",
+    "circuito_id": 24
+  },
+  {
+    "id": 405,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Durango",
+    "circuito_id": 25
+  },
+  {
+    "id": 406,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Durango",
+    "circuito_id": 25
+  },
+  {
+    "id": 407,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Durango",
+    "circuito_id": 25
+  },
+  {
+    "id": 403,
+    "nombre": "Primer Tribunal Colegiado del Vigésimo Quinto Circuito",
+    "circuito_id": 25
+  },
+  {
+    "id": 4442,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Durango, con sede en Durango",
+    "circuito_id": 25
+  },
+  {
+    "id": 1478,
+    "nombre": "Segundo Tribunal Colegiado del Vigésimo Quinto Circuito",
+    "circuito_id": 25
+  },
+  {
+    "id": 4443,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Durango, con sede en Durango",
+    "circuito_id": 25
+  },
+  {
+    "id": 4370,
+    "nombre": "Tribunal Colegiado de Apelación del Vigésimo Quinto Circuito, con residencia en Durango, Durango",
+    "circuito_id": 25
+  },
+  {
+    "id": 3981,
+    "nombre": "Tribunal Laboral Federal de asuntos individuales en el Estado de Durango, con sede en Durango",
+    "circuito_id": 25
+  },
+  {
+    "id": 410,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Baja California Sur",
+    "circuito_id": 26
+  },
+  {
+    "id": 411,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Baja California Sur",
+    "circuito_id": 26
+  },
+  {
+    "id": 1185,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Baja California Sur",
+    "circuito_id": 26
+  },
+  {
+    "id": 408,
+    "nombre": "Primer Tribunal Colegiado del Vigésimo Sexto Circuito, con residencia en La Paz, Baja California Sur",
+    "circuito_id": 26
+  },
+  {
+    "id": 4405,
+    "nombre": "Segundo Tribunal Colegiado del Vigésimo Sexto Circuito, con residencia en La Paz, Baja California Sur",
+    "circuito_id": 26
+  },
+  {
+    "id": 4371,
+    "nombre": "Tribunal Colegiado de Apelación del Vigésimo Sexto Circuito, con residencia en La Paz",
+    "circuito_id": 26
+  },
+  {
+    "id": 4133,
+    "nombre": "Tribunal Laboral Federal de asuntos individuales en el Estado de Baja California Sur, con sede en La Paz",
+    "circuito_id": 26
+  },
+  {
+    "id": 791,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de Quintana Roo",
+    "circuito_id": 27
+  },
+  {
+    "id": 4142,
+    "nombre": "Juzgado Noveno de Distrito en el Estado de Quintana Roo, con residencia en Cancún",
+    "circuito_id": 27
+  },
+  {
+    "id": 2953,
+    "nombre": "Juzgado Octavo de Distrito en el Estado de Quintana Roo, con residencia en Cancún",
+    "circuito_id": 27
+  },
+  {
+    "id": 419,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Quintana Roo",
+    "circuito_id": 27
+  },
+  {
+    "id": 1182,
+    "nombre": "Juzgado Quinto de Distrito en el Estado de Quintana Roo",
+    "circuito_id": 27
+  },
+  {
+    "id": 790,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Quintana Roo",
+    "circuito_id": 27
+  },
+  {
+    "id": 1236,
+    "nombre": "Juzgado Sexto de Distrito en el Estado de Quintana Roo",
+    "circuito_id": 27
+  },
+  {
+    "id": 1350,
+    "nombre": "Juzgado Séptimo de Distrito en el Estado de Quintana Roo, con residencia en Cancún",
+    "circuito_id": 27
+  },
+  {
+    "id": 425,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Quintana Roo",
+    "circuito_id": 27
+  },
+  {
+    "id": 1239,
+    "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de Quintana Roo, Especializado en Juicios Orales",
+    "circuito_id": 27
+  },
+  {
+    "id": 462,
+    "nombre": "Primer Tribunal Colegiado del Vigésimo Séptimo Circuito",
+    "circuito_id": 27
+  },
+  {
+    "id": 4136,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Quintana Roo, con sede en Cancún",
+    "circuito_id": 27
+  },
+  {
+    "id": 944,
+    "nombre": "Segundo Tribunal Colegiado del Vigésimo Séptimo Circuito",
+    "circuito_id": 27
+  },
+  {
+    "id": 5602,
+    "nombre": "Segundo Tribunal Laboral Federal de Asuntos Individuales en el Estado de Quinta Roo con sede Cancún",
+    "circuito_id": 27
+  },
+  {
+    "id": 1319,
+    "nombre": "Tercer Tribunal Colegiado del Vigésimo Séptimo Circuito, con residencia en Cancún, Quintana Roo",
+    "circuito_id": 27
+  },
+  {
+    "id": 4372,
+    "nombre": "Tribunal Colegiado de Apelación del Vigésimo Séptimo Circuito, con residencia en Cancún, Quintana Roo",
+    "circuito_id": 27
+  },
+  {
+    "id": 187,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Tlaxcala",
+    "circuito_id": 28
+  },
+  {
+    "id": 192,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Tlaxcala",
+    "circuito_id": 28
+  },
+  {
+    "id": 1242,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Tlaxcala",
+    "circuito_id": 28
+  },
+  {
+    "id": 3849,
+    "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de Tlaxcala",
+    "circuito_id": 28
+  },
+  {
+    "id": 575,
+    "nombre": "Primer Tribunal Colegiado del Vigésimo Octavo Circuito",
+    "circuito_id": 28
+  },
+  {
+    "id": 4114,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Tlaxcala, con sede en Tlaxcala",
+    "circuito_id": 28
+  },
+  {
+    "id": 2412,
+    "nombre": "Segundo Tribunal Colegiado del Vigésimo Octavo Circuito",
+    "circuito_id": 28
+  },
+  {
+    "id": 4115,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Tlaxcala, con sede en Tlaxcala",
+    "circuito_id": 28
+  },
+  {
+    "id": 4116,
+    "nombre": "Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Tlaxcala, con sede en Tlaxcala",
+    "circuito_id": 28
+  },
+  {
+    "id": 4373,
+    "nombre": "Tribunal Colegiado de Apelación del Vigésimo Octavo Circuito, con residencia en Apizaco, Tlaxcala",
+    "circuito_id": 28
+  },
+  {
+    "id": 1273,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de Hidalgo, con residencia en Pachuca",
+    "circuito_id": 29
+  },
+  {
+    "id": 386,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Hidalgo",
+    "circuito_id": 29
+  },
+  {
+    "id": 417,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Hidalgo",
+    "circuito_id": 29
+  },
+  {
+    "id": 801,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Hidalgo",
+    "circuito_id": 29
+  },
+  {
+    "id": 389,
+    "nombre": "Primer Tribunal Colegiado del Vigésimo Noveno Circuito",
+    "circuito_id": 29
+  },
+  {
+    "id": 4447,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Hidalgo, con sede en Pachuca",
+    "circuito_id": 29
+  },
+  {
+    "id": 391,
+    "nombre": "Segundo Tribunal Colegiado del Vigésimo Noveno Circuito",
+    "circuito_id": 29
+  },
+  {
+    "id": 4448,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Hidalgo, con sede en Pachuca",
+    "circuito_id": 29
+  },
+  {
+    "id": 2992,
+    "nombre": "Tercer Tribunal Colegiado del Vigésimo Noveno Circuito",
+    "circuito_id": 29
+  },
+  {
+    "id": 4449,
+    "nombre": "Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Hidalgo, con sede en Pachuca",
+    "circuito_id": 29
+  },
+  {
+    "id": 4374,
+    "nombre": "Tribunal Colegiado de Apelación del Vigésimo Noveno Circuito, con residencia en Pachuca, Hidalgo",
+    "circuito_id": 29
+  },
+  {
+    "id": 3987,
+    "nombre": "Tribunal Laboral Federal de asuntos individuales en el Estado de Hidalgo, con sede en Pachuca",
+    "circuito_id": 29
+  },
+  {
+    "id": 3447,
+    "nombre": "Cuarto Tribunal Colegiado del Trigésimo Circuito",
+    "circuito_id": 30
+  },
+  {
+    "id": 1555,
+    "nombre": "Juzgado Cuarto de Distrito en el Estado de Aguascalientes",
+    "circuito_id": 30
+  },
+  {
+    "id": 394,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Aguascalientes",
+    "circuito_id": 30
+  },
+  {
+    "id": 1556,
+    "nombre": "Juzgado Quinto de Distrito en el Estado de Aguascalientes",
+    "circuito_id": 30
+  },
+  {
+    "id": 418,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Aguascalientes",
+    "circuito_id": 30
+  },
+  {
+    "id": 2417,
+    "nombre": "Juzgado Sexto de Distrito en el Estado de Aguascalientes",
+    "circuito_id": 30
+  },
+  {
+    "id": 4000,
+    "nombre": "Juzgado Séptimo de Distrito en el Estado de Aguascalientes",
+    "circuito_id": 30
+  },
+  {
+    "id": 398,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Aguascalientes",
+    "circuito_id": 30
+  },
+  {
+    "id": 395,
+    "nombre": "Primer Tribunal Colegiado del Trigésimo Circuito",
+    "circuito_id": 30
+  },
+  {
+    "id": 4130,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Aguascalientes, con sede en Aguascalientes",
+    "circuito_id": 30
+  },
+  {
+    "id": 397,
+    "nombre": "Segundo Tribunal Colegiado del Trigésimo Circuito",
+    "circuito_id": 30
+  },
+  {
+    "id": 4456,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Aguascalientes, con sede en Aguascalientes",
+    "circuito_id": 30
+  },
+  {
+    "id": 2420,
+    "nombre": "Tercer Tribunal Colegiado del Trigésimo Circuito",
+    "circuito_id": 30
+  },
+  {
+    "id": 4375,
+    "nombre": "Tribunal Colegiado de Apelación del Trigésimo Circuito, con residencia en Aguascalientes, Aguascalientes",
+    "circuito_id": 30
+  },
+  {
+    "id": 4601,
+    "nombre": "Cuarto Tribunal Laboral Federal de asuntos individuales en el Estado de Campeche, con sede en Ciudad del Carmen",
+    "circuito_id": 31
+  },
+  {
+    "id": 285,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Campeche",
+    "circuito_id": 31
+  },
+  {
+    "id": 288,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Campeche",
+    "circuito_id": 31
+  },
+  {
+    "id": 3838,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Campeche, con residencia en Ciudad del Carmen",
+    "circuito_id": 31
+  },
+  {
+    "id": 4598,
+    "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Campeche, con sede en Campeche",
+    "circuito_id": 31
+  },
+  {
+    "id": 4602,
+    "nombre": "Quinto Tribunal Laboral Federal de asuntos individuales en el Estado de Campeche, con sede en Ciudad del Carmen",
+    "circuito_id": 31
+  },
+  {
+    "id": 4599,
+    "nombre": "Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Campeche, con sede en Campeche",
+    "circuito_id": 31
+  },
+  {
+    "id": 4600,
+    "nombre": "Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Campeche, con sede en Ciudad del Carmen",
+    "circuito_id": 31
+  },
+  {
+    "id": 4376,
+    "nombre": "Tribunal Colegiado de Apelación del Trigésimo Primer Circuito, con residencia en San Francisco de Campeche, Campeche",
+    "circuito_id": 31
+  },
+  {
+    "id": 1045,
+    "nombre": "Tribunal Colegiado del Trigésimo Primer Circuito",
+    "circuito_id": 31
+  },
+  {
+    "id": 3983,
+    "nombre": "Tribunal Laboral Federal de asuntos individuales en el Estado de Campeche, con sede en Campeche",
+    "circuito_id": 31
+  },
+  {
+    "id": 3984,
+    "nombre": "Tribunal Laboral Federal de asuntos individuales en el Estado de Campeche, con sede en Ciudad del Carmen",
+    "circuito_id": 31
+  },
+  {
+    "id": 125,
+    "nombre": "Juzgado Primero de Distrito en el Estado de Colima",
+    "circuito_id": 32
+  },
+  {
+    "id": 134,
+    "nombre": "Juzgado Segundo de Distrito en el Estado de Colima",
+    "circuito_id": 32
+  },
+  {
+    "id": 2424,
+    "nombre": "Juzgado Tercero de Distrito en el Estado de Colima",
+    "circuito_id": 32
+  },
+  {
+    "id": 4377,
+    "nombre": "Tribunal Colegiado de Apelación del Trigésimo Segundo Circuito, con residencia en Colima",
+    "circuito_id": 32
+  },
+  {
+    "id": 1089,
+    "nombre": "Tribunal Colegiado del Trigésimo Segundo Circuito",
+    "circuito_id": 32
+  },
+  {
+    "id": 4134,
+    "nombre": "Tribunal Laboral Federal de asuntos individuales en el Estado de Colima, con sede en Colima",
+    "circuito_id": 32
+  }
+]
