@@ -1,0 +1,944 @@
+﻿id,nombre,circuito_id
+10,Juzgado Primero de Distrito en Materia Administrativa en la Ciudad de México,1
+726,Juzgado Segundo de Distrito en Materia Administrativa en la Ciudad de México,1
+534,Juzgado Tercero de Distrito en Materia Administrativa en la Ciudad de México,1
+41,Juzgado Cuarto de Distrito en Materia Administrativa en la Ciudad de México,1
+727,Juzgado Quinto de Distrito en Materia Administrativa en la Ciudad de México,1
+728,Juzgado Sexto de Distrito en Materia Administrativa en la Ciudad de México,1
+64,Juzgado Séptimo de Distrito en Materia Administrativa en la Ciudad de México,1
+729,Juzgado Octavo de Distrito en Materia Administrativa en la Ciudad de México,1
+76,Juzgado Noveno de Distrito en Materia Administrativa en la Ciudad de México,1
+730,Juzgado Décimo de Distrito en Materia Administrativa en la Ciudad de México,1
+576,Juzgado Décimo Primero de Distrito en Materia Administrativa en la Ciudad de México,1
+731,Juzgado Décimo Segundo de Distrito en Materia Administrativa en la Ciudad de México,1
+732,Juzgado Décimo Tercero de Distrito en Materia Administrativa en la Ciudad de México,1
+733,Juzgado Décimo Cuarto de Distrito en Materia Administrativa en la Ciudad de México,1
+734,Juzgado Décimo Quinto de Distrito en Materia Administrativa en la Ciudad de México,1
+735,Juzgado Décimo Sexto de Distrito en Materia Administrativa en la Ciudad de México,1
+4012,Juzgado Decimoséptimo de Distrito en Materia Administrativa en la Ciudad de México,1
+12,Juzgado Primero de Distrito en Materia Civil en la Ciudad de México,1
+23,Juzgado Segundo de Distrito en Materia Civil en la Ciudad de México,1
+33,Juzgado Tercero de Distrito en Materia Civil en la Ciudad de México,1
+43,Juzgado Cuarto de Distrito en Materia Civil en la Ciudad de México,1
+51,Juzgado Quinto de Distrito en Materia Civil en la Ciudad de México,1
+59,Juzgado Sexto de Distrito en Materia Civil en la Ciudad de México,1
+758,Juzgado Séptimo de Distrito en Materia Civil en la Ciudad de México,1
+71,Juzgado Octavo de Distrito en Materia Civil en la Ciudad de México,1
+77,Juzgado Noveno de Distrito en Materia Civil en la Ciudad de México,1
+83,Juzgado Décimo de Distrito en Materia Civil en la Ciudad de México,1
+87,Juzgado Décimo Primero de Distrito en Materia Civil en la Ciudad de México,1
+91,Juzgado Décimo Segundo de Distrito en Materia Civil en la Ciudad de México,1
+759,Juzgado Decimotercero de Distrito en Materia Civil en la Ciudad de México,1
+1424,Juzgado Decimocuarto de Distrito en Materia Civil en la Ciudad de México,1
+527,Juzgado Primero de Distrito en Materia de Trabajo en la Ciudad de México,1
+535,Juzgado Segundo de Distrito en Materia de Trabajo en la Ciudad de México,1
+781,Juzgado Tercero de Distrito en Materia de Trabajo en la Ciudad de México,1
+652,Juzgado Cuarto de Distrito en Materia de Trabajo en la Ciudad de México,1
+782,Juzgado Quinto de Distrito en Materia de Trabajo en la Ciudad de México,1
+935,Juzgado Sexto de Distrito en Materia de Trabajo en la Ciudad de México,1
+1425,Juzgado Séptimo de Distrito en Materia de Trabajo en la Ciudad de México,1
+1426,Juzgado Octavo de Distrito en Materia de Trabajo en la Ciudad de México,1
+1427,Juzgado Noveno de Distrito en Materia de Trabajo en la Ciudad de México,1
+762,Juzgado Primero de Distrito en Materia Penal en la Ciudad de México,1
+1194,Juzgado Primero de Distrito Especializado en Ejecución de Penas,1
+763,Juzgado Segundo de Distrito en Materia Penal en la Ciudad de México,1
+1195,Juzgado Segundo de Distrito Especializado en Ejecución de Penas,1
+764,Juzgado Tercero de Distrito en Materia Penal en la Ciudad de México,1
+1196,Juzgado Tercero de Distrito Especializado en Ejecución de Penas,1
+765,Juzgado Cuarto de Distrito en Materia Penal en la Ciudad de México,1
+2418,Juzgado Cuarto de Distrito Especializado en Ejecución de Penas,1
+766,Juzgado Quinto de Distrito en Materia Penal en la Ciudad de México,1
+2419,Juzgado Quinto de Distrito Especializado en Ejecución de Penas,1
+767,Juzgado Sexto de Distrito en Materia Penal en la Ciudad de México,1
+3999,Juzgado Sexto de Distrito Especializado en Ejecución de Penas,1
+768,Juzgado Séptimo de Distrito en Materia Penal en la Ciudad de México,1
+769,Juzgado Octavo de Distrito en Materia Penal en la Ciudad de México,1
+770,Juzgado Noveno de Distrito en Materia Penal en la Ciudad de México,1
+771,Juzgado Décimo de Distrito en Materia Penal en la Ciudad de México,1
+772,Juzgado Decimoprimero de Distrito en Materia Penal en la Ciudad de México,1
+773,Juzgado Decimosegundo de Distrito en Materia Penal en la Ciudad de México,1
+938,Juzgado Decimotercero de Distrito en Materia Penal en la Ciudad de México,1
+939,Juzgado Decimocuarto de Distrito en Materia Penal en la Ciudad de México,1
+1467,Juzgado Decimoquinto de Distrito en Materia Penal en la Ciudad de México,1
+1468,Juzgado Decimosexto de Distrito en Materia Penal en la Ciudad de México,1
+555,Juzgado Primero de Distrito de Procesos Penales Federales en la Ciudad de México (13/12/2001 - 31/08/2024),1
+25,Juzgado Segundo de Distrito de Procesos Penales Federales en la Ciudad de México (02/04/2001 - 31/08/2024),1
+52,Juzgado Quinto de Distrito de Procesos Penales Federales en la Ciudad de México (02/04/2001 - 31/08/2024),1
+60,Juzgado Sexto de Distrito de Procesos Penales Federales en la Ciudad de México (02/04/2001 - 31/08/2024),1
+949,"Juzgado Primero de Distrito del Centro Auxiliar de la Primera Región, con residencia en la Ciudad de México",1
+964,"Juzgado Segundo de Distrito del Centro Auxiliar de la Primera Región, con residencia en la Ciudad de México",1
+4002,Juzgado Primero de Distrito en Materia de Extinción de Dominio con Competencia en la República Mexicana y Especializado en Juicios Orales Mercantiles en el Primer Circuito,1
+4157,"Juzgado Primero de Distrito en Materia de Concursos Mercantiles, con residencia en la Ciudad de México y jurisdicción en toda la República Mexicana",1
+4003,Juzgado Segundo de Distrito en Materia de Extinción de Dominio con Competencia en la República Mexicana y Especializado en Juicios Orales Mercantiles en el Primer Circuito,1
+4158,"Juzgado Segundo de Distrito en Materia de Concursos Mercantiles, con residencia en la Ciudad de México y jurisdicción en toda la República Mexicana",1
+4004,Juzgado Tercero de Distrito en Materia de Extinción de Dominio con Competencia en la República Mexicana y Especializado en Juicios Orales Mercantiles en el Primer Circuito,1
+4005,Juzgado Cuarto de Distrito en Materia de Extinción de Dominio con Competencia en la República Mexicana y Especializado en Juicios Orales Mercantiles en el Primer Circuito,1
+4006,Juzgado Quinto de Distrito en Materia de Extinción de Dominio con Competencia en la República Mexicana y Especializado en Juicios Orales Mercantiles en el Primer Circuito,1
+4007,Juzgado Sexto de Distrito en Materia de Extinción de Dominio con Competencia en la República Mexicana y Especializado en Juicios Orales Mercantiles en el Primer Circuito,1
+1301,"Juzgado Primero de Distrito en Materia Administrativa, Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones, con residencia en la Ciudad de México y Jurisdicción en toda la República",1
+1302,"Juzgado Segundo de Distrito en Materia Administrativa, Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones, con residencia en la Ciudad de México y Jurisdicción en toda la República",1
+4138,"Juzgado Tercero de Distrito en Materia Administrativa, Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones, con residencia en la Ciudad de México y Jurisdicción en toda la República",1
+4,Primer Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+15,Segundo Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+26,Tercer Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+36,Cuarto Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+45,Quinto Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+53,Sexto Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+61,Séptimo Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+67,Octavo Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+73,Noveno Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+79,Décimo Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+84,Décimo Primer Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+88,Décimo Segundo Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+92,Décimo Tercer Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+586,Décimo Cuarto Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+708,Décimo Quinto Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+792,Decimosexto Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+933,Decimoséptimo Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+1148,Décimo Octavo Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+1442,Decimonoveno Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+1443,Vigésimo Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+2456,Vigésimo Primer Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+3894,Vigésimo Segundo Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+3895,Vigésimo Tercer Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+4327,Vigésimo Cuarto Tribunal Colegiado en Materia Administrativa del Primer Circuito,1
+5,Primer Tribunal Colegiado en Materia Civil del Primer Circuito,1
+16,Segundo Tribunal Colegiado en Materia Civil del Primer Circuito,1
+27,Tercer Tribunal Colegiado en Materia Civil del Primer Circuito,1
+37,Cuarto Tribunal Colegiado en Materia Civil del Primer Circuito,1
+46,Quinto Tribunal Colegiado en Materia Civil del Primer Circuito,1
+54,Sexto Tribunal Colegiado en Materia Civil del Primer Circuito,1
+62,Séptimo Tribunal Colegiado en Materia Civil del Primer Circuito,1
+68,Octavo Tribunal Colegiado en Materia Civil del Primer Circuito,1
+74,Noveno Tribunal Colegiado en Materia Civil del Primer Circuito,1
+80,Décimo Tribunal Colegiado en Materia Civil del Primer Circuito,1
+85,Décimo Primer Tribunal Colegiado en Materia Civil del Primer Circuito,1
+89,Décimo Segundo Tribunal Colegiado en Materia Civil del Primer Circuito,1
+93,Décimo Tercer Tribunal Colegiado en Materia Civil del Primer Circuito,1
+498,Décimo Cuarto Tribunal Colegiado en Materia Civil del Primer Circuito,1
+3844,Décimo Quinto Tribunal Colegiado en Materia Civil del Primer Circuito,1
+4011,Decimosexto Tribunal Colegiado en Materia Civil del Primer Circuito,1
+6,Primer Tribunal Colegiado en Materia de Trabajo del Primer Circuito,1
+17,Segundo Tribunal Colegiado en Materia de Trabajo del Primer Circuito,1
+28,Tercer Tribunal Colegiado en Materia de Trabajo del Primer Circuito,1
+38,Cuarto Tribunal Colegiado en Materia de Trabajo del Primer Circuito,1
+47,Quinto Tribunal Colegiado en Materia de Trabajo del Primer Circuito,1
+55,Sexto Tribunal Colegiado en Materia de Trabajo del Primer Circuito,1
+63,Séptimo Tribunal Colegiado en Materia de Trabajo del Primer Circuito,1
+69,Octavo Tribunal Colegiado en Materia de Trabajo del Primer Circuito,1
+75,Noveno Tribunal Colegiado en Materia de Trabajo del Primer Circuito,1
+81,Décimo Tribunal Colegiado en Materia de Trabajo del Primer Circuito,1
+86,Décimo Primer Tribunal Colegiado en Materia de Trabajo del Primer Circuito,1
+90,Décimo Segundo Tribunal Colegiado en Materia de Trabajo del Primer Circuito,1
+495,Décimo Tercer Tribunal Colegiado en Materia de Trabajo del Primer Circuito,1
+496,Décimo Cuarto Tribunal Colegiado en Materia de Trabajo del Primer Circuito,1
+497,Décimo Quinto Tribunal Colegiado en Materia de Trabajo del Primer Circuito,1
+1417,Decimosexto Tribunal Colegiado en Materia de Trabajo del Primer Circuito,1
+1372,"Primer Tribunal Colegiado de Circuito del Centro Auxiliar de la Primera Región, en su carácter de ordinario",1
+1374,"Cuarto Tribunal Colegiado de Circuito del Centro Auxiliar de la Primera Región, en su carácter de ordinario",1
+7,Primer Tribunal Colegiado en Materia Penal del Primer Circuito,1
+18,Segundo Tribunal Colegiado en Materia Penal del Primer Circuito,1
+29,Tercer Tribunal Colegiado en Materia Penal del Primer Circuito,1
+39,Cuarto Tribunal Colegiado en Materia Penal del Primer Circuito,1
+48,Quinto Tribunal Colegiado en Materia Penal del Primer Circuito,1
+56,Sexto Tribunal Colegiado en Materia Penal del Primer Circuito,1
+499,Séptimo Tribunal Colegiado en Materia Penal del Primer Circuito,1
+500,Octavo Tribunal Colegiado en Materia Penal del Primer Circuito,1
+501,Noveno Tribunal Colegiado en Materia Penal del Primer Circuito,1
+1671,Décimo Tribunal Colegiado en Materia Penal del Primer Circuito.,1
+1304,"Primer Tribunal Colegiado de Circuito en Materia Administrativa, Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones, con residencia en la Ciudad de México y Jurisdicción en toda la República",1
+1305,"Segundo Tribunal Colegiado de Circuito en Materia Administrativa, Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones, con residencia en la Ciudad de México y Jurisdicción en toda la República",1
+930,Comisión de Conflictos Laborales del Poder Judicial de la Federación,1
+6207,Unidad de Instrucción de la Comisión de Conflictos Laborales del Tribunal de Disciplina Judicial,1
+3986,"Tribunal Laboral Federal de asuntos colectivos, con sede en la Ciudad de México",1
+4260,"Primer Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",1
+4261,"Segundo Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",1
+4262,"Tercer Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",1
+4263,"Cuarto Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",1
+4264,"Quinto Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",1
+4265,"Sexto Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",1
+4266,"Séptimo Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",1
+4267,"Octavo Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",1
+4268,"Noveno Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",1
+4269,"Décimo Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",1
+4270,"Décimo Primer Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",1
+4271,"Décimo Segundo Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",1
+4272,"Décimo Tercero Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",1
+4273,"Décimo Cuarto Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",1
+4274,"Décimo Quinto Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",1
+4472,"Décimo Sexto Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",1
+4473,"Décimo Séptimo Tribunal Laboral Federal de asuntos individuales, con sede en la Ciudad de México",1
+4343,Primer Tribunal Colegiado de Apelación en Materia Penal del Primer Circuito,1
+4344,Segundo Tribunal Colegiado de Apelación en Materia Penal del Primer Circuito,1
+4341,"Primer Tribunal Colegiado de Apelación en Materias Civil, Administrativa y Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones del Primer Circuito",1
+4342,"Segundo Tribunal Colegiado de Apelación en Materias Civil, Administrativa y Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones del Primer Circuito",1
+4386,"Pleno Regional en Materias Administrativa y Civil de la Región Centro-Norte, con residencia en la Ciudad de México.",1
+4612,"Pleno Regional en Materias Administrativa y Civil de la Región Centro-Sur, con residencia en la Ciudad de México.",1
+4385,"Pleno Regional en Materias Penal y de Trabajo de la Región Centro-Norte, con residencia en la Ciudad de México.",1
+4392,"Pleno Regional en Materias Penal y de Trabajo de la Región Centro-Sur, con residencia en la Ciudad de México.",1
+4393,"Pleno Regional Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones",1
+665,Juzgado Primero de Distrito en Materias de Amparo y Juicios Federales en el Estado de México (28/10/2003- 30/09/2024),2
+666,Juzgado Segundo de Distrito en Materias de Amparo y Juicios Federales en el Estado de México (28/10/2003- 30/09/2024),2
+667,Juzgado Tercero de Distrito en Materias de Amparo y Juicios Federales en el Estado de México (28/10/2003- 30/09/2024),2
+668,Juzgado Cuarto de Distrito en Materias de Amparo y Juicios Federales en el Estado de México (28/10/2003- 30/09/2024),2
+803,Juzgado Quinto de Distrito en Materias de Amparo y Juicios Federales en el Estado de México (01/08/2006- 30/09/2024),2
+2411,Juzgado Sexto de Distrito en Materias de Amparo y Juicios Federales en el Estado de México (16/10/2017- 30/09/2024),2
+3449,Juzgado Séptimo de Distrito en Materia de Amparo y Juicios Federales en el Estado de México (01/10/2018- 30/09/2024),2
+3874,Juzgado Octavo de Distrito en Materias de Amparo y Juicios Federales en el Estado de México (16/10/2019- 30/09/2024),2
+3875,Juzgado Noveno de Distrito en Materias de Amparo y Juicios Federales en el Estado de México (16/10/2019- 30/09/2024),2
+100,Juzgado Primero de Distrito en el Estado de México,2
+107,Juzgado Segundo de Distrito en el Estado de México,2
+111,Juzgado Tercero de Distrito en el Estado de México,2
+942,Juzgado Cuarto de Distrito en el Estado de México,2
+691,Juzgado Quinto de Distrito en el Estado de México,2
+115,Juzgado Sexto de Distrito en el Estado de México,2
+116,Juzgado Séptimo de Distrito en el Estado de México,2
+690,Juzgado Octavo de Distrito en el Estado de México,2
+673,Juzgado Noveno de Distrito en el Estado de México,2
+943,Juzgado Décimo de Distrito en el Estado de México,2
+940,Juzgado Decimoprimero de Distrito en el Estado de México,2
+1014,Juzgado Decimosegundo de Distrito en el Estado de México,2
+1269,Juzgado Decimotercero de Distrito en el Estado de México,2
+1270,Juzgado Decimocuarto de Distrito en el Estado de México,2
+3835,"Juzgado Decimoquinto de Distrito en el Estado de México, con residencia en Naucalpan de Juárez",2
+3836,"Juzgado Decimosexto de Distrito en el Estado de México, con residencia en Naucalpan de Juárez",2
+4137,"Juzgado Decimoséptimo de Distrito en el Estado de México, con residencia en Nezahualcóyotl",2
+5848,"Juzgado Primero de Distrito en Materia Penal en el Estado de México, con residencia en Toluca",2
+5849,"Juzgado Segundo de Distrito en Materia Penal en el Estado de México, con residencia en Toluca",2
+5850,"Juzgado Tercero de Distrito en Materia Penal en el Estado de México, con residencia en Toluca",2
+5851,"Juzgado Cuarto de Distrito en Materia Penal en el Estado de México, con residencia en Toluca",2
+659,Juzgado Primero de Distrito de Procesos Penales Federales en el Estado de México (28/10/2003- 30/09/2024),2
+660,Juzgado Segundo de Distrito de Procesos Penales Federales en el Estado de México (28/10/2003- 30/09/2024),2
+661,Juzgado Tercero de Distrito de Procesos Penales Federales en el Estado de México (28/10/2003- 30/09/2024),2
+663,Juzgado Quinto de Distrito de Procesos Penales Federales en el Estado de México (28/10/2003- 30/09/2024),2
+2741,"Juzgado de Distrito en Materia Mercantil Federal en el Estado de México, con residencia en Naucalpan de Juárez",2
+3824,"Juzgado de Distrito en Materia Mercantil Federal en el Estado de México, con residencia en Toluca",2
+5839,"Juzgado Primero de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de México, con residencia en Toluca",2
+5840,"Juzgado Segundo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de México, con residencia en Toluca",2
+5841,"Juzgado Tercero de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de México, con residencia en Toluca",2
+5842,"Juzgado Cuarto de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de México, con residencia en Toluca",2
+5843,"Juzgado Quinto de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de México, con residencia en Toluca",2
+5844,"Juzgado Sexto de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de México, con residencia en Toluca",2
+5845,"Juzgado Séptimo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de México, con residencia en Toluca",2
+5846,"Juzgado Octavo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de México, con residencia en Toluca",2
+5847,"Juzgado Noveno de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de México, con residencia en Toluca",2
+94,Primer Tribunal Colegiado en Materia Administrativa del Segundo Circuito,2
+102,Segundo Tribunal Colegiado en Materia Administrativa del Segundo Circuito,2
+428,Tercer Tribunal Colegiado en Materia Administrativa del Segundo Circuito,2
+1085,Cuarto Tribunal Colegiado en Materia Administrativa del Segundo Circuito,2
+95,Primer Tribunal Colegiado en Materia Civil del Segundo Circuito,2
+103,Segundo Tribunal Colegiado en Materia Civil del Segundo Circuito,2
+109,Tercer Tribunal Colegiado en Materia Civil del Segundo Circuito,2
+426,Cuarto Tribunal Colegiado en Materia Civil del Segundo Circuito,2
+96,Primer Tribunal Colegiado en Materia de Trabajo del Segundo Circuito,2
+1103,Segundo Tribunal Colegiado en Materia de Trabajo del Segundo Circuito,2
+4408,Tercer Tribunal Colegiado en Materia de Trabajo del Segundo Circuito,2
+1150,"Primer Tribunal Colegiado del Segundo Circuito, con residencia en Nezahualcóyotl, Estado de México",2
+1271,"Segundo Tribunal Colegiado del Segundo Circuito, con residencia en Nezahualcóyotl, Estado de México",2
+97,Primer Tribunal Colegiado en Materia Penal del Segundo Circuito,2
+104,Segundo Tribunal Colegiado en Materia Penal del Segundo Circuito,2
+706,Tercer Tribunal Colegiado en Materia Penal del Segundo Circuito,2
+794,Cuarto Tribunal Colegiado en Materia Penal del Segundo Circuito,2
+3988,"Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Toluca",2
+3989,"Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Naucalpan",2
+4444,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Toluca",2
+4445,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Toluca",2
+4446,"Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Toluca",2
+4589,"Cuarto Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Naucalpan",2
+4590,"Quinto Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Naucalpan",2
+4591,"Sexto Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Naucalpan",2
+4592,"Séptimo Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Naucalpan",2
+4593,"Octavo Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Naucalpan",2
+4594,"Noveno Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Naucalpan",2
+4595,"Décimo Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Naucalpan",2
+5604,"Décimo Primer Tribunal Laboral Federal de asuntos individuales en el Estado de México, con sede en Naucalpan",2
+4345,"Primer Tribunal Colegiado de Apelación del Segundo Circuito, con residencia en Toluca",2
+4347,"Tribunal Colegiado de Apelación del Segundo Circuito, con residencia en Nezahualcóyotl",2
+4346,"Segundo Tribunal Colegiado de Apelación del Segundo Circuito, con residencia en Toluca",2
+4387,"Pleno Regional en Materia Civil de la Región Centro-Norte, con residencia en la Ciudad de México (16/01/2023-15/01/2024)",2
+4388,"Pleno Regional en Materia de Trabajo de la Región Centro-Norte, con residencia en Monterrey, Nuevo León (16/01/2023-15/01/2024)",2
+5741,"Juzgado Primero de Distrito en Materia Administrativa en el Estado de Jalisco, con residencia en Zapopan",3
+5742,"Juzgado Segundo de Distrito en Materia Administrativa en el Estado de Jalisco, con residencia en Zapopan",3
+5743,"Juzgado Tercero de Distrito en Materia Administrativa en el Estado de Jalisco, con residencia en Zapopan",3
+5744,"Juzgado Cuarto de Distrito en Materia Administrativa en el Estado de Jalisco, con residencia en Zapopan",3
+5745,"Juzgado Quinto de Distrito en Materia Administrativa en el Estado de Jalisco, con residencia en Zapopan",3
+5746,"Juzgado Sexto de Distrito en Materia Administrativa en el Estado de Jalisco, con residencia en Zapopan",3
+5747,"Juzgado Séptimo de Distrito en Materia Administrativa en el Estado de Jalisco, con residencia en Zapopan",3
+5748,"Juzgado Octavo de Distrito en Materia Administrativa en el Estado de Jalisco, con residencia en Zapopan",3
+1234,"Juzgado Cuarto de Distrito de Amparo en Materia Penal en el Estado de Jalisco, con residencia en Zapopan (16/10/2012 - 01/09/2024)",3
+1312,"Juzgado Quinto de Distrito de Amparo en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande (16/10/2019 - 01/09/2024)",3
+1313,"Juzgado Sexto de Distrito de Amparo en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande (16/10/2019 - 01/09/2024)",3
+147,"Juzgado Primero de Distrito de Amparo en Materia Penal en el Estado de Jalisco, con residencia en Zapopan(02/04/2001 - 01/09/2024)",3
+148,"Juzgado Segundo de Distrito de Amparo en Materia Penal en el Estado de Jalisco, con residencia en Zapopan (16/10/2012 - 01/09/2024)",3
+1667,"Juzgado Séptimo de Distrito de Amparo en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande (16/10/2019 - 01/09/2024)",3
+1233,"Juzgado Tercero de Distrito de Amparo en Materia Penal en el Estado de Jalisco, con residencia en Zapopan(16/10/2012 - 01/09/2024)",3
+2745,"Juzgado Octavo de Distrito de Amparo en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande(02/04/2001 - 01/09/2024)",3
+3825,"Juzgado Noveno de Distrito de Amparo en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande (12/11/2018 - 01/09/2024)",3
+5749,"Juzgado Primero de Distrito en Materia Civil en el Estado de Jalisco, con residencia en Zapopan",3
+5750,"Juzgado Segundo de Distrito en Materia Civil en el Estado de Jalisco, con residencia en Zapopan",3
+5751,"Juzgado Tercero de Distrito en Materia Civil en el Estado de Jalisco, con residencia en Zapopan",3
+5752,"Juzgado Cuarto de Distrito en Materia Civil en el Estado de Jalisco, con residencia en Zapopan",3
+5753,"Juzgado Quinto de Distrito en Materia Civil en el Estado de Jalisco, con residencia en Zapopan",3
+5754,"Juzgado Sexto de Distrito en Materia Civil en el Estado de Jalisco, con residencia en Zapopan",3
+5755,"Juzgado Séptimo de Distrito en Materia Civil en el Estado de Jalisco, con residencia en Zapopan",3
+5756,"Juzgado Octavo de Distrito en Materia Civil en el Estado de Jalisco, con residencia en Zapopan",3
+5757,"Juzgado Primero de Distrito en Materia de Trabajo en el Estado de Jalisco, con residencia en Zapopan",3
+5758,"Juzgado Segundo de Distrito en Materia de Trabajo en el Estado de Jalisco, con residencia en Zapopan",3
+5759,"Juzgado Tercero de Distrito en Materia de Trabajo en el Estado de Jalisco, con residencia en Zapopan",3
+5760,"Juzgado Cuarto de Distrito en Materia de Trabajo en el Estado de Jalisco, con residencia en Zapopan",3
+5761,"Juzgado Quinto de Distrito en Materia de Trabajo en el Estado de Jalisco, con residencia en Zapopan",3
+5762,"Juzgado Sexto de Distrito en Materia de Trabajo en el Estado de Jalisco, con residencia en Zapopan",3
+5763,"Juzgado Séptimo de Distrito en Materia de Trabajo en el Estado de Jalisco, con residencia en Zapopan",3
+5764,"Juzgado Octavo de Distrito en Materia de Trabajo en el Estado de Jalisco, con residencia en Zapopan",3
+5765,"Juzgado Primero de Distrito en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande",3
+5766,"Juzgado Segundo de Distrito en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande",3
+5767,"Juzgado Tercero de Distrito en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande",3
+5768,"Juzgado Cuarto de Distrito en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande",3
+5769,"Juzgado Quinto de Distrito en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande",3
+5770,"Juzgado Sexto de Distrito en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande",3
+5771,"Juzgado Séptimo de Distrito en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande",3
+1224,"Juzgado Primero de Distrito de Procesos Penales Federales en el Estado de Jalisco, con residencia en Puente Grande, Municipio de Juanacatlán (16/10/2012 - 01/09/2024)",3
+1226,"Juzgado Tercero de Distrito de Procesos Penales Federales en el Estado de Jalisco, con residencia en Puente Grande, Municipio de Juanacatlán (16/10/2012 - 01/09/2024)",3
+1227,"Juzgado Cuarto de Distrito de Procesos Penales Federales en el Estado de Jalisco, con residencia en Puente Grande, Municipio de Juanacatlán (16/10/2012 - 01/09/2024)",3
+1287,"Juzgado Primero de Distrito en Materia Mercantil Federal en el Estado de Jalisco, Especializado en Juicios Orales, con sede en Zapopan",3
+2742,"Juzgado Segundo de Distrito en Materia Mercantil Federal en el Estado de Jalisco, Especializado en Juicios Orales, con sede en Zapopan",3
+142,"Juzgado Decimotercero de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan. (02/04/2001 - 01/09/2024)",3
+694,"Juzgado Primero de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(29/03/2004 - 01/09/2024)",3
+1300,"Juzgado Séptimo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan. (01/09/2013 - 01/09/2024)",3
+513,"Juzgado Segundo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(05/11/2001 - 01/09/2024)",3
+681,"Juzgado Decimocuarto de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan. (01/03/2004 - 01/09/2024)",3
+1408,"Juzgado Octavo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(02/04/2001 - 01/09/2024)",3
+679,"Juzgado Tercero de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(01/03/2004 - 01/09/2024)",3
+1187,"Juzgado Decimoquinto de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan. (01/03/2012 - 01/09/2024)",3
+2414,"Juzgado Noveno de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan(02/04/2001 - 01/09/2024)",3
+692,"Juzgado Décimo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(02/04/2001 - 01/09/2024)",3
+695,"Juzgado Cuarto de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(29/03/2004 - 01/09/2024)",3
+1409,"Juzgado Decimosexto de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan. (01/11/2014 - 01/09/2024)",3
+680,"Juzgado Quinto de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(01/03/2004 - 01/09/2024)",3
+693,"Juzgado Decimoprimero de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(02/04/2001 - 01/09/2024)",3
+3878,"Juzgado Decimoséptimo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan (16/10/2019 - 01/09/2024)",3
+139,"Juzgado Decimosegundo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(02/04/2001 - 01/09/2024)",3
+1250,"Juzgado Sexto de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan.(16/10/2012 - 01/09/2024)",3
+3879,"Juzgado Decimoctavo de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan (16/10/2019 - 01/09/2024)",3
+3880,"Juzgado Decimonoveno de Distrito en Materias Administrativa, Civil y de Trabajo en el Estado de Jalisco, con residencia en Zapopan(16/10/2019 - 01/09/2024)",3
+118,Primer Tribunal Colegiado en Materia Administrativa del Tercer Circuito,3
+127,Segundo Tribunal Colegiado en Materia Administrativa del Tercer Circuito,3
+473,Tercer Tribunal Colegiado en Materia Administrativa del Tercer Circuito,3
+795,Cuarto Tribunal Colegiado en Materia Administrativa del Tercer Circuito,3
+1386,Quinto Tribunal Colegiado en Materia Administrativa del Tercer Circuito,3
+1886,Sexto Tribunal Colegiado en Materia Administrativa del Tercer Circuito,3
+1887,Séptimo Tribunal Colegiado en Materia Administrativa del Tercer Circuito,3
+119,Primer Tribunal Colegiado en Materia Civil del Tercer Circuito,3
+128,Segundo Tribunal Colegiado en Materia Civil del Tercer Circuito,3
+136,Tercer Tribunal Colegiado en Materia Civil del Tercer Circuito,3
+141,Cuarto Tribunal Colegiado en Materia Civil del Tercer Circuito,3
+475,Quinto Tribunal Colegiado en Materia Civil del Tercer Circuito,3
+2885,"Sexto Tribunal Colegiado en Materia Civil del Tercer Circuito, con residencia en Zapopan",3
+120,Primer Tribunal Colegiado en Materia de Trabajo del Tercer Circuito,3
+129,Segundo Tribunal Colegiado en Materia de Trabajo del Tercer Circuito,3
+1241,Tercer Tribunal Colegiado en Materia de Trabajo del Tercer Circuito,3
+1257,"Cuarto Tribunal Colegiado en Materia de Trabajo del Tercer Circuito, con residencia en Zapopan, Jalisco",3
+1888,"Quinto Tribunal Colegiado en Materia de Trabajo del Tercer Circuito, con residencia en Zapopan, Jalisco",3
+3997,"Sexto Tribunal Colegiado en Materia de Trabajo del Tercer Circuito, con residencia en Zapopan, Jalisco",3
+121,Primer Tribunal Colegiado en Materia Penal del Tercer Circuito,3
+130,Segundo Tribunal Colegiado en Materia Penal del Tercer Circuito,3
+1258,"Tercer Tribunal Colegiado en Materia Penal del Tercer Circuito, con residencia en Zapopan, Jalisco",3
+3458,"Cuarto Tribunal Colegiado en Materia Penal del Tercer Circuito, con residencia en Zapopan",3
+4285,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Jalisco, con sede en Zapopan",3
+4286,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Jalisco, con sede en Zapopan",3
+4287,"Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Jalisco, con sede en Zapopan",3
+4288,"Cuarto Tribunal Laboral Federal de asuntos individuales en el Estado de Jalisco, con sede en Zapopan",3
+4289,"Quinto Tribunal Laboral Federal de asuntos individuales en el Estado de Jalisco, con sede en Zapopan",3
+4290,"Sexto Tribunal Laboral Federal de asuntos individuales en el Estado de Jalisco, con sede en Zapopan",3
+4291,"Séptimo Tribunal Laboral Federal de asuntos individuales en el Estado de Jalisco, con sede en Zapopan",3
+4292,"Octavo Tribunal Laboral Federal de asuntos individuales en el Estado de Jalisco, con sede en Zapopan",3
+4348,"Primer Tribunal Colegiado de Apelación del Tercer Circuito, con residencia en Zapopan, Jalisco",3
+4396,"Segundo Tribunal Colegiado de Apelación del Tercer Circuito, con residencia en Zapopan, Jalisco",3
+4390,"Pleno Regional en Materia Administrativa de la Región Centro-Sur, con residencia en Cuernavaca, Morelos (16/01/2023-15/01/2024)",3
+4391,"Pleno Regional en Materia Civil de la Región Centro-Sur, con residencia en Guadalajara, Jalisco (16/01/2023-15/01/2024)",3
+4389,"Pleno Regional en Materia Penal de la Región Centro-Sur, con residencia en San Andrés Cholula, Puebla (16/01/2023-15/01/2024)",3
+562,Juzgado Primero de Distrito en Materia Administrativa en el Estado de Nuevo León,4
+698,Juzgado Segundo de Distrito en Materia Administrativa en el estado de Nuevo León,4
+2425,Juzgado Tercero de Distrito en Materia Administrativa en el Estado de Nuevo León,4
+4236,Juzgado Cuarto de Distrito en Materia Administrativa en el Estado de Nuevo León,4
+558,Juzgado Primero de Distrito en Materia Penal en el Estado de Nuevo León,4
+559,Juzgado Segundo de Distrito en Materia Penal en el Estado de Nuevo León,4
+561,Juzgado Cuarto de Distrito en Materia Penal en el Estado de Nuevo León,4
+682,Juzgado Quinto de Distrito en Materia Penal en el Estado de Nuevo León,4
+1082,Juzgado Sexto de Distrito en Materia Penal en el Estado de Nuevo León,4
+696,Juzgado Primero de Distrito en Materia Civil y de Trabajo en el Estado de Nuevo León,4
+697,Juzgado Segundo de Distrito en Materia Civil y de Trabajo en el Estado de Nuevo León,4
+569,Juzgado Tercero de Distrito en Materias Civil y de Trabajo en el Estado de Nuevo León,4
+683,Juzgado Cuarto de Distrito en Materias Civil y de Trabajo en el Estado de Nuevo León,4
+1268,"Juzgado Quinto de Distrito en Materia Civil y de Trabajo en el Estado de Nuevo León, con residencia en Monterrey",4
+4565,"Juzgado Sexto de Distrito en Materias Civil y de Trabajo en el Estado de Nuevo León, con residencia en Monterrey",4
+4564,"Juzgado de Distrito en Materia Mercantil Federal en el Estado de Nuevo León, con residencia en Monterrey",4
+149,Primer Tribunal Colegiado en Materia Administrativa del Cuarto Circuito,4
+155,Segundo Tribunal Colegiado en Materia Administrativa del Cuarto Circuito,4
+647,Tercer Tribunal Colegiado en Materia Administrativa del Cuarto Circuito,4
+150,Primer Tribunal Colegiado en Materia Civil del Cuarto Circuito,4
+156,Segundo Tribunal Colegiado en Materia Civil del Cuarto Circuito,4
+506,Tercer Tribunal Colegiado en Materia Civil del Cuarto Circuito,4
+151,Primer Tribunal Colegiado en Materia de Trabajo del Cuarto Circuito,4
+157,Segundo Tribunal Colegiado en Materia de Trabajo del Cuarto Circuito,4
+160,Tercer Tribunal Colegiado en Materia de Trabajo del Cuarto Circuito,4
+1366,Cuarto Tribunal Colegiado en Materia de Trabajo del Cuarto Circuito,4
+4093,Quinto Tribunal Colegiado en Materia de Trabajo del Cuarto Circuito,4
+152,Primer Tribunal Colegiado en Materia Penal del Cuarto Circuito,4
+507,Segundo Tribunal Colegiado en Materia Penal del Cuarto Circuito,4
+4296,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",4
+4297,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",4
+4298,"Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",4
+4299,"Cuarto Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",4
+4300,"Quinto Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",4
+4301,"Sexto Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",4
+4302,"Séptimo Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",4
+4303,"Octavo Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",4
+4304,"Noveno Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",4
+4305,"Décimo Tribunal Laboral Federal de asuntos individuales en el Estado de Nuevo León, con sede en Monterrey",4
+4349,"Tribunal Colegiado de Apelación del Cuarto Circuito, con residencia en Monterrey, Nuevo León",4
+168,Juzgado Primero de Distrito en el Estado de Sonora,5
+171,Juzgado Segundo de Distrito en el Estado de Sonora,5
+174,Juzgado Tercero de Distrito en el Estado de Sonora,5
+176,Juzgado Cuarto de Distrito en el Estado de Sonora,5
+177,Juzgado Quinto de Distrito en el Estado de Sonora,5
+179,Juzgado Séptimo de Distrito en el Estado de Sonora,5
+412,Juzgado Octavo de Distrito en el Estado de Sonora,5
+180,Juzgado Noveno de Distrito en el Estado de Sonora,5
+181,Juzgado Décimo de Distrito en el Estado de Sonora,5
+1533,Juzgado Decimoprimero de Distrito en el Estado de Sonora,5
+1534,Juzgado Decimosegundo de Distrito en el Estado de Sonora,5
+3851,Juzgado Decimotercero de Distrito en el Estado de Sonora,5
+4259,"Juzgado Decimocuarto de Distrito en el Estado de Sonora, con residencia en Hermosillo",5
+778,Primer Tribunal Colegiado en Materias Civil y de Trabajo del Quinto Circuito,5
+779,Segundo Tribunal Colegiado en Materias Civil y de Trabajo del Quinto Circuito,5
+1441,Tercer Tribunal Colegiado en Materias Civil y de Trabajo del Quinto Circuito,5
+775,Primer Tribunal Colegiado en Materias Penal y Administrativa del Quinto Circuito,5
+776,Segundo Tribunal Colegiado en Materias Penal y Administrativa del Quinto Circuito,5
+777,Tercer Tribunal Colegiado en Materias Penal y Administrativa del Quinto Circuito,5
+4571,Cuarto Tribunal Colegiado en Materias Penal y Administrativa del Quinto Circuito,5
+4308,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Sonora, con sede en Hermosillo",5
+4309,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Sonora, con sede en Hermosillo",5
+4350,"Tribunal Colegiado de Apelación del Quinto Circuito, con residencia en Hermosillo",5
+1453,Juzgado Primero de Distrito en Materia Penal en el Estado de Puebla,6
+1455,Juzgado Segundo de Distrito en Materia Penal en el Estado de Puebla,6
+1456,Juzgado Tercero de Distrito en Materia Penal en el Estado de Puebla,6
+1457,Juzgado Cuarto de Distrito en Materia Penal en el Estado de Puebla,6
+1458,Juzgado Quinto de Distrito en Materia Penal en el Estado de Puebla,6
+1288,"Juzgado Primero de Distrito del Centro Auxiliar de la Segunda Región, en su carácter de Ordinario",6
+1293,"Juzgado Segundo de Distrito del Centro Auxiliar de la Segunda Región, en su carácter de Ordinario",6
+1275,"Juzgado Tercero de Distrito del Centro Auxiliar de la Segunda Región, en su carácter de Ordinario",6
+1277,"Juzgado Sexto de Distrito del Centro Auxiliar de la Segunda Región, en su carácter de Ordinario",6
+1447,"Juzgado Primero de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y de Juicios Federales en el Estado de Puebla",6
+1448,"Juzgado Segundo de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y Juicios Federales en el Estado de Puebla",6
+1449,"Juzgado Tercero de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y Juicios Federales en el Estado de Puebla",6
+1450,"Juzgado Cuarto de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y Juicios Federales en el Estado de Puebla",6
+1451,"Juzgado Quinto de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y Juicios Federales en el Estado de Puebla",6
+1452,"Juzgado Sexto de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y Juicios Federales en el Estado de Puebla",6
+3456,"Juzgado Séptimo de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y Juicios Federales en el Estado de Puebla",6
+3457,"Juzgado Octavo de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y Juicios Federales en el Estado de Puebla",6
+3900,"Juzgado Noveno de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Puebla",6
+4422,"Juzgado Décimo de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y Juicios Federales en el Estado de Puebla",6
+1238,"Juzgado Primero de Distrito en Materia Mercantil Federal en el Estado de Puebla, Especializado en Juicios Orales",6
+4420,"Juzgado Segundo de Distrito en Materia Mercantil Federal en el Estado de Puebla, Especializado en Juicios Orales",6
+182,Primer Tribunal Colegiado en Materia Administrativa del Sexto Circuito,6
+188,Segundo Tribunal Colegiado en Materia Administrativa del Sexto Circuito,6
+193,Tercer Tribunal Colegiado en Materia Administrativa del Sexto Circuito,6
+183,Primer Tribunal Colegiado en Materia Civil del Sexto Circuito,6
+189,Segundo Tribunal Colegiado en Materia Civil del Sexto Circuito,6
+194,Tercer Tribunal Colegiado en Materia Civil del Sexto Circuito,6
+184,Primer Tribunal Colegiado en Materia de Trabajo del Sexto Circuito,6
+1332,"Segundo Tribunal Colegiado en Materia de Trabajo del Sexto Circuito, con residencia en Puebla, Puebla",6
+1294,"Primer Tribunal Colegiado de Circuito del Centro Auxiliar de la Segunda Región, en su carácter de Ordinario",6
+1295,"Segundo Tribunal Colegiado de Circuito del Centro Auxiliar de la Segunda Región, en su carácter de Ordinario",6
+185,Primer Tribunal Colegiado en Materia Penal del Sexto Circuito,6
+191,Segundo Tribunal Colegiado en Materia Penal del Sexto Circuito,6
+1335,"Tercer Tribunal Colegiado en Materia Penal del Sexto Circuito, con residencia en San Andrés Cholula, Puebla",6
+4106,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Puebla, con sede en Puebla",6
+4107,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Puebla, con sede en Puebla",6
+4108,"Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Puebla, con sede en Puebla",6
+4109,"Cuarto Tribunal Laboral Federal de asuntos Individuales en el Estado de Puebla, con sede en Puebla",6
+4351,"Tribunal Colegiado de Apelación del Sexto Circuito, con residencia en San Andrés Cholula",6
+203,Juzgado Primero de Distrito en el Estado de Veracruz,7
+207,Juzgado Segundo de Distrito en el Estado de Veracruz,7
+209,Juzgado Tercero de Distrito en el Estado de Veracruz,7
+210,Juzgado Cuarto de Distrito en el Estado de Veracruz,7
+211,Juzgado Quinto de Distrito en el Estado de Veracruz,7
+212,Juzgado Sexto de Distrito en el Estado de Veracruz,7
+213,Juzgado Séptimo de Distrito en el Estado de Veracruz,7
+214,Juzgado Octavo de Distrito en el Estado de Veracruz,7
+585,Juzgado Décimo Primero de Distrito en el Estado de Veracruz,7
+709,Juzgado Décimo Segundo de Distrito en el Estado de Veracruz,7
+714,Juzgado Décimo Tercero de Distrito en el Estado de Veracruz,7
+760,Juzgado Decimoquinto de Distrito en el Estado de Veracruz,7
+936,Juzgado Decimosexto de Distrito en el Estado de Veracruz,7
+1314,"Juzgado Decimoséptimo de Distrito en el Estado de Veracruz, con residencia en Xalapa",7
+1571,"Juzgado Decimoctavo de Distrito en el Estado de Veracruz, con residencia en Xalapa",7
+2951,"Juzgado de Distrito en Materia Mercantil Federal en el Estado de Veracruz, con residencia en Boca del Río",7
+3842,"Juzgado de Distrito en Materia Mercantil Federal en el Estado de Veracruz, con residencia en Xalapa",7
+3876,"Juzgado Primero de Distrito de Procesos Penales Federales y de Amparo en Materia Penal en el Estado de Veracruz, con residencia en Villa Aldama",7
+3877,"Juzgado Segundo de Distrito de Procesos Penales Federales y de Amparo en Materia Penal en el Estado de Veracruz, con residencia en Villa Aldama",7
+956,Primer Tribunal Colegiado en Materia Administrativa del Séptimo Circuito,7
+957,Segundo Tribunal Colegiado en Materia Administrativa del Séptimo Circuito,7
+200,Primer Tribunal Colegiado en Materia Civil del Séptimo Circuito,7
+205,Segundo Tribunal Colegiado en Materia Civil del Séptimo Circuito,7
+1414,"Primer Tribunal Colegiado en Materia de Trabajo del Séptimo Circuito, con residencia en Xalapa, Veracruz",7
+1415,"Segundo Tribunal Colegiado en Materia de Trabajo del Séptimo Circuito, con residencia en Xalapa, Veracruz",7
+1412,"Primer Tribunal Colegiado en Materia Penal del Séptimo Circuito, con residencia en Boca del Río, Veracruz",7
+1413,"Segundo Tribunal Colegiado en Materia Penal del Séptimo Circuito, con residencia en Boca del Río, Veracruz",7
+4123,"Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Veracruz, con sede en Boca del Río",7
+4121,"Cuarto Tribunal Laboral Federal de asuntos individuales en el Estado de Veracruz, con sede en Boca del Río",7
+4122,"Quinto Tribunal Laboral Federal de asuntos individuales en el Estado de Veracruz, con sede en Boca del Río",7
+4125,"Sexto Tribunal Laboral Federal de asuntos individuales en el Estado de Veracruz, con sede en Xalapa",7
+4126,"Séptimo Tribunal Laboral Federal de asuntos individuales en el Estado de Veracruz, con sede en Xalapa",7
+4128,"Octavo Tribunal Laboral Federal de asuntos individuales en el Estado de Veracruz, con sede en Xalapa",7
+4129,"Noveno Tribunal Laboral Federal de asuntos individuales en el Estado de Veracruz, con sede en Xalapa",7
+4352,"Tribunal Colegiado de Apelación del Séptimo Circuito, con residencia en Xalapa, Veracruz",7
+217,Juzgado Primero de Distrito en el Estado de Coahuila,8
+712,Juzgado Primero de Distrito en La Laguna,8
+220,Juzgado Segundo de Distrito en el Estado de Coahuila,8
+931,Juzgado Segundo de Distrito en La Laguna,8
+222,Juzgado Tercero de Distrito en el Estado de Coahuila,8
+713,Juzgado Tercero de Distrito en La Laguna,8
+223,Juzgado Cuarto de Distrito en el Estado de Coahuila,8
+932,Juzgado Cuarto de Distrito en La Laguna,8
+1711,Juzgado Quinto de Distrito en La Laguna,8
+4145,"Juzgado Quinto de Distrito en el estado de Coahuila de Zaragoza, con residencia en Saltillo",8
+1712,Juzgado Sexto de Distrito en La Laguna,8
+3861,"Juzgado Séptimo de Distrito en La Laguna, con residencia en Torreón",8
+3822,"Juzgado de Distrito en Materia Mercantil Federal en la Laguna, con residencia en Torreón, Coahuila de Zaragoza",8
+1147,Tribunal Colegiado en Materias Administrativa y Civil del Octavo Circuito,8
+1144,Primer Tribunal Colegiado en Materias Civil y de Trabajo del Octavo Circuito,8
+1331,"Segundo Tribunal Colegiado en Materias Civil y de Trabajo del Octavo Circuito, con residencia en Torreón, Coah.",8
+4575,"Tercer Tribunal Colegiado en Materias Civil y de Trabajo del Octavo Circuito, con residencia en Torreón, Coahuila de Zaragoza",8
+1143,Primer Tribunal Colegiado en Materias Penal y Administrativa del Octavo Circuito,8
+1145,Segundo Tribunal Colegiado en Materias Penal y Administrativa del Octavo Circuito,8
+2954,Tercer Tribunal Colegiado en Materias Penal y Administrativa del Octavo Circuito,8
+1146,Tribunal Colegiado en Materias Penal y de Trabajo del Octavo Circuito,8
+4275,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Coahuila, con sede en Saltillo",8
+4276,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Coahuila, con sede en Saltillo",8
+4277,"Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Coahuila, con sede en Saltillo",8
+4278,"Cuarto Tribunal Laboral Federal de asuntos individuales en el Estado de Coahuila, con sede en Saltillo",8
+4279,"Quinto Tribunal Laboral Federal de asuntos individuales en el Estado de Coahuila, con sede en Torreón",8
+4280,"Sexto Tribunal Laboral Federal de asuntos individuales en el Estado de Coahuila, con sede en Torreón",8
+4281,"Séptimo Tribunal Laboral Federal de asuntos individuales en el Estado de Coahuila, con sede en Torreón",8
+4353,"Tribunal Colegiado de Apelación del Octavo Circuito, con residencia en Torreón",8
+226,Juzgado Primero de Distrito en el Estado de San Luis Potosí,9
+228,Juzgado Segundo de Distrito en el Estado de San Luis Potosí,9
+229,Juzgado Tercero de Distrito en el Estado de San Luis Potosí,9
+230,Juzgado Cuarto de Distrito en el Estado de San Luis Potosí,9
+471,Juzgado Quinto de Distrito en el Estado de San Luis Potosí,9
+974,Juzgado Sexto de Distrito en el Estado de San Luis Potosí,9
+1216,Juzgado Séptimo de Distrito en el Estado de San Luis Potosí,9
+2071,Juzgado Octavo de Distrito en el Estado de San Luis Potosí,9
+3459,Juzgado de Distrito en Materia Mercantil Federal en el Estado de San Luis Potosí,9
+1560,Primer Tribunal Colegiado en Materias Civil y Administrativa del Noveno Circuito,9
+1561,Segundo Tribunal Colegiado en Materias Civil y Administrativa del Noveno Circuito,9
+1558,Tribunal Colegiado en Materia de Trabajo del Noveno Circuito,9
+1557,Tribunal Colegiado en Materia Penal del Noveno Circuito,9
+3985,"Tribunal Laboral Federal de asuntos individuales en el Estado de San Luis Potosí, con sede en San Luis Potosí",9
+4586,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de San Luis Potosí, con sede en San Luis Potosí",9
+4587,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de San Luis Potosí, con sede en San Luis Potosí",9
+4588,"Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de San Luis Potosí, con sede en San Luis Potosí",9
+4354,"Tribunal Colegiado de Apelación del Noveno Circuito, con residencia en San Luis Potosí, San Luis Potosí",9
+233,Juzgado Primero de Distrito en el Estado de Tabasco,10
+517,Juzgado Segundo de Distrito en el Estado de Tabasco,10
+238,Juzgado Tercero de Distrito en el Estado de Tabasco,10
+467,Juzgado Cuarto de Distrito en el Estado de Tabasco,10
+1421,Juzgado Quinto de Distrito en el Estado de Tabasco,10
+1422,Juzgado Sexto de Distrito en el Estado de Tabasco,10
+2886,Juzgado Séptimo de Distrito en el Estado de Tabasco,10
+4001,Juzgado Octavo de Distrito en el Estado de Tabasco,10
+239,Juzgado Noveno de Distrito en el Estado de Veracruz,10
+240,Juzgado Décimo de Distrito en el Estado de Veracruz,10
+717,Juzgado Decimocuarto de Distrito en el Estado de Veracruz,10
+2956,Juzgado Décimo Noveno de Distrito en el Estado de Veracruz,10
+3826,Juzgado Primero de Distrito en Materia Mercantil Federal en el Estado de Tabasco,10
+4401,Juzgado Segundo de Distrito en Materia Mercantil Federal en el Estado de Tabasco,10
+5609,"Juzgado de Distrito en Materia Mercantil Federal en el Estado de Veracruz, con residencia en Coatzacoalcos",10
+1064,"Tribunal Colegiado en Materia Administrativa del Décimo Circuito, con residencia en Villa Hermosa, Tabasco",10
+1062,"Tribunal Colegiado en Materia Civil del Décimo Circuito, con residencia en Villahermosa, Tabasco",10
+3852,"Primer Tribunal Colegiado en Materia de Trabajo del Décimo Circuito, con residencia en Villahermosa, Tabasco",10
+3853,"Segundo Tribunal Colegiado en Materia de Trabajo del Décimo Circuito, con residencia en Villahermosa, Tabasco",10
+4426,"Tercer Tribunal Colegiado en Materia de Trabajo del Décimo Circuito, con residencia en Villahermosa, Tabasco",10
+1162,"Primer Tribunal Colegiado del Décimo Circuito, con residencia en Coatzacoalcos, Veracruz",10
+3841,"Segundo Tribunal Colegiado del Décimo Circuito, con residencia en Coatzacoalcos, Veracruz",10
+1063,"Tribunal Colegiado en Materia Penal del Décimo Circuito, con residencia en Villahermosa, Tabasco",10
+3992,"Tribunal Laboral Federal de asuntos individuales en el Estado de Tabasco, con sede en Villahermosa",10
+4118,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Veracruz, con sede en Coatzacoalcos",10
+4450,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Tabasco, con sede en Villahermosa",10
+4119,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Veracruz, con sede en Coatzacoalcos",10
+4451,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Tabasco, con sede en Villahermosa",10
+4452,"Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Tabasco, con sede en Villahermosa",10
+4453,"Cuarto Tribunal Laboral Federal de asuntos individuales en el Estado de Tabasco, con sede en Villahermosa",10
+4454,"Quinto Tribunal Laboral Federal de asuntos individuales en el Estado de Tabasco, con sede en Villahermosa",10
+4455,"Sexto Tribunal Laboral Federal de asuntos individuales en el Estado de Tabasco, con sede en Villahermosa",10
+4355,"Tribunal Colegiado de Apelación del Décimo Circuito, con residencia en Villahermosa, Tabasco",10
+243,Juzgado Primero de Distrito en el Estado de Michoacán,11
+246,Juzgado Segundo de Distrito en el Estado de Michoacán,11
+248,Juzgado Tercero de Distrito en el Estado de Michoacán,11
+249,Juzgado Cuarto de Distrito en el Estado de Michoacán,11
+250,Juzgado Quinto de Distrito en el Estado de Michoacán,11
+251,Juzgado Sexto de Distrito en el Estado de Michoacán,11
+941,Juzgado Séptimo de Distrito en el Estado de Michoacán,11
+460,Juzgado Octavo de Distrito en el Estado de Michoacán,11
+707,Juzgado Noveno de Distrito en el Estado de Michoacán,11
+4409,"Juzgado de Distrito en Materia Mercantil Federal en el Estado de Michoacán, con residencia en Morelia",11
+1041,Primer Tribunal Colegiado en Materias Administrativa y de Trabajo del Decimoprimer Circuito,11
+1042,Segundo Tribunal Colegiado en Materias Administrativa y de Trabajo del Decimoprimer Circuito,11
+2423,Tercer Tribunal Colegiado en Materias Administrativa y de Trabajo del Decimoprimer Circuito,11
+1040,Primer Tribunal Colegiado en Materia Civil del Decimoprimer Circuito,11
+1410,Segundo Tribunal Colegiado en Materia Civil del Decimoprimer Circuito,11
+1043,Tribunal Colegiado en Materia Penal del Decimoprimer Circuito,11
+4293,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Michoacán, con sede en Morelia",11
+4294,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Michoacán, con sede en Morelia",11
+4356,"Tribunal Colegiado de Apelación del Decimoprimer, Circuito, con residencia en Morelia",11
+255,Juzgado Primero de Distrito en el Estado de Sinaloa,12
+258,Juzgado Segundo de Distrito en el Estado de Sinaloa,12
+261,Juzgado Tercero de Distrito en el Estado de Sinaloa,12
+263,Juzgado Cuarto de Distrito en el Estado de Sinaloa,12
+265,Juzgado Quinto de Distrito en el Estado de Sinaloa,12
+266,Juzgado Sexto de Distrito en el Estado de Sinaloa,12
+267,Juzgado Séptimo de Distrito en el Estado de Sinaloa,12
+268,Juzgado Octavo de Distrito en el Estado de Sinaloa,12
+269,Juzgado Noveno de Distrito en el Estado de Sinaloa,12
+270,Juzgado Décimo de Distrito en el Estado de Sinaloa,12
+4144,"Juzgado de Distrito en Materia Mercantil Federal en el estado de Sinaloa, con residencia en Mazatlán",12
+1378,Primer Tribunal Colegiado en Materia Administrativa del Decimosegundo Circuito,12
+1379,Segundo Tribunal Colegiado en Materia Administrativa del Decimosegundo Circuito,12
+1380,Primer Tribunal Colegiado en Materia Civil del Decimosegundo Circuito,12
+4397,Segundo Tribunal Colegiado en Materia Civil del Decimosegundo Circuito,12
+1381,Tribunal Colegiado en Materia de Trabajo del Decimosegundo Circuito,12
+4395,"Tribunal Colegiado en Materia Penal del Décimo Segundo Circuito, con residencia en Culiacán, Sinaloa",12
+4306,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Sinaloa, con sede en Culiacán",12
+4307,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Sinaloa, con sede en Culiacán",12
+4357,"Tribunal Colegiado de Apelación del Decimosegundo Circuito, con residencia en Culiacán",12
+273,Juzgado Primero de Distrito en el Estado de Oaxaca,13
+276,Juzgado Segundo de Distrito en el Estado de Oaxaca,13
+278,Juzgado Tercero de Distrito en el Estado de Oaxaca,13
+279,Juzgado Cuarto de Distrito en el Estado de Oaxaca,13
+483,Juzgado Quinto de Distrito en el Estado de Oaxaca,13
+281,Juzgado Sexto de Distrito en el Estado de Oaxaca,13
+282,Juzgado Séptimo de Distrito en el Estado de Oaxaca,13
+466,Juzgado Octavo de Distrito en el Estado de Oaxaca,13
+1666,"Juzgado Noveno de Distrito en el Estado de Oaxaca, con residencia en San Bartolo Coyotepec",13
+1889,"Juzgado Décimo de Distrito en el Estado de Oaxaca, con residencia en San Bartolo Coyotepec",13
+1890,"Juzgado Decimoprimero de Distrito en el Estado de Oaxaca, con residencia en San Bartolo Coyotepec",13
+3448,Juzgado de Distrito en Materia Mercantil Federal en el Estado de Oaxaca,13
+1057,"Primer Tribunal Colegiado en Materias Civil y Administrativa del Décimo Tercer Circuito, con residencia en Oaxaca, Oaxaca",13
+3858,"Segundo Tribunal Colegiado en Materias Civil y Administrativa del Decimotercer Circuito, con residencia en Oaxaca, Oaxaca",13
+1058,"Primer Tribunal Colegiado en Materias Penal y de Trabajo del Decimotercer Circuito, con residencia en San Bartolo Coyotepec, Oaxaca",13
+1059,"Segundo Tribunal Colegiado en Materias Penal y de Trabajo del Decimotercer Circuito, con residencia en San Bartolo Coyotepec, Oaxaca",13
+4103,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Oaxaca, con sede en Oaxaca",13
+4104,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Oaxaca, con sede en Oaxaca",13
+4358,"Tribunal Colegiado de Apelación del Decimotercer Circuito, con residencia en San Bartolo Coyotepec",13
+420,Juzgado Primero de Distrito en el Estado de Yucatán,14
+422,Juzgado Segundo de Distrito en el Estado de Yucatán,14
+290,Juzgado Tercero de Distrito en el Estado de Yucatán,14
+461,Juzgado Cuarto de Distrito en el Estado de Yucatán,14
+1353,"Juzgado Quinto de Distrito en el Estado de Yucatán, con residencia en Mérida",14
+4403,"Juzgado Sexto de Distrito en el Estado de Yucatán, con residencia en Mérida",14
+3450,Juzgado de Distrito en Materia Mercantil Federal en el Estado de Yucatán,14
+952,Tribunal Colegiado en Materias de Trabajo y Administrativa del Decimocuarto Circuito,14
+951,Tribunal Colegiado en Materias Civil y Administrativa del Decimocuarto Circuito,14
+950,Tribunal Colegiado en Materias Penal y Administrativa del Decimocuarto Circuito,14
+4315,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Yucatán, con sede en Mérida",14
+4316,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Yucatán, con sede en Mérida",14
+4359,"Tribunal Colegiado de Apelación del Decimocuarto Circuito, con residencia en Mérida, Yucatán",14
+293,Juzgado Primero de Distrito en el Estado de Baja California,15
+296,Juzgado Segundo de Distrito en el Estado de Baja California,15
+510,Juzgado Tercero de Distrito en el Estado de Baja California,15
+1357,"Juzgado Cuarto de Distrito en el Estado de Baja California, con residencia en Mexicali",15
+1358,"Juzgado Quinto de Distrito en el Estado de Baja California, con residencia en Mexicali",15
+1359,"Juzgado Sexto de Distrito en el Estado de Baja California, con residencia en Mexicali",15
+1360,"Juzgado Séptimo de Distrito en el Estado de Baja California, con residencia en Ensenada",15
+1361,"Juzgado Octavo de Distrito en el Estado de Baja California, con residencia en Ensenada",15
+1343,"Juzgado Décimo de Distrito en el Estado de Baja California, con residencia en Tijuana",15
+1344,"Juzgado Decimoprimero de Distrito en el Estado de Baja California, con residencia en Tijuana",15
+1345,"Juzgado Decimosegundo de Distrito en el Estado de Baja California, con residencia en Tijuana",15
+1351,"Juzgado Decimotercero de Distrito en el Estado de Baja California, con residencia en Tijuana",15
+3460,"Juzgado Decimocuarto de Distrito en el Estado de Baja California, con residencia en Tijuana",15
+3886,"Juzgado Decimoquinto de Distrito en el Estado de Baja California, con residencia en Tijuana",15
+3887,"Juzgado Decimosexto de Distrito en el Estado de Baja California, con residencia en Tijuana",15
+5740,"Juzgado Decimoséptimo de Distrito en el Estado de Baja California, con residencia en Tijuana",15
+3840,"Juzgado Primero de Distrito en Materia Mercantil Federal en el Estado de Baja California, con residencia en Mexicali",15
+4416,"Juzgado Segundo de Distrito en Materia Mercantil Federal en el Estado de Baja California, con residencia en Mexicali",15
+291,Primer Tribunal Colegiado del Décimo Quinto Circuito,15
+294,Segundo Tribunal Colegiado del Décimo Quinto Circuito,15
+297,Tercer Tribunal Colegiado del Décimo Quinto Circuito,15
+703,Cuarto Tribunal Colegiado del Décimo Quinto Circuito,15
+1009,Quinto Tribunal Colegiado del Décimo Quinto Circuito,15
+1387,Sexto Tribunal Colegiado del Decimoquinto Circuito,15
+1673,Primer Tribunal Colegiado en Materias Civil y de Trabajo del Decimoquinto Circuito,15
+1674,Segundo Tribunal Colegiado en Materias Civil y de Trabajo del Decimoquinto Circuito,15
+4131,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Baja California, con sede en Ensenada",15
+4132,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Baja California, con sede en Tijuana",15
+5603,Tercer Tribunal Laboral de Asuntos Individuales en el Estado de Baja California con sede en Tijuana,15
+4360,"Tribunal Colegiado de Apelación del Decimoquinto Circuito, con residencia en Tijuana",15
+313,Juzgado Primero de Distrito en el Estado de Guanajuato,16
+315,Juzgado Segundo de Distrito en el Estado de Guanajuato,16
+317,Juzgado Tercero de Distrito en el Estado de Guanajuato,16
+319,Juzgado Cuarto de Distrito en el Estado de Guanajuato,16
+321,Juzgado Quinto de Distrito en el Estado de Guanajuato,16
+322,Juzgado Sexto de Distrito en el Estado de Guanajuato,16
+463,Juzgado Séptimo de Distrito en el Estado de Guanajuato,16
+1000,Juzgado Octavo de Distrito en el Estado de Guanajuato,16
+1243,Juzgado Noveno de Distrito en el Estado de Guanajuato,16
+1245,Juzgado Décimo de Distrito en el Estado de Guanajuato,16
+1364,Juzgado Decimoprimero de Distrito en el Estado de Guanajuato,16
+2743,Juzgado Decimosegundo de Distrito en el Estado de Guanajuato,16
+1320,"Primer Tribunal Colegiado en Materia Administrativa del Decimosexto Circuito, con residencia en Guanajuato, Gto",16
+1321,"Segundo Tribunal Colegiado en Materia Administrativa del Decimosexto Circuito, con residencia en Guanajuato, Gto",16
+1323,"Primer Tribunal Colegiado en Materia Civil del Decimosexto Circuito, con residencia en Guanajuato, Gto",16
+1324,"Segundo Tribunal Colegiado en Materia Civil del Decimosexto Circuito, con residencia en Guanajuato, Gto",16
+1325,"Tercer Tribunal Colegiado en Materia Civil del Decimosexto Circuito, con residencia en Guanajuato, Gto",16
+1326,"Primer Tribunal Colegiado en Materia de Trabajo del Decimosexto Circuito, con residencia en Guanajuato, Gto",16
+1318,"Segundo Tribunal Colegiado en Materia de Trabajo del Decimosexto Circuito, con residencia en la Ciudad de Guanajuato",16
+786,Primer Tribunal Colegiado en Materia Penal del Decimosexto Circuito,16
+1891,Segundo Tribunal Colegiado en Materia Penal del Decimosexto Circuito,16
+4096,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Guanajuato, con sede en Guanajuato",16
+4097,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Guanajuato, con sede en Guanajuato",16
+4098,"Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Guanajuato, con sede en Guanajuato",16
+4457,"Cuarto Tribunal Laboral Federal de asuntos individuales en el Estado de Guanajuato, con sede en Guanajuato",16
+4361,"Tribunal Colegiado de Apelación del Decimosexto Circuito, con residencia en Guanajuato, Guanajuato",16
+325,Juzgado Primero de Distrito en el Estado de Chihuahua,17
+328,Juzgado Segundo de Distrito en el Estado de Chihuahua,17
+700,Juzgado Tercero de Distrito en el Estado de Chihuahua,17
+557,Juzgado Cuarto de Distrito en el Estado de Chihuahua,17
+476,Juzgado Quinto de Distrito en el Estado de Chihuahua,17
+334,Juzgado Sexto de Distrito en el Estado de Chihuahua,17
+335,Juzgado Séptimo de Distrito en el Estado de Chihuahua,17
+653,Juzgado Octavo de Distrito en el Estado de Chihuahua,17
+654,Juzgado Noveno de Distrito en el Estado de Chihuahua,17
+761,Juzgado Décimo de Distrito en el Estado de Chihuahua,17
+2406,Juzgado Decimoprimero de Distrito en Estado de Chihuahua,17
+3993,Juzgado Decimosegundo de Distrito en el Estado de Chihuahua,17
+484,Primer Tribunal Colegiado del Decimoséptimo Circuito,17
+2409,Segundo Tribunal Colegiado del Decimoséptimo Circuito,17
+648,Primer Tribunal Colegiado en Materias Civil y de Trabajo del Decimoséptimo Circuito,17
+650,Segundo Tribunal Colegiado en Materias Civil y de Trabajo del Decimoséptimo Circuito,17
+1362,Tercer Tribunal Colegiado en Materias Civil y de Trabajo del Decimoséptimo Circuito,17
+649,Primer Tribunal Colegiado en Materias Penal y Administrativa del Décimo Séptimo Circuito,17
+651,Segundo Tribunal Colegiado en Materias Penal y Administrativa del Décimo Séptimo Circuito,17
+4282,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Chihuahua, con sede en Chihuahua",17
+4283,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Chihuahua, con sede en Chihuahua",17
+4284,"Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Chihuahua, con sede en Ciudad Juárez",17
+4362,"Tribunal Colegiado de Apelación del Decimoséptimo Circuito, con residencia en Chihuahua",17
+4399,"Tribunal Colegiado de Apelación del Decimoséptimo Circuito, con residencia en Ciudad Juárez",17
+338,Juzgado Primero de Distrito en el Estado de Morelos,18
+340,Juzgado Segundo de Distrito en el Estado de Morelos,18
+341,Juzgado Tercero de Distrito en el Estado de Morelos,18
+342,Juzgado Cuarto de Distrito en el Estado de Morelos,18
+753,Juzgado Quinto de Distrito en el Estado de Morelos,18
+1173,Juzgado Sexto de Distrito en el Estado de Morelos,18
+1253,"Juzgado Séptimo de Distrito en el Estado de Morelos, con residencia en Cuernavaca",18
+1384,Juzgado Octavo de Distrito en el Estado de Morelos,18
+3837,"Juzgado Noveno de Distrito en el Estado de Morelos, con residencia en Cuernavaca",18
+4147,"Juzgado Décimo de Distrito en el Estado de Morelos, con residencia en Cuernavaca",18
+1579,"Tribunal Colegiado en Materia Civil del Decimoctavo Circuito, con residencia en Cuernavaca, Morelos",18
+1573,"Primer Tribunal Colegiado en Materia de Trabajo del Decimoctavo Circuito, con Residencia en Cuernavaca Morelos",18
+1574,"Segundo Tribunal Colegiado en Materia de Trabajo del Decimoctavo Circuito, con Residencia en Cuernavaca Morelos",18
+1576,"Primer Tribunal Colegiado en Materias Penal y Administrativa del Decimoctavo Circuito, con Residencia en Cuernavaca Morelos",18
+1577,"Segundo Tribunal Colegiado en Materias Penal y Administrativa del Decimoctavo Circuito, con Residencia en Cuernavaca Morelos",18
+2748,"Tercer Tribunal Colegiado en Materias Penal y Administrativa del Decimoctavo Circuito, con Residencia en Cuernavaca Morelos",18
+4100,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Morelos, con sede en Cuernavaca",18
+4101,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Morelos, con sede en Cuernavaca",18
+5858,"Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Morelos, con sede en Cuernavaca",18
+4363,"Tribunal Colegiado de Apelación del Decimoctavo Circuito, con residencia en Xochitepec, Morelos",18
+1124,Juzgado de Distrito en Materias de Amparo y Juicios Federales en el Estado de Tamaulipas,19
+345,Juzgado Primero de Distrito en el Estado de Tamaulipas,19
+348,Juzgado Segundo de Distrito en el Estado de Tamaulipas,19
+351,Juzgado Tercero de Distrito en el Estado de Tamaulipas,19
+519,Juzgado Séptimo de Distrito en el Estado de Tamaulipas,19
+358,Juzgado Octavo de Distrito en el Estado de Tamaulipas,19
+359,Juzgado Noveno de Distrito en el Estado de Tamaulipas,19
+360,Juzgado Décimo de Distrito en el Estado de Tamaulipas,19
+780,Juzgado Décimo Primero de Distrito en el Estado de Tamaulipas,19
+1668,"Juzgado Decimosegundo de Distrito en el Estado de Tamaulipas, con residencia en Ciudad Victoria",19
+1669,Juzgado Décimo Tercero de Distrito en el Estado de Tamaulipas,19
+5610,"Juzgado Decimocuarto de Distrito en el Estado de Tamaulipas, con residencia en Ciudad Victoria",19
+1122,Juzgado Primero de Distrito de Procesos Penales Federales en el Estado de Tamaulipas,19
+1123,Juzgado Segundo de Distrito de Procesos Penales Federales en el Estado de Tamaulipas,19
+1376,Juzgado Tercero de Distrito de Procesos Penales Federales en el Estado de Tamaulipas,19
+744,Primer Tribunal Colegiado en Materias Administrativa y Civil del Décimo Noveno Circuito,19
+745,Segundo Tribunal Colegiado en Materias Administrativa y Civil del Décimo Noveno Circuito,19
+508,Primer Tribunal Colegiado del Decimonoveno Circuito,19
+802,Segundo Tribunal Colegiado del Decimonoveno Circuito,19
+746,Primer Tribunal Colegiado en Materias Penal y de Trabajo del Décimo Noveno Circuito,19
+747,Segundo Tribunal Colegiado en Materias Penal y de Trabajo del Décimo Noveno Circuito,19
+4418,Tercer Tribunal Colegiado en Materias Penal y de Trabajo del Décimo Noveno Circuito,19
+4310,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Tamaulipas, con sede en Ciudad Victoria",19
+4311,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Tamaulipas, con sede en Tampico",19
+4312,"Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Tamaulipas, con sede en Tampico",19
+4313,"Cuarto Tribunal Laboral Federal de asuntos individuales en el Estado de Tamaulipas, con sede en Reynosa",19
+4314,"Quinto Tribunal Laboral Federal de asuntos individuales en el Estado de Tamaulipas, con sede en Reynosa",19
+4364,"Tribunal Colegiado de Apelación del Decimonoveno Circuito, con residencia en Matamoros, Tamaulipas",19
+1582,"Juzgado Primero de Distrito de Amparo y Juicios Federales en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",20
+1583,"Juzgado Segundo de Distrito de Amparo y Juicios Federales en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",20
+1584,"Juzgado Tercero de Distrito de Amparo y Juicios Federales en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",20
+1585,"Juzgado Cuarto de Distrito de Amparo y Juicios Federales en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",20
+1586,"Juzgado Quinto de Distrito de Amparo y Juicios Federales en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",20
+1893,"Juzgado Sexto de Distrito de Amparo y Juicios Federales en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",20
+1894,"Juzgado Séptimo de Distrito de Amparo y Juicios Federales en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",20
+1591,"Juzgado Primero de Distrito en el Estado de Chiapas, con residencia en Tapachula",20
+1592,"Juzgado Segundo de Distrito en el Estado de Chiapas, con residencia en Tapachula",20
+3845,"Juzgado Tercero de Distrito en el Estado de Chiapas, con residencia en Tapachula",20
+3998,"Juzgado Cuarto de Distrito en el Estado de Chiapas, con residencia en Tapachula",20
+3850,"Juzgado de Distrito en Materia Mercantil Federal en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",20
+3888,"Juzgado Primero de Distrito de Procesos Penales Federales y de Amparo en Materia Penal en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",20
+3889,"Juzgado Segundo de Distrito de Procesos Penales Federales y de Amparo en Materia Penal en el Estado de Chiapas, con residencia en Tuxtla Gutiérrez",20
+1535,"Tribunal Colegiado en Materia Administrativa del Vigésimo Circuito, con residencia en Tuxtla Gutiérrez, Chiapas",20
+1538,"Tribunal Colegiado en Materia de Trabajo del Vigésimo Circuito, con residencia en Tuxtla Gutiérrez, Chiapas",20
+1536,"Primer Tribunal Colegiado en Materias Penal y Civil del Vigésimo Circuito, con residencia en Tuxtla Gutiérrez, Chiapas",20
+1537,"Segundo Tribunal Colegiado en Materias Penal y Civil del Vigésimo Circuito, con residencia en Tuxtla Gutiérrez, Chiapas",20
+3982,"Tribunal Laboral Federal de asuntos individuales en el Estado de Chiapas, con sede en Tuxtla Gutiérrez",20
+4583,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Chiapas, con sede en Tuxtla Gutiérrez",20
+4584,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Chiapas, con sede en Tuxtla Gutiérrez",20
+4585,"Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Chiapas, con sede en Tuxtla Gutiérrez",20
+4365,"Tribunal Colegiado de Apelación del Vigésimo Circuito, con residencia en Cintalapa de Figueroa, Chiapas",20
+375,Juzgado Primero de Distrito en el Estado de Guerrero,21
+378,Juzgado Segundo de Distrito en el Estado de Guerrero,21
+380,Juzgado Tercero de Distrito en el Estado de Guerrero,21
+382,Juzgado Cuarto de Distrito en el Estado de Guerrero,21
+383,Juzgado Quinto de Distrito en el Estado de Guerrero,21
+384,Juzgado Sexto de Distrito en el Estado de Guerrero,21
+721,Juzgado Séptimo de Distrito en el Estado de Guerrero,21
+722,Juzgado Octavo de Distrito en el Estado de Guerrero,21
+1215,"Juzgado Noveno de Distrito en el Estado de Guerrero, con residencia en Iguala",21
+1330,"Juzgado Décimo de Distrito en el Estado de Guerrero, con residencia en Chilpancingo, Gro",21
+3823,"Juzgado de Distrito en Materia Mercantil Federal en el Estado de Guerrero, con residencia en Acapulco",21
+749,Primer Tribunal Colegiado en Materias Civil y de Trabajo del Vigésimo Primer Circuito,21
+750,Segundo Tribunal Colegiado en Materias Civil y de Trabajo del Vigésimo Primer Circuito,21
+1404,Tercer Tribunal Colegiado en Materias Civil y de Trabajo del Vigésimo Primer Circuito,21
+751,Primer Tribunal Colegiado en Materias Penal y Administrativa del Vigésimo Primer Circuito,21
+752,Segundo Tribunal Colegiado en Materias Penal y Administrativa del Vigésimo Primer Circuito,21
+4135,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Guerrero, con sede en Acapulco",21
+5601,Segundo Tribunal Laboral Federal de Asuntos Individuales en el Estado de Guerrero con sede en Acapulco,21
+4366,"Tribunal Colegiado de Apelación del Vigésimo Primer Circuito, con residencia en Acapulco",21
+3881,Juzgado Primero de Distrito en Materia Penal en el Estado de Querétaro,22
+3882,Juzgado Segundo de Distrito en Materia Penal en el Estado de Querétaro,22
+1391,"Juzgado Primero de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Querétaro",22
+1392,"Juzgado Segundo de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Querétaro",22
+1393,"Juzgado Tercero de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Querétaro",22
+1395,"Juzgado Cuarto de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Querétaro",22
+1396,"Juzgado Quinto de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Querétaro",22
+1664,"Juzgado Sexto de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Querétaro",22
+1665,"Juzgado Séptimo de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Querétaro",22
+1588,"Tribunal Colegiado en Materias Administrativa y de Trabajo del Vigésimo Segundo Circuito, con residencia en Querétaro, Querétaro",22
+1589,"Primer Tribunal Colegiado en Materias Administrativa y Civil del Vigésimo Segundo Circuito, con residencia en Querétaro, Querétaro",22
+1590,"Segundo Tribunal Colegiado en Materias Administrativa y Civil del Vigésimo Segundo Circuito, con residencia en Querétaro, Querétaro",22
+2422,"Tercer Tribunal Colegiado en Materias Administrativa y Civil del Vigésimo Segundo Circuito, con residencia en Querétaro, Querétaro",22
+1587,"Tribunal Colegiado en Materias Penal y Administrativa del Vigésimo Segundo Circuito, con residencia en Querétaro, Querétaro",22
+4111,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Querétaro, con sede en Querétaro",22
+4112,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Querétaro, con sede en Querétaro",22
+4367,"Tribunal Colegiado de Apelación del Vigésimo Segundo Circuito, con residencia en Querétaro, Querétaro",22
+459,Juzgado Primero de Distrito en el Estado de Zacatecas,23
+396,Juzgado Segundo de Distrito en el Estado de Zacatecas,23
+3832,Juzgado Tercero de Distrito en el Estado de Zacatecas,23
+392,Primer Tribunal Colegiado del Vigésimo Tercer Circuito,23
+3896,Segundo Tribunal Colegiado del Vigésimo Tercer Circuito,23
+3980,"Tribunal Laboral Federal de asuntos individuales en el Estado de Zacatecas, con sede en Zacatecas",23
+4596,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Zacatecas, con sede en Zacatecas",23
+4597,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Zacatecas, con sede en Zacatecas",23
+4368,"Tribunal Colegiado de Apelación del Vigésimo Tercer Circuito, con residencia en Zacatecas, Zacatecas",23
+2427,Juzgado Cuarto de Distrito de Amparo en Materia Penal en el Estado de Nayarit(16/11/2017 - 01/08/2023),24
+1083,Juzgado Primero de Distrito en Materia Penal en el Estado de Nayarit,24
+1084,Juzgado Segundo de Distrito en Materia Penal en el Estado de Nayarit,24
+1178,Juzgado Tercero de Distrito en Materia Penal en el Estado de Nayarit,24
+4438,"Juzgado Cuarto de Distrito en Materia Penal en el Estado de Nayarit, con residencia en el Rincón, Municipio de Tepic",24
+3891,"Juzgado de Distrito de Procesos Penales Federales en el Estado de Nayarit, con residencia en el Rincón, Municipio de Tepic (16/03/2020 - 31/07/2023)",24
+1092,"Juzgado Primero de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Nayarit",24
+1093,"Juzgado Segundo de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Nayarit",24
+3890,"Juzgado Tercero de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Nayarit, con residencia en el Rincón, Municipio de Tepic",24
+4439,"Juzgado Cuarto de Distrito en Materia de Amparo Civil, Administrativo y de Trabajo y de Juicios Federales en el Estado de Nayarit",24
+399,Primer Tribunal Colegiado del Vigésimo Cuarto Circuito,24
+1080,Segundo Tribunal Colegiado del Vigésimo Cuarto Circuito,24
+4431,Tercer Tribunal Colegiado del Vigésimo Cuarto Circuito,24
+4295,"Tribunal Laboral Federal de asuntos individuales en el Estado de Nayarit, con sede en Tepic",24
+4369,"Tribunal Colegiado de Apelación del Vigésimo Cuarto Circuito, con residencia en Tepic, Nayarit",24
+405,Juzgado Primero de Distrito en el Estado de Durango,25
+406,Juzgado Segundo de Distrito en el Estado de Durango,25
+407,Juzgado Tercero de Distrito en el Estado de Durango,25
+403,Primer Tribunal Colegiado del Vigésimo Quinto Circuito,25
+1478,Segundo Tribunal Colegiado del Vigésimo Quinto Circuito,25
+3981,"Tribunal Laboral Federal de asuntos individuales en el Estado de Durango, con sede en Durango",25
+4442,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Durango, con sede en Durango",25
+4443,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Durango, con sede en Durango",25
+4370,"Tribunal Colegiado de Apelación del Vigésimo Quinto Circuito, con residencia en Durango, Durango",25
+410,Juzgado Primero de Distrito en el Estado de Baja California Sur,26
+411,Juzgado Segundo de Distrito en el Estado de Baja California Sur,26
+1185,Juzgado Tercero de Distrito en el Estado de Baja California Sur,26
+408,"Primer Tribunal Colegiado del Vigésimo Sexto Circuito, con residencia en La Paz, Baja California Sur",26
+4405,"Segundo Tribunal Colegiado del Vigésimo Sexto Circuito, con residencia en La Paz, Baja California Sur",26
+4133,"Tribunal Laboral Federal de asuntos individuales en el Estado de Baja California Sur, con sede en La Paz",26
+4371,"Tribunal Colegiado de Apelación del Vigésimo Sexto Circuito, con residencia en La Paz",26
+419,Juzgado Primero de Distrito en el Estado de Quintana Roo,27
+790,Juzgado Segundo de Distrito en el Estado de Quintana Roo,27
+425,Juzgado Tercero de Distrito en el Estado de Quintana Roo,27
+791,Juzgado Cuarto de Distrito en el Estado de Quintana Roo,27
+1182,Juzgado Quinto de Distrito en el Estado de Quintana Roo,27
+1236,Juzgado Sexto de Distrito en el Estado de Quintana Roo,27
+1350,"Juzgado Séptimo de Distrito en el Estado de Quintana Roo, con residencia en Cancún",27
+2953,"Juzgado Octavo de Distrito en el Estado de Quintana Roo, con residencia en Cancún",27
+4142,"Juzgado Noveno de Distrito en el Estado de Quintana Roo, con residencia en Cancún",27
+1239,"Juzgado de Distrito en Materia Mercantil Federal en el Estado de Quintana Roo, Especializado en Juicios Orales",27
+462,Primer Tribunal Colegiado del Vigésimo Séptimo Circuito,27
+944,Segundo Tribunal Colegiado del Vigésimo Séptimo Circuito,27
+1319,"Tercer Tribunal Colegiado del Vigésimo Séptimo Circuito, con residencia en Cancún, Quintana Roo",27
+4136,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Quintana Roo, con sede en Cancún",27
+5602,Segundo Tribunal Laboral Federal de Asuntos Individuales en el Estado de Quinta Roo con sede Cancún,27
+4372,"Tribunal Colegiado de Apelación del Vigésimo Séptimo Circuito, con residencia en Cancún, Quintana Roo",27
+187,Juzgado Primero de Distrito en el Estado de Tlaxcala,28
+192,Juzgado Segundo de Distrito en el Estado de Tlaxcala,28
+1242,Juzgado Tercero de Distrito en el Estado de Tlaxcala,28
+3849,Juzgado de Distrito en Materia Mercantil Federal en el Estado de Tlaxcala,28
+575,Primer Tribunal Colegiado del Vigésimo Octavo Circuito,28
+2412,Segundo Tribunal Colegiado del Vigésimo Octavo Circuito,28
+4114,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Tlaxcala, con sede en Tlaxcala",28
+4115,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Tlaxcala, con sede en Tlaxcala",28
+4116,"Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Tlaxcala, con sede en Tlaxcala",28
+4373,"Tribunal Colegiado de Apelación del Vigésimo Octavo Circuito, con residencia en Apizaco, Tlaxcala",28
+386,Juzgado Primero de Distrito en el Estado de Hidalgo,29
+417,Juzgado Segundo de Distrito en el Estado de Hidalgo,29
+801,Juzgado Tercero de Distrito en el Estado de Hidalgo,29
+1273,"Juzgado Cuarto de Distrito en el Estado de Hidalgo, con residencia en Pachuca",29
+389,Primer Tribunal Colegiado del Vigésimo Noveno Circuito,29
+391,Segundo Tribunal Colegiado del Vigésimo Noveno Circuito,29
+2992,Tercer Tribunal Colegiado del Vigésimo Noveno Circuito,29
+3987,"Tribunal Laboral Federal de asuntos individuales en el Estado de Hidalgo, con sede en Pachuca",29
+4447,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Hidalgo, con sede en Pachuca",29
+4448,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Hidalgo, con sede en Pachuca",29
+4449,"Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Hidalgo, con sede en Pachuca",29
+4374,"Tribunal Colegiado de Apelación del Vigésimo Noveno Circuito, con residencia en Pachuca, Hidalgo",29
+394,Juzgado Primero de Distrito en el Estado de Aguascalientes,30
+418,Juzgado Segundo de Distrito en el Estado de Aguascalientes,30
+398,Juzgado Tercero de Distrito en el Estado de Aguascalientes,30
+1555,Juzgado Cuarto de Distrito en el Estado de Aguascalientes,30
+1556,Juzgado Quinto de Distrito en el Estado de Aguascalientes,30
+2417,Juzgado Sexto de Distrito en el Estado de Aguascalientes,30
+4000,Juzgado Séptimo de Distrito en el Estado de Aguascalientes,30
+395,Primer Tribunal Colegiado del Trigésimo Circuito,30
+397,Segundo Tribunal Colegiado del Trigésimo Circuito,30
+2420,Tercer Tribunal Colegiado del Trigésimo Circuito,30
+3447,Cuarto Tribunal Colegiado del Trigésimo Circuito,30
+4130,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Aguascalientes, con sede en Aguascalientes",30
+4456,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Aguascalientes, con sede en Aguascalientes",30
+4375,"Tribunal Colegiado de Apelación del Trigésimo Circuito, con residencia en Aguascalientes, Aguascalientes",30
+285,Juzgado Primero de Distrito en el Estado de Campeche,31
+288,Juzgado Segundo de Distrito en el Estado de Campeche,31
+3838,"Juzgado Tercero de Distrito en el Estado de Campeche, con residencia en Ciudad del Carmen",31
+1045,Tribunal Colegiado del Trigésimo Primer Circuito,31
+3983,"Tribunal Laboral Federal de asuntos individuales en el Estado de Campeche, con sede en Campeche",31
+3984,"Tribunal Laboral Federal de asuntos individuales en el Estado de Campeche, con sede en Ciudad del Carmen",31
+4598,"Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Campeche, con sede en Campeche",31
+4599,"Segundo Tribunal Laboral Federal de asuntos individuales en el Estado de Campeche, con sede en Campeche",31
+4600,"Tercer Tribunal Laboral Federal de asuntos individuales en el Estado de Campeche, con sede en Ciudad del Carmen",31
+4601,"Cuarto Tribunal Laboral Federal de asuntos individuales en el Estado de Campeche, con sede en Ciudad del Carmen",31
+4602,"Quinto Tribunal Laboral Federal de asuntos individuales en el Estado de Campeche, con sede en Ciudad del Carmen",31
+4376,"Tribunal Colegiado de Apelación del Trigésimo Primer Circuito, con residencia en San Francisco de Campeche, Campeche",31
+125,Juzgado Primero de Distrito en el Estado de Colima,32
+134,Juzgado Segundo de Distrito en el Estado de Colima,32
+2424,Juzgado Tercero de Distrito en el Estado de Colima,32
+1089,Tribunal Colegiado del Trigésimo Segundo Circuito,32
+4134,"Tribunal Laboral Federal de asuntos individuales en el Estado de Colima, con sede en Colima",32
+4377,"Tribunal Colegiado de Apelación del Trigésimo Segundo Circuito, con residencia en Colima",32
