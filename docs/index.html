@@ -699,41 +699,6 @@
                 <span>Cargando catálogos del PJF...</span>
             </div>
 
-            <!-- Configuración del Proxy CORS -->
-            <div class="card">
-                <div class="card-header">
-                    <div class="header-with-help">
-                        <h3>⚙️ Conexión al PJF</h3>
-                        <div class="tooltip-container">
-                            <button class="help-btn" type="button">?</button>
-                            <div class="tooltip-content tooltip-left">
-                                <h4>¿Por qué necesito un proxy?</h4>
-                                <p>El portal del PJF no permite peticiones directas desde otras webs (CORS). Un proxy Cloudflare Worker (gratuito) reenvía las peticiones.</p>
-                                <p><strong>Pasos:</strong></p>
-                                <ul>
-                                    <li>Ve a <strong>dash.cloudflare.com</strong> → Workers → Create Worker</li>
-                                    <li>Pega el código del archivo <strong>pjf-proxy-worker.js</strong> (incluido en el proyecto)</li>
-                                    <li>Haz Deploy y copia la URL del worker</li>
-                                    <li>Pega la URL aquí y guarda</li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <div class="form-row">
-                        <div class="form-group" style="flex: 1;">
-                            <label for="pjf-proxy-url">URL del Proxy CORS</label>
-                            <input type="url" id="pjf-proxy-url" placeholder="https://mi-pjf-proxy.mi-usuario.workers.dev">
-                            <span class="form-help">URL de tu Cloudflare Worker. Se guarda en tu navegador.</span>
-                        </div>
-                        <div class="form-group" style="flex: 0; align-self: flex-end;">
-                            <button class="btn btn-primary" onclick="guardarProxyPJF()">Guardar</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Formulario de Búsqueda -->
             <div class="card">
                 <div class="card-header">
@@ -743,21 +708,18 @@
                             <button class="help-btn" type="button">?</button>
                             <div class="tooltip-content tooltip-left">
                                 <h4>¿Cómo funciona?</h4>
-                                <p>Los datos se obtienen en tiempo real del <strong>SISE</strong> del PJF.</p>
                                 <ul>
-                                    <li>Selecciona un circuito → se cargan los órganos desde el PJF</li>
-                                    <li>Selecciona un órgano → se cargan los tipos de asunto disponibles</li>
-                                    <li>Ingresa el número de expediente y busca</li>
+                                    <li>Selecciona un circuito para filtrar los órganos jurisdiccionales</li>
+                                    <li>Selecciona un órgano para ver los tipos de asunto disponibles</li>
+                                    <li>Ingresa el número de expediente (formato: 67/2021)</li>
+                                    <li>La consulta abre el expediente en el portal DGEJ del PJF</li>
                                 </ul>
-                                <p>Los resultados se muestran directamente en esta página.</p>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="card-body">
-                    <p class="section-desc">Los órganos y tipos de asunto se cargan dinámicamente del portal del PJF según el circuito seleccionado.</p>
-
-                    <!-- Dropdowns en cascada (API-driven) -->
+                    <!-- Dropdowns en cascada -->
                     <div class="form-row">
                         <div class="form-group">
                             <label for="pjf-circuito">Circuito Jurisdiccional *</label>
@@ -777,14 +739,29 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label for="pjf-tipo-asunto">Tipo de Asunto *</label>
-                            <select id="pjf-tipo-asunto" disabled>
+                            <select id="pjf-tipo-asunto" onchange="onPjfTipoAsuntoChange()" disabled>
                                 <option value="">-- Selecciona tipo de asunto --</option>
                             </select>
+                            <div id="pjf-tipo-asunto-manual" style="display: none; margin-top: 0.5rem;">
+                                <input type="number" id="pjf-tipo-asunto-manual-input" placeholder="ID del tipo de asunto" min="1">
+                                <span class="form-help">Ingresa el ID numérico del tipo de asunto del SISE</span>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="pjf-num-expediente">Número de Expediente *</label>
                             <input type="text" id="pjf-num-expediente" placeholder="Ej: 67/2021">
                             <span class="form-help">Formato: número/año</span>
+                        </div>
+                    </div>
+
+                    <!-- Tipo Procedimiento (solo para tribunales laborales) -->
+                    <div class="form-row" id="pjf-tipo-procedimiento-group" style="display: none;">
+                        <div class="form-group">
+                            <label for="pjf-tipo-procedimiento">Tipo de Procedimiento</label>
+                            <select id="pjf-tipo-procedimiento">
+                                <option value="0">No aplica</option>
+                            </select>
+                            <span class="form-help">Solo aplica para Tribunales Laborales</span>
                         </div>
                     </div>
                 </div>
@@ -795,16 +772,6 @@
                     <button class="btn btn-primary btn-lg" onclick="ejecutarBusquedaPJF()">
                         🔍 Buscar en PJF
                     </button>
-                </div>
-            </div>
-
-            <!-- Resultados de Búsqueda PJF -->
-            <div class="card" id="pjf-resultados-card" style="display: none;">
-                <div class="card-header">
-                    <h3>📊 Resultados</h3>
-                </div>
-                <div class="card-body" id="pjf-resultados">
-                    <!-- Resultados generados por JS -->
                 </div>
             </div>
         </section>
