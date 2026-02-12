@@ -1,0 +1,50 @@
+{
+  "por_categoria": {
+    "juzgado_distrito": {
+      "label": "Juzgados de Distrito",
+      "tipos": [
+        {"id": 1, "nombre": "Amparo Indirecto"},
+        {"id": 4, "nombre": "Procesos Civiles o Administrativos / Juicio Ejecutivo Mercantil"},
+        {"id": 19, "nombre": "Extradición"},
+        {"id": 28, "nombre": "Amparo / Causa Penal / Civil / Procedimiento Penal / Cuadernos Auxiliares"},
+        {"id": 71, "nombre": "Denuncia DGI"}
+      ]
+    },
+    "tribunal_colegiado": {
+      "label": "Tribunales Colegiados de Circuito",
+      "tipos": []
+    },
+    "tribunal_unitario": {
+      "label": "Tribunales Unitarios de Circuito",
+      "tipos": []
+    },
+    "centro_justicia_penal": {
+      "label": "Centros de Justicia Penal Federal",
+      "tipos": []
+    },
+    "tribunal_laboral": {
+      "label": "Tribunales Laborales Federales",
+      "tipos": []
+    },
+    "pleno_regional": {
+      "label": "Plenos Regionales",
+      "tipos": []
+    },
+    "otro": {
+      "label": "Otros",
+      "tipos": []
+    }
+  },
+  "tipos_procedimiento": [
+    {"id": 0, "nombre": "No aplica"},
+    {"id": 111, "nombre": "Procedimiento ordinario"},
+    {"id": 112, "nombre": "Procedimiento especial individual"},
+    {"id": 113, "nombre": "Procedimiento especial colectivo"},
+    {"id": 114, "nombre": "Conflictos Individuales de Seguridad Social"},
+    {"id": 115, "nombre": "Conflictos Colectivos de Naturaleza Económica"},
+    {"id": 116, "nombre": "Procedimiento de Huelga"},
+    {"id": 117, "nombre": "Procedimiento de Ejecución"},
+    {"id": 120, "nombre": "Procedimientos Paraprocesales o Voluntarios"}
+  ],
+  "_nota": "Catálogo parcial con datos verificados del HAR. Ejecutar fetch_catalogos_pjf.py para obtener datos completos de todas las categorías."
+}
