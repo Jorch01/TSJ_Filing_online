@@ -1906,7 +1906,24 @@ async function generarURLsBusqueda() {
         const tipoBusqueda = exp.numero ? 'numero' : 'nombre';
         const valor = exp.numero || exp.nombre;
         const url = construirUrlBusqueda(exp.juzgado, tipoBusqueda, valor);
+
+        if (!url) {
+            // Expediente PJF u órgano no reconocido — no tiene URL de búsqueda TSJQROO
+            return `
+                <div class="url-item url-item-unavailable">
+                    <div class="url-info">
+                        <span class="url-expediente">${exp.numero || exp.nombre}</span>
+                        <span class="url-juzgado">${exp.juzgado}</span>
+                    </div>
+                    <div class="url-actions">
+                        <span class="url-unavailable-msg" title="Este expediente no pertenece a un juzgado del TSJQROO">⚠️ Sin URL (PJF/no TSJQROO)</span>
+                    </div>
+                </div>
+            `;
+        }
+
         const urlEscaped = url.replace(/'/g, "\\'");
+        const valorEscaped = valor.replace(/'/g, "\\'");
 
         return `
             <div class="url-item">
@@ -1916,7 +1933,7 @@ async function generarURLsBusqueda() {
                 </div>
                 <div class="url-actions">
                     <button class="btn btn-sm btn-secondary" onclick="copiarURL('${urlEscaped}')" title="Copiar">📋</button>
-                    <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPopup('${urlEscaped}', '${(exp.numero || exp.nombre).replace(/'/g, "\\'")}')">👁️ Ver</button>
+                    <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPopup('${urlEscaped}', '${valorEscaped}')">👁️ Ver</button>
                 </div>
             </div>
         `;
@@ -4348,7 +4365,13 @@ document.addEventListener('click', function(event) {
             if (!isNaN(id)) {
                 event.preventDefault();
                 event.stopPropagation();
-                editarExpediente(id, event);
+                // Verificar si el card está dentro de la sección PJF
+                const enPaginaPJF = !!card.closest('#page-pjf');
+                if (enPaginaPJF) {
+                    editarExpedientePJF(id, event);
+                } else {
+                    editarExpediente(id, event);
+                }
             }
         }
     }
@@ -4362,7 +4385,13 @@ document.addEventListener('click', function(event) {
             if (!isNaN(id)) {
                 event.preventDefault();
                 event.stopPropagation();
-                confirmarEliminarExpediente(id, event);
+                // Verificar si el card está dentro de la sección PJF
+                const enPaginaPJF = !!card.closest('#page-pjf');
+                if (enPaginaPJF) {
+                    confirmarEliminarExpedientePJF(id, event);
+                } else {
+                    confirmarEliminarExpediente(id, event);
+                }
             }
         }
     }

@@ -1,11 +1,91 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" prefix="og: https://ogp.me/ns#">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Sistema de Gestión de Expedientes TSJ Quintana Roo - Versión Web">
+
+    <!-- SEO Primary -->
+    <title>TSJ Filing Online | Gestión de Expedientes TSJ Quintana Roo y PJF Federal</title>
+    <meta name="description" content="Sistema online gratuito para gestionar, consultar y dar seguimiento a expedientes del Tribunal Superior de Justicia de Quintana Roo (TSJQROO) y del Poder Judicial de la Federación (PJF). Búsqueda automática, calendario de audiencias y notas.">
+    <meta name="keywords" content="TSJ Quintana Roo, expedientes TSJ, TSJQROO, PJF federal, poder judicial federal, gestión de expedientes, seguimiento de expedientes, juzgados Quintana Roo, litigio, abogados Quintana Roo, Cancún, Playa del Carmen, Chetumal, Cozumel">
+    <meta name="robots" content="index, follow">
+    <meta name="author" content="TSJ Filing Online">
     <meta name="theme-color" content="#366092">
-    <title>TSJ Filing Online - Gestión de Expedientes</title>
+    <link rel="canonical" href="https://tsjia.empirica.mx/">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://tsjia.empirica.mx/">
+    <meta property="og:title" content="TSJ Filing Online | Gestión de Expedientes TSJ QRoo y PJF Federal">
+    <meta property="og:description" content="Gestiona y consulta expedientes del TSJQROO y PJF Federal. Búsqueda automática, calendario de audiencias, notas y recordatorios. Gratis.">
+    <meta property="og:locale" content="es_MX">
+    <meta property="og:site_name" content="TSJ Filing Online">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="TSJ Filing Online | Expedientes TSJQROO y PJF Federal">
+    <meta name="twitter:description" content="Sistema online para gestionar expedientes del Tribunal Superior de Justicia de Quintana Roo y el Poder Judicial Federal.">
+
+    <!-- Google Search Console verification -->
+    <!--
+        INSTRUCCIONES PARA ACTIVAR SEARCH CONSOLE:
+        1. Ve a https://search.google.com/search-console/
+        2. Agrega propiedad: https://tsjia.empirica.mx/
+        3. Elige verificación por "Etiqueta HTML"
+        4. Copia el código que dice: <meta name="google-site-verification" content="XXXXXXXXX">
+        5. Descomenta la línea de abajo y reemplaza TU_CODIGO_AQUI con ese valor
+    -->
+    <!-- <meta name="google-site-verification" content="TU_CODIGO_AQUI"> -->
+
+    <!-- Google Analytics 4 -->
+    <!--
+        INSTRUCCIONES PARA ACTIVAR GOOGLE ANALYTICS:
+        1. Ve a https://analytics.google.com/
+        2. Crea una propiedad GA4 para tsjia.empirica.mx
+        3. Obtén tu Measurement ID (formato: G-XXXXXXXXXX)
+        4. Descomenta el bloque de abajo y reemplaza G-XXXXXXXXXX con tu ID
+        NOTA: Tener GA4 activo también sirve como verificación automática de Search Console
+    -->
+    <!-- <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-XXXXXXXXXX', {
+            'page_title': document.title,
+            'page_location': window.location.href
+        });
+    </script> -->
+
+    <!-- Structured Data / Schema.org -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "TSJ Filing Online",
+        "url": "https://tsjia.empirica.mx/",
+        "description": "Sistema online para gestionar, consultar y dar seguimiento a expedientes del Tribunal Superior de Justicia de Quintana Roo (TSJQROO) y del Poder Judicial de la Federación (PJF).",
+        "applicationCategory": "LegalApplication",
+        "operatingSystem": "Web",
+        "inLanguage": "es-MX",
+        "isAccessibleForFree": true,
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "MXN"
+        },
+        "featureList": [
+            "Gestión de expedientes TSJ Quintana Roo",
+            "Gestión de expedientes PJF Federal",
+            "Búsqueda automática en juzgados",
+            "Calendario de audiencias",
+            "Notas y comentarios por expediente",
+            "Generación de URLs de búsqueda"
+        ],
+        "keywords": "expedientes, TSJ, Quintana Roo, PJF, poder judicial, juzgados, abogados"
+    }
+    </script>
+
     <link rel="stylesheet" href="css/styles.css">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
