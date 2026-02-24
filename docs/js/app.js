@@ -2635,6 +2635,171 @@ async function cargarConfigAutoBackup() {
 
 // ==================== IMPORTACIÓN CSV/EXCEL ====================
 
+// ---- PJF: Template y carga masiva ----
+
+async function descargarTemplatePJF() {
+    await cargarCatalogosPJF();
+
+    let csv = 'expediente,organo,organismo_id,tipo_asunto_id,comentario\n';
+    csv += '67/2021,JUZGADO PRIMERO DE DISTRITO EN MATERIAS CIVIL Y DE TRABAJO EN EL ESTADO DE QUINTANA ROO,12345,1,Ejemplo con ID completo\n';
+    csv += '123/2023,JUZGADO SEGUNDO DE DISTRITO EN EL ESTADO DE QUINTANA ROO,,28,Sin organismo_id - se resuelve por nombre\n';
+    csv += '456/2022,,67890,,Solo organismo_id sin nombre de órgano\n';
+
+    if (pjfTiposAsunto?.por_categoria) {
+        csv += '\n# ===== TIPOS DE ASUNTO DISPONIBLES (usar el ID numérico en tipo_asunto_id) =====\n';
+        Object.values(pjfTiposAsunto.por_categoria).forEach(cat => {
+            if (cat.tipos?.length > 0) {
+                csv += `# --- ${cat.label} ---\n`;
+                cat.tipos.forEach(t => {
+                    csv += `# ID ${t.id}: ${t.nombre}\n`;
+                });
+            }
+        });
+    }
+
+    if (pjfOrganismos?.length > 0) {
+        csv += '\n# ===== ORGANISMOS DISPONIBLES (usar nombre EXACTO o el ID numérico) =====\n';
+        pjfOrganismos.forEach(o => {
+            csv += `# ID ${o.id}: ${o.nombre}\n`;
+        });
+    }
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'template_expedientes_pjf.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    mostrarToast('Template PJF descargado', 'success');
+}
+
+function parsePJFCSV(texto) {
+    const lineas = texto.split('\n').filter(l => l.trim() && !l.trim().startsWith('#'));
+    if (lineas.length < 2) return [];
+
+    const encabezados = lineas[0].split(',').map(h => h.trim().toLowerCase());
+
+    if (!encabezados.includes('expediente')) {
+        throw new Error('Falta la columna requerida: expediente');
+    }
+
+    const datos = [];
+    for (let i = 1; i < lineas.length; i++) {
+        const linea = lineas[i].trim();
+        if (!linea || linea.startsWith('#')) continue;
+        const valores = parseCSVLine(linea);
+        const fila = {};
+        encabezados.forEach((enc, idx) => { fila[enc] = valores[idx] || ''; });
+        datos.push(fila);
+    }
+    return datos;
+}
+
+async function importarExpedientesPJFCSV(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+        const texto = await file.text();
+        const datos = parsePJFCSV(texto);
+
+        if (!datos || datos.length === 0) {
+            mostrarToast('No se encontraron datos válidos en el archivo', 'error');
+            event.target.value = '';
+            return;
+        }
+
+        await cargarCatalogosPJF();
+
+        const expedientesValidos = [];
+        const errores = [];
+
+        datos.forEach((fila, index) => {
+            const expediente = fila.expediente?.trim();
+            const organoNombre = fila.organo?.trim() || '';
+            const organismoId = fila.organismo_id?.trim() || '';
+            const tipoAsuntoId = fila.tipo_asunto_id?.trim() || '';
+            const comentario = fila.comentario?.trim() || '';
+
+            if (!expediente) {
+                errores.push(`Fila ${index + 2}: Falta el número de expediente`);
+                return;
+            }
+
+            // Resolver organismo
+            let resolvedOrgId = organismoId;
+            let resolvedOrgNombre = organoNombre;
+
+            if (!resolvedOrgId && organoNombre) {
+                const org = pjfOrganismos.find(o =>
+                    o.nombre.toLowerCase() === organoNombre.toLowerCase()
+                );
+                if (org) {
+                    resolvedOrgId = String(org.id);
+                    resolvedOrgNombre = org.nombre;
+                }
+            } else if (resolvedOrgId && !organoNombre) {
+                const org = pjfOrganismos.find(o => String(o.id) === resolvedOrgId);
+                if (org) resolvedOrgNombre = org.nombre;
+            }
+
+            if (!resolvedOrgNombre && !resolvedOrgId) {
+                errores.push(`Fila ${index + 2}: Falta el órgano (columna "organo" o "organismo_id")`);
+                return;
+            }
+
+            const nuevoExp = {
+                numero: expediente,
+                juzgado: resolvedOrgNombre || `Organismo ID: ${resolvedOrgId}`,
+                categoria: 'PJF Federal',
+                institucion: 'PJF',
+                comentario: comentario || undefined
+            };
+            if (resolvedOrgId) nuevoExp.pjfOrgId = resolvedOrgId;
+            if (tipoAsuntoId) nuevoExp.pjfTipoAsunto = tipoAsuntoId;
+
+            expedientesValidos.push(nuevoExp);
+        });
+
+        if (errores.length > 0 && expedientesValidos.length === 0) {
+            mostrarToast(`Error: ${errores[0]}`, 'error');
+            event.target.value = '';
+            return;
+        }
+
+        const mensaje = errores.length > 0
+            ? `Se importarán ${expedientesValidos.length} expedientes (${errores.length} filas con errores ignoradas). ¿Continuar?`
+            : `¿Importar ${expedientesValidos.length} expedientes PJF?`;
+
+        if (!confirm(mensaje)) {
+            event.target.value = '';
+            return;
+        }
+
+        let importados = 0;
+        for (const exp of expedientesValidos) {
+            try {
+                await agregarExpediente(exp);
+                importados++;
+            } catch (e) {
+                Logger.error('Error al agregar expediente PJF:', e);
+            }
+        }
+
+        await Promise.all([cargarExpedientesPJF(), cargarExpedientes(), cargarEstadisticas()]);
+        mostrarToast(`${importados} expedientes PJF importados correctamente`, 'success');
+
+    } catch (error) {
+        Logger.error('Error al importar PJF:', error);
+        mostrarToast('Error al procesar el archivo: ' + error.message, 'error');
+    }
+
+    event.target.value = '';
+}
+
+// ---- TSJ QROO: Template y carga masiva ----
+
 function descargarTemplateCSV() {
     // Encabezados
     let csv = 'expediente,tipo,juzgado,comentario\n';
@@ -4858,70 +5023,116 @@ function confirmarEliminarExpedientePJF(id, event) {
 }
 
 // Abrir búsqueda en PJF para un expediente guardado
+// Estado temporal para el picker de tipo de asunto PJF
+let _pendingPJFExp = null;
+
 async function abrirBusquedaPJFGuardado(id, event) {
     if (event) { event.stopPropagation(); event.preventDefault(); }
 
+    // Asegurar catálogos cargados para resolver orgId por nombre
+    await cargarCatalogosPJF();
+
     const expedientes = await obtenerExpedientes();
     const exp = expedientes.find(e => e.id === id);
-    if (!exp) return;
-
-    // Si tenemos orgId y tipoAsunto guardados, construir y abrir URL directamente
-    if (exp.pjfOrgId && exp.pjfTipoAsunto && exp.numero) {
-        const url = PJF_VERCAPTURA_URL +
-            '?tipoasunto=' + encodeURIComponent(exp.pjfTipoAsunto) +
-            '&organismo=' + encodeURIComponent(exp.pjfOrgId) +
-            '&expediente=' + encodeURIComponent(exp.numero) +
-            '&tipoprocedimiento=0';
-        window.open(url, 'pjf_expediente_' + id, 'width=1024,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no');
-        mostrarToast(`Abriendo expediente ${exp.numero} en PJF...`, 'success');
+    if (!exp || !exp.numero) {
+        mostrarToast('Este expediente no tiene número registrado', 'warning');
         return;
     }
 
-    // Sin datos completos: navegar al tab de Búsqueda y pre-llenar el formulario
-    navegarA('pjf');
+    // Resolver orgId: usar el guardado o buscar por nombre en el catálogo
+    let orgId = exp.pjfOrgId;
+    if (!orgId && exp.juzgado) {
+        const organo = pjfOrganismos.find(o => o.nombre === exp.juzgado);
+        orgId = organo ? String(organo.id) : '';
+    }
 
-    setTimeout(async () => {
-        cambiarTabPJF('busqueda');
+    // Si tenemos todo, abrir popup directamente
+    if (orgId && exp.pjfTipoAsunto) {
+        _abrirPopupPJF(orgId, exp.pjfTipoAsunto, exp.numero);
+        return;
+    }
 
-        // Asegurar que los catálogos estén cargados
-        await cargarCatalogosPJF();
+    // Falta algún dato: mostrar picker usando el modal existente
+    _pendingPJFExp = { ...exp, _resolvedOrgId: orgId };
 
-        // Resolver orgId: usar el guardado o buscar por nombre
-        let orgId = exp.pjfOrgId;
-        if (!orgId && exp.juzgado) {
-            const organo = pjfOrganismos.find(o => o.nombre === exp.juzgado);
-            orgId = organo ? String(organo.id) : '';
-        }
+    const categoria = detectarCategoriaOrgano(exp.juzgado || '');
+    const tiposDisponibles = pjfTiposAsunto?.por_categoria?.[categoria]?.tipos || [];
 
-        if (orgId) {
-            const organo = pjfOrganismos.find(o => String(o.id) === String(orgId));
-            if (organo) {
-                // Seleccionar circuito
-                const circuitoSelect = document.getElementById('pjf-circuito');
-                if (circuitoSelect) {
-                    circuitoSelect.value = organo.circuito_id;
-                    onPjfCircuitoChange();
+    const tiposOptionsHTML = [
+        ...tiposDisponibles.map(t => `<option value="${t.id}">${escapeText(t.nombre)}</option>`),
+        '<option value="__manual__">Otro (ingresar ID manualmente)</option>'
+    ].join('');
 
-                    // Esperar a que se poblen los organismos y luego seleccionar
-                    setTimeout(() => {
-                        const orgSelect = document.getElementById('pjf-organismo');
-                        if (orgSelect) {
-                            orgSelect.value = orgId;
-                            onPjfOrganoChange();
-                        }
-                    }, 100);
-                }
-            }
-        }
+    const needsOrgId = !orgId;
 
-        // Pre-llenar número de expediente
-        if (exp.numero) {
-            const numInput = document.getElementById('pjf-num-expediente');
-            if (numInput) numInput.value = exp.numero;
-        }
+    document.getElementById('modal-titulo').textContent = '🔍 Abrir Expediente en PJF';
+    document.getElementById('modal-body').innerHTML = `
+        <p style="margin-bottom:1rem;">
+            <strong>${escapeText(exp.numero)}</strong><br>
+            <small style="color:var(--text-secondary);">${escapeText(exp.juzgado || '')}</small>
+        </p>
+        ${needsOrgId ? `
+        <div class="form-group">
+            <label for="_pjf-pick-org">ID de Organismo</label>
+            <input type="number" id="_pjf-pick-org" class="form-control" placeholder="Ej: 12345" min="1">
+            <span class="form-help">ID numérico del órgano en el portal SISE/DGEJ</span>
+        </div>` : ''}
+        <div class="form-group">
+            <label for="_pjf-pick-tipo">Tipo de Asunto</label>
+            <select id="_pjf-pick-tipo" class="form-control"
+                onchange="document.getElementById('_pjf-pick-manual-wrap').style.display=this.value==='__manual__'?'block':'none'">
+                ${tiposOptionsHTML}
+            </select>
+            <div id="_pjf-pick-manual-wrap" style="display:none;margin-top:0.5rem;">
+                <input type="number" id="_pjf-pick-tipo-manual" class="form-control"
+                    placeholder="ID numérico del tipo de asunto" min="1">
+            </div>
+        </div>
+        <p class="form-help" style="margin-top:0.5rem;">El valor se guardará para búsquedas futuras.</p>
+    `;
+    document.getElementById('modal-footer').innerHTML = `
+        <button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="_confirmarAbrirPJF()">🔍 Abrir en PJF</button>
+    `;
+    document.getElementById('modal-overlay').classList.add('active');
+}
 
-        mostrarToast('Formulario pre-llenado. Selecciona el tipo de asunto y haz clic en Buscar.', 'info');
-    }, 300);
+function _abrirPopupPJF(orgId, tipoAsunto, expediente) {
+    const url = PJF_VERCAPTURA_URL +
+        '?tipoasunto=' + encodeURIComponent(tipoAsunto) +
+        '&organismo=' + encodeURIComponent(orgId) +
+        '&expediente=' + encodeURIComponent(expediente) +
+        '&tipoprocedimiento=0';
+    window.open(url, 'pjf_popup', 'width=1024,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no');
+    mostrarToast(`Abriendo ${expediente} en PJF...`, 'success');
+}
+
+async function _confirmarAbrirPJF() {
+    if (!_pendingPJFExp) return;
+
+    const tipoSelect = document.getElementById('_pjf-pick-tipo');
+    const tipoManual = document.getElementById('_pjf-pick-tipo-manual');
+    const orgInput = document.getElementById('_pjf-pick-org');
+
+    let tipoAsunto = tipoSelect?.value || '';
+    if (tipoAsunto === '__manual__') tipoAsunto = tipoManual?.value.trim() || '';
+    const orgId = _pendingPJFExp._resolvedOrgId || orgInput?.value.trim() || '';
+
+    if (!tipoAsunto || !orgId) {
+        mostrarToast('Completa todos los campos requeridos', 'warning');
+        return;
+    }
+
+    // Guardar para no preguntar de nuevo
+    try {
+        await actualizarExpediente(_pendingPJFExp.id, { pjfTipoAsunto: tipoAsunto, pjfOrgId: orgId });
+    } catch (e) {
+        Logger.warn('No se pudo guardar metadatos PJF:', e);
+    }
+
+    cerrarModal();
+    _abrirPopupPJF(orgId, tipoAsunto, _pendingPJFExp.numero);
+    _pendingPJFExp = null;
 }
 
 // PJF view toggle
