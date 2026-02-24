@@ -1821,6 +1821,10 @@ function confirmarEliminarEvento(id) {
 
 async function cargarExpedientesParaBusqueda() {
     let expedientes = await obtenerExpedientes();
+    // Solo mostrar expedientes del TSJQROO en la sección de búsqueda TSJ
+    expedientes = expedientes.filter(exp => (exp.institucion || 'TSJ') !== 'PJF');
+    // Limpiar seleccionados que sean de PJF (por si quedaron de una sesión anterior)
+    expedientesSeleccionados = expedientesSeleccionados.filter(id => expedientes.some(e => e.id === id));
     const container = document.getElementById('expedientes-busqueda');
     const totalExpedientes = expedientes.length;
 
@@ -1882,10 +1886,13 @@ function toggleExpedienteSeleccion(id) {
 
 async function seleccionarTodosExpedientes() {
     const expedientes = await obtenerExpedientes();
-    if (expedientesSeleccionados.length === expedientes.length) {
+    // Solo operar sobre expedientes TSJ (excluir PJF)
+    const tsjExpedientes = expedientes.filter(exp => (exp.institucion || 'TSJ') !== 'PJF');
+    const todosSeleccionados = tsjExpedientes.every(e => expedientesSeleccionados.includes(e.id));
+    if (todosSeleccionados) {
         expedientesSeleccionados = [];
     } else {
-        expedientesSeleccionados = expedientes.map(e => e.id);
+        expedientesSeleccionados = tsjExpedientes.map(e => e.id);
     }
     cargarExpedientesParaBusqueda();
 }
@@ -1897,7 +1904,8 @@ async function generarURLsBusqueda() {
     }
 
     const expedientes = await obtenerExpedientes();
-    const seleccionados = expedientes.filter(e => expedientesSeleccionados.includes(e.id));
+    // Solo generar URLs de TSJQROO para expedientes TSJ
+    const seleccionados = expedientes.filter(e => expedientesSeleccionados.includes(e.id) && (e.institucion || 'TSJ') !== 'PJF');
 
     const urlsContainer = document.getElementById('urls-generadas');
     const listaUrls = document.getElementById('lista-urls');
@@ -1945,6 +1953,10 @@ async function generarURLsBusqueda() {
 
 // Abrir búsqueda en popup window
 function abrirBusquedaPopup(url, titulo) {
+    if (!url) {
+        mostrarToast('Sin URL de búsqueda para este expediente (PJF/no TSJQROO)', 'warning');
+        return;
+    }
     // Calcular posición del popup (a la derecha de la pantalla)
     const width = Math.min(900, window.screen.width * 0.5);
     const height = Math.min(700, window.screen.height * 0.8);
@@ -1970,7 +1982,8 @@ function abrirBusquedaPopup(url, titulo) {
 // Abrir todas las búsquedas en popups secuenciales
 async function abrirTodasBusquedas() {
     const expedientes = await obtenerExpedientes();
-    const seleccionados = expedientes.filter(e => expedientesSeleccionados.includes(e.id));
+    // Solo abrir búsquedas TSJ para expedientes TSJ
+    const seleccionados = expedientes.filter(e => expedientesSeleccionados.includes(e.id) && (e.institucion || 'TSJ') !== 'PJF');
 
     if (seleccionados.length === 0) {
         mostrarToast('Selecciona al menos un expediente', 'warning');
@@ -2006,13 +2019,14 @@ function copiarURL(url) {
 
 async function copiarTodasURLs() {
     const expedientes = await obtenerExpedientes();
-    const seleccionados = expedientes.filter(e => expedientesSeleccionados.includes(e.id));
+    // Solo copiar URLs de expedientes TSJ
+    const seleccionados = expedientes.filter(e => expedientesSeleccionados.includes(e.id) && (e.institucion || 'TSJ') !== 'PJF');
 
     const urls = seleccionados.map(exp => {
         const tipoBusqueda = exp.numero ? 'numero' : 'nombre';
         const valor = exp.numero || exp.nombre;
         return construirUrlBusqueda(exp.juzgado, tipoBusqueda, valor);
-    }).join('\n');
+    }).filter(url => url !== null).join('\n');
 
     navigator.clipboard.writeText(urls);
     mostrarToast('Todas las URLs copiadas', 'success');
@@ -3529,10 +3543,12 @@ function detenerBusquedasAuto() {
 }
 
 async function ejecutarBusquedaAhora() {
-    const expedientes = await obtenerExpedientes();
+    const todosExpedientes = await obtenerExpedientes();
+    // Solo buscar en TSJQROO los expedientes TSJ (excluir PJF)
+    const expedientes = todosExpedientes.filter(exp => (exp.institucion || 'TSJ') !== 'PJF');
 
     if (expedientes.length === 0) {
-        mostrarToast('No hay expedientes para buscar', 'warning');
+        mostrarToast('No hay expedientes TSJ para buscar', 'warning');
         return;
     }
 
