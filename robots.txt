@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /extension/
+Disallow: /*.py$
+Disallow: /*.json$
+Allow: /docs/
+
+Sitemap: https://tsjia.empirica.mx/sitemap.xml
