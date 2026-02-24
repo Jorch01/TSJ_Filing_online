@@ -17,7 +17,7 @@
             <span class="brand-icon">⚖️</span>
             <div class="brand-text">
                 <h1>TSJ Filing Online</h1>
-                <span class="brand-subtitle">Quintana Roo - v7.0</span>
+                <span class="brand-subtitle">TSJ QRoo + PJF Federal - v8.0</span>
             </div>
         </div>
         <nav class="header-nav">
@@ -105,6 +105,10 @@
                         <span class="action-icon">🔍</span>
                         <span>Buscar en TSJ</span>
                     </button>
+                    <button class="action-card" onclick="navegarA('pjf')">
+                        <span class="action-icon">🏛️</span>
+                        <span>PJF Federal</span>
+                    </button>
                     <button class="action-card" onclick="navegarA('calendario')">
                         <span class="action-icon">📅</span>
                         <span>Ver Calendario</span>
@@ -176,7 +180,7 @@
             <div class="page-header">
                 <div>
                     <h2>📁 Expedientes</h2>
-                    <p class="subtitle">Gestiona tus expedientes del TSJ</p>
+                    <p class="subtitle">Gestiona tus expedientes del TSJ y PJF</p>
                 </div>
                 <div class="header-buttons">
                     <div class="tooltip-container">
@@ -230,6 +234,22 @@
 
                         <div class="form-row">
                             <div class="form-group">
+                                <label>Institución</label>
+                                <div class="radio-group">
+                                    <label class="radio-label">
+                                        <input type="radio" name="expediente-institucion" value="TSJ" checked onchange="cambiarInstitucionExpediente()">
+                                        <span>⚖️ TSJ Quintana Roo</span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="expediente-institucion" value="PJF" onchange="cambiarInstitucionExpediente()">
+                                        <span>🏛️ PJF Federal</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
                                 <label>Tipo de búsqueda</label>
                                 <div class="radio-group">
                                     <label class="radio-label">
@@ -251,11 +271,28 @@
                             </div>
                         </div>
 
-                        <div class="form-row">
+                        <!-- Juzgado TSJ (visible cuando institución = TSJ) -->
+                        <div class="form-row" id="juzgado-tsj-group">
                             <div class="form-group">
                                 <label for="expediente-juzgado">Juzgado</label>
                                 <select id="expediente-juzgado" required>
                                     <option value="">Selecciona un juzgado...</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Órgano PJF (visible cuando institución = PJF) -->
+                        <div class="form-row" id="juzgado-pjf-group" style="display: none;">
+                            <div class="form-group">
+                                <label for="expediente-circuito-pjf">Circuito</label>
+                                <select id="expediente-circuito-pjf" onchange="onExpCircuitoPjfChange()">
+                                    <option value="">Selecciona un circuito...</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="expediente-organo-pjf">Órgano Jurisdiccional</label>
+                                <select id="expediente-organo-pjf" disabled>
+                                    <option value="">Selecciona un órgano...</option>
                                 </select>
                             </div>
                         </div>
@@ -314,8 +351,9 @@
                         <tr>
                             <th>Tipo</th>
                             <th>Número/Nombre</th>
-                            <th>Juzgado</th>
+                            <th>Juzgado/Órgano</th>
                             <th>Categoría</th>
+                            <th>Inst.</th>
                             <th>Comentario</th>
                             <th>Fecha</th>
                             <th>Acciones</th>
@@ -617,7 +655,7 @@
                     </div>
                 </div>
                 <div class="card-body">
-                    <p class="section-desc">Pega el texto de un acuerdo del TSJ y la IA extraerá automáticamente fechas, audiencias y puntos importantes.</p>
+                    <p class="section-desc">Pega el texto de un acuerdo judicial (TSJ o PJF) y la IA extraerá automáticamente el número de expediente, fechas, audiencias y puntos importantes.</p>
                     <div class="form-group">
                         <label>Expediente relacionado (opcional)</label>
                         <select id="ia-expediente" onchange="toggleExpedienteCustom('ia')">
@@ -688,9 +726,18 @@
         <section class="page" id="page-pjf">
             <div class="page-header">
                 <div>
-                    <h2>🏛️ Búsqueda PJF Federal</h2>
-                    <p class="subtitle">Consulta expedientes del Poder Judicial de la Federación a nivel nacional</p>
+                    <h2>🏛️ PJF Federal</h2>
+                    <p class="subtitle">Gestión integral de expedientes del Poder Judicial de la Federación</p>
                 </div>
+            </div>
+
+            <!-- Tabs de navegación interna PJF -->
+            <div class="pjf-tabs">
+                <button class="pjf-tab active" data-pjf-tab="busqueda" onclick="cambiarTabPJF('busqueda')">🔍 Búsqueda</button>
+                <button class="pjf-tab" data-pjf-tab="expedientes" onclick="cambiarTabPJF('expedientes')">📁 Expedientes PJF</button>
+                <button class="pjf-tab" data-pjf-tab="ia" onclick="cambiarTabPJF('ia')">🤖 Análisis IA</button>
+                <button class="pjf-tab" data-pjf-tab="notas" onclick="cambiarTabPJF('notas')">📝 Notas PJF</button>
+                <button class="pjf-tab" data-pjf-tab="calendario" onclick="cambiarTabPJF('calendario')">📅 Calendario PJF</button>
             </div>
 
             <!-- Loading spinner -->
@@ -699,79 +746,228 @@
                 <span>Cargando catálogos del PJF...</span>
             </div>
 
-            <!-- Formulario de Búsqueda -->
-            <div class="card">
-                <div class="card-header">
-                    <div class="header-with-help">
-                        <h3>🔍 Consulta de Expedientes Federales</h3>
-                        <div class="tooltip-container">
-                            <button class="help-btn" type="button">?</button>
-                            <div class="tooltip-content tooltip-left">
-                                <h4>¿Cómo funciona?</h4>
-                                <ul>
-                                    <li>Selecciona un circuito para filtrar los órganos jurisdiccionales</li>
-                                    <li>Selecciona un órgano para ver los tipos de asunto disponibles</li>
-                                    <li>Ingresa el número de expediente (formato: 67/2021)</li>
-                                    <li>La consulta abre el expediente en el portal DGEJ del PJF</li>
-                                </ul>
+            <!-- TAB: Búsqueda PJF -->
+            <div class="pjf-tab-content active" id="pjf-tab-busqueda">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="header-with-help">
+                            <h3>🔍 Consulta de Expedientes Federales</h3>
+                            <div class="tooltip-container">
+                                <button class="help-btn" type="button">?</button>
+                                <div class="tooltip-content tooltip-left">
+                                    <h4>¿Cómo funciona?</h4>
+                                    <ul>
+                                        <li>Selecciona un circuito para filtrar los órganos jurisdiccionales</li>
+                                        <li>Selecciona un órgano para ver los tipos de asunto disponibles</li>
+                                        <li>Ingresa el número de expediente (formato: 67/2021)</li>
+                                        <li>La consulta abre el expediente en el portal DGEJ del PJF</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <!-- Dropdowns en cascada -->
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="pjf-circuito">Circuito Jurisdiccional *</label>
+                                <select id="pjf-circuito" onchange="onPjfCircuitoChange()" required>
+                                    <option value="">-- Selecciona un circuito --</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="pjf-organismo">Órgano Jurisdiccional *</label>
+                                <select id="pjf-organismo" onchange="onPjfOrganoChange()" disabled>
+                                    <option value="">-- Selecciona un organismo --</option>
+                                </select>
+                                <span class="form-help" id="pjf-org-count"></span>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="pjf-tipo-asunto">Tipo de Asunto *</label>
+                                <select id="pjf-tipo-asunto" onchange="onPjfTipoAsuntoChange()" disabled>
+                                    <option value="">-- Selecciona tipo de asunto --</option>
+                                </select>
+                                <div id="pjf-tipo-asunto-manual" style="display: none; margin-top: 0.5rem;">
+                                    <input type="number" id="pjf-tipo-asunto-manual-input" placeholder="ID del tipo de asunto" min="1">
+                                    <span class="form-help">Ingresa el ID numérico del tipo de asunto del SISE</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="pjf-num-expediente">Número de Expediente *</label>
+                                <input type="text" id="pjf-num-expediente" placeholder="Ej: 67/2021">
+                                <span class="form-help">Formato: número/año</span>
+                            </div>
+                        </div>
+
+                        <!-- Tipo Procedimiento (solo para tribunales laborales) -->
+                        <div class="form-row" id="pjf-tipo-procedimiento-group" style="display: none;">
+                            <div class="form-group">
+                                <label for="pjf-tipo-procedimiento">Tipo de Procedimiento</label>
+                                <select id="pjf-tipo-procedimiento">
+                                    <option value="0">No aplica</option>
+                                </select>
+                                <span class="form-help">Solo aplica para Tribunales Laborales</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-secondary" onclick="limpiarFormularioPJF()">
+                            🗑️ Limpiar
+                        </button>
+                        <button class="btn btn-success" onclick="ejecutarBusquedaPJFyGuardar()">
+                            📁 Buscar y Guardar Expediente
+                        </button>
+                        <button class="btn btn-primary btn-lg" onclick="ejecutarBusquedaPJF()">
+                            🔍 Buscar en PJF
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: Expedientes PJF -->
+            <div class="pjf-tab-content" id="pjf-tab-expedientes">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>📁 Mis Expedientes Federales</h3>
+                        <button class="btn btn-primary btn-sm" onclick="navegarA('expedientes'); cambiarInstitucionACrear('PJF')">
+                            ➕ Nuevo Expediente PJF
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="expedientes-grid" id="lista-expedientes-pjf">
+                            <div class="empty-state">
+                                <span class="empty-icon">🏛️</span>
+                                <h3>No hay expedientes federales</h3>
+                                <p>Busca un expediente en el PJF y guárdalo, o crea uno desde la pestaña de Expedientes.</p>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div class="card-body">
-                    <!-- Dropdowns en cascada -->
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="pjf-circuito">Circuito Jurisdiccional *</label>
-                            <select id="pjf-circuito" onchange="onPjfCircuitoChange()" required>
-                                <option value="">-- Selecciona un circuito --</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="pjf-organismo">Órgano Jurisdiccional *</label>
-                            <select id="pjf-organismo" onchange="onPjfOrganoChange()" disabled>
-                                <option value="">-- Selecciona un organismo --</option>
-                            </select>
-                            <span class="form-help" id="pjf-org-count"></span>
-                        </div>
-                    </div>
+            </div>
 
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="pjf-tipo-asunto">Tipo de Asunto *</label>
-                            <select id="pjf-tipo-asunto" onchange="onPjfTipoAsuntoChange()" disabled>
-                                <option value="">-- Selecciona tipo de asunto --</option>
-                            </select>
-                            <div id="pjf-tipo-asunto-manual" style="display: none; margin-top: 0.5rem;">
-                                <input type="number" id="pjf-tipo-asunto-manual-input" placeholder="ID del tipo de asunto" min="1">
-                                <span class="form-help">Ingresa el ID numérico del tipo de asunto del SISE</span>
+            <!-- TAB: Análisis IA PJF -->
+            <div class="pjf-tab-content" id="pjf-tab-ia">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="header-with-help">
+                            <h3>🤖 Analizar Acuerdo Federal con IA</h3>
+                            <div class="tooltip-container">
+                                <button class="help-btn" type="button">?</button>
+                                <div class="tooltip-content tooltip-left">
+                                    <h4>Análisis IA para PJF</h4>
+                                    <p>Funciona igual que el análisis para TSJ. Pega el texto de un acuerdo federal y la IA extraerá:</p>
+                                    <ul>
+                                        <li>Número de expediente</li>
+                                        <li>Órgano jurisdiccional federal</li>
+                                        <li>Fechas y audiencias</li>
+                                        <li>Puntos importantes</li>
+                                    </ul>
+                                    <p>Los datos se guardarán automáticamente vinculados al PJF.</p>
+                                </div>
                             </div>
                         </div>
+                    </div>
+                    <div class="card-body">
+                        <p class="section-desc">Pega el texto de un acuerdo del PJF y la IA extraerá automáticamente fechas, audiencias y puntos importantes.</p>
                         <div class="form-group">
-                            <label for="pjf-num-expediente">Número de Expediente *</label>
-                            <input type="text" id="pjf-num-expediente" placeholder="Ej: 67/2021">
-                            <span class="form-help">Formato: número/año</span>
+                            <label>Expediente PJF relacionado (opcional)</label>
+                            <select id="iapjf-expediente" onchange="toggleExpedienteCustom('iapjf')">
+                                <option value="">Sin expediente específico</option>
+                                <option value="__custom__">✏️ Otro (escribir manualmente)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="iapjf-expediente-custom-group" style="display: none;">
+                            <label>Número de expediente federal</label>
+                            <input type="text" id="iapjf-expediente-custom" placeholder="Ej: 67/2021">
+                        </div>
+
+                        <div class="form-group">
+                            <label>📷 Subir imagen del acuerdo (opcional)</label>
+                            <div class="image-upload-container">
+                                <input type="file" id="ia-imagen-album-pjf" accept="image/*" onchange="procesarImagenAcuerdoPJF(event)" style="display: none;">
+                                <div class="image-upload-buttons">
+                                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('ia-imagen-album-pjf').click()">
+                                        🖼️ Subir imagen
+                                    </button>
+                                </div>
+                                <div id="ia-imagen-preview-pjf" class="image-preview" style="display: none;">
+                                    <img id="ia-imagen-preview-img-pjf" src="" alt="Preview">
+                                    <button type="button" class="btn-remove-image" onclick="eliminarImagenAcuerdoPJF()">✕</button>
+                                </div>
+                                <div id="ia-ocr-status-pjf" class="ocr-status" style="display: none;">
+                                    <span class="loading-spinner"></span> Extrayendo texto de la imagen...
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Texto del Acuerdo Federal</label>
+                            <textarea id="ia-texto-acuerdo-pjf" rows="8" placeholder="Pega aquí el texto del acuerdo federal..."></textarea>
                         </div>
                     </div>
+                    <div class="card-footer">
+                        <button class="btn btn-primary btn-lg" onclick="analizarAcuerdoConIAPJF()" id="btn-analizar-ia-pjf">
+                            🤖 Analizar con IA
+                        </button>
+                    </div>
+                </div>
 
-                    <!-- Tipo Procedimiento (solo para tribunales laborales) -->
-                    <div class="form-row" id="pjf-tipo-procedimiento-group" style="display: none;">
-                        <div class="form-group">
-                            <label for="pjf-tipo-procedimiento">Tipo de Procedimiento</label>
-                            <select id="pjf-tipo-procedimiento">
-                                <option value="0">No aplica</option>
-                            </select>
-                            <span class="form-help">Solo aplica para Tribunales Laborales</span>
+                <!-- Resultados del Análisis IA PJF -->
+                <div class="card" id="resultados-ia-pjf" style="display: none;">
+                    <div class="card-header">
+                        <h3>📋 Resultados del Análisis Federal</h3>
+                    </div>
+                    <div class="card-body" id="resultados-ia-contenido-pjf">
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-success" onclick="guardarResultadosIAPJF()">💾 Guardar Todo</button>
+                        <button class="btn btn-secondary" onclick="document.getElementById('resultados-ia-pjf').style.display='none'">Cerrar</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: Notas PJF -->
+            <div class="pjf-tab-content" id="pjf-tab-notas">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>📝 Notas de Expedientes Federales</h3>
+                        <button class="btn btn-primary btn-sm" onclick="mostrarFormularioNotaPJF()">
+                            ➕ Nueva Nota PJF
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="notas-grid" id="lista-notas-pjf">
+                            <div class="empty-state">
+                                <span class="empty-icon">📒</span>
+                                <h3>No hay notas federales</h3>
+                                <p>Las notas de expedientes PJF aparecerán aquí.</p>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="card-footer">
-                    <button class="btn btn-secondary" onclick="limpiarFormularioPJF()">
-                        🗑️ Limpiar
-                    </button>
-                    <button class="btn btn-primary btn-lg" onclick="ejecutarBusquedaPJF()">
-                        🔍 Buscar en PJF
-                    </button>
+            </div>
+
+            <!-- TAB: Calendario PJF -->
+            <div class="pjf-tab-content" id="pjf-tab-calendario">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>📅 Eventos de Expedientes Federales</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="eventos-lista" id="lista-eventos-pjf">
+                            <div class="empty-state">
+                                <span class="empty-icon">📭</span>
+                                <h3>No hay eventos federales</h3>
+                                <p>Los eventos de expedientes PJF aparecerán aquí y en el calendario principal.</p>
+                            </div>
+                        </div>
+                        <p class="section-desc" style="margin-top: 1rem;">
+                            💡 Los eventos PJF también se muestran en el calendario general. Aquí puedes ver solo los eventos federales.
+                        </p>
+                    </div>
                 </div>
             </div>
         </section>
@@ -1313,8 +1509,8 @@
             <div class="config-section">
                 <h3>ℹ️ Acerca de</h3>
                 <div class="about-info">
-                    <p><strong>TSJ Filing Online</strong> v7.0</p>
-                    <p>Sistema de Gestión de Expedientes del TSJ Quintana Roo</p>
+                    <p><strong>TSJ Filing Online</strong> v8.0</p>
+                    <p>Sistema de Gestión de Expedientes - TSJ Quintana Roo + PJF Federal</p>
                     <p class="text-muted">Todos los datos se almacenan localmente en tu navegador usando IndexedDB.</p>
                 </div>
             </div>
@@ -1346,7 +1542,7 @@
             <div class="footer-brand">
                 <span class="footer-logo">⚖️</span>
                 <div>
-                    <strong>TSJ Filing Online v7.0</strong>
+                    <strong>TSJ Filing Online v8.0</strong>
                     <p>Desarrollado por <a href="https://www.empirica.mx" target="_blank">Empírica Legal Lab</a></p>
                 </div>
             </div>
