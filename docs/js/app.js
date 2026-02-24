@@ -2975,8 +2975,8 @@ const GROQ_VISION_MODELS = [
 // ==================== OCR CON TESSERACT.JS (NAVEGADOR) ====================
 
 // Extraer texto usando Tesseract.js (OCR en el navegador)
-async function extraerTextoConTesseract(imagenBase64) {
-    const statusEl = document.getElementById('ia-ocr-status');
+async function extraerTextoConTesseract(imagenBase64, textareaId = 'ia-texto-acuerdo', statusElId = 'ia-ocr-status') {
+    const statusEl = document.getElementById(statusElId);
     const statusText = statusEl?.querySelector('span:not(.loading-spinner)') || statusEl;
 
     try {
@@ -3011,9 +3011,9 @@ async function extraerTextoConTesseract(imagenBase64) {
         const textoExtraido = result.data.text?.trim();
 
         if (textoExtraido && textoExtraido.length > 10) {
-            // Éxito - agregar texto extraído al textarea
-            const textarea = document.getElementById('ia-texto-acuerdo');
-            textarea.value = textoExtraido;
+            // Éxito - agregar texto extraído al textarea correspondiente
+            const textarea = document.getElementById(textareaId);
+            if (textarea) textarea.value = textoExtraido;
             mostrarToast('Texto extraído correctamente con OCR del navegador', 'success');
             Logger.log('OCR Tesseract exitoso, caracteres extraídos:', textoExtraido.length);
             return true;
@@ -4857,19 +4857,11 @@ async function procesarImagenAcuerdoPJF(event) {
         previewContainer.style.display = 'block';
         imagenAcuerdoPJFActual = e.target.result;
 
-        // Extract text using OCR
+        // Extract text using OCR directly into PJF textarea
         const statusEl = document.getElementById('ia-ocr-status-pjf');
         if (statusEl) statusEl.style.display = 'flex';
 
-        const success = await extraerTextoConTesseract(e.target.result);
-        if (success) {
-            // Copy text to PJF textarea
-            const tsjTextarea = document.getElementById('ia-texto-acuerdo');
-            const pjfTextarea = document.getElementById('ia-texto-acuerdo-pjf');
-            if (pjfTextarea && tsjTextarea?.value) {
-                pjfTextarea.value = tsjTextarea.value;
-            }
-        }
+        await extraerTextoConTesseract(e.target.result, 'ia-texto-acuerdo-pjf', 'ia-ocr-status-pjf');
 
         if (statusEl) statusEl.style.display = 'none';
     };
