@@ -734,6 +734,11 @@ async function guardarExpediente(event) {
             comentario: comentario || undefined
         };
 
+        if (institucion === 'PJF') {
+            const orgId = document.getElementById('expediente-organo-pjf')?.value;
+            if (orgId) expediente.pjfOrgId = orgId;
+        }
+
         if (tipoBusqueda === 'numero') {
             expediente.numero = valor;
         } else {
@@ -4783,6 +4788,7 @@ async function cargarExpedientesPJF() {
             <div class="expediente-footer">
                 <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
                 <div class="expediente-actions">
+                    <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍 Buscar</button>
                     <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
                     <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
                     <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
@@ -4803,6 +4809,7 @@ async function cargarExpedientesPJF() {
                 <td class="comentario-cell" title="${escapeText(exp.comentario || '')}">${escapeText(exp.comentario || '-')}</td>
                 <td>${formatearFecha(exp.fechaCreacion)}</td>
                 <td class="acciones-cell">
+                    <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍</button>
                     <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
                     <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
                     <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
@@ -4848,6 +4855,73 @@ function confirmarEliminarExpedientePJF(id, event) {
                 mostrarToast('Error al eliminar: ' + (err.message || 'Error desconocido'), 'error');
             });
     }
+}
+
+// Abrir búsqueda en PJF para un expediente guardado
+async function abrirBusquedaPJFGuardado(id, event) {
+    if (event) { event.stopPropagation(); event.preventDefault(); }
+
+    const expedientes = await obtenerExpedientes();
+    const exp = expedientes.find(e => e.id === id);
+    if (!exp) return;
+
+    // Si tenemos orgId y tipoAsunto guardados, construir y abrir URL directamente
+    if (exp.pjfOrgId && exp.pjfTipoAsunto && exp.numero) {
+        const url = PJF_VERCAPTURA_URL +
+            '?tipoasunto=' + encodeURIComponent(exp.pjfTipoAsunto) +
+            '&organismo=' + encodeURIComponent(exp.pjfOrgId) +
+            '&expediente=' + encodeURIComponent(exp.numero) +
+            '&tipoprocedimiento=0';
+        window.open(url, 'pjf_expediente_' + id, 'width=1024,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no');
+        mostrarToast(`Abriendo expediente ${exp.numero} en PJF...`, 'success');
+        return;
+    }
+
+    // Sin datos completos: navegar al tab de Búsqueda y pre-llenar el formulario
+    navegarA('pjf');
+
+    setTimeout(async () => {
+        cambiarTabPJF('busqueda');
+
+        // Asegurar que los catálogos estén cargados
+        await cargarCatalogosPJF();
+
+        // Resolver orgId: usar el guardado o buscar por nombre
+        let orgId = exp.pjfOrgId;
+        if (!orgId && exp.juzgado) {
+            const organo = pjfOrganismos.find(o => o.nombre === exp.juzgado);
+            orgId = organo ? String(organo.id) : '';
+        }
+
+        if (orgId) {
+            const organo = pjfOrganismos.find(o => String(o.id) === String(orgId));
+            if (organo) {
+                // Seleccionar circuito
+                const circuitoSelect = document.getElementById('pjf-circuito');
+                if (circuitoSelect) {
+                    circuitoSelect.value = organo.circuito_id;
+                    onPjfCircuitoChange();
+
+                    // Esperar a que se poblen los organismos y luego seleccionar
+                    setTimeout(() => {
+                        const orgSelect = document.getElementById('pjf-organismo');
+                        if (orgSelect) {
+                            orgSelect.value = orgId;
+                            onPjfOrganoChange();
+                        }
+                    }, 100);
+                }
+            }
+        }
+
+        // Pre-llenar número de expediente
+        if (exp.numero) {
+            const numInput = document.getElementById('pjf-num-expediente');
+            if (numInput) numInput.value = exp.numero;
+        }
+
+        mostrarToast('Formulario pre-llenado. Selecciona el tipo de asunto y haz clic en Buscar.', 'info');
+    }, 300);
 }
 
 // PJF view toggle
@@ -4921,6 +4995,7 @@ async function filtrarExpedientesPJF() {
                 <div class="expediente-footer">
                     <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
                     <div class="expediente-actions">
+                        <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍 Buscar</button>
                         <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
                         <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
                         <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
@@ -4940,6 +5015,7 @@ async function filtrarExpedientesPJF() {
                     <td class="comentario-cell" title="${escapeText(exp.comentario || '')}">${escapeText(exp.comentario || '-')}</td>
                     <td>${formatearFecha(exp.fechaCreacion)}</td>
                     <td class="acciones-cell">
+                        <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍</button>
                         <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
                         <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
                         <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
@@ -5047,9 +5123,18 @@ async function ejecutarBusquedaPJFyGuardar() {
         mostrarToast(`El expediente PJF "${expediente}" ya está guardado`, 'info');
     } else {
         // Create new PJF expediente
+        const selectTipo = document.getElementById('pjf-tipo-asunto');
+        const manualTipo = document.getElementById('pjf-tipo-asunto-manual-input');
+        let tipoAsuntoGuardado = selectTipo?.value || '';
+        if (tipoAsuntoGuardado === '__manual__' || !tipoAsuntoGuardado) {
+            tipoAsuntoGuardado = manualTipo?.value.trim() || '';
+        }
+
         const nuevoExp = {
             numero: expediente,
             juzgado: orgNombre,
+            pjfOrgId: orgId,
+            pjfTipoAsunto: tipoAsuntoGuardado || undefined,
             categoria: 'PJF Federal',
             institucion: 'PJF',
             comentario: `Expediente federal - ${orgNombre}`
