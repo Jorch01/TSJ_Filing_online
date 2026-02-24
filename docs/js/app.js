@@ -170,8 +170,8 @@ async function inicializarApp() {
     poblarSelectJuzgados('expediente-juzgado');
     poblarSelectCategorias('filtro-categoria');
 
-    // Inicializar vista de expedientes
-    document.querySelectorAll('.view-btn').forEach(btn => {
+    // Inicializar vista de expedientes (solo TSJ)
+    document.querySelectorAll('#page-expedientes .view-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.view === vistaExpedientes);
     });
 
@@ -462,8 +462,8 @@ function cambiarVistaExpedientes(vista) {
     vistaExpedientes = vista;
     localStorage.setItem('vistaExpedientes', vista);
 
-    // Actualizar botones
-    document.querySelectorAll('.view-btn').forEach(btn => {
+    // Actualizar solo botones de TSJ (excluir PJF view buttons)
+    document.querySelectorAll('#page-expedientes .view-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.view === vista);
     });
 
@@ -667,8 +667,9 @@ async function editarExpediente(id, event) {
         }
 
         if (institucion === 'PJF') {
-            // For PJF, we can't easily re-select the cascade, just show the organ name
             document.getElementById('expediente-juzgado').value = '';
+            // Restore PJF cascade: find the organ by name and set circuit + organ
+            await restaurarCascadaPJFParaEdicion(exp.juzgado);
         } else {
             document.getElementById('expediente-juzgado').value = exp.juzgado;
         }
@@ -2975,8 +2976,8 @@ const GROQ_VISION_MODELS = [
 // ==================== OCR CON TESSERACT.JS (NAVEGADOR) ====================
 
 // Extraer texto usando Tesseract.js (OCR en el navegador)
-async function extraerTextoConTesseract(imagenBase64) {
-    const statusEl = document.getElementById('ia-ocr-status');
+async function extraerTextoConTesseract(imagenBase64, textareaId = 'ia-texto-acuerdo', statusElId = 'ia-ocr-status') {
+    const statusEl = document.getElementById(statusElId);
     const statusText = statusEl?.querySelector('span:not(.loading-spinner)') || statusEl;
 
     try {
@@ -3011,9 +3012,9 @@ async function extraerTextoConTesseract(imagenBase64) {
         const textoExtraido = result.data.text?.trim();
 
         if (textoExtraido && textoExtraido.length > 10) {
-            // Éxito - agregar texto extraído al textarea
-            const textarea = document.getElementById('ia-texto-acuerdo');
-            textarea.value = textoExtraido;
+            // Éxito - agregar texto extraído al textarea correspondiente
+            const textarea = document.getElementById(textareaId);
+            if (textarea) textarea.value = textoExtraido;
             mostrarToast('Texto extraído correctamente con OCR del navegador', 'success');
             Logger.log('OCR Tesseract exitoso, caracteres extraídos:', textoExtraido.length);
             return true;
@@ -4545,6 +4546,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ==================== INTEGRACIÓN PJF FEDERAL ====================
 
+// Restaurar cascada PJF al editar un expediente federal
+async function restaurarCascadaPJFParaEdicion(juzgadoNombre) {
+    if (!juzgadoNombre) return;
+
+    // Ensure PJF catalogs are loaded
+    if (!pjfDatosCargados) {
+        await cargarCatalogosPJF();
+    }
+
+    // Find the organ by name
+    const organo = pjfOrganismos.find(o => o.nombre === juzgadoNombre);
+    if (!organo) return;
+
+    // Set circuit
+    const circuitoSelect = document.getElementById('expediente-circuito-pjf');
+    if (circuitoSelect) {
+        circuitoSelect.value = organo.circuito_id;
+        // Trigger cascade to populate organs
+        onExpCircuitoPjfChange();
+
+        // Wait for DOM update, then set organ
+        setTimeout(() => {
+            const organoSelect = document.getElementById('expediente-organo-pjf');
+            if (organoSelect) {
+                organoSelect.value = organo.id;
+            }
+        }, 50);
+    }
+}
+
 // Cambiar institución en el formulario de expediente
 function cambiarInstitucionExpediente() {
     const institucion = document.querySelector('input[name="expediente-institucion"]:checked')?.value || 'TSJ';
@@ -4656,29 +4687,48 @@ function cambiarTabPJF(tab) {
 
 // ==================== PJF EXPEDIENTES ====================
 
+let vistaExpedientesPJF = localStorage.getItem('vistaExpedientesPJF') || 'cards';
+
 async function cargarExpedientesPJF() {
     const expedientes = await obtenerExpedientes();
-    const pjfExps = expedientes.filter(e => e.institucion === 'PJF');
+    let pjfExps = expedientes.filter(e => e.institucion === 'PJF');
     const lista = document.getElementById('lista-expedientes-pjf');
+    const count = document.getElementById('count-expedientes-pjf');
 
     if (!lista) return;
 
-    if (pjfExps.length === 0) {
+    // Sort by custom order or date
+    pjfExps = [...pjfExps].sort((a, b) => {
+        if (a.orden !== undefined && b.orden !== undefined) return a.orden - b.orden;
+        if (a.orden !== undefined) return -1;
+        if (b.orden !== undefined) return 1;
+        return new Date(b.fechaModificacion || b.fechaCreacion || 0) - new Date(a.fechaModificacion || a.fechaCreacion || 0);
+    });
+
+    const totalPJF = pjfExps.length;
+
+    if (totalPJF === 0) {
         lista.innerHTML = `
             <div class="empty-state">
                 <span class="empty-icon">🏛️</span>
                 <h3>No hay expedientes federales</h3>
                 <p>Busca un expediente en el PJF y guárdalo, o crea uno desde la pestaña de Expedientes.</p>
+                <button class="btn btn-primary" onclick="navegarA('expedientes'); cambiarInstitucionACrear('PJF')">
+                    ➕ Agregar Expediente PJF
+                </button>
             </div>
         `;
+        if (count) count.textContent = '0 expedientes';
         return;
     }
 
-    lista.innerHTML = pjfExps.map(exp => `
-        <div class="expediente-card" data-id="${exp.id}">
+    lista.innerHTML = pjfExps.map((exp, index) => `
+        <div class="expediente-card" data-id="${exp.id}" data-orden="${exp.orden || index}" draggable="true">
+            <div class="drag-handle" title="Arrastra para reordenar">⋮⋮</div>
             <div class="expediente-header">
                 <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
                 <span class="institucion-badge pjf">🏛️ PJF</span>
+                <span class="expediente-categoria">${escapeText(exp.categoria || 'PJF Federal')}</span>
             </div>
             <div class="expediente-body">
                 <h3 class="expediente-titulo">${escapeText(exp.numero || exp.nombre)}</h3>
@@ -4688,12 +4738,244 @@ async function cargarExpedientesPJF() {
             <div class="expediente-footer">
                 <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
                 <div class="expediente-actions">
-                    <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
-                    <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
+                    <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
+                    <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
+                    <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
                 </div>
             </div>
         </div>
     `).join('');
+
+    // Populate table view
+    const tablaBody = document.getElementById('tabla-expedientes-body-pjf');
+    if (tablaBody) {
+        tablaBody.innerHTML = pjfExps.map(exp => `
+            <tr data-id="${exp.id}">
+                <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
+                <td><strong>${escapeText(exp.numero || exp.nombre)}</strong></td>
+                <td>${escapeText(exp.juzgado)}</td>
+                <td><span class="categoria-badge">${escapeText(exp.categoria || 'PJF Federal')}</span></td>
+                <td class="comentario-cell" title="${escapeText(exp.comentario || '')}">${escapeText(exp.comentario || '-')}</td>
+                <td>${formatearFecha(exp.fechaCreacion)}</td>
+                <td class="acciones-cell">
+                    <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
+                    <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
+                    <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    // Initialize drag and drop for PJF
+    inicializarDragAndDropPJF();
+
+    if (count) count.textContent = `${totalPJF} expediente${totalPJF !== 1 ? 's' : ''}`;
+
+    // Apply current view
+    aplicarVistaExpedientesPJF();
+}
+
+// Edit PJF expediente - navigate to main form and restore cascade
+async function editarExpedientePJF(id, event) {
+    if (event) { event.stopPropagation(); event.preventDefault(); }
+
+    // Navigate to expedientes page to access the form
+    navegarA('expedientes');
+
+    // Small delay to let the page render
+    setTimeout(async () => {
+        await editarExpediente(id);
+    }, 150);
+}
+
+// Delete PJF expediente and refresh PJF view
+function confirmarEliminarExpedientePJF(id, event) {
+    if (event) { event.stopPropagation(); event.preventDefault(); }
+
+    if (confirm('¿Estás seguro de eliminar este expediente federal?')) {
+        eliminarExpediente(id, true)
+            .then(() => {
+                mostrarToast('Expediente PJF eliminado', 'success');
+                return Promise.all([cargarExpedientesPJF(), cargarExpedientes(), cargarEstadisticas()]);
+            })
+            .catch(err => {
+                Logger.error('Error al eliminar expediente PJF:', err);
+                mostrarToast('Error al eliminar: ' + (err.message || 'Error desconocido'), 'error');
+            });
+    }
+}
+
+// PJF view toggle
+function cambiarVistaExpedientesPJF(vista) {
+    vistaExpedientesPJF = vista;
+    localStorage.setItem('vistaExpedientesPJF', vista);
+
+    document.querySelectorAll('.pjf-view-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === vista);
+    });
+
+    aplicarVistaExpedientesPJF();
+}
+
+function aplicarVistaExpedientesPJF() {
+    const listaCards = document.getElementById('lista-expedientes-pjf');
+    const tablaContainer = document.getElementById('tabla-expedientes-pjf');
+
+    if (vistaExpedientesPJF === 'table') {
+        if (listaCards) listaCards.style.display = 'none';
+        if (tablaContainer) tablaContainer.style.display = 'block';
+    } else {
+        if (listaCards) listaCards.style.display = 'grid';
+        if (tablaContainer) tablaContainer.style.display = 'none';
+    }
+}
+
+// PJF search/filter
+async function filtrarExpedientesPJF() {
+    const busqueda = (document.getElementById('buscar-expediente-pjf')?.value || '').toLowerCase();
+    const expedientes = await obtenerExpedientes();
+    let pjfExps = expedientes.filter(e => e.institucion === 'PJF');
+
+    if (busqueda) {
+        pjfExps = pjfExps.filter(e =>
+            (e.numero && e.numero.toLowerCase().includes(busqueda)) ||
+            (e.nombre && e.nombre.toLowerCase().includes(busqueda)) ||
+            (e.juzgado && e.juzgado.toLowerCase().includes(busqueda)) ||
+            (e.comentario && e.comentario.toLowerCase().includes(busqueda))
+        );
+    }
+
+    const lista = document.getElementById('lista-expedientes-pjf');
+    const count = document.getElementById('count-expedientes-pjf');
+
+    if (pjfExps.length === 0) {
+        lista.innerHTML = `
+            <div class="empty-state">
+                <span class="empty-icon">🔍</span>
+                <h3>Sin resultados</h3>
+                <p>No se encontraron expedientes PJF con esos filtros</p>
+            </div>
+        `;
+        // Also clear table
+        const tablaBody = document.getElementById('tabla-expedientes-body-pjf');
+        if (tablaBody) tablaBody.innerHTML = '';
+    } else {
+        lista.innerHTML = pjfExps.map((exp, index) => `
+            <div class="expediente-card" data-id="${exp.id}" data-orden="${exp.orden || index}" draggable="true">
+                <div class="drag-handle" title="Arrastra para reordenar">⋮⋮</div>
+                <div class="expediente-header">
+                    <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
+                    <span class="institucion-badge pjf">🏛️ PJF</span>
+                    <span class="expediente-categoria">${escapeText(exp.categoria || 'PJF Federal')}</span>
+                </div>
+                <div class="expediente-body">
+                    <h3 class="expediente-titulo">${escapeText(exp.numero || exp.nombre)}</h3>
+                    <p class="expediente-juzgado">${escapeText(exp.juzgado)}</p>
+                    ${exp.comentario ? `<p class="expediente-comentario">${escapeText(exp.comentario)}</p>` : ''}
+                </div>
+                <div class="expediente-footer">
+                    <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
+                    <div class="expediente-actions">
+                        <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
+                        <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
+                        <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        const tablaBody = document.getElementById('tabla-expedientes-body-pjf');
+        if (tablaBody) {
+            tablaBody.innerHTML = pjfExps.map(exp => `
+                <tr data-id="${exp.id}">
+                    <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
+                    <td><strong>${escapeText(exp.numero || exp.nombre)}</strong></td>
+                    <td>${escapeText(exp.juzgado)}</td>
+                    <td><span class="categoria-badge">${escapeText(exp.categoria || 'PJF Federal')}</span></td>
+                    <td class="comentario-cell" title="${escapeText(exp.comentario || '')}">${escapeText(exp.comentario || '-')}</td>
+                    <td>${formatearFecha(exp.fechaCreacion)}</td>
+                    <td class="acciones-cell">
+                        <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
+                        <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
+                        <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        inicializarDragAndDropPJF();
+    }
+
+    if (count) count.textContent = `${pjfExps.length} expediente${pjfExps.length !== 1 ? 's' : ''}`;
+}
+
+// Drag and Drop for PJF expedientes
+let draggedElementPJF = null;
+
+function inicializarDragAndDropPJF() {
+    const lista = document.getElementById('lista-expedientes-pjf');
+    if (!lista) return;
+    const cards = lista.querySelectorAll('.expediente-card');
+
+    cards.forEach(card => {
+        card.addEventListener('dragstart', handleDragStartPJF);
+        card.addEventListener('dragend', handleDragEndPJF);
+        card.addEventListener('dragover', handleDragOverPJF);
+        card.addEventListener('dragenter', handleDragEnterPJF);
+        card.addEventListener('dragleave', handleDragLeavePJF);
+        card.addEventListener('drop', handleDropPJF);
+    });
+}
+
+function handleDragStartPJF(e) {
+    draggedElementPJF = this;
+    this.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+}
+
+function handleDragEndPJF() {
+    this.classList.remove('dragging');
+    document.querySelectorAll('#lista-expedientes-pjf .expediente-card').forEach(c => c.classList.remove('drag-over'));
+    draggedElementPJF = null;
+}
+
+function handleDragOverPJF(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+}
+
+function handleDragEnterPJF(e) {
+    e.preventDefault();
+    if (this !== draggedElementPJF) this.classList.add('drag-over');
+}
+
+function handleDragLeavePJF() {
+    this.classList.remove('drag-over');
+}
+
+async function handleDropPJF(e) {
+    e.preventDefault();
+    this.classList.remove('drag-over');
+
+    if (draggedElementPJF && draggedElementPJF !== this) {
+        const lista = document.getElementById('lista-expedientes-pjf');
+        const cards = [...lista.querySelectorAll('.expediente-card')];
+        const fromIndex = cards.indexOf(draggedElementPJF);
+        const toIndex = cards.indexOf(this);
+
+        if (fromIndex < toIndex) {
+            this.parentNode.insertBefore(draggedElementPJF, this.nextSibling);
+        } else {
+            this.parentNode.insertBefore(draggedElementPJF, this);
+        }
+
+        // Save new order
+        const nuevasCards = [...lista.querySelectorAll('.expediente-card')];
+        for (let i = 0; i < nuevasCards.length; i++) {
+            const id = parseInt(nuevasCards[i].dataset.id);
+            await actualizarExpediente(id, { orden: i });
+        }
+    }
 }
 
 // ==================== PJF SEARCH AND SAVE ====================
@@ -4731,6 +5013,7 @@ async function ejecutarBusquedaPJFyGuardar() {
         await agregarExpediente(nuevoExp);
         mostrarToast(`Expediente PJF "${expediente}" guardado`, 'success');
         await cargarExpedientes();
+        await cargarExpedientesPJF();
         await cargarEstadisticas();
     }
 
@@ -4857,19 +5140,11 @@ async function procesarImagenAcuerdoPJF(event) {
         previewContainer.style.display = 'block';
         imagenAcuerdoPJFActual = e.target.result;
 
-        // Extract text using OCR
+        // Extract text using OCR directly into PJF textarea
         const statusEl = document.getElementById('ia-ocr-status-pjf');
         if (statusEl) statusEl.style.display = 'flex';
 
-        const success = await extraerTextoConTesseract(e.target.result);
-        if (success) {
-            // Copy text to PJF textarea
-            const tsjTextarea = document.getElementById('ia-texto-acuerdo');
-            const pjfTextarea = document.getElementById('ia-texto-acuerdo-pjf');
-            if (pjfTextarea && tsjTextarea?.value) {
-                pjfTextarea.value = tsjTextarea.value;
-            }
-        }
+        await extraerTextoConTesseract(e.target.result, 'ia-texto-acuerdo-pjf', 'ia-ocr-status-pjf');
 
         if (statusEl) statusEl.style.display = 'none';
     };
@@ -5220,6 +5495,7 @@ async function guardarResultadosIAPJF() {
 
     // Update UI
     await cargarExpedientes();
+    await cargarExpedientesPJF();
     await cargarEventos();
     await cargarNotas();
     await cargarEstadisticas();
