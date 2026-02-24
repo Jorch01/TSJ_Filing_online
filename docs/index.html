@@ -884,9 +884,35 @@
                 <div class="card">
                     <div class="card-header">
                         <h3>📁 Mis Expedientes Federales</h3>
-                        <button class="btn btn-primary btn-sm" onclick="navegarA('expedientes'); cambiarInstitucionACrear('PJF')">
-                            ➕ Nuevo Expediente PJF
-                        </button>
+                        <div class="header-buttons">
+                            <div class="tooltip-container">
+                                <button class="btn btn-secondary btn-sm" onclick="descargarTemplatePJF()">
+                                    📄 Descargar Template
+                                </button>
+                                <div class="tooltip-content tooltip-bottom tooltip-right">
+                                    <h4>¿Cómo usar la carga masiva PJF?</h4>
+                                    <p><strong>Paso 1:</strong> Descarga el template CSV</p>
+                                    <p><strong>Paso 2:</strong> Ábrelo con Excel o Google Sheets</p>
+                                    <p><strong>Paso 3:</strong> Completa las columnas:</p>
+                                    <ul>
+                                        <li><code>expediente</code>: Número (ej: 67/2021)</li>
+                                        <li><code>organo</code>: Nombre EXACTO del órgano</li>
+                                        <li><code>organismo_id</code>: ID numérico (opcional)</li>
+                                        <li><code>tipo_asunto_id</code>: ID del tipo (opcional)</li>
+                                        <li><code>comentario</code>: Notas opcionales</li>
+                                    </ul>
+                                    <p><strong>Paso 4:</strong> Guarda como CSV e importa</p>
+                                    <p><em>Con organismo_id y tipo_asunto_id el botón "🔍 Buscar" abrirá el portal PJF directamente.</em></p>
+                                </div>
+                            </div>
+                            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('import-pjf-csv').click()">
+                                📥 Importar CSV
+                            </button>
+                            <input type="file" id="import-pjf-csv" accept=".csv" style="display:none" onchange="importarExpedientesPJFCSV(event)">
+                            <button class="btn btn-primary btn-sm" onclick="navegarA('expedientes'); cambiarInstitucionACrear('PJF')">
+                                ➕ Nuevo Expediente PJF
+                            </button>
+                        </div>
                     </div>
                     <div class="card-body">
                         <!-- Filtros y Vista PJF -->
