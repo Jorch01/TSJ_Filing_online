@@ -837,12 +837,49 @@
                         </button>
                     </div>
                     <div class="card-body">
+                        <!-- Filtros y Vista PJF -->
+                        <div class="filters-section" style="margin-bottom: 1rem;">
+                            <div class="search-box">
+                                <span class="search-icon">🔍</span>
+                                <input type="text" id="buscar-expediente-pjf" placeholder="Buscar expedientes PJF..." oninput="filtrarExpedientesPJF()">
+                            </div>
+                            <div class="view-toggle">
+                                <button class="view-btn pjf-view-btn active" data-view="cards" onclick="cambiarVistaExpedientesPJF('cards')" title="Vista tarjetas">
+                                    <span>▦</span>
+                                </button>
+                                <button class="view-btn pjf-view-btn" data-view="table" onclick="cambiarVistaExpedientesPJF('table')" title="Vista tabla">
+                                    <span>☰</span>
+                                </button>
+                            </div>
+                            <span class="results-count" id="count-expedientes-pjf">0 expedientes</span>
+                        </div>
+
+                        <!-- Lista Cards PJF -->
                         <div class="expedientes-grid" id="lista-expedientes-pjf">
                             <div class="empty-state">
                                 <span class="empty-icon">🏛️</span>
                                 <h3>No hay expedientes federales</h3>
                                 <p>Busca un expediente en el PJF y guárdalo, o crea uno desde la pestaña de Expedientes.</p>
                             </div>
+                        </div>
+
+                        <!-- Lista Tabla PJF -->
+                        <div class="expedientes-table-container" id="tabla-expedientes-pjf" style="display: none;">
+                            <table class="expedientes-table">
+                                <thead>
+                                    <tr>
+                                        <th>Tipo</th>
+                                        <th>Número/Nombre</th>
+                                        <th>Órgano</th>
+                                        <th>Categoría</th>
+                                        <th>Comentario</th>
+                                        <th>Fecha</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabla-expedientes-body-pjf">
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
