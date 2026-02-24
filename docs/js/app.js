@@ -384,11 +384,16 @@ async function cargarExpedientes() {
         `;
     }
 
-    lista.innerHTML = advertenciaHTML + expedientes.map((exp, index) => `
+    lista.innerHTML = advertenciaHTML + expedientes.map((exp, index) => {
+        const instBadge = exp.institucion === 'PJF'
+            ? '<span class="institucion-badge pjf">🏛️ PJF</span>'
+            : '<span class="institucion-badge tsj">⚖️ TSJ</span>';
+        return `
         <div class="expediente-card" data-id="${exp.id}" data-orden="${exp.orden || index}" draggable="true">
             <div class="drag-handle" title="Arrastra para reordenar">⋮⋮</div>
             <div class="expediente-header">
                 <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
+                ${instBadge}
                 <span class="expediente-categoria">${escapeText(exp.categoria || 'General')}</span>
             </div>
             <div class="expediente-body">
@@ -405,7 +410,8 @@ async function cargarExpedientes() {
                 </div>
             </div>
         </div>
-    `).join('');
+    `;
+    }).join('');
 
     // Inicializar drag and drop
     inicializarDragAndDrop();
@@ -420,12 +426,15 @@ async function cargarExpedientes() {
     // Poblar tabla
     const tablaBody = document.getElementById('tabla-expedientes-body');
     if (tablaBody) {
-        tablaBody.innerHTML = expedientes.map(exp => `
+        tablaBody.innerHTML = expedientes.map(exp => {
+            const instLabel = exp.institucion === 'PJF' ? '🏛️ PJF' : '⚖️ TSJ';
+            return `
             <tr data-id="${exp.id}">
                 <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
                 <td><strong>${escapeText(exp.numero || exp.nombre)}</strong></td>
                 <td>${escapeText(exp.juzgado)}</td>
                 <td><span class="categoria-badge">${escapeText(exp.categoria || 'General')}</span></td>
+                <td>${instLabel}</td>
                 <td class="comentario-cell" title="${escapeText(exp.comentario || '')}">${escapeText(exp.comentario || '-')}</td>
                 <td>${formatearFecha(exp.fechaCreacion)}</td>
                 <td class="acciones-cell">
@@ -434,7 +443,8 @@ async function cargarExpedientes() {
                     <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
                 </td>
             </tr>
-        `).join('');
+        `;
+        }).join('');
     }
 
     // Aplicar vista actual
@@ -646,8 +656,22 @@ async function editarExpediente(id, event) {
         document.getElementById('form-expediente-titulo').textContent = 'Editar Expediente';
         document.getElementById('expediente-id').value = id;
         document.getElementById('expediente-valor').value = exp.numero || exp.nombre;
-        document.getElementById('expediente-juzgado').value = exp.juzgado;
         document.getElementById('expediente-comentario').value = exp.comentario || '';
+
+        // Set institution
+        const institucion = exp.institucion || 'TSJ';
+        const instRadio = document.querySelector(`input[name="expediente-institucion"][value="${institucion}"]`);
+        if (instRadio) {
+            instRadio.checked = true;
+            cambiarInstitucionExpediente();
+        }
+
+        if (institucion === 'PJF') {
+            // For PJF, we can't easily re-select the cascade, just show the organ name
+            document.getElementById('expediente-juzgado').value = '';
+        } else {
+            document.getElementById('expediente-juzgado').value = exp.juzgado;
+        }
 
         const tipo = exp.numero ? 'numero' : 'nombre';
         document.querySelector(`input[name="tipo-busqueda"][value="${tipo}"]`).checked = true;
@@ -676,10 +700,22 @@ async function guardarExpediente(event) {
         const id = document.getElementById('expediente-id').value;
         const tipoBusqueda = document.querySelector('input[name="tipo-busqueda"]:checked').value;
         const valor = document.getElementById('expediente-valor').value.trim();
-        const juzgado = document.getElementById('expediente-juzgado').value;
         const comentario = document.getElementById('expediente-comentario').value.trim();
+        const institucion = document.querySelector('input[name="expediente-institucion"]:checked')?.value || 'TSJ';
 
-        if (!valor || !juzgado) {
+        let juzgado = '';
+        if (institucion === 'PJF') {
+            const organoSelect = document.getElementById('expediente-organo-pjf');
+            juzgado = organoSelect?.options[organoSelect.selectedIndex]?.text || '';
+            if (!juzgado || organoSelect.value === '') {
+                // Allow manual text if no organ selected
+                juzgado = 'PJF - Por determinar';
+            }
+        } else {
+            juzgado = document.getElementById('expediente-juzgado').value;
+        }
+
+        if (!valor || (!juzgado && institucion === 'TSJ')) {
             mostrarToast('Completa todos los campos requeridos', 'error');
             return;
         }
@@ -692,7 +728,8 @@ async function guardarExpediente(event) {
 
         const expediente = {
             juzgado,
-            categoria: obtenerCategoriaJuzgado(juzgado),
+            categoria: institucion === 'PJF' ? 'PJF Federal' : obtenerCategoriaJuzgado(juzgado),
+            institucion: institucion,
             comentario: comentario || undefined
         };
 
@@ -938,15 +975,19 @@ async function cargarNotas() {
 
     lista.innerHTML = notas.map(nota => {
         const exp = expMap[nota.expedienteId];
+        const instBadge = (nota.institucion === 'PJF' || (exp && exp.institucion === 'PJF'))
+            ? '<span class="institucion-badge pjf" style="font-size: 0.65rem;">🏛️ PJF</span>'
+            : '';
         return `
             <div class="nota-card" style="background-color: ${escapeText(nota.color || '#fff3cd')}" onclick="editarNota(${nota.id})">
                 <div class="nota-header">
                     <h3 class="nota-titulo">${escapeText(nota.titulo)}</h3>
+                    ${instBadge}
                     ${nota.recordatorio ? '<span class="nota-recordatorio">🔔</span>' : ''}
                 </div>
                 <p class="nota-contenido">${escapeText(nota.contenido || 'Sin contenido')}</p>
                 <div class="nota-footer">
-                    <span class="nota-expediente">📁 ${exp ? escapeText(exp.numero || exp.nombre) : 'Sin expediente'}</span>
+                    <span class="nota-expediente">📁 ${exp ? escapeText(exp.numero || exp.nombre) : (nota.expedienteTexto || 'Sin expediente')}</span>
                     <span class="nota-fecha">${formatearFecha(nota.fechaCreacion)}</span>
                 </div>
             </div>
@@ -1258,8 +1299,9 @@ function actualizarEventosHoy(eventos) {
             const horaCompleta = e.todoElDia ? 'Todo el día' :
                 fecha.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
 
-            const expedienteInfo = e.expedienteTexto ||
-                (e.expedienteId ? `Expediente #${e.expedienteId}` : 'Sin expediente');
+            const instPrefix = e.institucion === 'PJF' ? '[PJF] ' : '';
+            const expedienteInfo = instPrefix + (e.expedienteTexto || e.numeroExpediente ||
+                (e.expedienteId ? `Expediente #${e.expedienteId}` : 'Sin expediente'));
 
             const descripcionCorta = e.descripcion ?
                 (e.descripcion.length > 80 ? e.descripcion.substring(0, 80) + '...' : e.descripcion) :
@@ -1549,15 +1591,20 @@ async function actualizarPanelEventos(eventos) {
             </div>
         `;
     } else {
-        panel.innerHTML = eventosAMostrar.map(e => `
+        panel.innerHTML = eventosAMostrar.map(e => {
+            const instBadgeEvt = e.institucion === 'PJF'
+                ? '<span class="institucion-badge pjf" style="font-size: 0.6rem; margin-left: 0.3rem;">PJF</span>'
+                : '';
+            return `
             <div class="evento-item" onclick="editarEvento(${e.id})" style="border-left: 3px solid ${escapeText(e.color || '#3788d8')}">
                 <div class="evento-info">
-                    <span class="evento-titulo">${escapeText(e.titulo)}</span>
+                    <span class="evento-titulo">${escapeText(e.titulo)}${instBadgeEvt}</span>
                     <span class="evento-hora">${e.todoElDia ? 'Todo el día' : new Date(e.fechaInicio).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
                 ${e.alerta ? '<span class="evento-alerta">🔔</span>' : ''}
             </div>
-        `).join('') + `<div class="panel-agregar-evento">${btnAgregar}</div>`;
+        `;
+        }).join('') + `<div class="panel-agregar-evento">${btnAgregar}</div>`;
     }
 }
 
@@ -3052,13 +3099,16 @@ async function analizarAcuerdoConIA() {
     btn.innerHTML = '<span class="loading-spinner"></span> Analizando...';
     btn.classList.add('loading');
 
-    const prompt = `Analiza el siguiente acuerdo judicial del Tribunal Superior de Justicia de Quintana Roo y extrae la información importante.
+    const prompt = `Analiza el siguiente acuerdo judicial y extrae la información importante.
 
 TEXTO DEL ACUERDO:
 ${texto}
 
 Responde ÚNICAMENTE en formato JSON con la siguiente estructura (sin explicaciones adicionales):
 {
+    "numero_expediente": "Número de expediente mencionado en el acuerdo (ej: 123/2025) o null si no se encuentra",
+    "juzgado_origen": "Nombre del juzgado, sala u órgano jurisdiccional que emite el acuerdo, o null si no se identifica",
+    "institucion": "TSJ|PJF|otro - identifica si es del Tribunal Superior de Justicia estatal o del Poder Judicial de la Federación",
     "resumen": "Resumen breve del acuerdo en 1-2 oraciones",
     "tipo_acuerdo": "admisión|sentencia|auto|citación|notificación|otro",
     "fechas": [
@@ -3084,6 +3134,7 @@ Responde ÚNICAMENTE en formato JSON con la siguiente estructura (sin explicacio
     ]
 }
 
+IMPORTANTE: Siempre intenta extraer el número de expediente del texto del acuerdo. Busca patrones como "Expediente:", "Exp.", "Causa:", "Toca:", seguidos de un número con formato número/año (ej: 123/2025, 45/2024). También identifica el juzgado u órgano que emite el acuerdo y si es del TSJ estatal o del PJF federal.
 Si algún campo no tiene información, usa un array vacío [] o null según corresponda.`;
 
     try {
@@ -3136,6 +3187,20 @@ Si algún campo no tiene información, usa un array vacío [] o null según corr
 function mostrarResultadosIA(resultado) {
     const container = document.getElementById('resultados-ia-contenido');
     let html = '';
+
+    // Número de expediente extraído por IA
+    if (resultado.numero_expediente) {
+        const institucionLabel = resultado.institucion === 'PJF' ? '🏛️ PJF Federal' :
+                                 resultado.institucion === 'TSJ' ? '⚖️ TSJ Quintana Roo' : '📋 ' + (resultado.institucion || 'No identificada');
+        html += `
+            <div class="ia-resultado-item" style="background: #e8f5e9; border-left: 4px solid #4caf50; padding: 0.75rem;">
+                <h4>🔢 Expediente Detectado</h4>
+                <p><strong>Número:</strong> ${escapeText(resultado.numero_expediente)}</p>
+                ${resultado.juzgado_origen ? `<p><strong>Órgano:</strong> ${escapeText(resultado.juzgado_origen)}</p>` : ''}
+                <p><strong>Institución:</strong> ${institucionLabel}</p>
+            </div>
+        `;
+    }
 
     // Resumen (sanitizar respuesta de API externa)
     if (resultado.resumen) {
@@ -3221,7 +3286,17 @@ async function guardarResultadosIA() {
     const resultado = resultadosIAActuales;
     let guardados = 0;
 
-    // Si hay un expediente personalizado, crearlo automáticamente
+    // Determinar el número de expediente: priorizar el extraído por IA, luego el seleccionado manualmente
+    const numExpExtraido = resultado.numero_expediente || null;
+    const juzgadoExtraido = resultado.juzgado_origen || null;
+    const institucionExtraida = resultado.institucion || 'TSJ';
+
+    // Si la IA extrajo un número de expediente y no se seleccionó uno manualmente, usarlo
+    if (numExpExtraido && !resultado.expedienteId && !resultado.expedienteTexto) {
+        resultado.expedienteTexto = numExpExtraido;
+    }
+
+    // Si hay un expediente (personalizado o extraído por IA), crearlo/vincularlo automáticamente
     if (resultado.expedienteTexto && !resultado.expedienteId) {
         try {
             // Verificar si ya existe un expediente con ese número
@@ -3236,12 +3311,13 @@ async function guardarResultadosIA() {
                 resultado.expedienteId = existente.id;
                 mostrarToast(`Expediente "${resultado.expedienteTexto}" ya existe, vinculando...`, 'info');
             } else {
-                // Crear nuevo expediente
+                // Crear nuevo expediente con datos extraídos por IA
                 const nuevoExp = {
                     numero: resultado.expedienteTexto,
-                    juzgado: 'Por determinar',
+                    juzgado: juzgadoExtraido || 'Por determinar',
                     categoria: 'General',
-                    comentario: 'Creado automáticamente desde análisis IA'
+                    institucion: institucionExtraida,
+                    comentario: `Creado automáticamente desde análisis IA${juzgadoExtraido ? ' - ' + juzgadoExtraido : ''}`
                 };
                 const idNuevo = await agregarExpediente(nuevoExp);
                 resultado.expedienteId = idNuevo;
@@ -3253,20 +3329,24 @@ async function guardarResultadosIA() {
         }
     }
 
+    // Resolver la etiqueta de expediente para usar en eventos y notas
+    let expedienteLabel = '';
+    if (resultado.expedienteId) {
+        const exp = await obtenerExpediente(resultado.expedienteId);
+        if (exp) expedienteLabel = exp.numero || exp.nombre || '';
+    } else if (resultado.expedienteTexto) {
+        expedienteLabel = resultado.expedienteTexto;
+    } else if (numExpExtraido) {
+        expedienteLabel = numExpExtraido;
+    }
+
     // Guardar eventos/fechas seleccionados
     if (resultado.fechas) {
         for (let i = 0; i < resultado.fechas.length; i++) {
             const checkbox = document.getElementById(`ia-fecha-${i}`);
             if (checkbox && checkbox.checked) {
                 const fecha = resultado.fechas[i];
-                // Obtener info del expediente para mostrar en el título
-                let expedienteInfo = '';
-                if (resultado.expedienteId) {
-                    const exp = await obtenerExpediente(resultado.expedienteId);
-                    if (exp) expedienteInfo = ` [${exp.numero || exp.nombre}]`;
-                } else if (resultado.expedienteTexto) {
-                    expedienteInfo = ` [${resultado.expedienteTexto}]`;
-                }
+                const expedienteInfo = expedienteLabel ? ` [Exp. ${expedienteLabel}]` : '';
 
                 const evento = {
                     titulo: `${fecha.descripcion}${expedienteInfo}`,
@@ -3275,8 +3355,10 @@ async function guardarResultadosIA() {
                     fechaInicio: new Date(fecha.fecha + (fecha.hora ? `T${fecha.hora}` : 'T09:00')).toISOString(),
                     todoElDia: !fecha.hora,
                     expedienteId: resultado.expedienteId,
-                    expedienteTexto: resultado.expedienteTexto,
-                    descripcion: `Expediente: ${resultado.expedienteTexto || 'N/A'}\nExtraído automáticamente por IA`,
+                    expedienteTexto: resultado.expedienteTexto || numExpExtraido,
+                    numeroExpediente: expedienteLabel,
+                    institucion: institucionExtraida,
+                    descripcion: `Expediente: ${expedienteLabel || 'N/A'}${juzgadoExtraido ? '\nÓrgano: ' + juzgadoExtraido : ''}${institucionExtraida ? '\nInstitución: ' + institucionExtraida : ''}\nExtraído automáticamente por IA`,
                     alerta: true,
                     color: fecha.tipo === 'audiencia' ? '#3788d8' :
                            fecha.tipo === 'vencimiento' ? '#dc3545' : '#ffc107'
@@ -3294,6 +3376,14 @@ async function guardarResultadosIA() {
 
     // Guardar notas de puntos importantes y acciones
     const notasTexto = [];
+
+    // Incluir número de expediente al inicio de la nota
+    if (expedienteLabel) {
+        notasTexto.push(`📋 Expediente: ${expedienteLabel}`);
+        if (juzgadoExtraido) notasTexto.push(`🏛️ Órgano: ${juzgadoExtraido}`);
+        if (institucionExtraida) notasTexto.push(`📌 Institución: ${institucionExtraida === 'PJF' ? 'PJF Federal' : institucionExtraida === 'TSJ' ? 'TSJ Quintana Roo' : institucionExtraida}`);
+        notasTexto.push('---');
+    }
 
     if (resultado.puntos_importantes) {
         resultado.puntos_importantes.forEach((punto, i) => {
@@ -3325,8 +3415,10 @@ async function guardarResultadosIA() {
     if (notasTexto.length > 0) {
         const nota = {
             expedienteId: resultado.expedienteId,
-            expedienteTexto: resultado.expedienteTexto, // Soporte para expediente personalizado
-            titulo: `Análisis IA - ${new Date().toLocaleDateString('es-MX')}`,
+            expedienteTexto: resultado.expedienteTexto || numExpExtraido,
+            numeroExpediente: expedienteLabel,
+            institucion: institucionExtraida,
+            titulo: `Análisis IA${expedienteLabel ? ' - Exp. ' + expedienteLabel : ''} - ${new Date().toLocaleDateString('es-MX')}`,
             contenido: notasTexto.join('\n'),
             color: '#cce5ff',
             recordatorio: null
@@ -4450,4 +4542,694 @@ actualizarUIPremium = async function() {
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(inicializarAnuncios, 500);
 });
+
+// ==================== INTEGRACIÓN PJF FEDERAL ====================
+
+// Cambiar institución en el formulario de expediente
+function cambiarInstitucionExpediente() {
+    const institucion = document.querySelector('input[name="expediente-institucion"]:checked')?.value || 'TSJ';
+    const tsjGroup = document.getElementById('juzgado-tsj-group');
+    const pjfGroup = document.getElementById('juzgado-pjf-group');
+
+    if (institucion === 'PJF') {
+        if (tsjGroup) tsjGroup.style.display = 'none';
+        if (pjfGroup) pjfGroup.style.display = 'flex';
+        // Remove required from TSJ juzgado
+        const tsjSelect = document.getElementById('expediente-juzgado');
+        if (tsjSelect) tsjSelect.removeAttribute('required');
+        // Populate PJF circuits if not done
+        poblarCircuitosExpediente();
+    } else {
+        if (tsjGroup) tsjGroup.style.display = 'flex';
+        if (pjfGroup) pjfGroup.style.display = 'none';
+        const tsjSelect = document.getElementById('expediente-juzgado');
+        if (tsjSelect) tsjSelect.setAttribute('required', '');
+    }
+}
+
+// Populate PJF circuits in expediente form
+function poblarCircuitosExpediente() {
+    const select = document.getElementById('expediente-circuito-pjf');
+    if (!select || select.options.length > 1) return;
+
+    // Wait for PJF data to load
+    if (!pjfDatosCargados) {
+        cargarCatalogosPJF().then(() => {
+            llenarCircuitosExpediente(select);
+        });
+    } else {
+        llenarCircuitosExpediente(select);
+    }
+}
+
+function llenarCircuitosExpediente(select) {
+    select.innerHTML = '<option value="">Selecciona un circuito...</option>';
+    pjfCircuitos.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.numero_circuito;
+        opt.textContent = c.numero_circuito + '. ' + c.nombre;
+        select.appendChild(opt);
+    });
+}
+
+function onExpCircuitoPjfChange() {
+    const numCircuito = parseInt(document.getElementById('expediente-circuito-pjf').value);
+    const selectOrg = document.getElementById('expediente-organo-pjf');
+
+    selectOrg.innerHTML = '<option value="">Selecciona un órgano...</option>';
+    selectOrg.disabled = true;
+
+    if (!numCircuito) return;
+
+    const organos = pjfOrganismos
+        .filter(o => o.circuito_id === numCircuito)
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+
+    organos.forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o.id;
+        opt.textContent = o.nombre;
+        selectOrg.appendChild(opt);
+    });
+
+    selectOrg.disabled = false;
+}
+
+// Set institution when creating from PJF page
+function cambiarInstitucionACrear(inst) {
+    setTimeout(() => {
+        mostrarFormularioExpediente();
+        setTimeout(() => {
+            const radio = document.querySelector(`input[name="expediente-institucion"][value="${inst}"]`);
+            if (radio) {
+                radio.checked = true;
+                cambiarInstitucionExpediente();
+            }
+        }, 100);
+    }, 200);
+}
+
+// ==================== PJF TABS ====================
+
+function cambiarTabPJF(tab) {
+    // Deactivate all tabs
+    document.querySelectorAll('.pjf-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.pjf-tab-content').forEach(c => c.classList.remove('active'));
+
+    // Activate selected tab
+    const tabBtn = document.querySelector(`.pjf-tab[data-pjf-tab="${tab}"]`);
+    const tabContent = document.getElementById(`pjf-tab-${tab}`);
+    if (tabBtn) tabBtn.classList.add('active');
+    if (tabContent) tabContent.classList.add('active');
+
+    // Load data for the tab
+    if (tab === 'expedientes') {
+        cargarExpedientesPJF();
+    } else if (tab === 'notas') {
+        cargarNotasPJF();
+    } else if (tab === 'calendario') {
+        cargarEventosPJF();
+    } else if (tab === 'ia') {
+        actualizarSelectExpedientesIAPJF();
+    }
+}
+
+// ==================== PJF EXPEDIENTES ====================
+
+async function cargarExpedientesPJF() {
+    const expedientes = await obtenerExpedientes();
+    const pjfExps = expedientes.filter(e => e.institucion === 'PJF');
+    const lista = document.getElementById('lista-expedientes-pjf');
+
+    if (!lista) return;
+
+    if (pjfExps.length === 0) {
+        lista.innerHTML = `
+            <div class="empty-state">
+                <span class="empty-icon">🏛️</span>
+                <h3>No hay expedientes federales</h3>
+                <p>Busca un expediente en el PJF y guárdalo, o crea uno desde la pestaña de Expedientes.</p>
+            </div>
+        `;
+        return;
+    }
+
+    lista.innerHTML = pjfExps.map(exp => `
+        <div class="expediente-card" data-id="${exp.id}">
+            <div class="expediente-header">
+                <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
+                <span class="institucion-badge pjf">🏛️ PJF</span>
+            </div>
+            <div class="expediente-body">
+                <h3 class="expediente-titulo">${escapeText(exp.numero || exp.nombre)}</h3>
+                <p class="expediente-juzgado">${escapeText(exp.juzgado)}</p>
+                ${exp.comentario ? `<p class="expediente-comentario">${escapeText(exp.comentario)}</p>` : ''}
+            </div>
+            <div class="expediente-footer">
+                <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
+                <div class="expediente-actions">
+                    <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
+                    <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// ==================== PJF SEARCH AND SAVE ====================
+
+async function ejecutarBusquedaPJFyGuardar() {
+    const orgSelect = document.getElementById('pjf-organismo');
+    const orgId = orgSelect.value;
+    const orgNombre = orgSelect.options[orgSelect.selectedIndex]?.text || '';
+    const expediente = document.getElementById('pjf-num-expediente').value.trim();
+
+    if (!orgId || !expediente) {
+        mostrarToast('Completa el organismo y número de expediente', 'warning');
+        return;
+    }
+
+    // Check if this expediente already exists
+    const expedientes = await obtenerExpedientes();
+    const existente = expedientes.find(e =>
+        e.numero && e.numero.toLowerCase() === expediente.toLowerCase() &&
+        e.institucion === 'PJF'
+    );
+
+    if (existente) {
+        mostrarToast(`El expediente PJF "${expediente}" ya está guardado`, 'info');
+    } else {
+        // Create new PJF expediente
+        const nuevoExp = {
+            numero: expediente,
+            juzgado: orgNombre,
+            categoria: 'PJF Federal',
+            institucion: 'PJF',
+            comentario: `Expediente federal - ${orgNombre}`
+        };
+
+        await agregarExpediente(nuevoExp);
+        mostrarToast(`Expediente PJF "${expediente}" guardado`, 'success');
+        await cargarExpedientes();
+        await cargarEstadisticas();
+    }
+
+    // Also execute the search
+    ejecutarBusquedaPJF();
+}
+
+// ==================== PJF NOTAS ====================
+
+async function cargarNotasPJF() {
+    const notas = await obtenerNotas();
+    const expedientes = await obtenerExpedientes();
+    const pjfExpIds = new Set(expedientes.filter(e => e.institucion === 'PJF').map(e => e.id));
+
+    // Filter notes linked to PJF expedientes or with PJF institution
+    const notasPJF = notas.filter(n =>
+        n.institucion === 'PJF' ||
+        (n.expedienteId && pjfExpIds.has(n.expedienteId))
+    );
+
+    const lista = document.getElementById('lista-notas-pjf');
+    if (!lista) return;
+
+    const expMap = Object.fromEntries(expedientes.map(e => [e.id, e]));
+
+    if (notasPJF.length === 0) {
+        lista.innerHTML = `
+            <div class="empty-state">
+                <span class="empty-icon">📒</span>
+                <h3>No hay notas federales</h3>
+                <p>Las notas de expedientes PJF aparecerán aquí.</p>
+            </div>
+        `;
+        return;
+    }
+
+    lista.innerHTML = notasPJF.map(nota => {
+        const exp = expMap[nota.expedienteId];
+        return `
+            <div class="nota-card" style="background-color: ${escapeText(nota.color || '#fff3cd')}" onclick="editarNota(${nota.id})">
+                <div class="nota-header">
+                    <h3 class="nota-titulo">${escapeText(nota.titulo)}</h3>
+                    <span class="institucion-badge pjf" style="font-size: 0.7rem;">🏛️ PJF</span>
+                </div>
+                <p class="nota-contenido">${escapeText(nota.contenido || 'Sin contenido')}</p>
+                <div class="nota-footer">
+                    <span class="nota-expediente">📁 ${exp ? escapeText(exp.numero || exp.nombre) : (nota.expedienteTexto || 'Sin expediente')}</span>
+                    <span class="nota-fecha">${formatearFecha(nota.fechaCreacion)}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function mostrarFormularioNotaPJF() {
+    // Use the same nota form but pre-filter PJF expedientes
+    mostrarFormularioNota();
+    // The form is loaded async, so we need to wait
+    setTimeout(() => {
+        document.getElementById('modal-titulo').textContent = 'Nueva Nota PJF';
+    }, 200);
+}
+
+// ==================== PJF EVENTOS ====================
+
+async function cargarEventosPJF() {
+    const eventos = await obtenerEventos();
+    const expedientes = await obtenerExpedientes();
+    const pjfExpIds = new Set(expedientes.filter(e => e.institucion === 'PJF').map(e => e.id));
+
+    // Filter events linked to PJF expedientes or with PJF institution
+    const eventosPJF = eventos.filter(e =>
+        e.institucion === 'PJF' ||
+        (e.expedienteId && pjfExpIds.has(e.expedienteId))
+    ).sort((a, b) => new Date(a.fechaInicio) - new Date(b.fechaInicio));
+
+    const lista = document.getElementById('lista-eventos-pjf');
+    if (!lista) return;
+
+    if (eventosPJF.length === 0) {
+        lista.innerHTML = `
+            <div class="empty-state">
+                <span class="empty-icon">📭</span>
+                <h3>No hay eventos federales</h3>
+                <p>Los eventos de expedientes PJF aparecerán aquí y en el calendario principal.</p>
+            </div>
+        `;
+        return;
+    }
+
+    lista.innerHTML = eventosPJF.map(e => {
+        const fecha = new Date(e.fechaInicio);
+        const fechaTexto = fecha.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+        const horaTexto = e.todoElDia ? 'Todo el día' :
+            fecha.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+
+        return `
+            <div class="evento-item" onclick="editarEvento(${e.id})" style="border-left: 3px solid ${escapeText(e.color || '#3788d8')}">
+                <div class="evento-info">
+                    <span class="evento-titulo">${escapeText(e.titulo)}</span>
+                    <span class="evento-hora">${fechaTexto} - ${horaTexto}</span>
+                </div>
+                <span class="institucion-badge pjf" style="font-size: 0.65rem;">🏛️ PJF</span>
+            </div>
+        `;
+    }).join('');
+}
+
+// ==================== PJF IA ANALYSIS ====================
+
+let resultadosIAPJFActuales = null;
+let imagenAcuerdoPJFActual = null;
+
+async function procesarImagenAcuerdoPJF(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const previewContainer = document.getElementById('ia-imagen-preview-pjf');
+    const previewImg = document.getElementById('ia-imagen-preview-img-pjf');
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        previewImg.src = e.target.result;
+        previewContainer.style.display = 'block';
+        imagenAcuerdoPJFActual = e.target.result;
+
+        // Extract text using OCR
+        const statusEl = document.getElementById('ia-ocr-status-pjf');
+        if (statusEl) statusEl.style.display = 'flex';
+
+        const success = await extraerTextoConTesseract(e.target.result);
+        if (success) {
+            // Copy text to PJF textarea
+            const tsjTextarea = document.getElementById('ia-texto-acuerdo');
+            const pjfTextarea = document.getElementById('ia-texto-acuerdo-pjf');
+            if (pjfTextarea && tsjTextarea?.value) {
+                pjfTextarea.value = tsjTextarea.value;
+            }
+        }
+
+        if (statusEl) statusEl.style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
+}
+
+function eliminarImagenAcuerdoPJF() {
+    const previewContainer = document.getElementById('ia-imagen-preview-pjf');
+    const input = document.getElementById('ia-imagen-album-pjf');
+    previewContainer.style.display = 'none';
+    if (input) input.value = '';
+    imagenAcuerdoPJFActual = null;
+}
+
+async function actualizarSelectExpedientesIAPJF() {
+    const expedientes = await obtenerExpedientes();
+    const pjfExps = expedientes.filter(e => e.institucion === 'PJF');
+    const select = document.getElementById('iapjf-expediente');
+    if (select) {
+        select.innerHTML = '<option value="">Sin expediente específico</option>' +
+            '<option value="__custom__">✏️ Otro (escribir manualmente)</option>' +
+            pjfExps.map(e => `<option value="${e.id}">${e.numero || e.nombre} - ${e.juzgado}</option>`).join('');
+    }
+}
+
+async function analizarAcuerdoConIAPJF() {
+    const texto = document.getElementById('ia-texto-acuerdo-pjf').value.trim();
+    const expedienteSelect = document.getElementById('iapjf-expediente').value;
+    const expedienteCustom = document.getElementById('iapjf-expediente-custom')?.value?.trim() || '';
+    const apiKey = await obtenerConfig('groq_api_key');
+    const modelo = await obtenerConfig('groq_model') || 'llama-3.3-70b-versatile';
+
+    let expedienteId = null;
+    let expedienteTexto = null;
+
+    if (expedienteSelect === '__custom__' && expedienteCustom) {
+        expedienteTexto = expedienteCustom;
+    } else if (expedienteSelect && expedienteSelect !== '__custom__' && expedienteSelect !== '') {
+        expedienteId = expedienteSelect;
+    }
+
+    if (!texto) {
+        mostrarToast('Pega el texto del acuerdo federal a analizar', 'warning');
+        return;
+    }
+
+    if (!apiKey) {
+        mostrarToast('Configura tu API Key de Groq en Configuración', 'warning');
+        return;
+    }
+
+    const btn = document.getElementById('btn-analizar-ia-pjf');
+    btn.innerHTML = '<span class="loading-spinner"></span> Analizando...';
+    btn.classList.add('loading');
+
+    const prompt = `Analiza el siguiente acuerdo judicial del Poder Judicial de la Federación (PJF) y extrae la información importante.
+
+TEXTO DEL ACUERDO:
+${texto}
+
+Responde ÚNICAMENTE en formato JSON con la siguiente estructura (sin explicaciones adicionales):
+{
+    "numero_expediente": "Número de expediente mencionado en el acuerdo (ej: 67/2021, Amparo 123/2024) o null",
+    "juzgado_origen": "Nombre del juzgado, tribunal o órgano federal que emite el acuerdo, o null",
+    "institucion": "PJF",
+    "resumen": "Resumen breve del acuerdo en 1-2 oraciones",
+    "tipo_acuerdo": "admisión|sentencia|auto|citación|notificación|amparo|otro",
+    "fechas": [
+        {
+            "tipo": "audiencia|vencimiento|cita|otro",
+            "fecha": "YYYY-MM-DD",
+            "hora": "HH:MM o null si no aplica",
+            "descripcion": "Descripción del evento"
+        }
+    ],
+    "puntos_importantes": ["Punto importante 1"],
+    "acciones_requeridas": ["Acción requerida"],
+    "montos": [{"concepto": "Descripción", "cantidad": "$X,XXX.XX"}]
+}
+
+IMPORTANTE: Siempre intenta extraer el número de expediente del texto. Busca patrones como "Expediente:", "Exp.", "Amparo:", "Juicio:", "Toca:", seguidos de un número. También identifica el órgano jurisdiccional federal.
+Si algún campo no tiene información, usa un array vacío [] o null.`;
+
+    try {
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+                model: modelo,
+                messages: [{ role: 'user', content: prompt }],
+                max_tokens: 2000,
+                temperature: 0.1
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error?.message || 'Error en la API');
+        }
+
+        const data = await response.json();
+        const contenido = data.choices[0].message.content;
+
+        const jsonMatch = contenido.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error('No se pudo parsear la respuesta de la IA');
+
+        const resultado = JSON.parse(jsonMatch[0]);
+        resultado.expedienteId = expedienteId ? parseInt(expedienteId) : null;
+        resultado.expedienteTexto = expedienteTexto || null;
+        resultado.institucion = 'PJF'; // Force PJF
+
+        // Show results using the same display function
+        mostrarResultadosIAPJF(resultado);
+        resultadosIAPJFActuales = resultado;
+
+        mostrarToast('Análisis PJF completado', 'success');
+    } catch (error) {
+        Logger.error('Error al analizar PJF:', error);
+        mostrarToast('Error: ' + error.message, 'error');
+    } finally {
+        btn.innerHTML = '🤖 Analizar con IA';
+        btn.classList.remove('loading');
+    }
+}
+
+function mostrarResultadosIAPJF(resultado) {
+    const container = document.getElementById('resultados-ia-contenido-pjf');
+    // Reuse the same display logic
+    let html = '';
+
+    if (resultado.numero_expediente) {
+        html += `
+            <div class="ia-resultado-item" style="background: #e3f2fd; border-left: 4px solid #1976d2; padding: 0.75rem;">
+                <h4>🔢 Expediente Federal Detectado</h4>
+                <p><strong>Número:</strong> ${escapeText(resultado.numero_expediente)}</p>
+                ${resultado.juzgado_origen ? `<p><strong>Órgano:</strong> ${escapeText(resultado.juzgado_origen)}</p>` : ''}
+                <p><strong>Institución:</strong> 🏛️ PJF Federal</p>
+            </div>
+        `;
+    }
+
+    if (resultado.resumen) {
+        html += `
+            <div class="ia-resultado-item">
+                <h4>📋 Resumen</h4>
+                <p>${escapeText(resultado.resumen)}</p>
+                <p><small>Tipo: ${escapeText(resultado.tipo_acuerdo || 'No especificado')}</small></p>
+            </div>
+        `;
+    }
+
+    if (resultado.fechas && resultado.fechas.length > 0) {
+        html += `<div class="ia-resultado-item"><h4>📅 Fechas y Eventos Detectados</h4>`;
+        resultado.fechas.forEach((fecha, i) => {
+            const fechaStr = escapeText(fecha.fecha) + (fecha.hora ? ` a las ${escapeText(fecha.hora)}` : '');
+            html += `
+                <div class="ia-resultado-check">
+                    <input type="checkbox" id="ia-pjf-fecha-${i}" checked>
+                    <label for="ia-pjf-fecha-${i}">
+                        <strong>${escapeText(fecha.tipo?.toUpperCase() || '')}:</strong> ${escapeText(fecha.descripcion)}
+                        <br><small>📆 ${fechaStr}</small>
+                    </label>
+                </div>
+            `;
+        });
+        html += `</div>`;
+    }
+
+    if (resultado.puntos_importantes && resultado.puntos_importantes.length > 0) {
+        html += `<div class="ia-resultado-item"><h4>⚠️ Puntos Importantes</h4>`;
+        resultado.puntos_importantes.forEach((punto, i) => {
+            html += `
+                <div class="ia-resultado-check">
+                    <input type="checkbox" id="ia-pjf-punto-${i}" checked>
+                    <label for="ia-pjf-punto-${i}">${escapeText(punto)}</label>
+                </div>
+            `;
+        });
+        html += `</div>`;
+    }
+
+    if (resultado.acciones_requeridas && resultado.acciones_requeridas.length > 0) {
+        html += `<div class="ia-resultado-item"><h4>✅ Acciones Requeridas</h4>`;
+        resultado.acciones_requeridas.forEach((accion, i) => {
+            html += `
+                <div class="ia-resultado-check">
+                    <input type="checkbox" id="ia-pjf-accion-${i}" checked>
+                    <label for="ia-pjf-accion-${i}">${escapeText(accion)}</label>
+                </div>
+            `;
+        });
+        html += `</div>`;
+    }
+
+    if (resultado.montos && resultado.montos.length > 0) {
+        html += `<div class="ia-resultado-item"><h4>💰 Montos</h4>`;
+        resultado.montos.forEach(m => {
+            html += `<p><strong>${escapeText(m.concepto)}:</strong> ${escapeText(m.cantidad)}</p>`;
+        });
+        html += `</div>`;
+    }
+
+    container.innerHTML = html || '<p>No se encontró información relevante.</p>';
+    document.getElementById('resultados-ia-pjf').style.display = 'block';
+}
+
+async function guardarResultadosIAPJF() {
+    if (!resultadosIAPJFActuales) return;
+
+    const resultado = resultadosIAPJFActuales;
+    resultado.institucion = 'PJF';
+    let guardados = 0;
+
+    const numExpExtraido = resultado.numero_expediente || null;
+    const juzgadoExtraido = resultado.juzgado_origen || null;
+
+    if (numExpExtraido && !resultado.expedienteId && !resultado.expedienteTexto) {
+        resultado.expedienteTexto = numExpExtraido;
+    }
+
+    // Create/link PJF expediente
+    if (resultado.expedienteTexto && !resultado.expedienteId) {
+        try {
+            const expedientes = await obtenerExpedientes();
+            const existente = expedientes.find(e =>
+                e.institucion === 'PJF' &&
+                ((e.numero && e.numero.toLowerCase() === resultado.expedienteTexto.toLowerCase()) ||
+                 (e.nombre && e.nombre.toLowerCase() === resultado.expedienteTexto.toLowerCase()))
+            );
+
+            if (existente) {
+                resultado.expedienteId = existente.id;
+                mostrarToast(`Expediente PJF "${resultado.expedienteTexto}" ya existe, vinculando...`, 'info');
+            } else {
+                const nuevoExp = {
+                    numero: resultado.expedienteTexto,
+                    juzgado: juzgadoExtraido || 'PJF - Por determinar',
+                    categoria: 'PJF Federal',
+                    institucion: 'PJF',
+                    comentario: `Creado desde análisis IA PJF${juzgadoExtraido ? ' - ' + juzgadoExtraido : ''}`
+                };
+                const idNuevo = await agregarExpediente(nuevoExp);
+                resultado.expedienteId = idNuevo;
+                guardados++;
+                mostrarToast(`Expediente PJF "${resultado.expedienteTexto}" creado`, 'success');
+            }
+        } catch (e) {
+            Logger.error('Error al crear expediente PJF:', e);
+        }
+    }
+
+    let expedienteLabel = '';
+    if (resultado.expedienteId) {
+        const exp = await obtenerExpediente(resultado.expedienteId);
+        if (exp) expedienteLabel = exp.numero || exp.nombre || '';
+    } else if (resultado.expedienteTexto) {
+        expedienteLabel = resultado.expedienteTexto;
+    } else if (numExpExtraido) {
+        expedienteLabel = numExpExtraido;
+    }
+
+    // Save events
+    if (resultado.fechas) {
+        for (let i = 0; i < resultado.fechas.length; i++) {
+            const checkbox = document.getElementById(`ia-pjf-fecha-${i}`);
+            if (checkbox && checkbox.checked) {
+                const fecha = resultado.fechas[i];
+                const expedienteInfo = expedienteLabel ? ` [PJF Exp. ${expedienteLabel}]` : ' [PJF]';
+
+                const evento = {
+                    titulo: `${fecha.descripcion}${expedienteInfo}`,
+                    tipo: fecha.tipo === 'audiencia' ? 'audiencia' :
+                          fecha.tipo === 'vencimiento' ? 'vencimiento' : 'recordatorio',
+                    fechaInicio: new Date(fecha.fecha + (fecha.hora ? `T${fecha.hora}` : 'T09:00')).toISOString(),
+                    todoElDia: !fecha.hora,
+                    expedienteId: resultado.expedienteId,
+                    expedienteTexto: resultado.expedienteTexto || numExpExtraido,
+                    numeroExpediente: expedienteLabel,
+                    institucion: 'PJF',
+                    descripcion: `Expediente PJF: ${expedienteLabel || 'N/A'}${juzgadoExtraido ? '\nÓrgano: ' + juzgadoExtraido : ''}\nExtraído automáticamente por IA`,
+                    alerta: true,
+                    color: fecha.tipo === 'audiencia' ? '#3788d8' :
+                           fecha.tipo === 'vencimiento' ? '#dc3545' : '#ffc107'
+                };
+
+                try {
+                    await agregarEvento(evento);
+                    guardados++;
+                } catch (e) {
+                    Logger.error('Error al guardar evento PJF:', e);
+                }
+            }
+        }
+    }
+
+    // Save notes
+    const notasTexto = [];
+    if (expedienteLabel) {
+        notasTexto.push(`📋 Expediente PJF: ${expedienteLabel}`);
+        if (juzgadoExtraido) notasTexto.push(`🏛️ Órgano: ${juzgadoExtraido}`);
+        notasTexto.push('📌 Institución: PJF Federal');
+        notasTexto.push('---');
+    }
+
+    if (resultado.puntos_importantes) {
+        resultado.puntos_importantes.forEach((punto, i) => {
+            const checkbox = document.getElementById(`ia-pjf-punto-${i}`);
+            if (checkbox && checkbox.checked) notasTexto.push(`⚠️ ${punto}`);
+        });
+    }
+
+    if (resultado.acciones_requeridas) {
+        resultado.acciones_requeridas.forEach((accion, i) => {
+            const checkbox = document.getElementById(`ia-pjf-accion-${i}`);
+            if (checkbox && checkbox.checked) notasTexto.push(`✅ TODO: ${accion}`);
+        });
+    }
+
+    if (resultado.montos && resultado.montos.length > 0) {
+        notasTexto.push('');
+        notasTexto.push('💰 MONTOS:');
+        resultado.montos.forEach(m => notasTexto.push(`  - ${m.concepto}: ${m.cantidad}`));
+    }
+
+    if (notasTexto.length > 0) {
+        const nota = {
+            expedienteId: resultado.expedienteId,
+            expedienteTexto: resultado.expedienteTexto || numExpExtraido,
+            numeroExpediente: expedienteLabel,
+            institucion: 'PJF',
+            titulo: `Análisis IA PJF${expedienteLabel ? ' - Exp. ' + expedienteLabel : ''} - ${new Date().toLocaleDateString('es-MX')}`,
+            contenido: notasTexto.join('\n'),
+            color: '#cce5ff',
+            recordatorio: null
+        };
+
+        try {
+            await agregarNota(nota);
+            guardados++;
+        } catch (e) {
+            Logger.error('Error al guardar nota PJF:', e);
+        }
+    }
+
+    // Update UI
+    await cargarExpedientes();
+    await cargarEventos();
+    await cargarNotas();
+    await cargarEstadisticas();
+    renderizarCalendario();
+
+    document.getElementById('resultados-ia-pjf').style.display = 'none';
+    document.getElementById('ia-texto-acuerdo-pjf').value = '';
+    eliminarImagenAcuerdoPJF();
+    resultadosIAPJFActuales = null;
+
+    mostrarToast(`${guardados} elementos PJF guardados`, 'success');
+}
 
