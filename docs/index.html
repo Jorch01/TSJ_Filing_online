@@ -327,6 +327,11 @@
                         <div class="form-row" id="juzgado-tsj-group">
                             <div class="form-group">
                                 <label for="expediente-juzgado">Juzgado</label>
+                                <input type="text" id="expediente-juzgado-search"
+                                    placeholder="Filtrar juzgados por texto..."
+                                    oninput="filtrarJuzgadosSelect('expediente-juzgado-search','expediente-juzgado')"
+                                    class="catalog-search-input"
+                                    style="margin-bottom:0.35rem;">
                                 <select id="expediente-juzgado" required>
                                     <option value="">Selecciona un juzgado...</option>
                                 </select>
@@ -343,7 +348,13 @@
                             </div>
                             <div class="form-group">
                                 <label for="expediente-organo-pjf">Órgano Jurisdiccional</label>
-                                <select id="expediente-organo-pjf" disabled>
+                                <input type="text" id="expediente-organo-pjf-search"
+                                    placeholder="Filtrar órganos por texto..."
+                                    oninput="filtrarOrganosSelect('expediente-organo-pjf-search','expediente-organo-pjf',null)"
+                                    style="margin-bottom:0.35rem; display:none;"
+                                    class="catalog-search-input">
+                                <select id="expediente-organo-pjf" disabled
+                                    onmousedown="mostrarBuscadorOrganos('expediente-organo-pjf-search','expediente-organo-pjf')">
                                     <option value="">Selecciona un órgano...</option>
                                 </select>
                             </div>
@@ -829,7 +840,13 @@
                             </div>
                             <div class="form-group">
                                 <label for="pjf-organismo">Órgano Jurisdiccional *</label>
-                                <select id="pjf-organismo" onchange="onPjfOrganoChange()" disabled>
+                                <input type="text" id="pjf-organismo-search"
+                                    placeholder="Filtrar órganos por texto..."
+                                    oninput="filtrarOrganosSelect('pjf-organismo-search','pjf-organismo','pjf-org-count')"
+                                    style="margin-bottom:0.35rem; display:none;"
+                                    class="catalog-search-input">
+                                <select id="pjf-organismo" onchange="onPjfOrganoChange()" disabled
+                                    onmousedown="mostrarBuscadorOrganos('pjf-organismo-search','pjf-organismo')">
                                     <option value="">-- Selecciona un organismo --</option>
                                 </select>
                                 <span class="form-help" id="pjf-org-count"></span>
@@ -909,6 +926,9 @@
                                 📥 Importar CSV
                             </button>
                             <input type="file" id="import-pjf-csv" accept=".csv" style="display:none" onchange="importarExpedientesPJFCSV(event)">
+                            <button class="btn btn-secondary btn-sm" onclick="toggleModoSeleccionPJF()" id="btn-toggle-seleccion-pjf" title="Selección masiva para abrir varios expedientes a la vez">
+                                ☑️ Selección masiva
+                            </button>
                             <button class="btn btn-primary btn-sm" onclick="navegarA('expedientes'); cambiarInstitucionACrear('PJF')">
                                 ➕ Nuevo Expediente PJF
                             </button>
@@ -930,6 +950,20 @@
                                 </button>
                             </div>
                             <span class="results-count" id="count-expedientes-pjf">0 expedientes</span>
+                        </div>
+
+                        <!-- Selección masiva PJF -->
+                        <div class="bulk-actions-pjf" id="bulk-actions-pjf" style="display:none;">
+                            <button class="btn btn-sm btn-secondary" onclick="seleccionarTodosExpedientesPJF()">
+                                ✓ Seleccionar todos
+                            </button>
+                            <button class="btn btn-sm btn-secondary" onclick="deseleccionarTodosExpedientesPJF()">
+                                ✕ Deseleccionar todos
+                            </button>
+                            <span class="selection-count" id="count-pjf-seleccionados" style="font-size:0.875rem; color:var(--text-secondary,#6c757d);">0 seleccionados</span>
+                            <button class="btn btn-sm btn-primary" onclick="abrirExpedientesPJFSeleccionados()" id="btn-abrir-pjf-seleccionados" disabled>
+                                🚀 Abrir URLs seleccionados
+                            </button>
                         </div>
 
                         <!-- Lista Cards PJF -->
@@ -1673,6 +1707,7 @@
                 <h4>🔗 Enlaces</h4>
                 <a href="https://www.empirica.mx" target="_blank">www.empirica.mx</a>
                 <a href="https://www.tsjqroo.gob.mx" target="_blank">TSJ Quintana Roo</a>
+                <a href="https://www.dgej.cjf.gob.mx" target="_blank">PJF / DGEJ Federal</a>
             </div>
         </div>
 
@@ -1681,13 +1716,14 @@
                 <h4>⚠️ Aviso Legal y Descargo de Responsabilidad</h4>
                 <p><strong>Uso bajo responsabilidad del usuario:</strong> Esta herramienta se proporciona "tal cual" sin garantías de ningún tipo. El uso de este sistema es bajo la exclusiva responsabilidad del usuario.</p>
                 <p><strong>Datos del usuario:</strong> Toda la información contenida en las bases de datos locales es responsabilidad exclusiva de los propios usuarios. Empírica Legal Lab no tiene acceso a los datos almacenados en tu navegador y no se hace responsable de su precisión, integridad o pérdida.</p>
-                <p><strong>Información del TSJ:</strong> Los resultados de búsqueda provienen directamente del sitio oficial del Tribunal Superior de Justicia de Quintana Roo. No garantizamos la exactitud ni la actualización de dicha información.</p>
+                <p><strong>Información del TSJ:</strong> Los resultados de búsqueda del TSJQROO provienen directamente del sitio oficial del Tribunal Superior de Justicia de Quintana Roo. No garantizamos la exactitud ni la actualización de dicha información.</p>
+                <p><strong>Información del PJF:</strong> Las consultas al Poder Judicial de la Federación se realizan directamente en el portal oficial de la Dirección General de Estadística Judicial (DGEJ / CJF). Esta herramienta no tiene afiliación ni relación oficial con el Consejo de la Judicatura Federal ni con el Poder Judicial de la Federación. No garantizamos la exactitud, disponibilidad ni actualización de la información proveniente de dicho portal.</p>
                 <p><strong>Respaldos:</strong> Es responsabilidad del usuario realizar respaldos periódicos de sus datos. La pérdida de información por limpiar el caché del navegador, cambiar de dispositivo u otras causas no es responsabilidad del desarrollador.</p>
             </div>
 
             <div class="footer-copyright">
                 <p>© 2025 Empírica Legal Lab. Todos los derechos reservados.</p>
-                <p>TSJ Filing Online es una herramienta independiente no afiliada al Tribunal Superior de Justicia de Quintana Roo.</p>
+                <p>TSJ Filing Online es una herramienta independiente no afiliada al Tribunal Superior de Justicia de Quintana Roo ni al Poder Judicial de la Federación.</p>
             </div>
         </div>
     </footer>

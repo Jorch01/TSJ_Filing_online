@@ -4845,6 +4845,10 @@ function onExpCircuitoPjfChange() {
     selectOrg.innerHTML = '<option value="">Selecciona un órgano...</option>';
     selectOrg.disabled = true;
 
+    // Reset search input
+    const orgSearch = document.getElementById('expediente-organo-pjf-search');
+    if (orgSearch) { orgSearch.value = ''; orgSearch.style.display = 'none'; }
+
     if (!numCircuito) return;
 
     const organos = pjfOrganismos
@@ -4857,6 +4861,9 @@ function onExpCircuitoPjfChange() {
         opt.textContent = o.nombre;
         selectOrg.appendChild(opt);
     });
+
+    // Show search input if there are many organs
+    if (organos.length > 5 && orgSearch) orgSearch.style.display = 'block';
 
     selectOrg.disabled = false;
 }
@@ -4938,8 +4945,15 @@ async function cargarExpedientesPJF() {
     }
 
     lista.innerHTML = pjfExps.map((exp, index) => `
-        <div class="expediente-card" data-id="${exp.id}" data-orden="${exp.orden || index}" draggable="true">
-            <div class="drag-handle" title="Arrastra para reordenar">⋮⋮</div>
+        <div class="expediente-card${modoSeleccionPJF ? ' selection-mode' : ''}" data-id="${exp.id}" data-orden="${exp.orden || index}" draggable="${!modoSeleccionPJF}">
+            ${modoSeleccionPJF ? `
+            <div class="pjf-checkbox-wrap" onclick="event.stopPropagation()" style="display:flex;align-items:center;padding:0.4rem 0.5rem 0;">
+                <input type="checkbox" class="pjf-check" data-exp-id="${exp.id}"
+                    ${expedientesPJFSeleccionados.has(exp.id) ? 'checked' : ''}
+                    onchange="toggleSeleccionExpedientePJF(${exp.id}, this)"
+                    style="width:1.2rem;height:1.2rem;cursor:pointer;accent-color:var(--primary,#366092);">
+                <span style="font-size:0.8rem;margin-left:0.4rem;color:var(--text-secondary,#6c757d);">Seleccionar</span>
+            </div>` : '<div class="drag-handle" title="Arrastra para reordenar">⋮⋮</div>'}
             <div class="expediente-header">
                 <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
                 <span class="institucion-badge pjf">🏛️ PJF</span>
@@ -4953,10 +4967,10 @@ async function cargarExpedientesPJF() {
             <div class="expediente-footer">
                 <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
                 <div class="expediente-actions">
-                    <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍 Buscar</button>
-                    <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
-                    <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
-                    <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
+                    ${!modoSeleccionPJF ? `<button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍 Buscar</button>` : ''}
+                    ${!modoSeleccionPJF ? `<button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>` : ''}
+                    ${!modoSeleccionPJF ? `<button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>` : ''}
+                    ${!modoSeleccionPJF ? `<button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>` : ''}
                 </div>
             </div>
         </div>
@@ -5055,8 +5069,20 @@ async function abrirBusquedaPJFGuardado(id, event) {
     // Falta algún dato: mostrar picker usando el modal existente
     _pendingPJFExp = { ...exp, _resolvedOrgId: orgId };
 
-    const categoria = detectarCategoriaOrgano(exp.juzgado || '');
-    const tiposDisponibles = pjfTiposAsunto?.por_categoria?.[categoria]?.tipos || [];
+    // Resolver tipos de asunto: primero por tipoOrganismoId del órgano (nuevo catálogo),
+    // o fallback por categoría de nombre (legado).
+    let tiposDisponibles = [];
+    if (orgId) {
+        const organoEncontrado = pjfOrganismos.find(o => String(o.id) === String(orgId));
+        if (organoEncontrado && organoEncontrado.tipoOrganismoId && pjfTiposOrgano[organoEncontrado.tipoOrganismoId]) {
+            tiposDisponibles = pjfTiposOrgano[organoEncontrado.tipoOrganismoId].tiposAsunto || [];
+        }
+    }
+    if (tiposDisponibles.length === 0) {
+        // Fallback legado
+        const categoria = detectarCategoriaOrgano(exp.juzgado || '');
+        tiposDisponibles = pjfTiposAsunto?.por_categoria?.[categoria]?.tipos || [];
+    }
 
     const tiposOptionsHTML = [
         ...tiposDisponibles.map(t => `<option value="${t.id}">${escapeText(t.nombre)}</option>`),
@@ -5850,3 +5876,170 @@ async function guardarResultadosIAPJF() {
     mostrarToast(`${guardados} elementos PJF guardados`, 'success');
 }
 
+
+// ==================== BÚSQUEDA DE TEXTO EN CATÁLOGOS DE ÓRGANOS ====================
+
+/**
+ * Muestra el campo de búsqueda de texto sobre un <select> cuando el usuario
+ * va a desplegarlo (onmousedown).  El input se muestra si el select tiene
+ * más de 15 opciones para no entorpecer selects pequeños.
+ */
+function mostrarBuscadorOrganos(searchInputId, selectId) {
+    var searchInput = document.getElementById(searchInputId);
+    var select = document.getElementById(selectId);
+    if (!searchInput || !select) return;
+    // Mostrar solo si hay opciones significativas
+    if (select.options.length > 3) {
+        searchInput.style.display = 'block';
+        // No hacer focus automático para no interferir con el click del select
+    }
+}
+
+/**
+ * Filtra las opciones del selector de juzgados TSJ según texto libre.
+ */
+function filtrarJuzgadosSelect(searchInputId, selectId) {
+    var input = document.getElementById(searchInputId);
+    var select = document.getElementById(selectId);
+    if (!input || !select) return;
+
+    var query = input.value.toLowerCase().trim();
+
+    Array.from(select.options).forEach(function(opt) {
+        if (opt.value === '') {
+            opt.style.display = '';
+            return;
+        }
+        var texto = (opt.textContent || '').toLowerCase();
+        opt.style.display = (!query || texto.includes(query)) ? '' : 'none';
+    });
+}
+
+// ==================== SELECCIÓN MASIVA PJF ====================
+
+let modoSeleccionPJF = false;
+let expedientesPJFSeleccionados = new Set();
+
+/**
+ * Activa o desactiva el modo de selección masiva en la pestaña Expedientes PJF.
+ */
+function toggleModoSeleccionPJF() {
+    modoSeleccionPJF = !modoSeleccionPJF;
+    expedientesPJFSeleccionados.clear();
+
+    const bulkBar = document.getElementById('bulk-actions-pjf');
+    const toggleBtn = document.getElementById('btn-toggle-seleccion-pjf');
+
+    if (bulkBar) bulkBar.style.display = modoSeleccionPJF ? 'flex' : 'none';
+    if (toggleBtn) {
+        toggleBtn.textContent = modoSeleccionPJF ? '✕ Cancelar selección' : '☑️ Selección masiva';
+        toggleBtn.classList.toggle('btn-warning', modoSeleccionPJF);
+        toggleBtn.classList.toggle('btn-secondary', !modoSeleccionPJF);
+    }
+
+    // Redraw cards to show/hide checkboxes
+    cargarExpedientesPJF();
+}
+
+/**
+ * Marca el checkbox de un expediente PJF y actualiza el contador.
+ */
+function toggleSeleccionExpedientePJF(id, checkbox) {
+    if (checkbox.checked) {
+        expedientesPJFSeleccionados.add(id);
+    } else {
+        expedientesPJFSeleccionados.delete(id);
+    }
+    actualizarContadorSeleccionPJF();
+}
+
+function actualizarContadorSeleccionPJF() {
+    var count = expedientesPJFSeleccionados.size;
+    var countEl = document.getElementById('count-pjf-seleccionados');
+    if (countEl) countEl.textContent = count + ' seleccionado' + (count !== 1 ? 's' : '');
+
+    var btnAbrir = document.getElementById('btn-abrir-pjf-seleccionados');
+    if (btnAbrir) btnAbrir.disabled = count === 0;
+}
+
+/**
+ * Selecciona todos los expedientes PJF visibles.
+ */
+function seleccionarTodosExpedientesPJF() {
+    document.querySelectorAll('#lista-expedientes-pjf .pjf-check').forEach(function(cb) {
+        cb.checked = true;
+        var id = parseInt(cb.dataset.expId);
+        if (id) expedientesPJFSeleccionados.add(id);
+    });
+    actualizarContadorSeleccionPJF();
+}
+
+/**
+ * Deselecciona todos los expedientes PJF.
+ */
+function deseleccionarTodosExpedientesPJF() {
+    document.querySelectorAll('#lista-expedientes-pjf .pjf-check').forEach(function(cb) {
+        cb.checked = false;
+    });
+    expedientesPJFSeleccionados.clear();
+    actualizarContadorSeleccionPJF();
+}
+
+/**
+ * Abre una ventana de búsqueda PJF para cada expediente seleccionado.
+ * Los que tengan orgId + tipoAsunto guardados se abren directamente;
+ * los que falten datos se omiten con un aviso.
+ */
+async function abrirExpedientesPJFSeleccionados() {
+    if (expedientesPJFSeleccionados.size === 0) {
+        mostrarToast('No hay expedientes seleccionados', 'warning');
+        return;
+    }
+
+    await cargarCatalogosPJF();
+    const todosExpedientes = await obtenerExpedientes();
+    const seleccionados = todosExpedientes.filter(e => expedientesPJFSeleccionados.has(e.id));
+
+    let abiertos = 0;
+    let sinDatos = 0;
+
+    seleccionados.forEach(function(exp) {
+        if (!exp.numero) { sinDatos++; return; }
+
+        // Resolver orgId
+        let orgId = exp.pjfOrgId;
+        if (!orgId && exp.juzgado) {
+            const organo = pjfOrganismos.find(o => o.nombre === exp.juzgado);
+            if (organo) orgId = String(organo.id);
+        }
+
+        const tipoAsunto = exp.pjfTipoAsunto;
+
+        if (orgId && tipoAsunto) {
+            const url = PJF_VERCAPTURA_URL +
+                '?tipoasunto=' + encodeURIComponent(tipoAsunto) +
+                '&organismo=' + encodeURIComponent(orgId) +
+                '&expediente=' + encodeURIComponent(exp.numero) +
+                '&tipoprocedimiento=0';
+            window.open(url, '_blank', 'width=1024,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no');
+            abiertos++;
+        } else {
+            sinDatos++;
+        }
+    });
+
+    if (abiertos > 0) {
+        mostrarToast(
+            abiertos + ' ventana' + (abiertos !== 1 ? 's' : '') + ' abierta' + (abiertos !== 1 ? 's' : '') +
+            (sinDatos > 0 ? '. ' + sinDatos + ' sin datos PJF completos.' : '') +
+            ' (Permite ventanas emergentes si el navegador las bloquea)',
+            'success'
+        );
+    } else {
+        mostrarToast(
+            'Ningún expediente tiene ID de organismo y tipo de asunto guardados. ' +
+            'Abre cada expediente manualmente primero para guardar esos datos.',
+            'warning'
+        );
+    }
+}
