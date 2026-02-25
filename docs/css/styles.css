@@ -2508,3 +2508,61 @@ textarea:focus {
         grid-template-columns: repeat(2, 1fr);
     }
 }
+
+/* ==================== CATALOG SEARCH INPUT ==================== */
+
+.catalog-search-input {
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--border-color, #dee2e6);
+    border-radius: 6px;
+    font-size: 0.875rem;
+    background: var(--bg-primary, #fff);
+    color: var(--text-primary, #212529);
+    transition: border-color 0.15s;
+}
+
+.catalog-search-input:focus {
+    outline: none;
+    border-color: var(--primary, #366092);
+    box-shadow: 0 0 0 2px rgba(54, 96, 146, 0.15);
+}
+
+.catalog-search-input::placeholder {
+    color: var(--text-muted, #adb5bd);
+    font-style: italic;
+}
+
+/* ==================== BULK ACTIONS PJF ==================== */
+
+#bulk-actions-pjf {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    padding: 0.75rem 1rem;
+    background: var(--bg-secondary, #f8f9fa);
+    border-radius: 8px;
+    border: 1px solid var(--border-color, #dee2e6);
+    margin-bottom: 1rem;
+}
+
+.expediente-card.selection-mode {
+    cursor: default;
+}
+
+.expediente-card.selection-mode:hover {
+    box-shadow: 0 2px 8px rgba(54, 96, 146, 0.2);
+    border-color: var(--primary, #366092);
+}
+
+.btn-warning {
+    background: #ffc107;
+    color: #212529;
+    border: 1px solid #e0a800;
+}
+
+.btn-warning:hover {
+    background: #e0a800;
+    color: #212529;
+}
