@@ -5069,19 +5069,25 @@ async function abrirBusquedaPJFGuardado(id, event) {
     // Falta algún dato: mostrar picker usando el modal existente
     _pendingPJFExp = { ...exp, _resolvedOrgId: orgId };
 
-    // Resolver tipos de asunto: primero por tipoOrganismoId del órgano (nuevo catálogo),
-    // o fallback por categoría de nombre (legado).
+    // Resolver tipos de asunto: por tipoOrganismoId del órgano (catálogo completo)
     let tiposDisponibles = [];
     if (orgId) {
         const organoEncontrado = pjfOrganismos.find(o => String(o.id) === String(orgId));
-        if (organoEncontrado && organoEncontrado.tipoOrganismoId && pjfTiposOrgano[organoEncontrado.tipoOrganismoId]) {
-            tiposDisponibles = pjfTiposOrgano[organoEncontrado.tipoOrganismoId].tiposAsunto || [];
+        if (organoEncontrado && organoEncontrado.tipoOrganismoId) {
+            const tipoOrgData = pjfTiposOrgano[organoEncontrado.tipoOrganismoId];
+            if (tipoOrgData) {
+                // tiposAsuntoArr es el array fusionado (unión) por TipoOrganismoId
+                tiposDisponibles = tipoOrgData.tiposAsuntoArr || [];
+            }
         }
     }
-    if (tiposDisponibles.length === 0) {
-        // Fallback legado
-        const categoria = detectarCategoriaOrgano(exp.juzgado || '');
-        tiposDisponibles = pjfTiposAsunto?.por_categoria?.[categoria]?.tipos || [];
+    // Fallback: buscar por nombre si todavía está vacío
+    if (tiposDisponibles.length === 0 && exp.juzgado) {
+        const organoNombre = pjfOrganismos.find(o => o.nombre === exp.juzgado);
+        if (organoNombre) {
+            const tipoOrgData = pjfTiposOrgano[organoNombre.tipoOrganismoId];
+            if (tipoOrgData) tiposDisponibles = tipoOrgData.tiposAsuntoArr || [];
+        }
     }
 
     const tiposOptionsHTML = [
@@ -5124,12 +5130,14 @@ async function abrirBusquedaPJFGuardado(id, event) {
 }
 
 function _abrirPopupPJF(orgId, tipoAsunto, expediente) {
-    const url = PJF_VERCAPTURA_URL +
-        '?tipoasunto=' + encodeURIComponent(tipoAsunto) +
-        '&organismo=' + encodeURIComponent(orgId) +
-        '&expediente=' + encodeURIComponent(expediente) +
-        '&tipoprocedimiento=0';
-    window.open(url, 'pjf_popup', 'width=1024,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no');
+    const url = (typeof construirURLPJF === 'function')
+        ? construirURLPJF(orgId, tipoAsunto, expediente, 0)
+        : PJF_VERCAPTURA_URL +
+          '?tipoasunto=' + encodeURIComponent(tipoAsunto) +
+          '&organismo=' + encodeURIComponent(orgId) +
+          '&expediente=' + encodeURIComponent(expediente) +
+          '&tipoprocedimiento=0';
+    window.open(url, '_blank', 'width=1024,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no');
     mostrarToast(`Abriendo ${expediente} en PJF...`, 'success');
 }
 
@@ -6016,11 +6024,13 @@ async function abrirExpedientesPJFSeleccionados() {
         const tipoAsunto = exp.pjfTipoAsunto;
 
         if (orgId && tipoAsunto) {
-            const url = PJF_VERCAPTURA_URL +
-                '?tipoasunto=' + encodeURIComponent(tipoAsunto) +
-                '&organismo=' + encodeURIComponent(orgId) +
-                '&expediente=' + encodeURIComponent(exp.numero) +
-                '&tipoprocedimiento=0';
+            const url = (typeof construirURLPJF === 'function')
+                ? construirURLPJF(orgId, tipoAsunto, exp.numero, 0)
+                : PJF_VERCAPTURA_URL +
+                  '?tipoasunto=' + encodeURIComponent(tipoAsunto) +
+                  '&organismo=' + encodeURIComponent(orgId) +
+                  '&expediente=' + encodeURIComponent(exp.numero) +
+                  '&tipoprocedimiento=0';
             window.open(url, '_blank', 'width=1024,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no');
             abiertos++;
         } else {
