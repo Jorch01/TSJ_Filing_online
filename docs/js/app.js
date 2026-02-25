@@ -2640,38 +2640,113 @@ async function cargarConfigAutoBackup() {
 async function descargarTemplatePJF() {
     await cargarCatalogosPJF();
 
-    let csv = 'expediente,organo,organismo_id,tipo_asunto_id,comentario\n';
-    csv += '67/2021,JUZGADO PRIMERO DE DISTRITO EN MATERIAS CIVIL Y DE TRABAJO EN EL ESTADO DE QUINTANA ROO,12345,1,Ejemplo con ID completo\n';
-    csv += '123/2023,JUZGADO SEGUNDO DE DISTRITO EN EL ESTADO DE QUINTANA ROO,,28,Sin organismo_id - se resuelve por nombre\n';
-    csv += '456/2022,,67890,,Solo organismo_id sin nombre de órgano\n';
+    const fecha = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    const totalOrganos = pjfOrganismos.length;
+    const totalCircuitos = pjfCircuitos.length;
+    const totalTiposOrgano = Object.keys(pjfTiposOrgano).length;
 
-    if (pjfTiposAsunto?.por_categoria) {
-        csv += '\n# ===== TIPOS DE ASUNTO DISPONIBLES (usar el ID numérico en tipo_asunto_id) =====\n';
-        Object.values(pjfTiposAsunto.por_categoria).forEach(cat => {
-            if (cat.tipos?.length > 0) {
-                csv += `# --- ${cat.label} ---\n`;
-                cat.tipos.forEach(t => {
-                    csv += `# ID ${t.id}: ${t.nombre}\n`;
-                });
-            }
+    let csv = '';
+
+    // ── Encabezado informativo ─────────────────────────────────────────────
+    csv += '# ================================================================\n';
+    csv += '# TEMPLATE DE CARGA MASIVA - EXPEDIENTES PJF\n';
+    csv += '# Poder Judicial de la Federación - Portal DGEJ/CJF\n';
+    csv += `# Generado: ${fecha}\n`;
+    csv += `# Catálogo: ${totalOrganos} órganos | ${totalCircuitos} circuitos | ${totalTiposOrgano} tipos de órgano\n`;
+    csv += '# ================================================================\n';
+    csv += '#\n';
+    csv += '# COLUMNAS:\n';
+    csv += '#   expediente     - Número de expediente (ej: 67/2021)              [OBLIGATORIO]\n';
+    csv += '#   organo         - Nombre EXACTO del órgano (ver catálogo abajo)   [obligatorio si no hay organismo_id]\n';
+    csv += '#   organismo_id   - ID numérico del órgano (preferido)              [obligatorio si no hay organo]\n';
+    csv += '#   tipo_asunto_id - ID numérico del tipo de asunto                  [recomendado para búsqueda directa]\n';
+    csv += '#   comentario     - Nota libre                                       [opcional]\n';
+    csv += '#\n';
+    csv += '# NOTAS:\n';
+    csv += '#   - Proporciona "organo" (nombre) O "organismo_id" (ID), o ambos\n';
+    csv += '#   - Con organismo_id + tipo_asunto_id el boton [Buscar] abre el portal PJF directamente\n';
+    csv += '#   - El nombre en "organo" debe coincidir EXACTAMENTE con el catálogo (incluyendo tildes)\n';
+    csv += '#   - Las filas que empiezan con # son comentarios y se ignoran al importar\n';
+    csv += '#\n';
+
+    // ── Encabezado CSV y filas de ejemplo ─────────────────────────────────
+    csv += 'expediente,organo,organismo_id,tipo_asunto_id,comentario\n';
+
+    // Ejemplos con organos reales del catalogo
+    const ejemplos = [
+        { num: '67/2021', orgId: 394, tipoId: 1,  nota: 'Ejemplo: Amparo Indirecto en Juzgado de Distrito' },
+        { num: '123/2023', orgId: 394, tipoId: 68, nota: 'Ejemplo: Juicio Oral Mercantil' },
+        { num: '456/2024', orgId: 395, tipoId: 10, nota: 'Ejemplo: Amparo Directo en Tribunal Colegiado' },
+        { num: '789/2022', orgId: '',  tipoId: 74, nota: 'Ejemplo: solo organismo_id vacio, llena con el ID real' },
+    ];
+    ejemplos.forEach(function(ej) {
+        const org = ej.orgId ? pjfOrganismos.find(function(o) { return o.id === ej.orgId; }) : null;
+        const nombre = org ? org.nombre : '';
+        csv += `${ej.num},"${nombre}",${ej.orgId || ''},${ej.tipoId},"${ej.nota}"\n`;
+    });
+
+    csv += '\n';
+
+    // ── Sección: Tipos de Asunto por Tipo de Órgano ───────────────────────
+    csv += '# ================================================================\n';
+    csv += '# CATALOGO: TIPOS DE ASUNTO POR TIPO DE ORGANO\n';
+    csv += '# Usa el ID en la columna tipo_asunto_id\n';
+    csv += '# ================================================================\n';
+
+    // Ordenar por TipoOrganismoId y mostrar tipos de asunto (union)
+    const tiposOrganoOrdenados = Object.keys(pjfTiposOrgano)
+        .map(function(tid) {
+            return { id: Number(tid), nombre: pjfTiposOrgano[tid].nombre, tipos: pjfTiposOrgano[tid].tiposAsuntoArr || [] };
+        })
+        .filter(function(to) { return to.tipos.length > 0; })
+        .sort(function(a, b) { return a.id - b.id; });
+
+    tiposOrganoOrdenados.forEach(function(to) {
+        csv += `#\n# --- TipoOrganismo ${to.id}: ${to.nombre} ---\n`;
+        to.tipos.forEach(function(t) {
+            csv += `#   tipo_asunto_id=${t.id}  ->  ${t.nombre}\n`;
         });
-    }
+    });
 
-    if (pjfOrganismos?.length > 0) {
-        csv += '\n# ===== ORGANISMOS DISPONIBLES (usar nombre EXACTO o el ID numérico) =====\n';
-        pjfOrganismos.forEach(o => {
-            csv += `# ID ${o.id}: ${o.nombre}\n`;
+    csv += '#\n';
+
+    // ── Sección: Catálogo de Circuitos y Órganos ──────────────────────────
+    csv += '# ================================================================\n';
+    csv += '# CATALOGO: CIRCUITOS Y ORGANOS\n';
+    csv += '# Usa el nombre EXACTO en "organo" o el ID en "organismo_id"\n';
+    csv += '# Formato: # ID | Nombre del organo | Tipo de organo | Ciudad\n';
+    csv += '# ================================================================\n';
+
+    pjfCircuitos.forEach(function(c) {
+        const organosPorCircuito = pjfOrganismos
+            .filter(function(o) { return o.circuito_id === c.numero_circuito; })
+            .sort(function(a, b) { return a.nombre.localeCompare(b.nombre, 'es'); });
+
+        if (organosPorCircuito.length === 0) return;
+
+        csv += `#\n# ---- CIRCUITO ${c.numero_circuito}: ${c.nombre} (${organosPorCircuito.length} órganos) ----\n`;
+        organosPorCircuito.forEach(function(o) {
+            const ciudad = o.ciudad ? ' | ' + o.ciudad : '';
+            csv += `# ID=${o.id} | "${o.nombre}" | ${o.tipoOrganismo}${ciudad}\n`;
         });
-    }
+    });
 
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
+    csv += '#\n# ================================================================\n';
+    csv += '# FIN DEL CATALOGO\n';
+    csv += '# ================================================================\n';
+
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
     a.download = 'template_expedientes_pjf.csv';
     a.click();
     URL.revokeObjectURL(url);
-    mostrarToast('Template PJF descargado', 'success');
+
+    mostrarToast(
+        `Template PJF descargado: ${totalOrganos} órganos, ${totalCircuitos} circuitos, tipos de asunto completos`,
+        'success'
+    );
 }
 
 function parsePJFCSV(texto) {
