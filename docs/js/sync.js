@@ -437,9 +437,10 @@ function fusionarExpedientesInteligente(exp1, exp2) {
     const fusionado = { ...exp1 };
     const cambios = [];
 
-    // Para cada campo, conservar el valor más completo/reciente
+    // Para cada campo, conservar el valor más reciente según fechaActualizacion
     const campos = ['numero', 'nombre', 'juzgado', 'tipo', 'actor', 'demandado',
-                    'materia', 'estado', 'abogado', 'observaciones', 'etiquetas'];
+                    'materia', 'estado', 'abogado', 'observaciones', 'etiquetas',
+                    'comentario', 'categoria', 'color'];
 
     campos.forEach(campo => {
         const val1 = exp1[campo];
@@ -450,16 +451,20 @@ function fusionarExpedientesInteligente(exp1, exp2) {
             fusionado[campo] = val2;
             cambios.push({ campo, de: val1, a: val2, origen: 'exp2' });
         } else if (val1 && val2 && val1 !== val2) {
-            // Ambos tienen valor diferente: usar el más largo/completo
-            if (typeof val1 === 'string' && typeof val2 === 'string') {
-                if (val2.length > val1.length) {
-                    fusionado[campo] = val2;
-                    cambios.push({ campo, de: val1, a: val2, origen: 'exp2_mas_completo' });
-                }
-            } else if (Array.isArray(val1) && Array.isArray(val2)) {
-                // Fusionar arrays (ej: etiquetas)
+            if (Array.isArray(val1) && Array.isArray(val2)) {
+                // Arrays (ej: etiquetas): siempre unión
                 fusionado[campo] = [...new Set([...val1, ...val2])];
                 cambios.push({ campo, de: val1, a: fusionado[campo], origen: 'fusion_arrays' });
+            } else if (typeof val1 === 'string' && typeof val2 === 'string') {
+                // Strings: usa el valor del expediente con fechaActualizacion más reciente
+                const ts1 = exp1.fechaActualizacion || exp1.fechaCreacion || '';
+                const ts2 = exp2.fechaActualizacion || exp2.fechaCreacion || '';
+                if (ts2 > ts1) {
+                    // exp2 es más reciente — usar su valor
+                    fusionado[campo] = val2;
+                    cambios.push({ campo, de: val1, a: val2, origen: 'exp2_mas_reciente' });
+                }
+                // si exp1 es igual o más reciente, fusionado[campo] ya tiene val1 (del spread inicial)
             }
         }
     });
@@ -540,7 +545,9 @@ function fusionarExpedientes(locales, remotos, clavesEliminadas = new Set()) {
     const localesFiltrados = locales.filter(exp => !clavesEliminadas.has(claveEliminacionExpediente(exp)));
     const remotosFiltrados = remotos.filter(exp => !clavesEliminadas.has(claveEliminacionExpediente(exp)));
 
-    const todosExpedientes = [...remotosFiltrados, ...localesFiltrados];
+    // Locales primero: el expediente local es la base (exp1) en la fusión,
+    // garantizando que los cambios locales recientes no se pierdan ante una versión remota más vieja.
+    const todosExpedientes = [...localesFiltrados, ...remotosFiltrados];
     const expedientesProcesados = [];
     const indicesUsados = new Set();
 
