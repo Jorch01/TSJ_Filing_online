@@ -2566,3 +2566,21 @@ textarea:focus {
     background: #e0a800;
     color: #212529;
 }
+
+/* ==================== BULK OPEN NOTICE ==================== */
+
+.bulk-open-notice {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+    color: #856404;
+    margin-bottom: 0.75rem;
+}
+
+[data-theme="dark"] .bulk-open-notice {
+    background: rgba(255, 193, 7, 0.15);
+    border-color: rgba(255, 193, 7, 0.4);
+    color: #ffdd57;
+}

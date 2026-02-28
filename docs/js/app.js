@@ -1825,25 +1825,29 @@ function confirmarEliminarEvento(id) {
 // ==================== BÚSQUEDA ====================
 
 async function cargarExpedientesParaBusqueda() {
-    let expedientes = await obtenerExpedientes();
+    const todosExpedientes = await obtenerExpedientes();
     // Solo mostrar expedientes del TSJQROO en la sección de búsqueda TSJ
-    expedientes = expedientes.filter(exp => (exp.institucion || 'TSJ') !== 'PJF');
+    let expedientes = todosExpedientes.filter(exp => (exp.institucion || 'TSJ') !== 'PJF');
     // Limpiar seleccionados que sean de PJF (por si quedaron de una sesión anterior)
     expedientesSeleccionados = expedientesSeleccionados.filter(id => expedientes.some(e => e.id === id));
     const container = document.getElementById('expedientes-busqueda');
     const totalExpedientes = expedientes.length;
 
-    // Verificar si usuario NO es premium y tiene más de 10 expedientes
+    // Límite compartido: el cupo disponible para TSJ = total límite - cuántos PJF hay
     const esPremium = estadoPremium && estadoPremium.activo;
     let mostrandoLimitados = false;
 
-    if (!esPremium && totalExpedientes > PREMIUM_CONFIG.limiteExpedientes) {
-        expedientes = [...expedientes]
-            .sort((a, b) => new Date(b.fechaModificacion || b.fechaCreacion || 0) - new Date(a.fechaModificacion || a.fechaCreacion || 0))
-            .slice(0, PREMIUM_CONFIG.limiteExpedientes);
-        mostrandoLimitados = true;
-        // Limpiar seleccionados que ya no están visibles
-        expedientesSeleccionados = expedientesSeleccionados.filter(id => expedientes.some(e => e.id === id));
+    if (!esPremium) {
+        const pjfCount = todosExpedientes.filter(exp => exp.institucion === 'PJF').length;
+        const limiteDisponibleTSJ = Math.max(0, PREMIUM_CONFIG.limiteExpedientes - pjfCount);
+        if (totalExpedientes > limiteDisponibleTSJ) {
+            expedientes = [...expedientes]
+                .sort((a, b) => new Date(b.fechaModificacion || b.fechaCreacion || 0) - new Date(a.fechaModificacion || a.fechaCreacion || 0))
+                .slice(0, limiteDisponibleTSJ);
+            mostrandoLimitados = true;
+            // Limpiar seleccionados que ya no están visibles
+            expedientesSeleccionados = expedientesSeleccionados.filter(id => expedientes.some(e => e.id === id));
+        }
     }
 
     if (expedientes.length === 0) {
@@ -1860,7 +1864,7 @@ async function cargarExpedientesParaBusqueda() {
     if (mostrandoLimitados) {
         advertenciaHTML = `
             <div style="background: #fff3cd; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.5rem; font-size: 0.8rem;">
-                ⚠️ Mostrando solo ${PREMIUM_CONFIG.limiteExpedientes} de ${totalExpedientes} expedientes.
+                ⚠️ Mostrando solo ${expedientes.length} de ${totalExpedientes} expedientes TSJ (límite compartido de ${PREMIUM_CONFIG.limiteExpedientes} entre TSJ y PJF).
                 <a href="#" onclick="mostrarSeccion('configuracion'); return false;">Activar Premium</a>
             </div>
         `;
@@ -2222,8 +2226,20 @@ async function cargarConfigRecordatorios() {
     }
 }
 
+// Parsear fecha de evento de forma local (evitar desfase UTC)
+function _parsearFechaLocal(fechaStr) {
+    if (!fechaStr) return null;
+    // Si tiene formato YYYY-MM-DD, parsear como fecha local para evitar desfase UTC
+    var partes = String(fechaStr).split('T')[0].split('-');
+    if (partes.length === 3) {
+        return new Date(parseInt(partes[0]), parseInt(partes[1]) - 1, parseInt(partes[2]));
+    }
+    return new Date(fechaStr);
+}
+
 // Verificar y enviar recordatorios pendientes
-async function verificarRecordatoriosPendientes() {
+// silencioso: si true, no muestra toasts cuando no hay nada que hacer (para verificación automática)
+async function verificarRecordatoriosPendientes(silencioso) {
     // Verificar que EmailJS está configurado
     const serviceId = await obtenerConfig('email_service_id');
     const publicKey = await obtenerConfig('email_public_key');
@@ -2231,13 +2247,13 @@ async function verificarRecordatoriosPendientes() {
     const emailDestino = await obtenerConfig('email_destino');
 
     if (!serviceId || !publicKey || !templateId || !emailDestino) {
-        mostrarToast('Configura EmailJS primero para recibir recordatorios', 'warning');
+        if (!silencioso) mostrarToast('Configura EmailJS primero para recibir recordatorios', 'warning');
         return;
     }
 
     const configStr = await obtenerConfig('recordatorios_config');
     if (!configStr) {
-        mostrarToast('Configura los recordatorios primero', 'warning');
+        if (!silencioso) mostrarToast('Configura los recordatorios primero', 'warning');
         return;
     }
 
@@ -2253,54 +2269,49 @@ async function verificarRecordatoriosPendientes() {
     let enviados = 0;
 
     for (const evento of eventos) {
-        const fechaEvento = new Date(evento.fecha);
+        // Parsear fecha como local para evitar desfase por zona horaria UTC
+        const fechaEvento = _parsearFechaLocal(evento.fecha);
+        if (!fechaEvento) continue;
         fechaEvento.setHours(0, 0, 0, 0);
-        const diasRestantes = Math.ceil((fechaEvento - hoy) / (1000 * 60 * 60 * 24));
+        const diasRestantes = Math.round((fechaEvento - hoy) / (1000 * 60 * 60 * 24));
 
-        // Solo eventos futuros
+        // Solo eventos futuros o de hoy
         if (diasRestantes < 0) continue;
 
-        // Verificar si debe enviar recordatorio
-        const deberiasEnviar = (
-            (config.unDia && diasRestantes === 1) ||
-            (config.tresDias && diasRestantes === 3) ||
-            (config.unaSemana && diasRestantes === 7)
-        );
-
-        if (deberiasEnviar) {
-            const claveRecordatorio = `${evento.id}_${diasRestantes}`;
-
-            if (!recordatoriosEnviados[claveRecordatorio]) {
-                pendientes.push({
-                    evento,
-                    diasRestantes,
-                    clave: claveRecordatorio
-                });
-            }
+        // Usar umbrales en lugar de comparación exacta para no perder ventanas
+        // La clave incluye el tipo de umbral (no el número exacto de días) para deduplicar
+        if (config.unDia && diasRestantes <= 1 && !recordatoriosEnviados[`${evento.id}_umbral1`]) {
+            pendientes.push({ evento, diasRestantes, clave: `${evento.id}_umbral1` });
+        } else if (config.tresDias && diasRestantes <= 3 && !recordatoriosEnviados[`${evento.id}_umbral3`]) {
+            pendientes.push({ evento, diasRestantes, clave: `${evento.id}_umbral3` });
+        } else if (config.unaSemana && diasRestantes <= 7 && !recordatoriosEnviados[`${evento.id}_umbral7`]) {
+            pendientes.push({ evento, diasRestantes, clave: `${evento.id}_umbral7` });
         }
     }
 
     // Verificar recordatorio de suscripción
     if (config.suscripcion && estadoPremium.activo && estadoPremium.expiracion) {
-        const fechaExp = new Date(estadoPremium.expiracion);
-        const diasParaExpirar = Math.ceil((fechaExp - hoy) / (1000 * 60 * 60 * 24));
-
-        if (diasParaExpirar === 7 && !recordatoriosEnviados['suscripcion_7dias']) {
-            pendientes.push({
-                tipo: 'suscripcion',
-                diasRestantes: diasParaExpirar,
-                clave: 'suscripcion_7dias'
-            });
+        const fechaExp = _parsearFechaLocal(estadoPremium.expiracion);
+        if (fechaExp) {
+            fechaExp.setHours(0, 0, 0, 0);
+            const diasParaExpirar = Math.round((fechaExp - hoy) / (1000 * 60 * 60 * 24));
+            if (diasParaExpirar <= 7 && diasParaExpirar >= 0 && !recordatoriosEnviados['suscripcion_7dias']) {
+                pendientes.push({
+                    tipo: 'suscripcion',
+                    diasRestantes: diasParaExpirar,
+                    clave: 'suscripcion_7dias'
+                });
+            }
         }
     }
 
     if (pendientes.length === 0) {
-        mostrarToast('No hay recordatorios pendientes', 'info');
+        if (!silencioso) mostrarToast('No hay recordatorios pendientes', 'info');
         return;
     }
 
     // Enviar recordatorios
-    mostrarToast(`Enviando ${pendientes.length} recordatorio(s)...`, 'info');
+    if (!silencioso) mostrarToast(`Enviando ${pendientes.length} recordatorio(s)...`, 'info');
 
     for (const item of pendientes) {
         try {
@@ -2314,11 +2325,12 @@ async function verificarRecordatoriosPendientes() {
             enviados++;
         } catch (error) {
             Logger.error('Error enviando recordatorio:', error);
+            if (!silencioso) mostrarToast(`Error al enviar recordatorio: ${error.text || error.message || ''}`, 'error');
         }
     }
 
     localStorage.setItem('recordatorios_enviados', JSON.stringify(recordatoriosEnviados));
-    mostrarToast(`✅ ${enviados} recordatorio(s) enviado(s)`, 'success');
+    if (enviados > 0) mostrarToast(`✅ ${enviados} recordatorio(s) enviado(s)`, 'success');
 }
 
 // Enviar recordatorio de evento por email
@@ -2413,9 +2425,9 @@ async function verificarRecordatoriosAutomatico() {
     const configStr = await obtenerConfig('recordatorios_config');
     if (!configStr) return;
 
-    // Verificar en segundo plano
+    // Verificar en segundo plano (silencioso: sin toasts innecesarios)
     setTimeout(async () => {
-        await verificarRecordatoriosPendientes();
+        await verificarRecordatoriosPendientes(true);
         localStorage.setItem('ultima_verificacion_recordatorios', hoy);
     }, 5000);
 }
@@ -3735,6 +3747,26 @@ async function actualizarSelectExpedientesIA() {
     }
 }
 
+// Filtrar opciones del select de expediente en los paneles de IA
+function filtrarIAExpediente(prefix) {
+    var searchId = prefix + '-expediente-search';
+    var selectId = prefix + '-expediente';
+    var input = document.getElementById(searchId);
+    var select = document.getElementById(selectId);
+    if (!input || !select) return;
+
+    var query = input.value.toLowerCase().trim();
+    Array.from(select.options).forEach(function(opt) {
+        // Siempre mostrar opción vacía y la de escribir manualmente
+        if (opt.value === '' || opt.value === '__custom__') {
+            opt.style.display = '';
+            return;
+        }
+        var texto = (opt.textContent || '').toLowerCase();
+        opt.style.display = (!query || texto.includes(query)) ? '' : 'none';
+    });
+}
+
 // ==================== BÚSQUEDAS PROGRAMADAS ====================
 
 let busquedaAutoInterval = null;
@@ -4987,8 +5019,8 @@ function cambiarTabPJF(tab) {
 let vistaExpedientesPJF = localStorage.getItem('vistaExpedientesPJF') || 'cards';
 
 async function cargarExpedientesPJF() {
-    const expedientes = await obtenerExpedientes();
-    let pjfExps = expedientes.filter(e => e.institucion === 'PJF');
+    const todosExpedientes = await obtenerExpedientes();
+    let pjfExps = todosExpedientes.filter(e => e.institucion === 'PJF');
     const lista = document.getElementById('lista-expedientes-pjf');
     const count = document.getElementById('count-expedientes-pjf');
 
@@ -5004,7 +5036,20 @@ async function cargarExpedientesPJF() {
 
     const totalPJF = pjfExps.length;
 
-    if (totalPJF === 0) {
+    // Límite compartido: cupo disponible para PJF = total límite - cuántos TSJ hay
+    const esPremium = estadoPremium && estadoPremium.activo;
+    let mostrandoLimitadosPJF = false;
+
+    if (!esPremium) {
+        const tsjCount = todosExpedientes.filter(exp => (exp.institucion || 'TSJ') !== 'PJF').length;
+        const limiteDisponiblePJF = Math.max(0, PREMIUM_CONFIG.limiteExpedientes - tsjCount);
+        if (totalPJF > limiteDisponiblePJF) {
+            pjfExps = pjfExps.slice(0, limiteDisponiblePJF);
+            mostrandoLimitadosPJF = true;
+        }
+    }
+
+    if (pjfExps.length === 0 && totalPJF === 0) {
         lista.innerHTML = `
             <div class="empty-state">
                 <span class="empty-icon">🏛️</span>
@@ -5019,7 +5064,28 @@ async function cargarExpedientesPJF() {
         return;
     }
 
-    lista.innerHTML = pjfExps.map((exp, index) => `
+    if (pjfExps.length === 0 && mostrandoLimitadosPJF) {
+        lista.innerHTML = `
+            <div style="background: #fff3cd; padding: 0.75rem; border-radius: 6px; font-size: 0.875rem;">
+                ⚠️ El límite gratuito de ${PREMIUM_CONFIG.limiteExpedientes} expedientes compartidos ya está completo con expedientes TSJ.
+                <a href="#" onclick="mostrarSeccion('configuracion'); return false;">Activar Premium</a> para expedientes ilimitados.
+            </div>
+        `;
+        if (count) count.textContent = `0 / ${PREMIUM_CONFIG.limiteExpedientes} disponibles`;
+        return;
+    }
+
+    let advertenciaPJFHTML = '';
+    if (mostrandoLimitadosPJF) {
+        advertenciaPJFHTML = `
+            <div style="background: #fff3cd; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.5rem; font-size: 0.8rem;">
+                ⚠️ Mostrando solo ${pjfExps.length} de ${totalPJF} expedientes PJF (límite compartido de ${PREMIUM_CONFIG.limiteExpedientes} entre TSJ y PJF).
+                <a href="#" onclick="mostrarSeccion('configuracion'); return false;">Activar Premium</a>
+            </div>
+        `;
+    }
+
+    lista.innerHTML = advertenciaPJFHTML + pjfExps.map((exp, index) => `
         <div class="expediente-card${modoSeleccionPJF ? ' selection-mode' : ''}" data-id="${exp.id}" data-orden="${exp.orden || index}" draggable="${!modoSeleccionPJF}">
             ${modoSeleccionPJF ? `
             <div class="pjf-checkbox-wrap" onclick="event.stopPropagation()" style="display:flex;align-items:center;padding:0.4rem 0.5rem 0;">
@@ -5075,7 +5141,9 @@ async function cargarExpedientesPJF() {
     // Initialize drag and drop for PJF
     inicializarDragAndDropPJF();
 
-    if (count) count.textContent = `${totalPJF} expediente${totalPJF !== 1 ? 's' : ''}`;
+    if (count) count.textContent = mostrandoLimitadosPJF
+        ? `${pjfExps.length} de ${totalPJF} expediente${totalPJF !== 1 ? 's' : ''} (limitado)`
+        : `${totalPJF} expediente${totalPJF !== 1 ? 's' : ''}`;
 
     // Apply current view
     aplicarVistaExpedientesPJF();
@@ -6014,6 +6082,8 @@ function toggleModoSeleccionPJF() {
     const toggleBtn = document.getElementById('btn-toggle-seleccion-pjf');
 
     if (bulkBar) bulkBar.style.display = modoSeleccionPJF ? 'flex' : 'none';
+    const bulkNotice = document.getElementById('bulk-open-notice-pjf');
+    if (bulkNotice) bulkNotice.style.display = modoSeleccionPJF ? 'block' : 'none';
     if (toggleBtn) {
         toggleBtn.textContent = modoSeleccionPJF ? '✕ Cancelar selección' : '☑️ Selección masiva';
         toggleBtn.classList.toggle('btn-warning', modoSeleccionPJF);

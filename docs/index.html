@@ -685,6 +685,9 @@
                     </div>
                 </div>
                 <div class="card-body">
+                    <div class="bulk-open-notice" id="bulk-open-notice-tsj">
+                        💻 La apertura masiva de estrados funciona mejor en <strong>computadora de escritorio</strong>. En dispositivos móviles o tablets se recomienda abrir cada expediente individualmente para evitar bloqueos del navegador.
+                    </div>
                     <p class="manual-instructions">Haz clic en "Ver" para abrir los resultados del TSJ en una ventana popup.</p>
                     <div class="urls-list" id="lista-urls">
                         <!-- URLs generadas por JS -->
@@ -721,6 +724,7 @@
                     <p class="section-desc">Pega el texto de un acuerdo judicial (TSJ o PJF) y la IA extraerá automáticamente el número de expediente, fechas, audiencias y puntos importantes.</p>
                     <div class="form-group">
                         <label>Expediente relacionado (opcional)</label>
+                        <input type="text" id="ia-expediente-search" class="catalog-search-input" placeholder="🔍 Filtrar expedientes..." oninput="filtrarIAExpediente('ia')" autocomplete="off" style="margin-bottom:0.3rem;">
                         <select id="ia-expediente" onchange="toggleExpedienteCustom('ia')">
                             <option value="">Sin expediente específico</option>
                             <option value="__custom__">✏️ Otro (escribir manualmente)</option>
@@ -965,6 +969,9 @@
                                 🚀 Abrir URLs seleccionados
                             </button>
                         </div>
+                        <div class="bulk-open-notice" id="bulk-open-notice-pjf" style="display:none;">
+                            💻 La apertura masiva de estrados funciona mejor en <strong>computadora de escritorio</strong>. En dispositivos móviles o tablets se recomienda abrir cada expediente individualmente para evitar bloqueos del navegador.
+                        </div>
 
                         <!-- Lista Cards PJF -->
                         <div class="expedientes-grid" id="lista-expedientes-pjf">
@@ -1023,6 +1030,7 @@
                         <p class="section-desc">Pega el texto de un acuerdo del PJF y la IA extraerá automáticamente fechas, audiencias y puntos importantes.</p>
                         <div class="form-group">
                             <label>Expediente PJF relacionado (opcional)</label>
+                            <input type="text" id="iapjf-expediente-search" class="catalog-search-input" placeholder="🔍 Filtrar expedientes PJF..." oninput="filtrarIAExpediente('iapjf')" autocomplete="off" style="margin-bottom:0.3rem;">
                             <select id="iapjf-expediente" onchange="toggleExpedienteCustom('iapjf')">
                                 <option value="">Sin expediente específico</option>
                                 <option value="__custom__">✏️ Otro (escribir manualmente)</option>
