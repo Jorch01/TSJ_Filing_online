@@ -672,8 +672,8 @@ async function editarExpediente(id, event) {
 
         if (institucion === 'PJF') {
             document.getElementById('expediente-juzgado').value = '';
-            // Restore PJF cascade: find the organ by name and set circuit + organ
-            await restaurarCascadaPJFParaEdicion(exp.juzgado);
+            // Restore PJF cascade: find the organ by name and set circuit + organ + tipo de asunto
+            await restaurarCascadaPJFParaEdicion(exp.juzgado, exp.pjfTipoAsunto);
         } else if (institucion === 'OTRO') {
             const autoridadInput = document.getElementById('expediente-autoridad');
             if (autoridadInput) autoridadInput.value = exp.juzgado || '';
@@ -748,6 +748,14 @@ async function guardarExpediente(event) {
         if (institucion === 'PJF') {
             const orgId = document.getElementById('expediente-organo-pjf')?.value;
             if (orgId) expediente.pjfOrgId = orgId;
+
+            const tipoSelect = document.getElementById('expediente-tipo-asunto-pjf');
+            if (tipoSelect && tipoSelect.value && tipoSelect.value !== '__manual__') {
+                expediente.pjfTipoAsunto = tipoSelect.value;
+            } else {
+                const tipoManual = document.getElementById('expediente-tipo-asunto-manual')?.value?.trim();
+                if (tipoManual) expediente.pjfTipoAsunto = tipoManual;
+            }
         }
 
         if (tipoBusqueda === 'numero') {
@@ -4885,7 +4893,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ==================== INTEGRACIÓN PJF FEDERAL ====================
 
 // Restaurar cascada PJF al editar un expediente federal
-async function restaurarCascadaPJFParaEdicion(juzgadoNombre) {
+async function restaurarCascadaPJFParaEdicion(juzgadoNombre, pjfTipoAsunto) {
     if (!juzgadoNombre) return;
 
     // Ensure PJF catalogs are loaded
@@ -4904,11 +4912,31 @@ async function restaurarCascadaPJFParaEdicion(juzgadoNombre) {
         // Trigger cascade to populate organs
         onExpCircuitoPjfChange();
 
-        // Wait for DOM update, then set organ
+        // Wait for DOM update, then set organ and populate tipos
         setTimeout(() => {
             const organoSelect = document.getElementById('expediente-organo-pjf');
             if (organoSelect) {
                 organoSelect.value = organo.id;
+                // Populate tipo de asunto dropdown for this organ
+                onExpOrganoPjfChange();
+
+                // Restore tipo de asunto selection if available
+                if (pjfTipoAsunto) {
+                    setTimeout(() => {
+                        const tipoSelect = document.getElementById('expediente-tipo-asunto-pjf');
+                        if (tipoSelect) {
+                            tipoSelect.value = String(pjfTipoAsunto);
+                            if (tipoSelect.value !== String(pjfTipoAsunto)) {
+                                // Value not found in options — fall back to manual entry
+                                tipoSelect.value = '__manual__';
+                                const manualWrap = document.getElementById('expediente-tipo-asunto-manual-wrap');
+                                const manualInput = document.getElementById('expediente-tipo-asunto-manual');
+                                if (manualWrap) manualWrap.style.display = 'block';
+                                if (manualInput) manualInput.value = pjfTipoAsunto;
+                            }
+                        }
+                    }, 50);
+                }
             }
         }, 50);
     }
@@ -4927,6 +4955,8 @@ function cambiarInstitucionExpediente() {
     if (pjfGroup) pjfGroup.style.display = 'none';
     if (otroGroup) otroGroup.style.display = 'none';
     if (tsjSelect) tsjSelect.removeAttribute('required');
+    const tipoAsuntoRow = document.getElementById('tipo-asunto-pjf-row');
+    if (tipoAsuntoRow) tipoAsuntoRow.style.display = 'none';
 
     if (institucion === 'TSJ') {
         if (tsjGroup) tsjGroup.style.display = 'flex';
@@ -4975,6 +5005,14 @@ function onExpCircuitoPjfChange() {
     const orgSearch = document.getElementById('expediente-organo-pjf-search');
     if (orgSearch) { orgSearch.value = ''; orgSearch.style.display = 'none'; }
 
+    // Reset tipo de asunto
+    const selectTipo = document.getElementById('expediente-tipo-asunto-pjf');
+    if (selectTipo) { selectTipo.innerHTML = '<option value="">-- Selecciona tipo de asunto --</option>'; selectTipo.disabled = true; }
+    const tipoRow = document.getElementById('tipo-asunto-pjf-row');
+    if (tipoRow) tipoRow.style.display = 'none';
+    const manualWrap = document.getElementById('expediente-tipo-asunto-manual-wrap');
+    if (manualWrap) manualWrap.style.display = 'none';
+
     if (!numCircuito) return;
 
     const organos = pjfOrganismos
@@ -4992,6 +5030,51 @@ function onExpCircuitoPjfChange() {
     if (organos.length > 5 && orgSearch) orgSearch.style.display = 'block';
 
     selectOrg.disabled = false;
+}
+
+function onExpOrganoPjfChange() {
+    const orgId = document.getElementById('expediente-organo-pjf').value;
+    const selectTipo = document.getElementById('expediente-tipo-asunto-pjf');
+    const tipoRow = document.getElementById('tipo-asunto-pjf-row');
+    const manualWrap = document.getElementById('expediente-tipo-asunto-manual-wrap');
+    const manualInput = document.getElementById('expediente-tipo-asunto-manual');
+
+    if (selectTipo) { selectTipo.innerHTML = '<option value="">-- Selecciona tipo de asunto --</option>'; selectTipo.disabled = true; }
+    if (tipoRow) tipoRow.style.display = 'none';
+    if (manualWrap) manualWrap.style.display = 'none';
+    if (manualInput) manualInput.value = '';
+
+    if (!orgId) return;
+
+    const organo = pjfOrganismos.find(o => String(o.id) === String(orgId));
+    if (!organo) return;
+
+    const tipoOrgData = pjfTiposOrgano[organo.tipoOrganismoId];
+    const tipos = (tipoOrgData && tipoOrgData.tiposAsuntoArr) ? tipoOrgData.tiposAsuntoArr : [];
+
+    if (selectTipo) {
+        if (tipos.length > 0) {
+            tipos.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t.id;
+                opt.textContent = t.nombre;
+                selectTipo.appendChild(opt);
+            });
+            const optManual = document.createElement('option');
+            optManual.value = '__manual__';
+            optManual.textContent = '-- Otro (ID manual) --';
+            selectTipo.appendChild(optManual);
+            selectTipo.disabled = false;
+            selectTipo.onchange = function() {
+                if (manualWrap) manualWrap.style.display = this.value === '__manual__' ? 'block' : 'none';
+            };
+        } else {
+            // No catalog for this organ type — show manual entry directly
+            if (manualWrap) manualWrap.style.display = 'block';
+        }
+    }
+
+    if (tipoRow) tipoRow.style.display = 'flex';
 }
 
 // Set institution when creating from PJF page

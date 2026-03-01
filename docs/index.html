@@ -358,9 +358,28 @@
                                     style="margin-bottom:0.35rem; display:none;"
                                     class="catalog-search-input">
                                 <select id="expediente-organo-pjf" disabled
-                                    onmousedown="mostrarBuscadorOrganos('expediente-organo-pjf-search','expediente-organo-pjf')">
+                                    onmousedown="mostrarBuscadorOrganos('expediente-organo-pjf-search','expediente-organo-pjf')"
+                                    onchange="onExpOrganoPjfChange()">
                                     <option value="">Selecciona un órgano...</option>
                                 </select>
+                            </div>
+                        </div>
+
+                        <!-- Tipo de asunto PJF (visible cuando se selecciona un órgano PJF) -->
+                        <div class="form-row" id="tipo-asunto-pjf-row" style="display: none;">
+                            <div class="form-group">
+                                <label for="expediente-tipo-asunto-pjf">Tipo de Asunto</label>
+                                <select id="expediente-tipo-asunto-pjf" disabled>
+                                    <option value="">-- Selecciona tipo de asunto --</option>
+                                </select>
+                                <div id="expediente-tipo-asunto-manual-wrap" style="display:none; margin-top:0.35rem;">
+                                    <input type="number" id="expediente-tipo-asunto-manual"
+                                        placeholder="ID numérico del tipo de asunto" min="1">
+                                    <small style="color: var(--text-secondary); font-size:0.78rem;">ID numérico del tipo de asunto en el portal PJF.</small>
+                                </div>
+                                <small style="color: var(--text-secondary); font-size:0.78rem; margin-top:0.25rem; display:block;">
+                                    Seleccionar aquí evita que el sistema lo pregunte al hacer búsqueda masiva.
+                                </small>
                             </div>
                         </div>
 
