@@ -296,6 +296,10 @@
                                         <input type="radio" name="expediente-institucion" value="PJF" onchange="cambiarInstitucionExpediente()">
                                         <span>🏛️ PJF Federal</span>
                                     </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="expediente-institucion" value="OTRO" onchange="cambiarInstitucionExpediente()">
+                                        <span>📋 Otros / Varios</span>
+                                    </label>
                                 </div>
                             </div>
                         </div>
@@ -357,6 +361,18 @@
                                     onmousedown="mostrarBuscadorOrganos('expediente-organo-pjf-search','expediente-organo-pjf')">
                                     <option value="">Selecciona un órgano...</option>
                                 </select>
+                            </div>
+                        </div>
+
+                        <!-- Autoridad personalizada (visible cuando institución = OTRO) -->
+                        <div class="form-row" id="juzgado-otro-group" style="display: none;">
+                            <div class="form-group">
+                                <label for="expediente-autoridad">Autoridad / Dependencia</label>
+                                <input type="text" id="expediente-autoridad"
+                                    placeholder="Ej: IMSS, SAT, Notaría 12, Tribunal de Arbitraje...">
+                                <small style="color: var(--text-secondary); font-size: 0.78rem; margin-top: 0.25rem; display: block;">
+                                    Anota el nombre de la autoridad, dependencia u organismo ante quien radica el asunto.
+                                </small>
                             </div>
                         </div>
 

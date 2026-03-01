@@ -2426,6 +2426,18 @@ textarea:focus {
     border-color: #1976d2;
 }
 
+.institucion-badge.otro {
+    background: #fff8e1;
+    color: #e65100;
+    border: 1px solid #ffcc02;
+}
+
+[data-theme="dark"] .institucion-badge.otro {
+    background: #4e2600;
+    color: #ffcc80;
+    border-color: #e65100;
+}
+
 /* ==================== PJF TABS ==================== */
 
 .pjf-tabs {
