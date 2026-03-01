@@ -387,6 +387,8 @@ async function cargarExpedientes() {
     lista.innerHTML = advertenciaHTML + expedientes.map((exp, index) => {
         const instBadge = exp.institucion === 'PJF'
             ? '<span class="institucion-badge pjf">🏛️ PJF</span>'
+            : exp.institucion === 'OTRO'
+            ? '<span class="institucion-badge otro">📋 Varios</span>'
             : '<span class="institucion-badge tsj">⚖️ TSJ</span>';
         return `
         <div class="expediente-card" data-id="${exp.id}" data-orden="${exp.orden || index}" draggable="true">
@@ -427,7 +429,9 @@ async function cargarExpedientes() {
     const tablaBody = document.getElementById('tabla-expedientes-body');
     if (tablaBody) {
         tablaBody.innerHTML = expedientes.map(exp => {
-            const instLabel = exp.institucion === 'PJF' ? '🏛️ PJF' : '⚖️ TSJ';
+            const instLabel = exp.institucion === 'PJF' ? '🏛️ PJF'
+                           : exp.institucion === 'OTRO' ? '📋 Varios'
+                           : '⚖️ TSJ';
             return `
             <tr data-id="${exp.id}">
                 <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
@@ -670,6 +674,9 @@ async function editarExpediente(id, event) {
             document.getElementById('expediente-juzgado').value = '';
             // Restore PJF cascade: find the organ by name and set circuit + organ
             await restaurarCascadaPJFParaEdicion(exp.juzgado);
+        } else if (institucion === 'OTRO') {
+            const autoridadInput = document.getElementById('expediente-autoridad');
+            if (autoridadInput) autoridadInput.value = exp.juzgado || '';
         } else {
             document.getElementById('expediente-juzgado').value = exp.juzgado;
         }
@@ -712,6 +719,8 @@ async function guardarExpediente(event) {
                 // Allow manual text if no organ selected
                 juzgado = 'PJF - Por determinar';
             }
+        } else if (institucion === 'OTRO') {
+            juzgado = document.getElementById('expediente-autoridad').value.trim() || 'Autoridad no especificada';
         } else {
             juzgado = document.getElementById('expediente-juzgado').value;
         }
@@ -729,7 +738,9 @@ async function guardarExpediente(event) {
 
         const expediente = {
             juzgado,
-            categoria: institucion === 'PJF' ? 'PJF Federal' : obtenerCategoriaJuzgado(juzgado),
+            categoria: institucion === 'PJF' ? 'PJF Federal'
+                     : institucion === 'OTRO' ? 'Otros/Varios'
+                     : obtenerCategoriaJuzgado(juzgado),
             institucion: institucion,
             comentario: comentario || undefined
         };
@@ -981,8 +992,11 @@ async function cargarNotas() {
 
     lista.innerHTML = notas.map(nota => {
         const exp = expMap[nota.expedienteId];
-        const instBadge = (nota.institucion === 'PJF' || (exp && exp.institucion === 'PJF'))
+        const instInst = (exp && exp.institucion) || nota.institucion || 'TSJ';
+        const instBadge = instInst === 'PJF'
             ? '<span class="institucion-badge pjf" style="font-size: 0.65rem;">🏛️ PJF</span>'
+            : instInst === 'OTRO'
+            ? '<span class="institucion-badge otro" style="font-size: 0.65rem;">📋 Varios</span>'
             : '';
         return `
             <div class="nota-card" style="background-color: ${escapeText(nota.color || '#fff3cd')}" onclick="editarNota(${nota.id})">
@@ -1600,6 +1614,8 @@ async function actualizarPanelEventos(eventos) {
         panel.innerHTML = eventosAMostrar.map(e => {
             const instBadgeEvt = e.institucion === 'PJF'
                 ? '<span class="institucion-badge pjf" style="font-size: 0.6rem; margin-left: 0.3rem;">PJF</span>'
+                : e.institucion === 'OTRO'
+                ? '<span class="institucion-badge otro" style="font-size: 0.6rem; margin-left: 0.3rem;">Varios</span>'
                 : '';
             return `
             <div class="evento-item" onclick="editarEvento(${e.id})" style="border-left: 3px solid ${escapeText(e.color || '#3788d8')}">
@@ -1827,7 +1843,7 @@ function confirmarEliminarEvento(id) {
 async function cargarExpedientesParaBusqueda() {
     const todosExpedientes = await obtenerExpedientes();
     // Solo mostrar expedientes del TSJQROO en la sección de búsqueda TSJ
-    let expedientes = todosExpedientes.filter(exp => (exp.institucion || 'TSJ') !== 'PJF');
+    let expedientes = todosExpedientes.filter(exp => (exp.institucion || 'TSJ') === 'TSJ');
     // Limpiar seleccionados que sean de PJF (por si quedaron de una sesión anterior)
     expedientesSeleccionados = expedientesSeleccionados.filter(id => expedientes.some(e => e.id === id));
     const container = document.getElementById('expedientes-busqueda');
@@ -1838,8 +1854,8 @@ async function cargarExpedientesParaBusqueda() {
     let mostrandoLimitados = false;
 
     if (!esPremium) {
-        const pjfCount = todosExpedientes.filter(exp => exp.institucion === 'PJF').length;
-        const limiteDisponibleTSJ = Math.max(0, PREMIUM_CONFIG.limiteExpedientes - pjfCount);
+        const noTSJCount = todosExpedientes.filter(exp => (exp.institucion || 'TSJ') !== 'TSJ').length;
+        const limiteDisponibleTSJ = Math.max(0, PREMIUM_CONFIG.limiteExpedientes - noTSJCount);
         if (totalExpedientes > limiteDisponibleTSJ) {
             expedientes = [...expedientes]
                 .sort((a, b) => new Date(b.fechaModificacion || b.fechaCreacion || 0) - new Date(a.fechaModificacion || a.fechaCreacion || 0))
@@ -1896,7 +1912,7 @@ function toggleExpedienteSeleccion(id) {
 async function seleccionarTodosExpedientes() {
     const expedientes = await obtenerExpedientes();
     // Solo operar sobre expedientes TSJ (excluir PJF)
-    const tsjExpedientes = expedientes.filter(exp => (exp.institucion || 'TSJ') !== 'PJF');
+    const tsjExpedientes = expedientes.filter(exp => (exp.institucion || 'TSJ') === 'TSJ');
     const todosSeleccionados = tsjExpedientes.every(e => expedientesSeleccionados.includes(e.id));
     if (todosSeleccionados) {
         expedientesSeleccionados = [];
@@ -1914,7 +1930,7 @@ async function generarURLsBusqueda() {
 
     const expedientes = await obtenerExpedientes();
     // Solo generar URLs de TSJQROO para expedientes TSJ
-    const seleccionados = expedientes.filter(e => expedientesSeleccionados.includes(e.id) && (e.institucion || 'TSJ') !== 'PJF');
+    const seleccionados = expedientes.filter(e => expedientesSeleccionados.includes(e.id) && (e.institucion || 'TSJ') === 'TSJ');
 
     const urlsContainer = document.getElementById('urls-generadas');
     const listaUrls = document.getElementById('lista-urls');
@@ -1992,7 +2008,7 @@ function abrirBusquedaPopup(url, titulo) {
 async function abrirTodasBusquedas() {
     const expedientes = await obtenerExpedientes();
     // Solo abrir búsquedas TSJ para expedientes TSJ
-    const seleccionados = expedientes.filter(e => expedientesSeleccionados.includes(e.id) && (e.institucion || 'TSJ') !== 'PJF');
+    const seleccionados = expedientes.filter(e => expedientesSeleccionados.includes(e.id) && (e.institucion || 'TSJ') === 'TSJ');
 
     if (seleccionados.length === 0) {
         mostrarToast('Selecciona al menos un expediente', 'warning');
@@ -2029,7 +2045,7 @@ function copiarURL(url) {
 async function copiarTodasURLs() {
     const expedientes = await obtenerExpedientes();
     // Solo copiar URLs de expedientes TSJ
-    const seleccionados = expedientes.filter(e => expedientesSeleccionados.includes(e.id) && (e.institucion || 'TSJ') !== 'PJF');
+    const seleccionados = expedientes.filter(e => expedientesSeleccionados.includes(e.id) && (e.institucion || 'TSJ') === 'TSJ');
 
     const urls = seleccionados.map(exp => {
         const tipoBusqueda = exp.numero ? 'numero' : 'nombre';
@@ -3397,7 +3413,7 @@ Responde ÚNICAMENTE en formato JSON con la siguiente estructura (sin explicacio
 {
     "numero_expediente": "Número de expediente mencionado en el acuerdo (ej: 123/2025) o null si no se encuentra",
     "juzgado_origen": "Nombre del juzgado, sala u órgano jurisdiccional que emite el acuerdo, o null si no se identifica",
-    "institucion": "TSJ|PJF|otro - identifica si es del Tribunal Superior de Justicia estatal o del Poder Judicial de la Federación",
+    "institucion": "TSJ|PJF|OTRO - identifica si es del Tribunal Superior de Justicia estatal (TSJ), del Poder Judicial de la Federación (PJF), o de otra autoridad/dependencia (OTRO)",
     "resumen": "Resumen breve del acuerdo en 1-2 oraciones",
     "tipo_acuerdo": "admisión|sentencia|auto|citación|notificación|otro",
     "fechas": [
@@ -3822,7 +3838,7 @@ function detenerBusquedasAuto() {
 async function ejecutarBusquedaAhora() {
     const todosExpedientes = await obtenerExpedientes();
     // Solo buscar en TSJQROO los expedientes TSJ (excluir PJF)
-    const expedientes = todosExpedientes.filter(exp => (exp.institucion || 'TSJ') !== 'PJF');
+    const expedientes = todosExpedientes.filter(exp => (exp.institucion || 'TSJ') === 'TSJ');
 
     if (expedientes.length === 0) {
         mostrarToast('No hay expedientes TSJ para buscar', 'warning');
@@ -4903,20 +4919,23 @@ function cambiarInstitucionExpediente() {
     const institucion = document.querySelector('input[name="expediente-institucion"]:checked')?.value || 'TSJ';
     const tsjGroup = document.getElementById('juzgado-tsj-group');
     const pjfGroup = document.getElementById('juzgado-pjf-group');
+    const otroGroup = document.getElementById('juzgado-otro-group');
+    const tsjSelect = document.getElementById('expediente-juzgado');
 
-    if (institucion === 'PJF') {
-        if (tsjGroup) tsjGroup.style.display = 'none';
-        if (pjfGroup) pjfGroup.style.display = 'flex';
-        // Remove required from TSJ juzgado
-        const tsjSelect = document.getElementById('expediente-juzgado');
-        if (tsjSelect) tsjSelect.removeAttribute('required');
-        // Populate PJF circuits if not done
-        poblarCircuitosExpediente();
-    } else {
+    // Ocultar todos los grupos primero
+    if (tsjGroup) tsjGroup.style.display = 'none';
+    if (pjfGroup) pjfGroup.style.display = 'none';
+    if (otroGroup) otroGroup.style.display = 'none';
+    if (tsjSelect) tsjSelect.removeAttribute('required');
+
+    if (institucion === 'TSJ') {
         if (tsjGroup) tsjGroup.style.display = 'flex';
-        if (pjfGroup) pjfGroup.style.display = 'none';
-        const tsjSelect = document.getElementById('expediente-juzgado');
         if (tsjSelect) tsjSelect.setAttribute('required', '');
+    } else if (institucion === 'PJF') {
+        if (pjfGroup) pjfGroup.style.display = 'flex';
+        poblarCircuitosExpediente();
+    } else { // OTRO
+        if (otroGroup) otroGroup.style.display = 'flex';
     }
 }
 
@@ -5041,8 +5060,8 @@ async function cargarExpedientesPJF() {
     let mostrandoLimitadosPJF = false;
 
     if (!esPremium) {
-        const tsjCount = todosExpedientes.filter(exp => (exp.institucion || 'TSJ') !== 'PJF').length;
-        const limiteDisponiblePJF = Math.max(0, PREMIUM_CONFIG.limiteExpedientes - tsjCount);
+        const noPJFCount = todosExpedientes.filter(exp => exp.institucion !== 'PJF').length;
+        const limiteDisponiblePJF = Math.max(0, PREMIUM_CONFIG.limiteExpedientes - noPJFCount);
         if (totalPJF > limiteDisponiblePJF) {
             pjfExps = pjfExps.slice(0, limiteDisponiblePJF);
             mostrandoLimitadosPJF = true;
