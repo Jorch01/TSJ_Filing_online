@@ -872,6 +872,72 @@ input:focus, textarea:focus, select:focus {
 .expediente-fecha { font-size: 0.75rem; color: var(--text-muted); }
 .expediente-actions { display: flex; gap: 0.25rem; }
 
+/* Archivo de Expedientes */
+.archivo-section {
+    margin-top: 1rem;
+}
+.archivo-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+.archivo-header h3 { margin: 0; }
+.archivo-card {
+    opacity: 0.85;
+    border-left: 4px solid var(--text-muted);
+}
+.archivo-card:hover { opacity: 1; }
+.archivo-motivo-badge {
+    font-size: 0.65rem;
+    padding: 2px 8px;
+    border-radius: var(--radius);
+    color: white;
+    font-weight: 600;
+}
+.motivo-concluido { background: #4caf50; }
+.motivo-abandonado { background: #f44336; }
+.motivo-otro { background: #ff9800; }
+.expediente-fecha-archivo {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin: 0.25rem 0 0;
+}
+.archivo-toggle {
+    margin-top: 1.5rem;
+    text-align: center;
+}
+.btn-outline {
+    background: transparent;
+    border: 2px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.5rem 1.25rem;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+.btn-outline:hover {
+    background: var(--bg-secondary);
+    border-color: var(--primary);
+}
+.badge {
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    padding: 0.1rem 0.45rem;
+    font-size: 0.7rem;
+    margin-left: 0.35rem;
+    vertical-align: middle;
+}
+.btn-warning {
+    background: #ff9800;
+    color: white;
+}
+.btn-warning:hover {
+    background: #f57c00;
+}
+
 /* Expedientes Table */
 .expedientes-table-container {
     overflow-x: auto;
