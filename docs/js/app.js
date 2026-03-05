@@ -813,11 +813,49 @@ async function filtrarExpedientes() {
     let expedientes = await obtenerExpedientes();
 
     if (busqueda) {
-        expedientes = expedientes.filter(e =>
-            (e.numero && e.numero.toLowerCase().includes(busqueda)) ||
-            (e.nombre && e.nombre.toLowerCase().includes(busqueda)) ||
-            e.juzgado.toLowerCase().includes(busqueda)
-        );
+        // Obtener notas e historial para búsqueda profunda
+        const todasNotas = await obtenerNotas();
+        const todosHistorial = await obtenerTodoHistorial();
+
+        // Indexar por expedienteId para búsqueda rápida
+        const notasPorExp = {};
+        for (const n of todasNotas) {
+            if (!notasPorExp[n.expedienteId]) notasPorExp[n.expedienteId] = [];
+            notasPorExp[n.expedienteId].push(n);
+        }
+        const historialPorExp = {};
+        for (const h of todosHistorial) {
+            if (!historialPorExp[h.expedienteId]) historialPorExp[h.expedienteId] = [];
+            historialPorExp[h.expedienteId].push(h);
+        }
+
+        expedientes = expedientes.filter(e => {
+            // Búsqueda en campos directos del expediente
+            if ((e.numero && e.numero.toLowerCase().includes(busqueda)) ||
+                (e.nombre && e.nombre.toLowerCase().includes(busqueda)) ||
+                (e.juzgado && e.juzgado.toLowerCase().includes(busqueda)) ||
+                (e.comentario && e.comentario.toLowerCase().includes(busqueda)) ||
+                (e.categoria && e.categoria.toLowerCase().includes(busqueda))) {
+                return true;
+            }
+            // Búsqueda en notas del expediente
+            const notas = notasPorExp[e.id] || [];
+            for (const n of notas) {
+                if ((n.titulo && n.titulo.toLowerCase().includes(busqueda)) ||
+                    (n.contenido && n.contenido.toLowerCase().includes(busqueda))) {
+                    return true;
+                }
+            }
+            // Búsqueda en historial/actualizaciones del expediente
+            const historial = historialPorExp[e.id] || [];
+            for (const h of historial) {
+                if ((h.descripcion && h.descripcion.toLowerCase().includes(busqueda)) ||
+                    (h.detalle && h.detalle.toLowerCase().includes(busqueda))) {
+                    return true;
+                }
+            }
+            return false;
+        });
     }
 
     if (categoria) {
@@ -2293,8 +2331,11 @@ async function verificarRecordatoriosPendientes(silencioso) {
     let enviados = 0;
 
     for (const evento of eventos) {
+        // Solo procesar eventos con alerta activada
+        if (!evento.alerta) continue;
+
         // Parsear fecha como local para evitar desfase por zona horaria UTC
-        const fechaEvento = _parsearFechaLocal(evento.fecha);
+        const fechaEvento = _parsearFechaLocal(evento.fechaInicio || evento.fecha);
         if (!fechaEvento) continue;
         fechaEvento.setHours(0, 0, 0, 0);
         const diasRestantes = Math.round((fechaEvento - hoy) / (1000 * 60 * 60 * 24));
@@ -2366,7 +2407,7 @@ async function enviarRecordatorioEvento(evento, diasRestantes, serviceId, public
     emailjs.init(publicKey);
 
     const diasTexto = diasRestantes === 1 ? '1 día' : `${diasRestantes} días`;
-    const fechaEvento = new Date(evento.fecha).toLocaleDateString('es-MX', {
+    const fechaEvento = new Date(evento.fechaInicio || evento.fecha).toLocaleDateString('es-MX', {
         weekday: 'long',
         year: 'numeric',
         month: 'long',
@@ -5446,12 +5487,45 @@ async function filtrarExpedientesPJF() {
     let pjfExps = expedientes.filter(e => e.institucion === 'PJF');
 
     if (busqueda) {
-        pjfExps = pjfExps.filter(e =>
-            (e.numero && e.numero.toLowerCase().includes(busqueda)) ||
-            (e.nombre && e.nombre.toLowerCase().includes(busqueda)) ||
-            (e.juzgado && e.juzgado.toLowerCase().includes(busqueda)) ||
-            (e.comentario && e.comentario.toLowerCase().includes(busqueda))
-        );
+        // Obtener notas e historial para búsqueda profunda
+        const todasNotas = await obtenerNotas();
+        const todosHistorial = await obtenerTodoHistorial();
+
+        const notasPorExp = {};
+        for (const n of todasNotas) {
+            if (!notasPorExp[n.expedienteId]) notasPorExp[n.expedienteId] = [];
+            notasPorExp[n.expedienteId].push(n);
+        }
+        const historialPorExp = {};
+        for (const h of todosHistorial) {
+            if (!historialPorExp[h.expedienteId]) historialPorExp[h.expedienteId] = [];
+            historialPorExp[h.expedienteId].push(h);
+        }
+
+        pjfExps = pjfExps.filter(e => {
+            if ((e.numero && e.numero.toLowerCase().includes(busqueda)) ||
+                (e.nombre && e.nombre.toLowerCase().includes(busqueda)) ||
+                (e.juzgado && e.juzgado.toLowerCase().includes(busqueda)) ||
+                (e.comentario && e.comentario.toLowerCase().includes(busqueda)) ||
+                (e.categoria && e.categoria.toLowerCase().includes(busqueda))) {
+                return true;
+            }
+            const notas = notasPorExp[e.id] || [];
+            for (const n of notas) {
+                if ((n.titulo && n.titulo.toLowerCase().includes(busqueda)) ||
+                    (n.contenido && n.contenido.toLowerCase().includes(busqueda))) {
+                    return true;
+                }
+            }
+            const historial = historialPorExp[e.id] || [];
+            for (const h of historial) {
+                if ((h.descripcion && h.descripcion.toLowerCase().includes(busqueda)) ||
+                    (h.detalle && h.detalle.toLowerCase().includes(busqueda))) {
+                    return true;
+                }
+            }
+            return false;
+        });
     }
 
     const lista = document.getElementById('lista-expedientes-pjf');
