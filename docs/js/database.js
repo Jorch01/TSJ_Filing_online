@@ -111,7 +111,21 @@ async function obtenerExpedientes() {
         const request = store.getAll();
 
         request.onsuccess = () => {
-            const expedientes = request.result.filter(e => e.activo !== false);
+            const expedientes = request.result.filter(e => e.activo !== false && !e.archivado);
+            resolve(expedientes);
+        };
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function obtenerExpedientesArchivados() {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['expedientes'], 'readonly');
+        const store = transaction.objectStore('expedientes');
+        const request = store.getAll();
+
+        request.onsuccess = () => {
+            const expedientes = request.result.filter(e => e.activo !== false && e.archivado === true);
             resolve(expedientes);
         };
         request.onerror = () => reject(request.error);

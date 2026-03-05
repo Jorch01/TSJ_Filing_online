@@ -408,6 +408,7 @@ async function cargarExpedientes() {
                 <div class="expediente-actions">
                     <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
                     <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
+                    <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
                     <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
                 </div>
             </div>
@@ -444,6 +445,7 @@ async function cargarExpedientes() {
                 <td class="acciones-cell">
                     <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
                     <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
+                    <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
                     <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
                 </td>
             </tr>
@@ -453,6 +455,9 @@ async function cargarExpedientes() {
 
     // Aplicar vista actual
     aplicarVistaExpedientes();
+
+    // Actualizar badge de archivo
+    actualizarBadgeArchivo();
 
     // Actualizar select de expedientes en notas
     actualizarSelectExpedientes();
@@ -797,12 +802,230 @@ function confirmarEliminarExpediente(id, event) {
         eliminarExpediente(id, true)
             .then(() => {
                 mostrarToast('Expediente eliminado', 'success');
-                return Promise.all([cargarExpedientes(), cargarEstadisticas()]);
+                const archivoVisible = document.getElementById('archivo-section')?.style.display === 'block';
+                const tareas = [cargarExpedientes(), cargarEstadisticas()];
+                if (archivoVisible) tareas.push(cargarArchivo());
+                return Promise.all(tareas);
             })
             .catch(err => {
                 Logger.error('Error al eliminar expediente:', err);
                 mostrarToast('Error al eliminar: ' + (err.message || 'Error desconocido'), 'error');
             });
+    }
+}
+
+// ==================== ARCHIVO DE EXPEDIENTES ====================
+
+function mostrarDialogoArchivar(id, event) {
+    if (event) { event.stopPropagation(); event.preventDefault(); }
+
+    document.getElementById('modal-titulo').textContent = '📦 Archivar Expediente';
+    document.getElementById('modal-body').innerHTML = `
+        <div style="padding: 10px 0;">
+            <p style="margin-bottom: 15px;">Selecciona el motivo para archivar este expediente:</p>
+            <div class="form-group">
+                <label for="motivo-archivo">Motivo</label>
+                <select id="motivo-archivo" class="form-control" onchange="toggleEtiquetaArchivo()">
+                    <option value="concluido">Concluido</option>
+                    <option value="abandonado">Abandonado</option>
+                    <option value="otro">Otro</option>
+                </select>
+            </div>
+            <div class="form-group" id="grupo-etiqueta-archivo" style="display: none;">
+                <label for="etiqueta-archivo">Describe el motivo</label>
+                <input type="text" id="etiqueta-archivo" class="form-control" placeholder="Ej: Desistimiento, acumulado a otro expediente...">
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>
+                <button class="btn btn-warning" onclick="ejecutarArchivar(${id})">📦 Archivar</button>
+            </div>
+        </div>
+    `;
+    document.getElementById('modal-footer').innerHTML = '';
+    abrirModal();
+}
+
+function toggleEtiquetaArchivo() {
+    const motivo = document.getElementById('motivo-archivo').value;
+    const grupo = document.getElementById('grupo-etiqueta-archivo');
+    if (grupo) {
+        grupo.style.display = motivo === 'otro' ? 'block' : 'none';
+    }
+}
+
+async function ejecutarArchivar(id) {
+    const motivo = document.getElementById('motivo-archivo').value;
+    const etiqueta = motivo === 'otro' ? (document.getElementById('etiqueta-archivo')?.value?.trim() || 'Sin especificar') : '';
+
+    try {
+        await actualizarExpediente(id, {
+            archivado: true,
+            motivoArchivo: motivo,
+            etiquetaArchivo: etiqueta,
+            fechaArchivo: new Date().toISOString()
+        });
+        cerrarModal();
+        mostrarToast('Expediente archivado', 'success');
+        await Promise.all([cargarExpedientes(), cargarEstadisticas()]);
+    } catch (err) {
+        mostrarToast('Error al archivar: ' + (err.message || 'Error desconocido'), 'error');
+    }
+}
+
+async function desarchivarExpediente(id, event) {
+    if (event) { event.stopPropagation(); event.preventDefault(); }
+
+    if (!confirm('¿Restaurar este expediente al listado activo?')) return;
+
+    try {
+        await actualizarExpediente(id, {
+            archivado: false,
+            motivoArchivo: null,
+            etiquetaArchivo: null,
+            fechaArchivo: null
+        });
+        mostrarToast('Expediente restaurado', 'success');
+        await cargarArchivo();
+        await Promise.all([cargarExpedientes(), cargarEstadisticas()]);
+    } catch (err) {
+        mostrarToast('Error al restaurar: ' + (err.message || 'Error desconocido'), 'error');
+    }
+}
+
+function abrirArchivo() {
+    // Ocultar contenido normal de expedientes
+    document.getElementById('lista-expedientes').style.display = 'none';
+    document.getElementById('tabla-expedientes').style.display = 'none';
+    document.querySelector('#page-expedientes .filters-section').style.display = 'none';
+    document.getElementById('archivo-toggle').style.display = 'none';
+
+    // Ocultar formulario si está abierto
+    const formContainer = document.getElementById('formulario-expediente');
+    if (formContainer) formContainer.style.display = 'none';
+
+    // Mostrar sección de archivo
+    document.getElementById('archivo-section').style.display = 'block';
+    cargarArchivo();
+}
+
+function cerrarArchivo() {
+    document.getElementById('archivo-section').style.display = 'none';
+    document.getElementById('archivo-toggle').style.display = 'block';
+    document.querySelector('#page-expedientes .filters-section').style.display = '';
+    aplicarVistaExpedientes();
+}
+
+async function cargarArchivo() {
+    const archivados = await obtenerExpedientesArchivados();
+    const lista = document.getElementById('lista-archivo');
+    const count = document.getElementById('count-archivo');
+
+    if (archivados.length === 0) {
+        lista.innerHTML = `
+            <div class="empty-state">
+                <span class="empty-icon">📦</span>
+                <h3>Archivo vacío</h3>
+                <p>No hay expedientes archivados</p>
+            </div>
+        `;
+    } else {
+        lista.innerHTML = archivados.map(exp => renderCardArchivado(exp)).join('');
+    }
+
+    count.textContent = `${archivados.length} archivado${archivados.length !== 1 ? 's' : ''}`;
+}
+
+function renderCardArchivado(exp) {
+    const motivoLabel = exp.motivoArchivo === 'concluido' ? 'Concluido'
+                      : exp.motivoArchivo === 'abandonado' ? 'Abandonado'
+                      : exp.etiquetaArchivo || 'Otro';
+    const motivoClass = exp.motivoArchivo === 'concluido' ? 'motivo-concluido'
+                      : exp.motivoArchivo === 'abandonado' ? 'motivo-abandonado'
+                      : 'motivo-otro';
+
+    const instBadge = exp.institucion === 'PJF'
+        ? '<span class="institucion-badge pjf">🏛️ PJF</span>'
+        : exp.institucion === 'OTRO'
+        ? '<span class="institucion-badge otro">📋 Varios</span>'
+        : '<span class="institucion-badge tsj">⚖️ TSJ</span>';
+
+    return `
+    <div class="expediente-card archivo-card" data-id="${exp.id}">
+        <div class="expediente-header">
+            <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
+            ${instBadge}
+            <span class="archivo-motivo-badge ${motivoClass}">${motivoLabel}</span>
+        </div>
+        <div class="expediente-body">
+            <h3 class="expediente-titulo">${escapeText(exp.numero || exp.nombre)}</h3>
+            <p class="expediente-juzgado">${escapeText(exp.juzgado)}</p>
+            ${exp.comentario ? `<p class="expediente-comentario">${escapeText(exp.comentario)}</p>` : ''}
+            <p class="expediente-fecha-archivo">Archivado: ${formatearFecha(exp.fechaArchivo)}</p>
+        </div>
+        <div class="expediente-footer">
+            <span class="expediente-fecha">Creado: ${formatearFecha(exp.fechaCreacion)}</span>
+            <div class="expediente-actions">
+                <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
+                <button class="btn btn-sm btn-success" onclick="desarchivarExpediente(${exp.id}, event)" title="Restaurar">♻️</button>
+                <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
+            </div>
+        </div>
+    </div>
+    `;
+}
+
+async function filtrarArchivo() {
+    const busqueda = (document.getElementById('buscar-archivo')?.value || '').toLowerCase();
+    const motivo = document.getElementById('filtro-motivo-archivo')?.value || '';
+
+    let archivados = await obtenerExpedientesArchivados();
+
+    if (busqueda) {
+        archivados = archivados.filter(e =>
+            (e.numero && e.numero.toLowerCase().includes(busqueda)) ||
+            (e.nombre && e.nombre.toLowerCase().includes(busqueda)) ||
+            (e.juzgado && e.juzgado.toLowerCase().includes(busqueda)) ||
+            (e.comentario && e.comentario.toLowerCase().includes(busqueda)) ||
+            (e.etiquetaArchivo && e.etiquetaArchivo.toLowerCase().includes(busqueda))
+        );
+    }
+
+    if (motivo) {
+        archivados = archivados.filter(e => e.motivoArchivo === motivo);
+    }
+
+    const lista = document.getElementById('lista-archivo');
+    const count = document.getElementById('count-archivo');
+
+    if (archivados.length === 0) {
+        lista.innerHTML = `
+            <div class="empty-state">
+                <span class="empty-icon">🔍</span>
+                <h3>Sin resultados</h3>
+                <p>No se encontraron expedientes archivados con esos filtros</p>
+            </div>
+        `;
+    } else {
+        lista.innerHTML = archivados.map(exp => renderCardArchivado(exp)).join('');
+    }
+
+    count.textContent = `${archivados.length} archivado${archivados.length !== 1 ? 's' : ''}`;
+}
+
+async function actualizarBadgeArchivo() {
+    try {
+        const archivados = await obtenerExpedientesArchivados();
+        const badge = document.getElementById('count-archivo-badge');
+        if (badge) {
+            if (archivados.length > 0) {
+                badge.textContent = archivados.length;
+                badge.style.display = 'inline';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+    } catch (e) {
+        // Ignorar errores silenciosamente
     }
 }
 
@@ -874,28 +1097,67 @@ async function filtrarExpedientes() {
             </div>
         `;
     } else {
+        // Renderizar cards con comentarios
+        const instBadgeFor = (exp) => exp.institucion === 'PJF'
+            ? '<span class="institucion-badge pjf">🏛️ PJF</span>'
+            : exp.institucion === 'OTRO'
+            ? '<span class="institucion-badge otro">📋 Varios</span>'
+            : '<span class="institucion-badge tsj">⚖️ TSJ</span>';
+
         lista.innerHTML = expedientes.map(exp => `
             <div class="expediente-card" data-id="${exp.id}">
                 <div class="expediente-header">
                     <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
-                    <span class="expediente-categoria">${exp.categoria || 'General'}</span>
+                    ${instBadgeFor(exp)}
+                    <span class="expediente-categoria">${escapeText(exp.categoria || 'General')}</span>
                 </div>
                 <div class="expediente-body">
-                    <h3 class="expediente-titulo">${exp.numero || exp.nombre}</h3>
-                    <p class="expediente-juzgado">${exp.juzgado}</p>
+                    <h3 class="expediente-titulo">${escapeText(exp.numero || exp.nombre)}</h3>
+                    <p class="expediente-juzgado">${escapeText(exp.juzgado)}</p>
+                    ${exp.comentario ? `<p class="expediente-comentario">${escapeText(exp.comentario)}</p>` : ''}
                 </div>
                 <div class="expediente-footer">
                     <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
                     <div class="expediente-actions">
+                        <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
                         <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
+                        <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
                         <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
                     </div>
                 </div>
             </div>
         `).join('');
+
+        // Actualizar tabla (vista lista) con los mismos resultados filtrados
+        const tablaBody = document.getElementById('tabla-expedientes-body');
+        if (tablaBody) {
+            tablaBody.innerHTML = expedientes.map(exp => {
+                const instLabel = exp.institucion === 'PJF' ? '🏛️ PJF'
+                               : exp.institucion === 'OTRO' ? '📋 Varios'
+                               : '⚖️ TSJ';
+                return `
+                <tr data-id="${exp.id}">
+                    <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
+                    <td><strong>${escapeText(exp.numero || exp.nombre)}</strong></td>
+                    <td>${escapeText(exp.juzgado)}</td>
+                    <td><span class="categoria-badge">${escapeText(exp.categoria || 'General')}</span></td>
+                    <td>${instLabel}</td>
+                    <td class="comentario-cell" title="${escapeText(exp.comentario || '')}">${escapeText(exp.comentario || '-')}</td>
+                    <td>${formatearFecha(exp.fechaCreacion)}</td>
+                    <td class="acciones-cell">
+                        <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
+                        <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
+                        <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
+                        <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
+                    </td>
+                </tr>
+            `;
+            }).join('');
+        }
     }
 
     count.textContent = `${expedientes.length} expediente${expedientes.length !== 1 ? 's' : ''}`;
+    aplicarVistaExpedientes();
 }
 
 // ==================== HISTORIAL DE EXPEDIENTES ====================

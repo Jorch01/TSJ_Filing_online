@@ -461,6 +461,39 @@
                     </tbody>
                 </table>
             </div>
+
+            <!-- Sección Archivo de Expedientes -->
+            <div class="archivo-section" id="archivo-section" style="display: none;">
+                <div class="archivo-header">
+                    <h3>📦 Archivo de Expedientes</h3>
+                    <button class="btn btn-secondary btn-sm" onclick="cerrarArchivo()">Volver a Expedientes</button>
+                </div>
+                <div class="filters-section" style="margin-bottom: 1rem;">
+                    <div class="search-box">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="buscar-archivo" placeholder="Buscar en archivo..." oninput="filtrarArchivo()">
+                    </div>
+                    <select id="filtro-motivo-archivo" onchange="filtrarArchivo()">
+                        <option value="">Todos los motivos</option>
+                        <option value="concluido">Concluido</option>
+                        <option value="abandonado">Abandonado</option>
+                        <option value="otro">Otro</option>
+                    </select>
+                    <span class="results-count" id="count-archivo">0 archivados</span>
+                </div>
+                <div class="expedientes-grid" id="lista-archivo">
+                    <div class="empty-state">
+                        <span class="empty-icon">📦</span>
+                        <h3>Archivo vacío</h3>
+                        <p>No hay expedientes archivados</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botón para abrir archivo -->
+            <div class="archivo-toggle" id="archivo-toggle">
+                <button class="btn btn-outline" onclick="abrirArchivo()">📦 Ver Archivo <span id="count-archivo-badge" class="badge" style="display:none;">0</span></button>
+            </div>
         </section>
 
         <!-- Página Calendario -->
