@@ -600,7 +600,11 @@ async function obtenerEstadisticas() {
         return fecha >= ahora && fecha <= enUnaSemana;
     });
 
-    const eventosConAlerta = eventos.filter(e => e.alerta && !e.alertaEnviada);
+    const eventosConAlerta = eventos.filter(e => {
+        if (!e.alerta || e.alertaEnviada) return false;
+        const fecha = new Date(e.fechaInicio);
+        return fecha >= ahora;
+    });
 
     return {
         expedientes: expedientes.length,
@@ -640,6 +644,17 @@ async function obtenerHistorialExpediente(expedienteId) {
             );
             resolve(historial);
         };
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function obtenerTodoHistorial() {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['historial'], 'readonly');
+        const store = transaction.objectStore('historial');
+        const request = store.getAll();
+
+        request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
     });
 }
