@@ -858,15 +858,10 @@ async function ejecutarArchivar(id) {
     const etiqueta = motivo === 'otro' ? (document.getElementById('etiqueta-archivo')?.value?.trim() || 'Sin especificar') : '';
 
     try {
-        await actualizarExpediente(id, {
-            archivado: true,
-            motivoArchivo: motivo,
-            etiquetaArchivo: etiqueta,
-            fechaArchivo: new Date().toISOString()
-        });
+        await archivarExpedienteDB(id, true, motivo, etiqueta);
         cerrarModal();
         mostrarToast('Expediente archivado', 'success');
-        await Promise.all([cargarExpedientes(), cargarEstadisticas()]);
+        await Promise.all([cargarExpedientes(), cargarExpedientesPJF(), cargarEstadisticas()]);
     } catch (err) {
         mostrarToast('Error al archivar: ' + (err.message || 'Error desconocido'), 'error');
     }
@@ -878,15 +873,14 @@ async function desarchivarExpediente(id, event) {
     if (!confirm('¿Restaurar este expediente al listado activo?')) return;
 
     try {
-        await actualizarExpediente(id, {
-            archivado: false,
-            motivoArchivo: null,
-            etiquetaArchivo: null,
-            fechaArchivo: null
-        });
+        await archivarExpedienteDB(id, false);
         mostrarToast('Expediente restaurado', 'success');
-        await cargarArchivo();
-        await Promise.all([cargarExpedientes(), cargarEstadisticas()]);
+        // Refrescar ambos archivos y listas
+        const archivoTSJVisible = document.getElementById('archivo-section')?.style.display === 'block';
+        const archivoPJFVisible = document.getElementById('archivo-section-pjf')?.style.display === 'block';
+        if (archivoTSJVisible) await cargarArchivo();
+        if (archivoPJFVisible) await cargarArchivoPJF();
+        await Promise.all([cargarExpedientes(), cargarExpedientesPJF(), cargarEstadisticas()]);
     } catch (err) {
         mostrarToast('Error al restaurar: ' + (err.message || 'Error desconocido'), 'error');
     }
@@ -5516,6 +5510,7 @@ async function cargarExpedientesPJF() {
                     ${!modoSeleccionPJF ? `<button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍 Buscar</button>` : ''}
                     ${!modoSeleccionPJF ? `<button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>` : ''}
                     ${!modoSeleccionPJF ? `<button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>` : ''}
+                    ${!modoSeleccionPJF ? `<button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>` : ''}
                     ${!modoSeleccionPJF ? `<button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>` : ''}
                 </div>
             </div>
@@ -5537,6 +5532,7 @@ async function cargarExpedientesPJF() {
                     <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍</button>
                     <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
                     <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
+                    <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
                     <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
                 </td>
             </tr>
@@ -5552,6 +5548,9 @@ async function cargarExpedientesPJF() {
 
     // Apply current view
     aplicarVistaExpedientesPJF();
+
+    // Actualizar badge de archivo PJF
+    actualizarBadgeArchivoPJF();
 }
 
 // Edit PJF expediente - navigate to main form and restore cascade
@@ -5581,6 +5580,105 @@ function confirmarEliminarExpedientePJF(id, event) {
                 Logger.error('Error al eliminar expediente PJF:', err);
                 mostrarToast('Error al eliminar: ' + (err.message || 'Error desconocido'), 'error');
             });
+    }
+}
+
+// ==================== ARCHIVO PJF ====================
+
+function abrirArchivoPJF() {
+    document.getElementById('lista-expedientes-pjf').style.display = 'none';
+    document.getElementById('tabla-expedientes-pjf').style.display = 'none';
+    document.getElementById('archivo-toggle-pjf').style.display = 'none';
+
+    // Ocultar barra de selección masiva si existe
+    const selBar = document.getElementById('pjf-seleccion-bar');
+    if (selBar) selBar.style.display = 'none';
+
+    document.getElementById('archivo-section-pjf').style.display = 'block';
+    cargarArchivoPJF();
+}
+
+function cerrarArchivoPJF() {
+    document.getElementById('archivo-section-pjf').style.display = 'none';
+    document.getElementById('archivo-toggle-pjf').style.display = 'block';
+    aplicarVistaExpedientesPJF();
+}
+
+async function cargarArchivoPJF() {
+    const archivados = await obtenerExpedientesArchivados();
+    const pjfArchivados = archivados.filter(e => e.institucion === 'PJF');
+    const lista = document.getElementById('lista-archivo-pjf');
+    const count = document.getElementById('count-archivo-pjf');
+
+    if (pjfArchivados.length === 0) {
+        lista.innerHTML = `
+            <div class="empty-state">
+                <span class="empty-icon">📦</span>
+                <h3>Archivo vacío</h3>
+                <p>No hay expedientes PJF archivados</p>
+            </div>
+        `;
+    } else {
+        lista.innerHTML = pjfArchivados.map(exp => renderCardArchivado(exp)).join('');
+    }
+
+    count.textContent = `${pjfArchivados.length} archivado${pjfArchivados.length !== 1 ? 's' : ''}`;
+}
+
+async function filtrarArchivoPJF() {
+    const busqueda = (document.getElementById('buscar-archivo-pjf')?.value || '').toLowerCase();
+    const motivo = document.getElementById('filtro-motivo-archivo-pjf')?.value || '';
+
+    const archivados = await obtenerExpedientesArchivados();
+    let pjfArchivados = archivados.filter(e => e.institucion === 'PJF');
+
+    if (busqueda) {
+        pjfArchivados = pjfArchivados.filter(e =>
+            (e.numero && e.numero.toLowerCase().includes(busqueda)) ||
+            (e.nombre && e.nombre.toLowerCase().includes(busqueda)) ||
+            (e.juzgado && e.juzgado.toLowerCase().includes(busqueda)) ||
+            (e.comentario && e.comentario.toLowerCase().includes(busqueda)) ||
+            (e.etiquetaArchivo && e.etiquetaArchivo.toLowerCase().includes(busqueda))
+        );
+    }
+
+    if (motivo) {
+        pjfArchivados = pjfArchivados.filter(e => e.motivoArchivo === motivo);
+    }
+
+    const lista = document.getElementById('lista-archivo-pjf');
+    const count = document.getElementById('count-archivo-pjf');
+
+    if (pjfArchivados.length === 0) {
+        lista.innerHTML = `
+            <div class="empty-state">
+                <span class="empty-icon">🔍</span>
+                <h3>Sin resultados</h3>
+                <p>No se encontraron expedientes PJF archivados con esos filtros</p>
+            </div>
+        `;
+    } else {
+        lista.innerHTML = pjfArchivados.map(exp => renderCardArchivado(exp)).join('');
+    }
+
+    count.textContent = `${pjfArchivados.length} archivado${pjfArchivados.length !== 1 ? 's' : ''}`;
+}
+
+async function actualizarBadgeArchivoPJF() {
+    try {
+        const archivados = await obtenerExpedientesArchivados();
+        const pjfArchivados = archivados.filter(e => e.institucion === 'PJF');
+        const badge = document.getElementById('count-archivo-badge-pjf');
+        if (badge) {
+            if (pjfArchivados.length > 0) {
+                badge.textContent = pjfArchivados.length;
+                badge.style.display = 'inline';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+    } catch (e) {
+        // Ignorar errores silenciosamente
     }
 }
 
@@ -5824,6 +5922,7 @@ async function filtrarExpedientesPJF() {
                         <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍 Buscar</button>
                         <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
                         <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
+                        <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
                         <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
                     </div>
                 </div>
@@ -5844,6 +5943,7 @@ async function filtrarExpedientesPJF() {
                         <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍</button>
                         <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
                         <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
+                        <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
                         <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
                     </td>
                 </tr>

@@ -1068,6 +1068,39 @@
                                 </tbody>
                             </table>
                         </div>
+
+                        <!-- Sección Archivo PJF -->
+                        <div class="archivo-section" id="archivo-section-pjf" style="display: none;">
+                            <div class="archivo-header">
+                                <h3>📦 Archivo de Expedientes PJF</h3>
+                                <button class="btn btn-secondary btn-sm" onclick="cerrarArchivoPJF()">Volver a Expedientes PJF</button>
+                            </div>
+                            <div class="filters-section" style="margin-bottom: 1rem;">
+                                <div class="search-box">
+                                    <span class="search-icon">🔍</span>
+                                    <input type="text" id="buscar-archivo-pjf" placeholder="Buscar en archivo PJF..." oninput="filtrarArchivoPJF()">
+                                </div>
+                                <select id="filtro-motivo-archivo-pjf" onchange="filtrarArchivoPJF()">
+                                    <option value="">Todos los motivos</option>
+                                    <option value="concluido">Concluido</option>
+                                    <option value="abandonado">Abandonado</option>
+                                    <option value="otro">Otro</option>
+                                </select>
+                                <span class="results-count" id="count-archivo-pjf">0 archivados</span>
+                            </div>
+                            <div class="expedientes-grid" id="lista-archivo-pjf">
+                                <div class="empty-state">
+                                    <span class="empty-icon">📦</span>
+                                    <h3>Archivo vacío</h3>
+                                    <p>No hay expedientes PJF archivados</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Botón para abrir archivo PJF -->
+                        <div class="archivo-toggle" id="archivo-toggle-pjf">
+                            <button class="btn btn-outline" onclick="abrirArchivoPJF()">📦 Ver Archivo PJF <span id="count-archivo-badge-pjf" class="badge" style="display:none;">0</span></button>
+                        </div>
                     </div>
                 </div>
             </div>

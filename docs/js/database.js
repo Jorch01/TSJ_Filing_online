@@ -132,6 +132,43 @@ async function obtenerExpedientesArchivados() {
     });
 }
 
+async function archivarExpedienteDB(id, archivado, motivoArchivo, etiquetaArchivo) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['expedientes'], 'readwrite');
+        const store = transaction.objectStore('expedientes');
+        const getRequest = store.get(id);
+
+        getRequest.onsuccess = () => {
+            const expediente = getRequest.result;
+            if (!expediente) {
+                reject(new Error('Expediente no encontrado'));
+                return;
+            }
+
+            if (archivado) {
+                expediente.archivado = true;
+                expediente.motivoArchivo = motivoArchivo || 'concluido';
+                expediente.etiquetaArchivo = etiquetaArchivo || '';
+                expediente.fechaArchivo = new Date().toISOString();
+            } else {
+                expediente.archivado = false;
+                delete expediente.motivoArchivo;
+                delete expediente.etiquetaArchivo;
+                delete expediente.fechaArchivo;
+            }
+            expediente.fechaActualizacion = new Date().toISOString();
+
+            store.put(expediente);
+        };
+
+        getRequest.onerror = () => reject(getRequest.error);
+
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(new Error('Transacción abortada al archivar expediente'));
+    });
+}
+
 async function obtenerExpediente(id) {
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(['expedientes'], 'readonly');
