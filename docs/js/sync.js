@@ -469,6 +469,33 @@ function fusionarExpedientesInteligente(exp1, exp2) {
         }
     });
 
+    // Fusionar campos de archivo: usar el estado más reciente
+    const ts1 = exp1.fechaActualizacion || exp1.fechaCreacion || '';
+    const ts2 = exp2.fechaActualizacion || exp2.fechaCreacion || '';
+    const exp2MasReciente = ts2 > ts1;
+    const expReciente = exp2MasReciente ? exp2 : exp1;
+
+    // Si alguno tiene archivado, usar el estado del más reciente
+    if (exp1.archivado !== undefined || exp2.archivado !== undefined) {
+        fusionado.archivado = expReciente.archivado || false;
+        fusionado.motivoArchivo = expReciente.motivoArchivo || fusionado.motivoArchivo;
+        fusionado.etiquetaArchivo = expReciente.etiquetaArchivo || fusionado.etiquetaArchivo;
+        fusionado.fechaArchivo = expReciente.fechaArchivo || fusionado.fechaArchivo;
+
+        if (exp1.archivado !== exp2.archivado) {
+            cambios.push({ campo: 'archivado', de: exp1.archivado, a: fusionado.archivado, origen: exp2MasReciente ? 'exp2_mas_reciente' : 'exp1' });
+        }
+    }
+
+    // Fusionar campos de institución y PJF
+    if (!fusionado.institucion && exp2.institucion) fusionado.institucion = exp2.institucion;
+    if (exp2MasReciente && exp2.institucion) fusionado.institucion = exp2.institucion;
+    const camposPJF = ['pjfOrgId', 'pjfTipoAsunto', 'pjfTipoProcedimiento'];
+    camposPJF.forEach(campo => {
+        if (!fusionado[campo] && exp2[campo]) fusionado[campo] = exp2[campo];
+        if (exp2MasReciente && exp2[campo]) fusionado[campo] = exp2[campo];
+    });
+
     // Combinar historial si existe
     if (exp1.historial || exp2.historial) {
         const historial1 = exp1.historial || [];
@@ -761,6 +788,7 @@ async function aplicarDatosLocalmente(datos) {
     await cargarEventos();
     await cargarEstadisticas();
     renderizarCalendario();
+    if (typeof cargarExpedientesPJF === 'function') await cargarExpedientesPJF();
 }
 
 // ==================== UI ====================
