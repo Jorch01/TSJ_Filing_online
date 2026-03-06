@@ -780,6 +780,8 @@ async function guardarExpediente(event) {
         cerrarFormularioExpediente();
         await cargarExpedientes();
         await cargarEstadisticas();
+        // Sincronizar con otros dispositivos
+        if (typeof sincronizarDespuesDeGuardar === 'function') sincronizarDespuesDeGuardar();
     } catch (error) {
         mostrarToast('Error al guardar: ' + error.message, 'error');
     } finally {
@@ -806,6 +808,9 @@ function confirmarEliminarExpediente(id, event) {
                 const tareas = [cargarExpedientes(), cargarEstadisticas()];
                 if (archivoVisible) tareas.push(cargarArchivo());
                 return Promise.all(tareas);
+            })
+            .then(() => {
+                if (typeof sincronizarDespuesDeGuardar === 'function') sincronizarDespuesDeGuardar();
             })
             .catch(err => {
                 Logger.error('Error al eliminar expediente:', err);
@@ -862,6 +867,8 @@ async function ejecutarArchivar(id) {
         cerrarModal();
         mostrarToast('Expediente archivado', 'success');
         await Promise.all([cargarExpedientes(), cargarExpedientesPJF(), cargarEstadisticas()]);
+        // Sincronizar cambio con otros dispositivos
+        if (typeof sincronizarDespuesDeGuardar === 'function') sincronizarDespuesDeGuardar();
     } catch (err) {
         mostrarToast('Error al archivar: ' + (err.message || 'Error desconocido'), 'error');
     }
@@ -881,6 +888,8 @@ async function desarchivarExpediente(id, event) {
         if (archivoTSJVisible) await cargarArchivo();
         if (archivoPJFVisible) await cargarArchivoPJF();
         await Promise.all([cargarExpedientes(), cargarExpedientesPJF(), cargarEstadisticas()]);
+        // Sincronizar cambio con otros dispositivos
+        if (typeof sincronizarDespuesDeGuardar === 'function') sincronizarDespuesDeGuardar();
     } catch (err) {
         mostrarToast('Error al restaurar: ' + (err.message || 'Error desconocido'), 'error');
     }
@@ -5575,6 +5584,9 @@ function confirmarEliminarExpedientePJF(id, event) {
             .then(() => {
                 mostrarToast('Expediente PJF eliminado', 'success');
                 return Promise.all([cargarExpedientesPJF(), cargarExpedientes(), cargarEstadisticas()]);
+            })
+            .then(() => {
+                if (typeof sincronizarDespuesDeGuardar === 'function') sincronizarDespuesDeGuardar();
             })
             .catch(err => {
                 Logger.error('Error al eliminar expediente PJF:', err);
