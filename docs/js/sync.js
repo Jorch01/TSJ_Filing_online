@@ -948,37 +948,11 @@ async function verificarDatosRemotos() {
     }
 }
 
-// Sincronizar después de guardar (llamar desde otras partes del código)
+// Sincronizar después de guardar (delegado a sincronización bidireccional completa)
 async function sincronizarDespuesDeGuardar() {
-    if (!estadoPremium.activo) return;
-
-    const syncOnSave = localStorage.getItem('sync_on_save') === 'true';
-    if (!syncOnSave) return;
-
-    // Sincronizar en segundo plano sin mostrar toast de inicio
-    try {
-        syncState.syncInProgress = true;
-
-        const datosLocales = await obtenerTodosLosDatos();
-        datosLocales.metadata = {
-            ultimaModificacion: Date.now(),
-            dispositivo: obtenerDeviceId(),
-            version: '2.0'
-        };
-
-        const datosCifrados = await cifrarDatos(datosLocales, estadoPremium.codigo);
-        await subirDatosRemotos(datosCifrados);
-
-        syncState.lastSync = Date.now();
-        localStorage.setItem('sync_last_sync', syncState.lastSync.toString());
-        actualizarUISync('success');
-
-        console.log('Sincronización automática completada');
-    } catch (error) {
-        console.error('Error en sincronización automática:', error);
-    } finally {
-        syncState.syncInProgress = false;
-    }
+    if (!estadoPremium.activo || !estadoPremium.codigo) return;
+    // Delegar a sincronización bidireccional completa para garantizar que todos los dispositivos reciban los cambios
+    return sincronizarDatos();
 }
 
 // Inicializar cuando el DOM esté listo

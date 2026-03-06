@@ -781,7 +781,7 @@ async function guardarExpediente(event) {
         await cargarExpedientes();
         await cargarEstadisticas();
         // Sincronizar con otros dispositivos
-        if (typeof sincronizarDespuesDeGuardar === 'function') sincronizarDespuesDeGuardar();
+        if (typeof sincronizarDatos === 'function' && typeof estadoPremium !== 'undefined' && estadoPremium.activo && estadoPremium.codigo) sincronizarDatos();
     } catch (error) {
         mostrarToast('Error al guardar: ' + error.message, 'error');
     } finally {
@@ -810,7 +810,7 @@ function confirmarEliminarExpediente(id, event) {
                 return Promise.all(tareas);
             })
             .then(() => {
-                if (typeof sincronizarDespuesDeGuardar === 'function') sincronizarDespuesDeGuardar();
+                if (typeof sincronizarDatos === 'function' && typeof estadoPremium !== 'undefined' && estadoPremium.activo && estadoPremium.codigo) sincronizarDatos();
             })
             .catch(err => {
                 Logger.error('Error al eliminar expediente:', err);
@@ -868,7 +868,7 @@ async function ejecutarArchivar(id) {
         mostrarToast('Expediente archivado', 'success');
         await Promise.all([cargarExpedientes(), cargarExpedientesPJF(), cargarEstadisticas()]);
         // Sincronizar cambio con otros dispositivos
-        if (typeof sincronizarDespuesDeGuardar === 'function') sincronizarDespuesDeGuardar();
+        if (typeof sincronizarDatos === 'function' && typeof estadoPremium !== 'undefined' && estadoPremium.activo && estadoPremium.codigo) sincronizarDatos();
     } catch (err) {
         mostrarToast('Error al archivar: ' + (err.message || 'Error desconocido'), 'error');
     }
@@ -889,7 +889,7 @@ async function desarchivarExpediente(id, event) {
         if (archivoPJFVisible) await cargarArchivoPJF();
         await Promise.all([cargarExpedientes(), cargarExpedientesPJF(), cargarEstadisticas()]);
         // Sincronizar cambio con otros dispositivos
-        if (typeof sincronizarDespuesDeGuardar === 'function') sincronizarDespuesDeGuardar();
+        if (typeof sincronizarDatos === 'function' && typeof estadoPremium !== 'undefined' && estadoPremium.activo && estadoPremium.codigo) sincronizarDatos();
     } catch (err) {
         mostrarToast('Error al restaurar: ' + (err.message || 'Error desconocido'), 'error');
     }
@@ -5586,7 +5586,7 @@ function confirmarEliminarExpedientePJF(id, event) {
                 return Promise.all([cargarExpedientesPJF(), cargarExpedientes(), cargarEstadisticas()]);
             })
             .then(() => {
-                if (typeof sincronizarDespuesDeGuardar === 'function') sincronizarDespuesDeGuardar();
+                if (typeof sincronizarDatos === 'function' && typeof estadoPremium !== 'undefined' && estadoPremium.activo && estadoPremium.codigo) sincronizarDatos();
             })
             .catch(err => {
                 Logger.error('Error al eliminar expediente PJF:', err);
