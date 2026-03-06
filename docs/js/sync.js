@@ -789,6 +789,20 @@ async function aplicarDatosLocalmente(datos) {
     await cargarEstadisticas();
     renderizarCalendario();
     if (typeof cargarExpedientesPJF === 'function') await cargarExpedientesPJF();
+
+    // Actualizar badges de archivo
+    if (typeof actualizarBadgeArchivo === 'function') actualizarBadgeArchivo();
+    if (typeof actualizarBadgeArchivoPJF === 'function') actualizarBadgeArchivoPJF();
+
+    // Si alguna sección de archivo está visible, recargarla
+    const archivoTSJ = document.getElementById('archivo-section');
+    if (archivoTSJ && archivoTSJ.style.display === 'block' && typeof cargarArchivo === 'function') {
+        await cargarArchivo();
+    }
+    const archivoPJF = document.getElementById('archivo-section-pjf');
+    if (archivoPJF && archivoPJF.style.display === 'block' && typeof cargarArchivoPJF === 'function') {
+        await cargarArchivoPJF();
+    }
 }
 
 // ==================== UI ====================
