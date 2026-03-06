@@ -696,12 +696,14 @@ function fusionarEventos(locales, remotos) {
 
 // Obtener todos los datos locales
 async function obtenerTodosLosDatos() {
+    // Incluir tanto activos como archivados para no perder datos en sync
     const expedientes = await obtenerExpedientes();
+    const archivados = typeof obtenerExpedientesArchivados === 'function' ? await obtenerExpedientesArchivados() : [];
     const notas = await obtenerNotas();
     const eventos = await obtenerEventos();
     const eliminados = await obtenerEliminados();
 
-    return { expedientes, notas, eventos, eliminados };
+    return { expedientes: [...expedientes, ...archivados], notas, eventos, eliminados };
 }
 
 // Escape HTML para evitar XSS
