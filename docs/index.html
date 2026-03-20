@@ -685,12 +685,20 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Buscar en</label>
-                            <select id="busqueda-global-ambito">
+                            <select id="busqueda-global-ambito" onchange="toggleJuzgadosEspecificos()">
                                 <option value="todos">Todos (Primera + Segunda Instancia)</option>
                                 <option value="primera">Solo Primera Instancia</option>
                                 <option value="segunda">Solo Segunda Instancia (Salas)</option>
+                                <option value="especificos">Juzgados específicos...</option>
                             </select>
                         </div>
+                    </div>
+                    <div id="juzgados-especificos-container" style="display:none; max-height:300px; overflow-y:auto; border:1px solid var(--border-color,#ddd); border-radius:8px; padding:10px; margin-bottom:10px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <input type="text" id="filtro-juzgados-global" placeholder="Filtrar juzgados..." oninput="filtrarJuzgadosGlobal()" style="flex:1; margin-right:8px; padding:6px 10px; border:1px solid var(--border-color,#ccc); border-radius:6px; font-size:0.85rem;">
+                            <label style="font-size:0.8rem; white-space:nowrap; cursor:pointer;"><input type="checkbox" id="seleccionar-todos-juzgados" onchange="toggleTodosJuzgadosGlobal(this.checked)"> Todos</label>
+                        </div>
+                        <div id="juzgados-checkboxes"></div>
                     </div>
                 </div>
                 <div class="card-footer">
