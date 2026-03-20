@@ -4064,6 +4064,11 @@ async function guardarResultadosIA() {
     resultadosIAActuales = null;
 
     mostrarToast(`${guardados} elementos guardados`, 'success');
+
+    // Sincronizar automáticamente con otros dispositivos
+    if (typeof sincronizarDatos === 'function' && typeof estadoPremium !== 'undefined' && estadoPremium.activo && estadoPremium.codigo) {
+        sincronizarDatos();
+    }
 }
 
 // Actualizar select de expedientes para IA
@@ -4207,6 +4212,65 @@ async function cargarConfigBusquedasAuto() {
 
 // ==================== BÚSQUEDA GLOBAL ====================
 
+function toggleJuzgadosEspecificos() {
+    const ambito = document.getElementById('busqueda-global-ambito').value;
+    const container = document.getElementById('juzgados-especificos-container');
+    if (ambito === 'especificos') {
+        container.style.display = 'block';
+        poblarCheckboxesJuzgados();
+    } else {
+        container.style.display = 'none';
+    }
+}
+
+function poblarCheckboxesJuzgados() {
+    const container = document.getElementById('juzgados-checkboxes');
+    if (container.children.length > 0) return; // ya poblado
+    let html = '';
+    for (const cat of CATEGORIAS_JUZGADOS) {
+        html += `<div class="juzgado-grupo" style="margin-bottom:8px;">
+            <div style="font-weight:600; font-size:0.85rem; color:var(--primary-color,#2563eb); margin-bottom:4px; cursor:pointer;" onclick="toggleGrupoJuzgados(this)">
+                ${cat.icono} ${cat.nombre} <span style="font-size:0.75rem; color:#888;">(${cat.juzgados.length})</span>
+            </div>`;
+        for (const juzgado of cat.juzgados) {
+            html += `<label class="juzgado-check-item" style="display:flex; align-items:center; gap:5px; font-size:0.8rem; padding:2px 0 2px 16px; cursor:pointer;">
+                <input type="checkbox" class="juzgado-global-cb" value="${juzgado}">
+                <span class="juzgado-check-label">${juzgado}</span>
+            </label>`;
+        }
+        html += '</div>';
+    }
+    container.innerHTML = html;
+}
+
+function toggleGrupoJuzgados(headerEl) {
+    const grupo = headerEl.closest('.juzgado-grupo');
+    const checkboxes = grupo.querySelectorAll('.juzgado-global-cb');
+    const todosChecked = Array.from(checkboxes).every(cb => cb.checked);
+    checkboxes.forEach(cb => cb.checked = !todosChecked);
+}
+
+function toggleTodosJuzgadosGlobal(checked) {
+    document.querySelectorAll('.juzgado-global-cb').forEach(cb => {
+        if (cb.closest('.juzgado-check-item').style.display !== 'none') {
+            cb.checked = checked;
+        }
+    });
+}
+
+function filtrarJuzgadosGlobal() {
+    const filtro = document.getElementById('filtro-juzgados-global').value.toLowerCase();
+    document.querySelectorAll('#juzgados-checkboxes .juzgado-check-item').forEach(item => {
+        const texto = item.querySelector('.juzgado-check-label').textContent.toLowerCase();
+        item.style.display = texto.includes(filtro) ? '' : 'none';
+    });
+    // Ocultar grupos vacíos
+    document.querySelectorAll('#juzgados-checkboxes .juzgado-grupo').forEach(grupo => {
+        const visibles = grupo.querySelectorAll('.juzgado-check-item:not([style*="display: none"])');
+        grupo.style.display = visibles.length > 0 ? '' : 'none';
+    });
+}
+
 async function ejecutarBusquedaGlobal() {
     const tipoBusqueda = document.querySelector('input[name="tipo-busqueda-global"]:checked').value;
     const valor = document.getElementById('busqueda-global-valor').value.trim();
@@ -4220,12 +4284,20 @@ async function ejecutarBusquedaGlobal() {
     // Determinar qué juzgados buscar
     let juzgadosABuscar = [];
 
-    if (ambito === 'todos' || ambito === 'primera') {
-        juzgadosABuscar = juzgadosABuscar.concat(Object.keys(JUZGADOS));
-    }
-
-    if (ambito === 'todos' || ambito === 'segunda') {
-        juzgadosABuscar = juzgadosABuscar.concat(Object.keys(SALAS_SEGUNDA_INSTANCIA));
+    if (ambito === 'especificos') {
+        const checked = document.querySelectorAll('.juzgado-global-cb:checked');
+        juzgadosABuscar = Array.from(checked).map(cb => cb.value);
+        if (juzgadosABuscar.length === 0) {
+            mostrarToast('Selecciona al menos un juzgado', 'warning');
+            return;
+        }
+    } else {
+        if (ambito === 'todos' || ambito === 'primera') {
+            juzgadosABuscar = juzgadosABuscar.concat(Object.keys(JUZGADOS));
+        }
+        if (ambito === 'todos' || ambito === 'segunda') {
+            juzgadosABuscar = juzgadosABuscar.concat(Object.keys(SALAS_SEGUNDA_INSTANCIA));
+        }
     }
 
     const totalBusquedas = juzgadosABuscar.length;
@@ -6575,6 +6647,11 @@ async function guardarResultadosIAPJF() {
     resultadosIAPJFActuales = null;
 
     mostrarToast(`${guardados} elementos PJF guardados`, 'success');
+
+    // Sincronizar automáticamente con otros dispositivos
+    if (typeof sincronizarDatos === 'function' && typeof estadoPremium !== 'undefined' && estadoPremium.activo && estadoPremium.codigo) {
+        sincronizarDatos();
+    }
 }
 
 
