@@ -303,6 +303,8 @@ function navegarA(pagina) {
         cargarExpedientesParaBusqueda();
     } else if (pagina === 'pjf') {
         cargarCatalogosPJF();
+    } else if (pagina === 'impi') {
+        // IMPI page - no initialization needed
     }
 }
 
