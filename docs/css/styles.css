@@ -3069,6 +3069,56 @@ textarea:focus {
     border-color: rgba(54, 96, 146, 0.35);
 }
 
+/* SIGA cards */
+.siga-card-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-bottom: 0.35rem;
+}
+
+.siga-badge-gaceta,
+.siga-badge-seccion {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.siga-badge-gaceta {
+    background: #e3f2fd;
+    color: #1565c0;
+}
+
+.siga-badge-seccion {
+    background: #f3e5f5;
+    color: #7b1fa2;
+}
+
+[data-theme="dark"] .siga-badge-gaceta {
+    background: rgba(21, 101, 192, 0.2);
+    color: #64b5f6;
+}
+
+[data-theme="dark"] .siga-badge-seccion {
+    background: rgba(123, 31, 162, 0.2);
+    color: #ce93d8;
+}
+
+.siga-datos-extra {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+}
+
+.siga-datos-extra span strong {
+    color: var(--text-primary);
+}
+
 /* IMPI responsive */
 @media (max-width: 768px) {
     .impi-tabs {
