@@ -191,6 +191,10 @@ async function inicializarApp() {
 
     // Cargar configuración
     await cargarConfiguracion();
+
+    // Cargar config proxy IMPI
+    var proxyInput = document.getElementById('impi-proxy-url');
+    if (proxyInput) proxyInput.value = getProxyUrl();
 }
 
 // ==================== TOOLTIPS DE AYUDA ====================
@@ -276,6 +280,29 @@ function configurarNavegacion() {
             mobileNav?.classList.remove('active');
         }
     });
+}
+
+// ==================== TEST PROXY IMPI ====================
+
+async function testProxyIMPI() {
+    var url = getProxyUrl();
+    var statusEl = document.getElementById('impi-proxy-status');
+    if (!url) { statusEl.textContent = '❌ Ingresa una URL'; return; }
+    statusEl.textContent = '⏳ Probando conexión...';
+    try {
+        var resp = await fetch(url + '/health');
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var data = await resp.json();
+        if (data.status === 'ok') {
+            statusEl.textContent = '✅ Conectado - servicios: ' + (data.services || []).join(', ');
+            statusEl.style.color = 'var(--success)';
+        } else {
+            throw new Error('Respuesta inesperada');
+        }
+    } catch (e) {
+        statusEl.textContent = '❌ Error: ' + e.message;
+        statusEl.style.color = 'var(--danger)';
+    }
 }
 
 function navegarA(pagina) {

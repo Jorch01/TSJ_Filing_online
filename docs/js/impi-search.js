@@ -1,29 +1,38 @@
 // ==================== BÚSQUEDA IMPI (MARCia + SIGA) ====================
-// Integración con MARCia (marcas) y SIGA 2.0 (gacetas) del IMPI.
-// MARCia: API REST con CSRF token, sin reCAPTCHA.
-// SIGA: Requiere reCAPTCHA v3, se abre en portal externo como fallback.
+// Integración directa con MARCia (marcas) y SIGA 2.0 (gacetas) del IMPI.
+// Usa un proxy CORS (Cloudflare Worker) para bypass de CORS y manejo de sesiones.
 
 // ==================== ESTADO GLOBAL ====================
 
 var marciaState = {
     searchId: null,
-    csrfToken: null,
     results: [],
     totalResults: 0,
     pageNumber: 0,
     pageSize: 50,
     aggregates: null,
-    filters: {
-        status: [],
-        niceClass: [],
-        viennaCode: []
-    },
-    searchMode: 'rapida', // 'rapida' o 'avanzada'
+    filters: { status: [], niceClass: [], viennaCode: [] },
+    searchMode: 'rapida',
     searching: false
 };
 
-var MARCIA_BASE = 'https://marcia.impi.gob.mx';
-var SIGA_BASE = 'https://siga.impi.gob.mx';
+var sigaState = {
+    results: [],
+    searching: false,
+    recaptchaReady: false
+};
+
+var SIGA_RECAPTCHA_KEY = '6LeRdm0pAAAAAOprsyOxSYwiBsVUmGSMdnCuA-P6';
+
+function getProxyUrl() {
+    try {
+        return (localStorage.getItem('impi_proxy_url') || '').replace(/\/+$/, '');
+    } catch (e) { return ''; }
+}
+
+function setProxyUrl(url) {
+    try { localStorage.setItem('impi_proxy_url', (url || '').replace(/\/+$/, '')); } catch (e) {}
+}
 
 // ==================== TABS IMPI ====================
 
@@ -36,49 +45,44 @@ function cambiarTabIMPI(tab) {
     });
     var content = document.getElementById('impi-tab-' + tab);
     if (content) content.classList.add('active');
+
+    if (tab === 'siga') initSigaRecaptcha();
 }
 
-// ==================== MARCia: TOGGLE BÚSQUEDA ====================
+// ==================== PROXY HELPERS ====================
+
+async function proxyFetch(path, options) {
+    var proxy = getProxyUrl();
+    if (!proxy) {
+        throw new Error('PROXY_NOT_CONFIGURED');
+    }
+    var url = proxy + path;
+    var resp = await fetch(url, Object.assign({
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }
+    }, options));
+    if (!resp.ok) {
+        var errData;
+        try { errData = await resp.json(); } catch (e) { errData = { error: 'HTTP ' + resp.status }; }
+        throw new Error(errData.error || 'HTTP ' + resp.status);
+    }
+    return resp.json();
+}
+
+function mostrarErrorProxy() {
+    mostrarNotificacion('Configura la URL del proxy IMPI en Configuración para usar esta función.', 'warning');
+    // Scroll to config hint
+    var hint = document.getElementById('impi-proxy-hint');
+    if (hint) hint.style.display = '';
+}
+
+// ==================== MARCia: TOGGLE ====================
 
 function toggleMarciaSearchMode(mode) {
     marciaState.searchMode = mode;
-    var formRapida = document.getElementById('marcia-form-rapida');
-    var formAvanzada = document.getElementById('marcia-form-avanzada');
-    var btnRapida = document.getElementById('btn-marcia-rapida');
-    var btnAvanzada = document.getElementById('btn-marcia-avanzada');
-
-    if (mode === 'rapida') {
-        formRapida.style.display = '';
-        formAvanzada.style.display = 'none';
-        btnRapida.classList.add('active');
-        btnAvanzada.classList.remove('active');
-    } else {
-        formRapida.style.display = 'none';
-        formAvanzada.style.display = '';
-        btnRapida.classList.remove('active');
-        btnAvanzada.classList.add('active');
-    }
-}
-
-// ==================== MARCia: OBTENER CSRF TOKEN ====================
-
-async function obtenerCsrfMARCia() {
-    try {
-        var resp = await fetch(MARCIA_BASE + '/marcas/search/quick', {
-            credentials: 'include',
-            mode: 'cors'
-        });
-        var html = await resp.text();
-        var match = html.match(/<meta\s+name="_csrf"\s+content="([^"]+)"/);
-        if (match) {
-            marciaState.csrfToken = match[1];
-            return match[1];
-        }
-        throw new Error('No se encontró token CSRF');
-    } catch (e) {
-        console.warn('No se pudo obtener CSRF de MARCia:', e.message);
-        return null;
-    }
+    document.getElementById('marcia-form-rapida').style.display = mode === 'rapida' ? '' : 'none';
+    document.getElementById('marcia-form-avanzada').style.display = mode === 'avanzada' ? '' : 'none';
+    document.getElementById('btn-marcia-rapida').classList.toggle('active', mode === 'rapida');
+    document.getElementById('btn-marcia-avanzada').classList.toggle('active', mode === 'avanzada');
 }
 
 // ==================== MARCia: BÚSQUEDA ====================
@@ -86,20 +90,11 @@ async function obtenerCsrfMARCia() {
 async function buscarMARCia() {
     if (marciaState.searching) return;
 
-    var query = '';
-    var payload = null;
-
+    var payload;
     if (marciaState.searchMode === 'rapida') {
-        query = (document.getElementById('marcia-query').value || '').trim();
-        if (!query) {
-            mostrarNotificacion('Ingresa un término de búsqueda', 'warning');
-            return;
-        }
-        payload = {
-            _type: 'Search$Quick',
-            query: query,
-            images: []
-        };
+        var query = (document.getElementById('marcia-query').value || '').trim();
+        if (!query) { mostrarNotificacion('Ingresa un término de búsqueda', 'warning'); return; }
+        payload = { _type: 'Search$Quick', query: query, images: [] };
     } else {
         payload = construirPayloadAvanzadoMARCia();
         if (!payload) return;
@@ -108,44 +103,31 @@ async function buscarMARCia() {
     marciaState.searching = true;
     marciaState.pageNumber = 0;
     marciaState.filters = { status: [], niceClass: [], viennaCode: [] };
-
     var loading = document.getElementById('impi-loading');
     if (loading) loading.style.display = 'flex';
 
     try {
-        // Paso 1: Obtener CSRF token
-        var csrf = await obtenerCsrfMARCia();
-        if (!csrf) {
-            // Fallback: abrir MARCia en nueva pestaña
-            abrirMARCiaExterno(query);
-            return;
-        }
+        // 1. Obtener sesión CSRF
+        await proxyFetch('/marcia/csrf');
 
-        // Paso 2: Crear búsqueda
-        var recordResp = await fetch(MARCIA_BASE + '/marcas/search/internal/record', {
+        // 2. Crear búsqueda
+        var recordData = await proxyFetch('/marcia/search', {
             method: 'POST',
-            credentials: 'include',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-XSRF-TOKEN': csrf
-            },
             body: JSON.stringify(payload)
         });
-
-        if (!recordResp.ok) throw new Error('Error al crear búsqueda: ' + recordResp.status);
-        var recordData = await recordResp.json();
         marciaState.searchId = recordData.id;
         marciaState.totalResults = recordData.count || 0;
 
-        // Paso 3: Obtener resultados
+        // 3. Obtener resultados
         await obtenerResultadosMARCia();
 
     } catch (e) {
-        console.error('Error en búsqueda MARCia:', e);
-        // Fallback: abrir en nueva pestaña
-        mostrarNotificacion('No se pudo conectar directamente a MARCia. Abriendo en nueva pestaña...', 'warning');
-        abrirMARCiaExterno(query);
+        if (e.message === 'PROXY_NOT_CONFIGURED') {
+            mostrarErrorProxy();
+        } else {
+            console.error('Error MARCia:', e);
+            mostrarNotificacion('Error al buscar en MARCia: ' + e.message, 'error');
+        }
     } finally {
         marciaState.searching = false;
         if (loading) loading.style.display = 'none';
@@ -167,7 +149,6 @@ function construirPayloadAvanzadoMARCia() {
     var dateTo = document.getElementById('marcia-adv-date-to').value;
     var dateType = document.getElementById('marcia-adv-date-type').value;
 
-    // Al menos un campo debe estar lleno
     if (!title && !owner && !agent && !number && !goods) {
         mostrarNotificacion('Ingresa al menos un criterio de búsqueda', 'warning');
         return null;
@@ -189,59 +170,33 @@ function construirPayloadAvanzadoMARCia() {
         wordSet: { l: null, op: 'AND', r: null }
     };
 
-    if (owner) {
-        query.name = { name: owner, types: ['OWNER'] };
-    } else if (agent) {
-        query.name = { name: agent, types: ['AGENT'] };
-    }
-
-    if (number) {
-        query.number = { name: number, types: [numberType] };
-    }
-
+    if (owner) query.name = { name: owner, types: ['OWNER'] };
+    else if (agent) query.name = { name: agent, types: ['AGENT'] };
+    if (number) query.number = { name: number, types: [numberType] };
     if (dateFrom || dateTo) {
-        query.date = {
-            date: { from: dateFrom || '', to: dateTo || '' },
-            types: [dateType]
-        };
+        query.date = { date: { from: dateFrom || '', to: dateTo || '' }, types: [dateType] };
     }
 
-    return {
-        _type: 'Search$Structured',
-        images: [],
-        query: query
-    };
+    return { _type: 'Search$Structured', images: [], query: query };
 }
 
 async function obtenerResultadosMARCia() {
-    if (!marciaState.searchId || !marciaState.csrfToken) return;
-
+    if (!marciaState.searchId) return;
     var loading = document.getElementById('impi-loading');
     if (loading) loading.style.display = 'flex';
 
     try {
-        var body = {
-            searchId: marciaState.searchId,
-            pageSize: marciaState.pageSize,
-            pageNumber: marciaState.pageNumber,
-            statusFilter: marciaState.filters.status,
-            viennaCodeFilter: marciaState.filters.viennaCode,
-            niceClassFilter: marciaState.filters.niceClass
-        };
-
-        var resp = await fetch(MARCIA_BASE + '/marcas/search/internal/result', {
+        var data = await proxyFetch('/marcia/results', {
             method: 'POST',
-            credentials: 'include',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-XSRF-TOKEN': marciaState.csrfToken
-            },
-            body: JSON.stringify(body)
+            body: JSON.stringify({
+                searchId: marciaState.searchId,
+                pageSize: marciaState.pageSize,
+                pageNumber: marciaState.pageNumber,
+                statusFilter: marciaState.filters.status,
+                viennaCodeFilter: marciaState.filters.viennaCode,
+                niceClassFilter: marciaState.filters.niceClass
+            })
         });
-
-        if (!resp.ok) throw new Error('Error al obtener resultados: ' + resp.status);
-        var data = await resp.json();
 
         marciaState.results = data.resultPage || [];
         marciaState.totalResults = data.totalResults || 0;
@@ -250,16 +205,18 @@ async function obtenerResultadosMARCia() {
         renderizarResultadosMARCia();
         renderizarFiltrosMARCia();
         renderizarPaginacionMARCia();
-
     } catch (e) {
-        console.error('Error obteniendo resultados MARCia:', e);
-        mostrarNotificacion('Error al obtener resultados: ' + e.message, 'error');
+        mostrarNotificacion('Error obteniendo resultados: ' + e.message, 'error');
     } finally {
         if (loading) loading.style.display = 'none';
     }
 }
 
 // ==================== MARCia: RENDERIZADO ====================
+
+function san(str) {
+    return typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(str || '') : (str || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
 function renderizarResultadosMARCia() {
     var section = document.getElementById('marcia-results-section');
@@ -268,158 +225,101 @@ function renderizarResultadosMARCia() {
     var exportBtn = document.getElementById('btn-export-marcia');
 
     section.style.display = '';
-
+    document.getElementById('marcia-detail-section').style.display = 'none';
     countEl.textContent = marciaState.totalResults + ' resultado' + (marciaState.totalResults !== 1 ? 's' : '');
-
     if (exportBtn) exportBtn.style.display = marciaState.results.length > 0 ? '' : 'none';
 
     if (marciaState.results.length === 0) {
-        list.innerHTML = '<div class="empty-state"><span class="empty-icon">🔍</span>' +
-            '<h3>Sin resultados</h3><p>No se encontraron marcas con los criterios proporcionados.</p></div>';
+        list.innerHTML = '<div class="empty-state"><span class="empty-icon">🔍</span><h3>Sin resultados</h3><p>No se encontraron marcas con los criterios proporcionados.</p></div>';
         return;
     }
 
     var html = '';
     marciaState.results.forEach(function(r, idx) {
-        var statusClass = '';
-        var statusText = r.status || '';
-        if (statusText === 'REGISTRADO') statusClass = 'impi-status-registered';
-        else if (statusText === 'EN TRÁMITE') statusClass = 'impi-status-pending';
-        else statusClass = 'impi-status-cancelled';
-
-        var imgUrl = r.images || '';
-        var imgHtml = imgUrl
-            ? '<img src="' + DOMPurify.sanitize(imgUrl) + '" alt="' + DOMPurify.sanitize(r.title || '') + '" class="impi-mark-image" onerror="this.style.display=\'none\'">'
+        var sc = r.status === 'REGISTRADO' ? 'impi-status-registered' : r.status === 'EN TRÁMITE' ? 'impi-status-pending' : 'impi-status-cancelled';
+        var imgHtml = r.images
+            ? '<img src="' + san(r.images) + '" alt="' + san(r.title) + '" class="impi-mark-image" onerror="this.style.display=\'none\'">'
             : '<div class="impi-mark-placeholder">🔰</div>';
-
-        var owners = (r.owners || []).map(function(o) { return DOMPurify.sanitize(o); }).join(', ');
+        var owners = (r.owners || []).map(san).join(', ');
         var classes = (r.classes || []).join(', ');
         var appDate = r.dates && r.dates.application ? r.dates.application : '';
+        var gi = marciaState.pageNumber * marciaState.pageSize + idx + 1;
 
-        var globalIdx = marciaState.pageNumber * marciaState.pageSize + idx + 1;
-
-        html += '<div class="impi-result-card" onclick="verDetalleMARCia(\'' + DOMPurify.sanitize(r.id || '') + '\')">' +
-            '<div class="impi-result-number">#' + globalIdx + '</div>' +
+        html += '<div class="impi-result-card" onclick="verDetalleMARCia(\'' + san(r.id || '') + '\')">' +
+            '<div class="impi-result-number">#' + gi + '</div>' +
             '<div class="impi-result-image">' + imgHtml + '</div>' +
             '<div class="impi-result-info">' +
-                '<div class="impi-result-title">' + DOMPurify.sanitize(r.title || 'Sin denominación') + '</div>' +
-                '<span class="impi-status-badge ' + statusClass + '">' + DOMPurify.sanitize(statusText) + '</span>' +
+                '<div class="impi-result-title">' + san(r.title || 'Sin denominación') + '</div>' +
+                '<span class="impi-status-badge ' + sc + '">' + san(r.status) + '</span>' +
                 '<div class="impi-result-meta">' +
-                    (r.applicationNumber ? '<span><strong>Exp:</strong> ' + DOMPurify.sanitize(r.applicationNumber) + '</span>' : '') +
-                    (r.registrationNumber ? '<span><strong>Reg:</strong> ' + DOMPurify.sanitize(r.registrationNumber) + '</span>' : '') +
-                    (classes ? '<span><strong>Clase:</strong> ' + DOMPurify.sanitize(classes) + '</span>' : '') +
-                    (appDate ? '<span><strong>Fecha:</strong> ' + DOMPurify.sanitize(appDate) + '</span>' : '') +
+                    (r.applicationNumber ? '<span><strong>Exp:</strong> ' + san(r.applicationNumber) + '</span>' : '') +
+                    (r.registrationNumber ? '<span><strong>Reg:</strong> ' + san(r.registrationNumber) + '</span>' : '') +
+                    (classes ? '<span><strong>Clase:</strong> ' + san(classes) + '</span>' : '') +
+                    (appDate ? '<span><strong>Fecha:</strong> ' + san(appDate) + '</span>' : '') +
                 '</div>' +
                 (owners ? '<div class="impi-result-owner"><strong>Titular:</strong> ' + owners + '</div>' : '') +
-                (r.appType ? '<div class="impi-result-type">' + DOMPurify.sanitize(r.appType) + '</div>' : '') +
-            '</div>' +
-        '</div>';
+                (r.appType ? '<div class="impi-result-type">' + san(r.appType) + '</div>' : '') +
+            '</div></div>';
     });
-
     list.innerHTML = html;
 }
 
 function renderizarFiltrosMARCia() {
-    var filtersEl = document.getElementById('marcia-filters');
-    if (!marciaState.aggregates) {
-        filtersEl.style.display = 'none';
-        return;
-    }
-    filtersEl.style.display = '';
+    var el = document.getElementById('marcia-filters');
+    if (!marciaState.aggregates) { el.style.display = 'none'; return; }
+    el.style.display = '';
 
-    // Estatus
-    var statusContainer = document.getElementById('marcia-filter-status');
     var statusAgg = marciaState.aggregates.STATUS || [];
-    statusContainer.innerHTML = statusAgg.map(function(s) {
+    document.getElementById('marcia-filter-status').innerHTML = statusAgg.map(function(s) {
         var active = marciaState.filters.status.indexOf(s.key) >= 0;
-        return '<button class="impi-filter-chip' + (active ? ' active' : '') + '" onclick="toggleFiltroMARCia(\'status\',\'' +
-            DOMPurify.sanitize(s.key) + '\')">' + DOMPurify.sanitize(s.key) + ' (' + s.docCount + ')</button>';
+        return '<button class="impi-filter-chip' + (active ? ' active' : '') + '" onclick="toggleFiltroMARCia(\'status\',\'' + san(s.key) + '\')">' + san(s.key) + ' (' + s.docCount + ')</button>';
     }).join('');
 
-    // Clases Niza
-    var classContainer = document.getElementById('marcia-filter-classes');
     var classAgg = marciaState.aggregates.NICE_CLASSES || [];
-    // Mostrar top 10
-    classContainer.innerHTML = classAgg.slice(0, 10).map(function(c) {
+    document.getElementById('marcia-filter-classes').innerHTML = classAgg.slice(0, 12).map(function(c) {
         var active = marciaState.filters.niceClass.indexOf(c.key) >= 0;
-        return '<button class="impi-filter-chip' + (active ? ' active' : '') + '" onclick="toggleFiltroMARCia(\'niceClass\',\'' +
-            DOMPurify.sanitize(c.key) + '\')">' + 'Clase ' + DOMPurify.sanitize(c.key) + ' (' + c.docCount + ')</button>';
+        return '<button class="impi-filter-chip' + (active ? ' active' : '') + '" onclick="toggleFiltroMARCia(\'niceClass\',\'' + san(c.key) + '\')">Clase ' + san(c.key) + ' (' + c.docCount + ')</button>';
     }).join('');
 }
 
 function toggleFiltroMARCia(tipo, valor) {
     var arr = marciaState.filters[tipo];
     var idx = arr.indexOf(valor);
-    if (idx >= 0) {
-        arr.splice(idx, 1);
-    } else {
-        arr.push(valor);
-    }
+    if (idx >= 0) arr.splice(idx, 1); else arr.push(valor);
     marciaState.pageNumber = 0;
     obtenerResultadosMARCia();
 }
 
 function renderizarPaginacionMARCia() {
-    var paginationEl = document.getElementById('marcia-pagination');
+    var el = document.getElementById('marcia-pagination');
     var totalPages = Math.ceil(marciaState.totalResults / marciaState.pageSize);
-
-    if (totalPages <= 1) {
-        paginationEl.style.display = 'none';
-        return;
-    }
-
-    paginationEl.style.display = 'flex';
-    document.getElementById('marcia-page-info').textContent =
-        'Página ' + (marciaState.pageNumber + 1) + ' de ' + totalPages +
-        ' (' + marciaState.totalResults + ' resultados)';
+    if (totalPages <= 1) { el.style.display = 'none'; return; }
+    el.style.display = 'flex';
+    document.getElementById('marcia-page-info').textContent = 'Página ' + (marciaState.pageNumber + 1) + ' de ' + totalPages + ' (' + marciaState.totalResults + ' resultados)';
     document.getElementById('marcia-prev').disabled = marciaState.pageNumber === 0;
     document.getElementById('marcia-next').disabled = marciaState.pageNumber >= totalPages - 1;
 }
 
 function marciaPaginaAnterior() {
-    if (marciaState.pageNumber > 0) {
-        marciaState.pageNumber--;
-        obtenerResultadosMARCia();
-    }
+    if (marciaState.pageNumber > 0) { marciaState.pageNumber--; obtenerResultadosMARCia(); }
 }
-
 function marciaPaginaSiguiente() {
-    var totalPages = Math.ceil(marciaState.totalResults / marciaState.pageSize);
-    if (marciaState.pageNumber < totalPages - 1) {
-        marciaState.pageNumber++;
-        obtenerResultadosMARCia();
-    }
+    var tp = Math.ceil(marciaState.totalResults / marciaState.pageSize);
+    if (marciaState.pageNumber < tp - 1) { marciaState.pageNumber++; obtenerResultadosMARCia(); }
 }
 
 // ==================== MARCia: DETALLE ====================
 
 async function verDetalleMARCia(markId) {
-    if (!markId || !marciaState.csrfToken) {
-        // Abrir en MARCia directamente
-        window.open(MARCIA_BASE + '/marcas/search/view/' + encodeURIComponent(markId), '_blank');
-        return;
-    }
-
+    if (!markId) return;
     var loading = document.getElementById('impi-loading');
     if (loading) loading.style.display = 'flex';
 
     try {
-        var resp = await fetch(MARCIA_BASE + '/marcas/search/internal/view/' + encodeURIComponent(markId), {
-            credentials: 'include',
-            headers: {
-                'Accept': 'application/json',
-                'X-XSRF-TOKEN': marciaState.csrfToken
-            }
-        });
-
-        if (!resp.ok) throw new Error('Error: ' + resp.status);
-        var data = await resp.json();
-
+        var data = await proxyFetch('/marcia/view/' + encodeURIComponent(markId));
         renderizarDetalleMARCia(data);
-
     } catch (e) {
-        console.error('Error al obtener detalle:', e);
-        window.open(MARCIA_BASE + '/marcas/search/view/' + encodeURIComponent(markId), '_blank');
+        mostrarNotificacion('Error al obtener detalle: ' + e.message, 'error');
     } finally {
         if (loading) loading.style.display = 'none';
     }
@@ -428,7 +328,7 @@ async function verDetalleMARCia(markId) {
 function renderizarDetalleMARCia(data) {
     var section = document.getElementById('marcia-detail-section');
     var content = document.getElementById('marcia-detail-content');
-    var resultsSection = document.getElementById('marcia-results-section');
+    document.getElementById('marcia-results-section').style.display = 'none';
 
     var d = data.details || {};
     var gi = d.generalInformation || {};
@@ -437,66 +337,57 @@ function renderizarDetalleMARCia(data) {
     var ps = d.productsAndServices || [];
 
     var imgUrl = tm.image || (data.result && data.result.images) || '';
-    var imgHtml = imgUrl
-        ? '<img src="' + DOMPurify.sanitize(imgUrl) + '" class="impi-detail-image" onerror="this.style.display=\'none\'">'
-        : '';
+    var imgHtml = imgUrl ? '<img src="' + san(imgUrl) + '" class="impi-detail-image" onerror="this.style.display=\'none\'">' : '';
 
     var ownersHtml = '';
     if (oi.owners && oi.owners.length > 0) {
-        ownersHtml = oi.owners.map(function(o) {
-            return '<div class="impi-detail-owner">' +
-                '<strong>' + DOMPurify.sanitize(o.name || o) + '</strong>' +
-                (o.address ? '<br><small>' + DOMPurify.sanitize(o.address) + '</small>' : '') +
-            '</div>';
-        }).join('');
+        ownersHtml = '<div class="impi-detail-section"><h4>Titulares</h4>' + oi.owners.map(function(o) {
+            var name = typeof o === 'string' ? o : o.name || '';
+            var addr = typeof o === 'object' && o.address ? '<br><small>' + san(o.address) + '</small>' : '';
+            return '<div class="impi-detail-owner"><strong>' + san(name) + '</strong>' + addr + '</div>';
+        }).join('') + '</div>';
     }
 
     var productsHtml = '';
     if (ps.length > 0) {
-        productsHtml = '<div class="impi-detail-section"><h4>Productos y Servicios</h4>' +
-            ps.map(function(p) {
-                return '<div class="impi-detail-product">' +
-                    '<strong>Clase ' + DOMPurify.sanitize(String(p.niceClass || p.classNumber || '')) + ':</strong> ' +
-                    DOMPurify.sanitize(p.description || p.goodsServices || '') +
-                '</div>';
-            }).join('') +
-        '</div>';
+        productsHtml = '<div class="impi-detail-section"><h4>Productos y Servicios</h4>' + ps.map(function(p) {
+            return '<div class="impi-detail-product"><strong>Clase ' + san(String(p.niceClass || p.classNumber || '')) + ':</strong> ' + san(p.description || p.goodsServices || '') + '</div>';
+        }).join('') + '</div>';
     }
 
-    var viennaCodes = (tm.viennaCodes || []).map(function(v) { return DOMPurify.sanitize(String(v)); }).join(', ');
+    var histHtml = '';
+    if (data.historyData && data.historyData.historyRecords && data.historyData.historyRecords.length > 0) {
+        histHtml = '<div class="impi-detail-section"><h4>Historial</h4><div class="impi-history-list">' +
+            data.historyData.historyRecords.map(function(h) {
+                return '<div class="impi-history-item"><span class="impi-history-date">' + san(h.date || '') + '</span><span>' + san(h.description || h.status || '') + '</span></div>';
+            }).join('') + '</div></div>';
+    }
+
+    var viennaCodes = (tm.viennaCodes || []).map(function(v) { return san(String(v)); }).join(', ');
 
     content.innerHTML =
         '<div class="impi-detail-grid">' +
             '<div class="impi-detail-left">' + imgHtml + '</div>' +
             '<div class="impi-detail-right">' +
-                '<h2>' + DOMPurify.sanitize(gi.title || 'Sin denominación') + '</h2>' +
+                '<h2>' + san(gi.title || 'Sin denominación') + '</h2>' +
                 '<div class="impi-detail-fields">' +
-                    '<div class="impi-detail-field"><label>Tipo de solicitud</label><span>' + DOMPurify.sanitize(gi.appType || '') + '</span></div>' +
-                    '<div class="impi-detail-field"><label>No. Expediente</label><span>' + DOMPurify.sanitize(gi.applicationNumber || '') + '</span></div>' +
-                    '<div class="impi-detail-field"><label>No. Registro</label><span>' + DOMPurify.sanitize(gi.registrationNumber || '') + '</span></div>' +
-                    '<div class="impi-detail-field"><label>Fecha de presentación</label><span>' + DOMPurify.sanitize(gi.applicationDate || '') + '</span></div>' +
-                    '<div class="impi-detail-field"><label>Fecha de registro</label><span>' + DOMPurify.sanitize(gi.registrationDate || '') + '</span></div>' +
-                    '<div class="impi-detail-field"><label>Fecha de vencimiento</label><span>' + DOMPurify.sanitize(gi.expiryDate || '') + '</span></div>' +
-                    (viennaCodes ? '<div class="impi-detail-field"><label>Códigos de Viena</label><span>' + viennaCodes + '</span></div>' : '') +
+                    campo('Tipo de solicitud', gi.appType) +
+                    campo('No. Expediente', gi.applicationNumber) +
+                    campo('No. Registro', gi.registrationNumber) +
+                    campo('Fecha de presentación', gi.applicationDate) +
+                    campo('Fecha de registro', gi.registrationDate) +
+                    campo('Fecha de vencimiento', gi.expiryDate) +
+                    (viennaCodes ? campo('Códigos de Viena', viennaCodes) : '') +
                 '</div>' +
             '</div>' +
-        '</div>' +
-        (ownersHtml ? '<div class="impi-detail-section"><h4>Titulares</h4>' + ownersHtml + '</div>' : '') +
-        productsHtml +
-        (data.historyData && data.historyData.historyRecords && data.historyData.historyRecords.length > 0
-            ? '<div class="impi-detail-section"><h4>Historial</h4>' +
-                '<div class="impi-history-list">' +
-                data.historyData.historyRecords.map(function(h) {
-                    return '<div class="impi-history-item">' +
-                        '<span class="impi-history-date">' + DOMPurify.sanitize(h.date || '') + '</span>' +
-                        '<span>' + DOMPurify.sanitize(h.description || h.status || '') + '</span>' +
-                    '</div>';
-                }).join('') +
-              '</div></div>'
-            : '');
+        '</div>' + ownersHtml + productsHtml + histHtml;
 
-    resultsSection.style.display = 'none';
     section.style.display = '';
+}
+
+function campo(label, value) {
+    if (!value) return '';
+    return '<div class="impi-detail-field"><label>' + san(label) + '</label><span>' + san(value) + '</span></div>';
 }
 
 function cerrarDetalleMARCia() {
@@ -508,99 +399,192 @@ function cerrarDetalleMARCia() {
 
 function limpiarFormularioMARCia() {
     document.getElementById('marcia-query').value = '';
-    document.getElementById('marcia-adv-title').value = '';
-    document.getElementById('marcia-adv-title-option').value = 'similar';
-    document.getElementById('marcia-adv-owner').value = '';
-    document.getElementById('marcia-adv-agent').value = '';
-    document.getElementById('marcia-adv-number').value = '';
-    document.getElementById('marcia-adv-number-type').value = 'APPLICATION';
-    document.getElementById('marcia-adv-class').value = '';
-    document.getElementById('marcia-adv-status').value = '';
-    document.getElementById('marcia-adv-apptype').value = '';
-    document.getElementById('marcia-adv-goods').value = '';
-    document.getElementById('marcia-adv-date-from').value = '';
-    document.getElementById('marcia-adv-date-to').value = '';
-    document.getElementById('marcia-adv-date-type').value = 'APPLICATION';
-
+    ['marcia-adv-title','marcia-adv-owner','marcia-adv-agent','marcia-adv-number','marcia-adv-goods','marcia-adv-date-from','marcia-adv-date-to'].forEach(function(id) {
+        var el = document.getElementById(id); if (el) el.value = '';
+    });
+    ['marcia-adv-title-option','marcia-adv-number-type','marcia-adv-class','marcia-adv-status','marcia-adv-apptype','marcia-adv-date-type'].forEach(function(id) {
+        var el = document.getElementById(id); if (el) el.selectedIndex = 0;
+    });
     document.getElementById('marcia-results-section').style.display = 'none';
     document.getElementById('marcia-detail-section').style.display = 'none';
-
-    marciaState.results = [];
-    marciaState.searchId = null;
-    marciaState.totalResults = 0;
-    marciaState.pageNumber = 0;
+    marciaState.results = []; marciaState.searchId = null; marciaState.totalResults = 0; marciaState.pageNumber = 0;
     marciaState.filters = { status: [], niceClass: [], viennaCode: [] };
 }
 
-function abrirMARCiaExterno(query) {
-    var q = query || (document.getElementById('marcia-query').value || '').trim();
-    if (q) {
-        // MARCia no soporta parámetros de URL para búsqueda directa,
-        // pero podemos abrir la página de búsqueda rápida
-        window.open(MARCIA_BASE + '/marcas/search/quick', '_blank');
-        mostrarNotificacion('MARCia abierto. Busca: "' + q + '"', 'info');
-    } else {
-        window.open(MARCIA_BASE + '/marcas/search/quick', '_blank');
-    }
+function abrirMARCiaExterno() {
+    window.open('https://marcia.impi.gob.mx/marcas/search/quick', '_blank');
 }
 
 function exportarResultadosMARCia() {
     if (marciaState.results.length === 0) return;
-
     var csv = 'Denominación,Expediente,Registro,Estatus,Tipo,Titular,Clases,Fecha Presentación\n';
     marciaState.results.forEach(function(r) {
-        var owners = (r.owners || []).join('; ');
-        var classes = (r.classes || []).join('; ');
-        var appDate = r.dates && r.dates.application ? r.dates.application : '';
         csv += '"' + (r.title || '').replace(/"/g, '""') + '",' +
             '"' + (r.applicationNumber || '') + '",' +
             '"' + (r.registrationNumber || '') + '",' +
             '"' + (r.status || '') + '",' +
             '"' + (r.appType || '') + '",' +
-            '"' + owners.replace(/"/g, '""') + '",' +
-            '"' + classes + '",' +
-            '"' + appDate + '"\n';
+            '"' + (r.owners || []).join('; ').replace(/"/g, '""') + '",' +
+            '"' + (r.classes || []).join('; ') + '",' +
+            '"' + (r.dates && r.dates.application ? r.dates.application : '') + '"\n';
     });
-
     var blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-    var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
-    a.href = url;
+    a.href = URL.createObjectURL(blob);
     a.download = 'marcas_impi_' + new Date().toISOString().slice(0, 10) + '.csv';
     a.click();
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(a.href);
     mostrarNotificacion('CSV exportado con ' + marciaState.results.length + ' resultados', 'success');
+}
+
+// ==================== SIGA: reCAPTCHA ====================
+
+function initSigaRecaptcha() {
+    if (sigaState.recaptchaReady) return;
+    if (document.getElementById('siga-recaptcha-script')) return;
+
+    var script = document.createElement('script');
+    script.id = 'siga-recaptcha-script';
+    script.src = 'https://www.google.com/recaptcha/api.js?render=' + SIGA_RECAPTCHA_KEY;
+    script.onload = function() {
+        sigaState.recaptchaReady = true;
+    };
+    document.head.appendChild(script);
+}
+
+async function obtenerTokenRecaptchaSIGA() {
+    if (!sigaState.recaptchaReady || typeof grecaptcha === 'undefined') {
+        throw new Error('reCAPTCHA no disponible. Recarga la página.');
+    }
+    return new Promise(function(resolve, reject) {
+        grecaptcha.ready(function() {
+            grecaptcha.execute(SIGA_RECAPTCHA_KEY, { action: 'search' }).then(resolve).catch(reject);
+        });
+    });
 }
 
 // ==================== SIGA: BÚSQUEDA ====================
 
-function buscarSIGA() {
+async function buscarSIGA() {
+    if (sigaState.searching) return;
     var query = (document.getElementById('siga-query').value || '').trim();
-    if (!query) {
-        mostrarNotificacion('Ingresa un término de búsqueda', 'warning');
+    if (!query) { mostrarNotificacion('Ingresa un término de búsqueda', 'warning'); return; }
+
+    var area = document.getElementById('siga-area').value;
+    var fechaDesde = document.getElementById('siga-fecha-desde').value || '';
+    var fechaHasta = document.getElementById('siga-fecha-hasta').value || '';
+
+    sigaState.searching = true;
+    var loading = document.getElementById('impi-loading');
+    if (loading) loading.style.display = 'flex';
+
+    try {
+        // 1. Obtener sesión CSRF del proxy
+        await proxyFetch('/siga/csrf');
+
+        // 2. Obtener token reCAPTCHA
+        var recaptchaToken;
+        try {
+            recaptchaToken = await obtenerTokenRecaptchaSIGA();
+        } catch (e) {
+            throw new Error('No se pudo generar token reCAPTCHA: ' + e.message);
+        }
+
+        // 3. Buscar
+        var data = await proxyFetch('/siga/search', {
+            method: 'POST',
+            body: JSON.stringify({
+                Busqueda: query,
+                IdArea: area,
+                IdGaceta: [],
+                FechaDesde: fechaDesde,
+                FechaHasta: fechaHasta,
+                ReCaptchaToken: recaptchaToken
+            })
+        });
+
+        if (data.successed === false) {
+            throw new Error(data.message || 'Error en la búsqueda SIGA');
+        }
+
+        sigaState.results = data.data || [];
+        renderizarResultadosSIGA();
+
+    } catch (e) {
+        if (e.message === 'PROXY_NOT_CONFIGURED') {
+            mostrarErrorProxy();
+        } else {
+            console.error('Error SIGA:', e);
+            mostrarNotificacion('Error al buscar en SIGA: ' + e.message, 'error');
+        }
+    } finally {
+        sigaState.searching = false;
+        if (loading) loading.style.display = 'none';
+    }
+}
+
+// ==================== SIGA: RENDERIZADO ====================
+
+function renderizarResultadosSIGA() {
+    var section = document.getElementById('siga-results-section');
+    var list = document.getElementById('siga-results-list');
+    var countEl = document.getElementById('siga-results-count');
+
+    section.style.display = '';
+    countEl.textContent = sigaState.results.length + ' resultado' + (sigaState.results.length !== 1 ? 's' : '');
+
+    if (sigaState.results.length === 0) {
+        list.innerHTML = '<div class="empty-state"><span class="empty-icon">📰</span><h3>Sin resultados</h3><p>No se encontraron fichas en las gacetas.</p></div>';
         return;
     }
 
-    var area = document.getElementById('siga-area').value;
+    var html = '';
+    sigaState.results.forEach(function(ficha, idx) {
+        var datos = ficha.datos || [];
+        var denominacion = '';
+        var clase = '';
+        var registro = '';
+        var resolucion = '';
 
-    // SIGA requiere reCAPTCHA v3, no podemos hacer la llamada directamente.
-    // Abrimos SIGA en nueva pestaña. El usuario verá los resultados ahí.
-    // Guardamos los parámetros en localStorage para que si el usuario tiene
-    // la extensión, esta pueda pre-llenar la búsqueda.
-    try {
-        localStorage.setItem('siga_pendingSearch', JSON.stringify({
-            query: query,
-            area: area,
-            fechaDesde: document.getElementById('siga-fecha-desde').value || '',
-            fechaHasta: document.getElementById('siga-fecha-hasta').value || ''
-        }));
-    } catch (e) { /* localStorage puede fallar */ }
+        datos.forEach(function(d) {
+            var desc = (d.descripcion || '').toLowerCase();
+            if (desc.includes('denominación') || desc.includes('denominacion')) denominacion = d.datoTxt || '';
+            else if (desc.includes('clase')) clase = d.datoTxt || '';
+            else if (desc.includes('registro')) registro = d.datoTxt || '';
+            else if (desc.includes('resolución') || desc.includes('resolucion')) resolucion = d.datoTxt || '';
+        });
 
-    // Abrir SIGA - la búsqueda se hace en el portal
-    window.open(SIGA_BASE + '/', '_blank');
+        html += '<div class="impi-result-card siga-card">' +
+            '<div class="impi-result-number">#' + (idx + 1) + '</div>' +
+            '<div class="impi-result-info" style="width:100%">' +
+                '<div class="impi-result-title">' + san(denominacion || 'Ficha #' + ficha.fichaId) + '</div>' +
+                '<div class="siga-card-header">' +
+                    '<span class="siga-badge-gaceta">' + san(ficha.gaceta || '') + '</span>' +
+                    '<span class="siga-badge-seccion">' + san(ficha.seccion || '') + '</span>' +
+                '</div>' +
+                '<div class="impi-result-meta">' +
+                    (resolucion ? '<span><strong>Resolución:</strong> ' + san(resolucion) + '</span>' : '') +
+                    (registro ? '<span><strong>Registro:</strong> ' + san(registro) + '</span>' : '') +
+                    (clase ? '<span><strong>Clase:</strong> ' + san(clase) + '</span>' : '') +
+                    '<span><strong>Ejemplar:</strong> ' + san(ficha.ejemplar || '') + '</span>' +
+                    '<span><strong>Publicación:</strong> ' + san(ficha.fechaPuestaCirculacion || '') + '</span>' +
+                '</div>' +
+                // Mostrar todos los datos dinámicos que no se mostraron arriba
+                '<div class="siga-datos-extra">' +
+                    datos.filter(function(d) {
+                        var desc = (d.descripcion || '').toLowerCase();
+                        return !desc.includes('denominación') && !desc.includes('denominacion') &&
+                               !desc.includes('clase') && !desc.includes('registro') &&
+                               !desc.includes('resolución') && !desc.includes('resolucion');
+                    }).map(function(d) {
+                        return '<span><strong>' + san(d.descripcion) + ':</strong> ' + san(d.datoTxt) + '</span>';
+                    }).join('') +
+                '</div>' +
+            '</div>' +
+        '</div>';
+    });
 
-    mostrarNotificacion('SIGA abierto en nueva pestaña. Busca: "' + query + '" en ' +
-        (area === '1' ? 'Patentes' : area === '2' ? 'Marcas' : 'Protección PI'), 'info');
+    list.innerHTML = html;
 }
 
 function limpiarFormularioSIGA() {
@@ -609,6 +593,7 @@ function limpiarFormularioSIGA() {
     document.getElementById('siga-fecha-desde').value = '';
     document.getElementById('siga-fecha-hasta').value = '';
     document.getElementById('siga-results-section').style.display = 'none';
+    sigaState.results = [];
 }
 
 // ==================== ENTER KEY HANDLERS ====================
@@ -617,20 +602,17 @@ document.addEventListener('DOMContentLoaded', function() {
     var marciaInput = document.getElementById('marcia-query');
     if (marciaInput) {
         marciaInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                buscarMARCia();
-            }
+            if (e.key === 'Enter') { e.preventDefault(); buscarMARCia(); }
         });
     }
-
     var sigaInput = document.getElementById('siga-query');
     if (sigaInput) {
         sigaInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                buscarSIGA();
-            }
+            if (e.key === 'Enter') { e.preventDefault(); buscarSIGA(); }
         });
     }
+
+    // Cargar config de proxy si existe
+    var proxyInput = document.getElementById('impi-proxy-url');
+    if (proxyInput) proxyInput.value = getProxyUrl();
 });
