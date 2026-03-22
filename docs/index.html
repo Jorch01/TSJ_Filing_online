@@ -1546,9 +1546,6 @@
                                 <input type="date" id="siga-fecha-hasta">
                             </div>
                         </div>
-                        <div class="siga-info-box" id="impi-proxy-hint" style="display:none;">
-                            <p>⚙️ Para buscar directamente en SIGA, configura la URL del proxy en <strong>Configuración → IMPI Proxy</strong>.</p>
-                        </div>
                     </div>
                     <div class="card-footer">
                         <button class="btn btn-secondary" onclick="limpiarFormularioSIGA()">
@@ -1590,23 +1587,6 @@
                         <!-- Contenido del anuncio se carga dinámicamente -->
                     </div>
                     <a href="#" class="ad-remove-link" onclick="mostrarOpcionQuitarAnuncios(event)">Quitar anuncios</a>
-                </div>
-            </div>
-
-            <div class="config-section">
-                <h3>🔰 IMPI Proxy</h3>
-                <div class="config-item">
-                    <div class="config-info">
-                        <h4>URL del Proxy CORS</h4>
-                        <p>Necesario para buscar marcas y gacetas directamente desde la app. <a href="proxy/impi-proxy-worker.js" target="_blank">Ver instrucciones de despliegue</a></p>
-                    </div>
-                </div>
-                <div class="config-item" style="flex-direction: column; align-items: stretch;">
-                    <div style="display:flex; gap:0.5rem;">
-                        <input type="text" id="impi-proxy-url" placeholder="https://tu-worker.tu-cuenta.workers.dev" style="flex:1;" oninput="setProxyUrl(this.value)">
-                        <button class="btn btn-sm btn-primary" onclick="testProxyIMPI()">Probar</button>
-                    </div>
-                    <span class="form-help" id="impi-proxy-status">Sin configurar</span>
                 </div>
             </div>
 
