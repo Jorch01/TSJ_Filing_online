@@ -42,6 +42,9 @@ export default {
         const url = new URL(request.url);
         const origin = request.headers.get('Origin') || '';
 
+        // Limpiar sesiones expiradas
+        limpiarSesionesViejas();
+
         // Verificar origen permitido
         if (!isOriginAllowed(origin)) {
             return new Response('Forbidden', { status: 403 });
@@ -450,12 +453,12 @@ function addCORSHeaders(response, origin) {
     });
 }
 
-// Limpiar sesiones viejas (> 30 min) periódicamente
-setInterval(() => {
+// Limpiar sesiones viejas (> 30 min) en cada request
+function limpiarSesionesViejas() {
     const now = Date.now();
     for (const [key, session] of sessions.entries()) {
         if (now - session.timestamp > 30 * 60 * 1000) {
             sessions.delete(key);
         }
     }
-}, 5 * 60 * 1000);
+}
