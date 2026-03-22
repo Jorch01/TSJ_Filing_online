@@ -107,6 +107,7 @@
             <button class="nav-btn" data-page="notas">📝 Notas</button>
             <button class="nav-btn" data-page="busqueda">🔍 Búsqueda</button>
             <button class="nav-btn" data-page="pjf">🏛️ PJF Federal</button>
+            <button class="nav-btn" data-page="impi">🔰 IMPI Marcas</button>
             <button class="nav-btn" data-page="config">⚙️</button>
         </nav>
         <button class="menu-toggle" id="menuToggle">☰</button>
@@ -120,6 +121,7 @@
         <button class="nav-btn" data-page="notas">📝 Notas</button>
         <button class="nav-btn" data-page="busqueda">🔍 Búsqueda</button>
         <button class="nav-btn" data-page="pjf">🏛️ PJF Federal</button>
+        <button class="nav-btn" data-page="impi">🔰 IMPI Marcas</button>
         <button class="nav-btn" data-page="config">⚙️ Configuración</button>
     </nav>
 
@@ -188,6 +190,10 @@
                     <button class="action-card" onclick="navegarA('pjf')">
                         <span class="action-icon">🏛️</span>
                         <span>PJF Federal</span>
+                    </button>
+                    <button class="action-card" onclick="navegarA('impi')">
+                        <span class="action-icon">🔰</span>
+                        <span>IMPI Marcas</span>
                     </button>
                     <button class="action-card" onclick="navegarA('calendario')">
                         <span class="action-icon">📅</span>
@@ -1238,6 +1244,337 @@
             </div>
         </section>
 
+        <!-- Página IMPI Marcas -->
+        <section class="page" id="page-impi">
+            <div class="page-header">
+                <div>
+                    <h2>🔰 IMPI - Propiedad Industrial</h2>
+                    <p class="subtitle">Búsqueda de marcas registradas y gacetas del Instituto Mexicano de la Propiedad Industrial</p>
+                </div>
+            </div>
+
+            <!-- Tabs de navegación interna IMPI -->
+            <div class="impi-tabs">
+                <button class="impi-tab active" data-impi-tab="marcia" onclick="cambiarTabIMPI('marcia')">🔍 MARCia - Marcas</button>
+                <button class="impi-tab" data-impi-tab="siga" onclick="cambiarTabIMPI('siga')">📰 SIGA - Gacetas</button>
+            </div>
+
+            <!-- Loading spinner IMPI -->
+            <div class="impi-loading" id="impi-loading" style="display: none;">
+                <span class="loading-spinner"></span>
+                <span>Buscando en IMPI...</span>
+            </div>
+
+            <!-- TAB: MARCia - Búsqueda de Marcas -->
+            <div class="impi-tab-content active" id="impi-tab-marcia">
+                <!-- Búsqueda Rápida MARCia -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="header-with-help">
+                            <h3>🔍 Búsqueda de Marcas (MARCia)</h3>
+                            <div class="tooltip-container">
+                                <button class="help-btn" type="button">?</button>
+                                <div class="tooltip-content tooltip-left">
+                                    <h4>¿Cómo funciona?</h4>
+                                    <ul>
+                                        <li>Busca marcas registradas ante el IMPI por nombre</li>
+                                        <li>Filtra por estatus, clase de Niza y código de Viena</li>
+                                        <li>Usa la búsqueda avanzada para criterios específicos (titular, apoderado, fechas)</li>
+                                        <li>Los resultados se obtienen directamente de MARCia (marcia.impi.gob.mx)</li>
+                                    </ul>
+                                    <p><strong>Nota:</strong> Si la búsqueda falla por CORS, se abrirá MARCia en una nueva pestaña.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <!-- Toggle búsqueda rápida / avanzada -->
+                        <div class="impi-search-toggle">
+                            <button class="btn btn-sm btn-outline active" id="btn-marcia-rapida" onclick="toggleMarciaSearchMode('rapida')">Búsqueda Rápida</button>
+                            <button class="btn btn-sm btn-outline" id="btn-marcia-avanzada" onclick="toggleMarciaSearchMode('avanzada')">Búsqueda Avanzada</button>
+                        </div>
+
+                        <!-- Búsqueda Rápida -->
+                        <div id="marcia-form-rapida">
+                            <div class="form-group">
+                                <label for="marcia-query">Nombre de la marca</label>
+                                <input type="text" id="marcia-query" placeholder="Ej: Coca Cola, Nike, Apple..." autocomplete="off">
+                            </div>
+                        </div>
+
+                        <!-- Búsqueda Avanzada -->
+                        <div id="marcia-form-avanzada" style="display: none;">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="marcia-adv-title">Nombre de la marca</label>
+                                    <input type="text" id="marcia-adv-title" placeholder="Nombre o denominación">
+                                </div>
+                                <div class="form-group">
+                                    <label for="marcia-adv-title-option">Tipo de coincidencia</label>
+                                    <select id="marcia-adv-title-option">
+                                        <option value="">Idéntico</option>
+                                        <option value="similar" selected>Similar</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="marcia-adv-owner">Titular</label>
+                                    <input type="text" id="marcia-adv-owner" placeholder="Nombre del titular">
+                                </div>
+                                <div class="form-group">
+                                    <label for="marcia-adv-agent">Apoderado</label>
+                                    <input type="text" id="marcia-adv-agent" placeholder="Nombre del apoderado">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="marcia-adv-number">Número de expediente o registro</label>
+                                    <input type="text" id="marcia-adv-number" placeholder="Ej: 24621">
+                                </div>
+                                <div class="form-group">
+                                    <label for="marcia-adv-number-type">Tipo de número</label>
+                                    <select id="marcia-adv-number-type">
+                                        <option value="APPLICATION">Expediente</option>
+                                        <option value="REGISTRATION">Registro</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="marcia-adv-class">Clase de Niza</label>
+                                    <select id="marcia-adv-class">
+                                        <option value="">-- Todas --</option>
+                                        <option value="1">01 - Productos químicos</option>
+                                        <option value="2">02 - Pinturas, barnices</option>
+                                        <option value="3">03 - Cosméticos, jabones</option>
+                                        <option value="4">04 - Aceites, lubricantes</option>
+                                        <option value="5">05 - Productos farmacéuticos</option>
+                                        <option value="6">06 - Metales comunes</option>
+                                        <option value="7">07 - Máquinas, motores</option>
+                                        <option value="8">08 - Herramientas manuales</option>
+                                        <option value="9">09 - Aparatos científicos, electrónicos</option>
+                                        <option value="10">10 - Aparatos médicos</option>
+                                        <option value="11">11 - Iluminación, calefacción</option>
+                                        <option value="12">12 - Vehículos</option>
+                                        <option value="13">13 - Armas de fuego</option>
+                                        <option value="14">14 - Joyería, relojería</option>
+                                        <option value="15">15 - Instrumentos musicales</option>
+                                        <option value="16">16 - Papel, artículos oficina</option>
+                                        <option value="17">17 - Caucho, plásticos</option>
+                                        <option value="18">18 - Cuero, equipaje</option>
+                                        <option value="19">19 - Materiales construcción</option>
+                                        <option value="20">20 - Muebles</option>
+                                        <option value="21">21 - Utensilios cocina</option>
+                                        <option value="22">22 - Cuerdas, lonas</option>
+                                        <option value="23">23 - Hilos textiles</option>
+                                        <option value="24">24 - Tejidos, textiles</option>
+                                        <option value="25">25 - Vestimenta, calzado</option>
+                                        <option value="26">26 - Mercería, bordados</option>
+                                        <option value="27">27 - Alfombras, tapices</option>
+                                        <option value="28">28 - Juegos, juguetes</option>
+                                        <option value="29">29 - Alimentos (carne, lácteos)</option>
+                                        <option value="30">30 - Alimentos (café, cereales)</option>
+                                        <option value="31">31 - Productos agrícolas</option>
+                                        <option value="32">32 - Bebidas no alcohólicas</option>
+                                        <option value="33">33 - Bebidas alcohólicas</option>
+                                        <option value="34">34 - Tabaco</option>
+                                        <option value="35">35 - Publicidad, negocios</option>
+                                        <option value="36">36 - Seguros, finanzas</option>
+                                        <option value="37">37 - Construcción, reparación</option>
+                                        <option value="38">38 - Telecomunicaciones</option>
+                                        <option value="39">39 - Transporte, embalaje</option>
+                                        <option value="40">40 - Tratamiento materiales</option>
+                                        <option value="41">41 - Educación, entretenimiento</option>
+                                        <option value="42">42 - Servicios científicos, tecnológicos</option>
+                                        <option value="43">43 - Servicios alimentación</option>
+                                        <option value="44">44 - Servicios médicos</option>
+                                        <option value="45">45 - Servicios jurídicos</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="marcia-adv-status">Estatus</label>
+                                    <select id="marcia-adv-status">
+                                        <option value="">-- Todos --</option>
+                                        <option value="REGISTRADO">Registrado</option>
+                                        <option value="EN TRÁMITE">En trámite</option>
+                                        <option value="Cancelado">Cancelado</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="marcia-adv-apptype">Tipo de solicitud</label>
+                                    <select id="marcia-adv-apptype">
+                                        <option value="">-- Todos --</option>
+                                        <option value="MARCA">Marca</option>
+                                        <option value="NOMBRE COMERCIAL">Nombre Comercial</option>
+                                        <option value="AVISO COMERCIAL">Aviso Comercial</option>
+                                        <option value="MARCAS FAMOSAS">Marcas Famosas</option>
+                                        <option value="MARCAS NOTORIAS">Marcas Notorias</option>
+                                        <option value="DENOMINACIONES COMUNES INTERNACIONALES">Denominaciones Comunes Internacionales</option>
+                                        <option value="ARTICULO 6TER (CONVENIO DE PARIS)">Artículo 6ter (Convenio de París)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="marcia-adv-goods">Productos/Servicios</label>
+                                    <input type="text" id="marcia-adv-goods" placeholder="Ej: bebidas, ropa, software...">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="marcia-adv-date-from">Fecha desde</label>
+                                    <input type="date" id="marcia-adv-date-from">
+                                </div>
+                                <div class="form-group">
+                                    <label for="marcia-adv-date-to">Fecha hasta</label>
+                                    <input type="date" id="marcia-adv-date-to">
+                                </div>
+                                <div class="form-group">
+                                    <label for="marcia-adv-date-type">Tipo de fecha</label>
+                                    <select id="marcia-adv-date-type">
+                                        <option value="APPLICATION">Presentación</option>
+                                        <option value="REGISTRATION">Registro</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-secondary" onclick="limpiarFormularioMARCia()">
+                            🗑️ Limpiar
+                        </button>
+                        <button class="btn btn-outline" onclick="abrirMARCiaExterno()">
+                            🌐 Abrir MARCia
+                        </button>
+                        <button class="btn btn-primary btn-lg" onclick="buscarMARCia()">
+                            🔍 Buscar Marcas
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Resultados MARCia -->
+                <div id="marcia-results-section" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>📋 Resultados de Marcas</h3>
+                            <div class="header-buttons">
+                                <span class="results-count" id="marcia-results-count">0 resultados</span>
+                                <button class="btn btn-sm btn-outline" onclick="exportarResultadosMARCia()" id="btn-export-marcia" style="display:none;">
+                                    📥 Exportar CSV
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <!-- Filtros facetados -->
+                            <div class="impi-filters" id="marcia-filters" style="display: none;">
+                                <div class="impi-filter-group">
+                                    <label>Estatus:</label>
+                                    <div id="marcia-filter-status" class="impi-filter-chips"></div>
+                                </div>
+                                <div class="impi-filter-group">
+                                    <label>Clases Niza:</label>
+                                    <div id="marcia-filter-classes" class="impi-filter-chips"></div>
+                                </div>
+                            </div>
+                            <!-- Lista de resultados -->
+                            <div id="marcia-results-list" class="impi-results-grid"></div>
+                            <!-- Paginación -->
+                            <div class="impi-pagination" id="marcia-pagination" style="display: none;">
+                                <button class="btn btn-sm btn-outline" id="marcia-prev" onclick="marciaPaginaAnterior()">← Anterior</button>
+                                <span id="marcia-page-info">Página 1</span>
+                                <button class="btn btn-sm btn-outline" id="marcia-next" onclick="marciaPaginaSiguiente()">Siguiente →</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detalle de Marca -->
+                <div id="marcia-detail-section" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>📄 Detalle de Marca</h3>
+                            <button class="btn btn-sm btn-outline" onclick="cerrarDetalleMARCia()">← Volver a resultados</button>
+                        </div>
+                        <div class="card-body" id="marcia-detail-content"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: SIGA - Búsqueda de Gacetas -->
+            <div class="impi-tab-content" id="impi-tab-siga">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="header-with-help">
+                            <h3>📰 Búsqueda en Gacetas (SIGA 2.0)</h3>
+                            <div class="tooltip-container">
+                                <button class="help-btn" type="button">?</button>
+                                <div class="tooltip-content tooltip-left">
+                                    <h4>¿Cómo funciona?</h4>
+                                    <ul>
+                                        <li>Busca publicaciones en las gacetas del IMPI</li>
+                                        <li>Filtra por área: Patentes, Marcas, Protección a la PI</li>
+                                        <li>Los resultados incluyen fichas con resoluciones, registros, clases y más</li>
+                                        <li>SIGA requiere reCAPTCHA, por lo que se abre en el portal oficial</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="siga-query">Término de búsqueda</label>
+                                <input type="text" id="siga-query" placeholder="Ej: Coca Cola, Nike, 913909...">
+                            </div>
+                            <div class="form-group">
+                                <label for="siga-area">Área</label>
+                                <select id="siga-area">
+                                    <option value="2">Marcas</option>
+                                    <option value="1">Patentes</option>
+                                    <option value="3">Protección a la Propiedad Intelectual</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="siga-fecha-desde">Fecha desde</label>
+                                <input type="date" id="siga-fecha-desde">
+                            </div>
+                            <div class="form-group">
+                                <label for="siga-fecha-hasta">Fecha hasta</label>
+                                <input type="date" id="siga-fecha-hasta">
+                            </div>
+                        </div>
+                        <div class="siga-info-box">
+                            <p>⚠️ SIGA usa reCAPTCHA v3 para proteger sus búsquedas. Al buscar se abrirá el portal oficial de SIGA en una nueva pestaña con tu búsqueda pre-configurada.</p>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-secondary" onclick="limpiarFormularioSIGA()">
+                            🗑️ Limpiar
+                        </button>
+                        <button class="btn btn-primary btn-lg" onclick="buscarSIGA()">
+                            🔍 Buscar en SIGA
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Resultados SIGA (cuando se logra conexión directa) -->
+                <div id="siga-results-section" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>📋 Resultados de Gacetas</h3>
+                            <span class="results-count" id="siga-results-count">0 resultados</span>
+                        </div>
+                        <div class="card-body">
+                            <div id="siga-results-list" class="impi-results-grid"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Página Configuración -->
         <section class="page" id="page-config">
             <div class="page-header">
@@ -1853,6 +2190,7 @@
     <script src="js/juzgados.js"></script>
     <script src="js/database.js"></script>
     <script src="js/pjf-search.js"></script>
+    <script src="js/impi-search.js"></script>
     <script src="js/app.js"></script>
     <script src="js/sync.js"></script>
 </body>

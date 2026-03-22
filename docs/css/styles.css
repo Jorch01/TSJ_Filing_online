@@ -2662,3 +2662,453 @@ textarea:focus {
     border-color: rgba(255, 193, 7, 0.4);
     color: #ffdd57;
 }
+
+/* ==================== IMPI (MARCia + SIGA) ==================== */
+
+.impi-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid var(--border-color);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.impi-tab {
+    padding: 0.75rem 1.25rem;
+    border: none;
+    background: none;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s ease;
+    position: relative;
+    bottom: -2px;
+}
+
+.impi-tab:hover {
+    color: var(--primary);
+    background: var(--bg-secondary);
+}
+
+.impi-tab.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+    font-weight: 600;
+}
+
+.impi-tab-content {
+    display: none;
+}
+
+.impi-tab-content.active {
+    display: block;
+}
+
+.impi-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 2rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+/* Search toggle */
+.impi-search-toggle {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+}
+
+.impi-search-toggle .btn-outline.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+/* Results grid */
+.impi-results-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.impi-result-card {
+    display: flex;
+    gap: 1rem;
+    padding: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: var(--bg-primary);
+    position: relative;
+}
+
+.impi-result-card:hover {
+    border-color: var(--primary);
+    box-shadow: var(--shadow);
+    transform: translateY(-1px);
+}
+
+.impi-result-number {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.75rem;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.impi-result-image {
+    flex-shrink: 0;
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--bg-secondary);
+}
+
+.impi-mark-image {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.impi-mark-placeholder {
+    font-size: 2rem;
+    opacity: 0.4;
+}
+
+.impi-result-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.impi-result-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.impi-status-badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 0.35rem;
+}
+
+.impi-status-registered {
+    background: #d4edda;
+    color: #155724;
+}
+
+.impi-status-pending {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.impi-status-cancelled {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+[data-theme="dark"] .impi-status-registered {
+    background: rgba(40, 167, 69, 0.2);
+    color: #75d99a;
+}
+
+[data-theme="dark"] .impi-status-pending {
+    background: rgba(255, 193, 7, 0.2);
+    color: #ffdd57;
+}
+
+[data-theme="dark"] .impi-status-cancelled {
+    background: rgba(220, 53, 69, 0.2);
+    color: #f5a3ab;
+}
+
+.impi-result-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+}
+
+.impi-result-meta span strong {
+    color: var(--text-primary);
+}
+
+.impi-result-owner {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.impi-result-type {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-top: 0.15rem;
+}
+
+/* Filters */
+.impi-filters {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: var(--bg-secondary);
+    border-radius: var(--radius);
+    margin-bottom: 1rem;
+}
+
+.impi-filter-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.impi-filter-group > label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.impi-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.impi-filter-chip {
+    padding: 0.25rem 0.6rem;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.impi-filter-chip:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.impi-filter-chip.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+/* Pagination */
+.impi-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 1rem 0;
+    margin-top: 0.5rem;
+}
+
+#marcia-page-info {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+/* Detail view */
+.impi-detail-grid {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.impi-detail-left {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+}
+
+.impi-detail-image {
+    max-width: 100%;
+    max-height: 200px;
+    object-fit: contain;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-color);
+    padding: 0.5rem;
+    background: white;
+}
+
+.impi-detail-right h2 {
+    font-size: 1.5rem;
+    margin: 0 0 1rem;
+    color: var(--text-primary);
+}
+
+.impi-detail-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.impi-detail-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.impi-detail-field label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.impi-detail-field span {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.impi-detail-section {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.impi-detail-section h4 {
+    font-size: 0.95rem;
+    margin: 0 0 0.75rem;
+    color: var(--text-primary);
+}
+
+.impi-detail-owner {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.impi-detail-owner:last-child {
+    border-bottom: none;
+}
+
+.impi-detail-product {
+    padding: 0.5rem 0;
+    font-size: 0.85rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.impi-detail-product:last-child {
+    border-bottom: none;
+}
+
+.impi-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.impi-history-item {
+    display: flex;
+    gap: 1rem;
+    padding: 0.4rem 0;
+    font-size: 0.85rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.impi-history-item:last-child {
+    border-bottom: none;
+}
+
+.impi-history-date {
+    color: var(--text-secondary);
+    font-weight: 600;
+    white-space: nowrap;
+    min-width: 80px;
+}
+
+/* SIGA info box */
+.siga-info-box {
+    background: rgba(54, 96, 146, 0.08);
+    border: 1px solid rgba(54, 96, 146, 0.2);
+    border-radius: var(--radius);
+    padding: 0.75rem 1rem;
+    margin-top: 0.75rem;
+}
+
+.siga-info-box p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] .siga-info-box {
+    background: rgba(54, 96, 146, 0.15);
+    border-color: rgba(54, 96, 146, 0.35);
+}
+
+/* IMPI responsive */
+@media (max-width: 768px) {
+    .impi-tabs {
+        gap: 0;
+        padding: 0;
+    }
+
+    .impi-tab {
+        padding: 0.6rem 0.75rem;
+        font-size: 0.75rem;
+    }
+
+    .impi-result-card {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .impi-result-image {
+        width: 60px;
+        height: 60px;
+    }
+
+    .impi-result-meta {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .impi-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .impi-detail-left {
+        justify-content: flex-start;
+    }
+
+    .impi-detail-image {
+        max-width: 150px;
+    }
+
+    .impi-detail-fields {
+        grid-template-columns: 1fr;
+    }
+}
