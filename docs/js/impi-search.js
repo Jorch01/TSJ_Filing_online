@@ -1,6 +1,18 @@
 // ==================== BÚSQUEDA IMPI (MARCia + SIGA) ====================
 // Integración directa con MARCia (marcas) y SIGA 2.0 (gacetas) del IMPI.
 // Usa un proxy CORS (Cloudflare Worker) para bypass de CORS y manejo de sesiones.
+//
+// SETUP (solo developer):
+// 1. Despliega docs/proxy/impi-proxy-worker.js en Cloudflare Workers (gratis)
+// 2. Actualiza IMPI_PROXY_URL abajo con la URL de tu worker
+// 3. Listo - todos los usuarios tendrán acceso a la búsqueda IMPI
+
+// ==================== CONFIGURACIÓN ====================
+
+// URL del proxy CORS desplegado en Cloudflare Workers.
+// El developer debe actualizar esta URL después de desplegar el worker.
+// Dejar vacío '' desactiva la funcionalidad IMPI.
+var IMPI_PROXY_URL = '';
 
 // ==================== ESTADO GLOBAL ====================
 
@@ -25,14 +37,9 @@ var sigaState = {
 var SIGA_RECAPTCHA_KEY = '6LeRdm0pAAAAAOprsyOxSYwiBsVUmGSMdnCuA-P6';
 
 function getProxyUrl() {
-    try {
-        return (localStorage.getItem('impi_proxy_url') || '').replace(/\/+$/, '');
-    } catch (e) { return ''; }
+    return IMPI_PROXY_URL.replace(/\/+$/, '');
 }
 
-function setProxyUrl(url) {
-    try { localStorage.setItem('impi_proxy_url', (url || '').replace(/\/+$/, '')); } catch (e) {}
-}
 
 // ==================== TABS IMPI ====================
 
@@ -69,10 +76,7 @@ async function proxyFetch(path, options) {
 }
 
 function mostrarErrorProxy() {
-    mostrarNotificacion('Configura la URL del proxy IMPI en Configuración para usar esta función.', 'warning');
-    // Scroll to config hint
-    var hint = document.getElementById('impi-proxy-hint');
-    if (hint) hint.style.display = '';
+    mostrarNotificacion('El servicio de búsqueda IMPI no está disponible en este momento.', 'warning');
 }
 
 // ==================== MARCia: TOGGLE ====================
@@ -612,7 +616,4 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Cargar config de proxy si existe
-    var proxyInput = document.getElementById('impi-proxy-url');
-    if (proxyInput) proxyInput.value = getProxyUrl();
 });

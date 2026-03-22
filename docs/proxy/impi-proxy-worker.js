@@ -4,12 +4,18 @@
 // Proxy que permite a TSJ Filing Online comunicarse con las APIs
 // de MARCia y SIGA del IMPI, manejando CSRF tokens y sesiones.
 //
-// DESPLIEGUE:
-// 1. Crea cuenta en https://dash.cloudflare.com/ (gratis)
+// DESPLIEGUE (una sola vez, gratis):
+//
+// 1. Crea cuenta en https://dash.cloudflare.com/ (gratis, 100k req/día)
 // 2. Ve a Workers & Pages → Create Application → Create Worker
-// 3. Pega este código completo y haz Deploy
-// 4. Copia la URL del worker (ej: https://impi-proxy.tu-cuenta.workers.dev)
-// 5. En TSJ Filing Online → Configuración → IMPI Proxy, pega esa URL
+// 3. Borra el código de ejemplo y pega TODO el contenido de este archivo
+// 4. Click en "Deploy"
+// 5. Copia la URL del worker (ej: https://impi-proxy.tu-cuenta.workers.dev)
+// 6. Abre docs/js/impi-search.js y actualiza la variable IMPI_PROXY_URL:
+//      var IMPI_PROXY_URL = 'https://impi-proxy.tu-cuenta.workers.dev';
+// 7. Commit, push, y listo. Todos los usuarios tendrán búsqueda IMPI.
+//
+// NOTA: Los usuarios finales NO necesitan configurar nada.
 // ============================================================
 
 const ALLOWED_ORIGINS = [
