@@ -74,40 +74,48 @@ export default {
             } else if (path === '/siga/ficha') {
                 response = await handleSigaFicha(request);
             }
-            // ===== Debug: ver qué devuelve SIGA =====
+            // ===== Debug: probar búsqueda real en SIGA =====
             else if (path === '/siga/debug') {
                 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+                const results = {};
 
-                // Fetch página principal
-                const pageResp = await fetch('https://siga.impi.gob.mx/', {
-                    headers: { 'User-Agent': UA, 'Accept': 'text/html' },
-                    redirect: 'follow'
+                // Test 1: GetVersion (sabemos que funciona)
+                const vResp = await fetch(SIGA_BASE + '/api/Gacetas/GetVersion', {
+                    headers: { 'User-Agent': UA, 'Accept': 'application/json', 'Origin': 'https://siga.impi.gob.mx', 'Referer': 'https://siga.impi.gob.mx/' }
                 });
-                const pageHeaders = {};
-                for (const [k, v] of pageResp.headers.entries()) {
-                    pageHeaders[k] = v;
-                }
-                const pageCookies = extractCookies(pageResp);
-                const hasGetSetCookie = typeof pageResp.headers.getSetCookie === 'function';
-                const rawSetCookie = pageResp.headers.get('set-cookie');
-                const getSetCookieResult = hasGetSetCookie ? pageResp.headers.getSetCookie() : 'N/A';
+                results.version = { status: vResp.status, body: await vResp.text() };
 
-                // Fetch API version
-                const apiResp = await fetch('https://siga.impi.gob.mx:5007/api/Gacetas/GetVersion', {
-                    headers: { 'User-Agent': UA, 'Accept': 'application/json', 'Cookie': pageCookies, 'Referer': 'https://siga.impi.gob.mx/', 'Origin': 'https://siga.impi.gob.mx' }
+                // Test 2: GetFichas SIN reCAPTCHA token
+                const s1Resp = await fetch(SIGA_BASE + '/api/BusquedaFicha/GetFichas', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': UA, 'Origin': 'https://siga.impi.gob.mx', 'Referer': 'https://siga.impi.gob.mx/' },
+                    body: JSON.stringify({ Busqueda: 'coca cola', IdArea: '2', IdGaceta: [], FechaDesde: '', FechaHasta: '', ReCaptchaToken: '' })
                 });
-                const apiHeaders = {};
-                for (const [k, v] of apiResp.headers.entries()) {
-                    apiHeaders[k] = v;
-                }
-                const apiCookies = extractCookies(apiResp);
-                let apiBody;
-                try { apiBody = await apiResp.text(); } catch (e) { apiBody = 'error: ' + e.message; }
+                results.searchNoToken = { status: s1Resp.status, body: (await s1Resp.text()).substring(0, 500) };
 
-                response = new Response(JSON.stringify({
-                    page: { status: pageResp.status, headers: pageHeaders, extractedCookies: pageCookies, rawSetCookie, hasGetSetCookie, getSetCookieResult },
-                    api: { status: apiResp.status, headers: apiHeaders, extractedCookies: apiCookies, body: apiBody.substring(0, 500) }
-                }, null, 2), { headers: { 'Content-Type': 'application/json' } });
+                // Test 3: GetFichas CON reCAPTCHA token dummy
+                const s2Resp = await fetch(SIGA_BASE + '/api/BusquedaFicha/GetFichas', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': UA, 'Origin': 'https://siga.impi.gob.mx', 'Referer': 'https://siga.impi.gob.mx/' },
+                    body: JSON.stringify({ Busqueda: 'coca cola', IdArea: '2', IdGaceta: [], FechaDesde: '', FechaHasta: '', ReCaptchaToken: 'dummy-token' })
+                });
+                results.searchDummyToken = { status: s2Resp.status, body: (await s2Resp.text()).substring(0, 500) };
+
+                // Test 4: Probar endpoint de Gacetas (que no requiere búsqueda)
+                const gResp = await fetch(SIGA_BASE + '/api/Gacetas/GetGacetas', {
+                    headers: { 'User-Agent': UA, 'Accept': 'application/json', 'Origin': 'https://siga.impi.gob.mx', 'Referer': 'https://siga.impi.gob.mx/' }
+                });
+                results.gacetas = { status: gResp.status, body: (await gResp.text()).substring(0, 500) };
+
+                // Test 5: Probar con IdArea como número, no string
+                const s3Resp = await fetch(SIGA_BASE + '/api/BusquedaFicha/GetFichas', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': UA, 'Origin': 'https://siga.impi.gob.mx', 'Referer': 'https://siga.impi.gob.mx/' },
+                    body: JSON.stringify({ Busqueda: 'coca cola', IdArea: 2, IdGaceta: [], FechaDesde: '', FechaHasta: '', ReCaptchaToken: '' })
+                });
+                results.searchNumericArea = { status: s3Resp.status, body: (await s3Resp.text()).substring(0, 500) };
+
+                response = new Response(JSON.stringify(results, null, 2), { headers: { 'Content-Type': 'application/json' } });
             }
             // ===== Health check =====
             else if (path === '/health') {
