@@ -262,24 +262,59 @@ async function ensureSigaSession(request) {
         return session;
     }
 
-    // Obtener nueva sesión
-    const resp = await fetch('https://siga.impi.gob.mx/', {
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'text/html'
-        },
+    const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    let allCookies = {};
+
+    // Paso 1: Fetch la página principal para obtener cookies de sesión
+    const pageResp = await fetch('https://siga.impi.gob.mx/', {
+        headers: { 'User-Agent': UA, 'Accept': 'text/html' },
         redirect: 'follow'
     });
+    const pageCookies = extractCookies(pageResp);
+    Object.assign(allCookies, parseCookies(pageCookies));
 
-    const cookieHeader = extractCookies(resp);
-    const xsrfMatch = cookieHeader.match(/XSRF-TOKEN=([^;]+)/);
-    const xsrfToken = xsrfMatch ? decodeURIComponent(xsrfMatch[1]) : null;
-
-    if (!xsrfToken) {
-        throw new Error('No XSRF token found in SIGA cookies');
+    // Paso 2: Si no hay XSRF-TOKEN, intentar con un endpoint de la API
+    // ASP.NET Core setea la cookie XSRF-TOKEN en la primera respuesta API
+    if (!allCookies['XSRF-TOKEN']) {
+        const apiResp = await fetch(SIGA_BASE + '/api/Gacetas/GetVersion', {
+            headers: {
+                'User-Agent': UA,
+                'Accept': 'application/json',
+                'Cookie': pageCookies,
+                'Referer': 'https://siga.impi.gob.mx/',
+                'Origin': 'https://siga.impi.gob.mx'
+            }
+        });
+        const apiCookies = extractCookies(apiResp);
+        Object.assign(allCookies, parseCookies(apiCookies));
     }
 
-    session = { xsrf: xsrfToken, cookies: cookieHeader, timestamp: Date.now() };
+    // Paso 3: Si aún no hay XSRF-TOKEN, intentar endpoint de búsqueda vacía
+    if (!allCookies['XSRF-TOKEN']) {
+        const searchResp = await fetch(SIGA_BASE + '/api/BusquedaFicha/GetFichas', {
+            method: 'POST',
+            headers: {
+                'User-Agent': UA,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'Cookie': Object.entries(allCookies).map(([k,v]) => k + '=' + v).join('; '),
+                'Referer': 'https://siga.impi.gob.mx/',
+                'Origin': 'https://siga.impi.gob.mx'
+            },
+            body: JSON.stringify({ Busqueda: '', IdArea: '2', IdGaceta: [], FechaDesde: '', FechaHasta: '', ReCaptchaToken: '' })
+        });
+        const searchCookies = extractCookies(searchResp);
+        Object.assign(allCookies, parseCookies(searchCookies));
+    }
+
+    const xsrfToken = allCookies['XSRF-TOKEN'] ? decodeURIComponent(allCookies['XSRF-TOKEN']) : null;
+    const cookieStr = Object.entries(allCookies).map(([k,v]) => k + '=' + v).join('; ');
+
+    if (!xsrfToken) {
+        throw new Error('No XSRF token found in SIGA cookies. Cookies received: ' + cookieStr);
+    }
+
+    session = { xsrf: xsrfToken, cookies: cookieStr, timestamp: Date.now() };
     sessions.set(sessionKey, session);
     return session;
 }
