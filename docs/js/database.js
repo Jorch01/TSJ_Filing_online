@@ -588,12 +588,27 @@ async function exportarTodosDatos() {
     const notas = await obtenerNotas();
     const eventos = await obtenerEventos();
 
+    // Exportar búsquedas guardadas SIGA si el store existe
+    let sigaGuardadas = [];
+    try {
+        if (db.objectStoreNames.contains('sigaGuardadas')) {
+            sigaGuardadas = await new Promise((resolve, reject) => {
+                const tx = db.transaction(['sigaGuardadas'], 'readonly');
+                const store = tx.objectStore('sigaGuardadas');
+                const req = store.getAll();
+                req.onsuccess = () => resolve(req.result || []);
+                req.onerror = () => resolve([]);
+            });
+        }
+    } catch (e) { /* store may not exist in older DBs */ }
+
     return {
         version: 1,
         fechaExportacion: new Date().toISOString(),
         expedientes,
         notas,
-        eventos
+        eventos,
+        sigaGuardadas
     };
 }
 
@@ -621,6 +636,27 @@ async function importarTodosDatos(datos, sobrescribir = false) {
     for (const evento of datos.eventos || []) {
         delete evento.id;
         await agregarEvento(evento);
+    }
+
+    // Importar búsquedas guardadas SIGA
+    if (datos.sigaGuardadas && datos.sigaGuardadas.length > 0) {
+        try {
+            if (db.objectStoreNames.contains('sigaGuardadas')) {
+                if (sobrescribir) {
+                    await limpiarStore('sigaGuardadas');
+                }
+                for (const saved of datos.sigaGuardadas) {
+                    delete saved.id;
+                    await new Promise((resolve, reject) => {
+                        const tx = db.transaction(['sigaGuardadas'], 'readwrite');
+                        const store = tx.objectStore('sigaGuardadas');
+                        const req = store.add(saved);
+                        req.onsuccess = () => resolve();
+                        req.onerror = () => resolve(); // skip duplicates
+                    });
+                }
+            }
+        } catch (e) { /* store may not exist */ }
     }
 }
 

@@ -1253,6 +1253,10 @@
                 </div>
             </div>
 
+            <div class="impi-local-notice">
+                <span>💾</span> Los datos de búsquedas guardadas se almacenan localmente en tu navegador y <strong>no se sincronizan entre dispositivos</strong>. Usa <a href="#" onclick="navegarA('config'); return false;">Configuración > Datos</a> para exportar/importar. Esta herramienta no está afiliada al IMPI.
+            </div>
+
             <!-- Tabs de navegación interna IMPI -->
             <div class="impi-tabs">
                 <button class="impi-tab active" data-impi-tab="marcia" onclick="cambiarTabIMPI('marcia')">🔍 MARCia - Marcas</button>
@@ -1283,6 +1287,7 @@
                                         <li>Los resultados se obtienen directamente de MARCia (marcia.impi.gob.mx)</li>
                                     </ul>
                                     <p><strong>Nota:</strong> Si la búsqueda falla por CORS, se abrirá MARCia en una nueva pestaña.</p>
+                                    <p><strong>Aviso:</strong> Los resultados son informativos y no constituyen asesoría legal. Esta herramienta no está afiliada al IMPI.</p>
                                 </div>
                             </div>
                         </div>
@@ -1515,8 +1520,10 @@
                                         <li>Busca publicaciones en las gacetas del IMPI</li>
                                         <li>Filtra por área: Patentes, Marcas, Protección a la PI</li>
                                         <li>Los resultados incluyen fichas con resoluciones, registros, clases y más</li>
-                                        <li>SIGA requiere reCAPTCHA, por lo que se abre en el portal oficial</li>
+                                        <li>Puedes guardar búsquedas para monitoreo automático diario</li>
                                     </ul>
+                                    <p><strong>Búsquedas guardadas:</strong> Se almacenan en tu navegador local (no se sincronizan entre dispositivos). Exporta tus datos desde Configuración para migrarlos.</p>
+                                    <p><strong>Aviso:</strong> Los resultados son informativos y no constituyen asesoría legal. Esta herramienta no está afiliada al IMPI.</p>
                                 </div>
                             </div>
                         </div>
@@ -1643,10 +1650,12 @@
                             <h4>Respaldos de Seguridad</h4>
                             <p><strong>¿Por qué respaldar?</strong></p>
                             <ul>
-                                <li>Tus datos solo existen en este navegador</li>
+                                <li>Tus datos solo existen en este navegador (IndexedDB)</li>
                                 <li>Limpiar caché/cookies borra todo</li>
                                 <li>Cambiar de computadora requiere migrar datos</li>
+                                <li><strong>No hay sincronización</strong> entre dispositivos</li>
                             </ul>
+                            <p><strong>¿Qué se exporta?</strong> Expedientes, notas, eventos, configuración y búsquedas guardadas de IMPI (SIGA).</p>
                             <p><strong>Recomendación:</strong> Exporta tus datos semanalmente y guarda el archivo JSON en un lugar seguro.</p>
                         </div>
                     </div>
@@ -2185,12 +2194,14 @@
                 <p><strong>Datos del usuario:</strong> Toda la información contenida en las bases de datos locales es responsabilidad exclusiva de los propios usuarios. Empírica Legal Lab no tiene acceso a los datos almacenados en tu navegador y no se hace responsable de su precisión, integridad o pérdida.</p>
                 <p><strong>Información del TSJ:</strong> Los resultados de búsqueda del TSJQROO provienen directamente del sitio oficial del Tribunal Superior de Justicia de Quintana Roo. No garantizamos la exactitud ni la actualización de dicha información.</p>
                 <p><strong>Información del PJF:</strong> Las consultas al Poder Judicial de la Federación se realizan directamente en el portal oficial de la Dirección General de Estadística Judicial (DGEJ / CJF). Esta herramienta no tiene afiliación ni relación oficial con el Consejo de la Judicatura Federal ni con el Poder Judicial de la Federación. No garantizamos la exactitud, disponibilidad ni actualización de la información proveniente de dicho portal.</p>
+                <p><strong>Información del IMPI:</strong> Las búsquedas de marcas (MARCia) y gacetas (SIGA) se realizan a través de un proxy que consulta los portales oficiales del Instituto Mexicano de la Propiedad Industrial. Esta herramienta no tiene afiliación ni relación oficial con el IMPI. No garantizamos la exactitud, disponibilidad ni actualización de la información proveniente de dichos portales. Los resultados no constituyen asesoría legal en materia de propiedad industrial y no deben ser utilizados como sustituto de una consulta profesional. El uso de esta funcionalidad es bajo la exclusiva responsabilidad del usuario.</p>
+                <p><strong>Almacenamiento local:</strong> Todos los datos de la aplicación —incluyendo expedientes, configuración, búsquedas guardadas de IMPI y demás información— se almacenan exclusivamente en el navegador del usuario mediante IndexedDB. <strong>No se sincronizan entre dispositivos.</strong> Para migrar datos a otro navegador o dispositivo, el usuario debe exportar e importar manualmente la base de datos desde Configuración > Datos.</p>
                 <p><strong>Respaldos:</strong> Es responsabilidad del usuario realizar respaldos periódicos de sus datos. La pérdida de información por limpiar el caché del navegador, cambiar de dispositivo u otras causas no es responsabilidad del desarrollador.</p>
             </div>
 
             <div class="footer-copyright">
                 <p>© 2025 Empírica Legal Lab. Todos los derechos reservados.</p>
-                <p>TSJ Filing Online es una herramienta independiente no afiliada al Tribunal Superior de Justicia de Quintana Roo ni al Poder Judicial de la Federación.</p>
+                <p>TSJ Filing Online es una herramienta independiente no afiliada al Tribunal Superior de Justicia de Quintana Roo, al Poder Judicial de la Federación ni al Instituto Mexicano de la Propiedad Industrial.</p>
             </div>
         </div>
     </footer>
