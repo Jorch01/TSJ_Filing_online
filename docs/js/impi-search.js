@@ -320,8 +320,10 @@ async function verDetalleMARCia(markId) {
 
     try {
         var data = await proxyFetch('/marcia/view/' + encodeURIComponent(markId));
+        console.log('MARCia detail response:', JSON.stringify(data).substring(0, 2000));
         renderizarDetalleMARCia(data);
     } catch (e) {
+        console.error('MARCia detail error:', e);
         mostrarToast('Error al obtener detalle: ' + e.message, 'error');
     } finally {
         if (loading) loading.style.display = 'none';
@@ -334,23 +336,29 @@ function renderizarDetalleMARCia(data) {
     document.getElementById('marcia-results-section').style.display = 'none';
 
     // Helper: asegurar que un valor sea array
-    function asArr(v) { return Array.isArray(v) ? v : (v ? [v] : []); }
+    function asArr(v) { return Array.isArray(v) ? v : (v && typeof v === 'object' && !Array.isArray(v) ? [v] : []); }
+    // Helper: asegurar que un valor sea objeto plano
+    function asObj(v) { return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {}; }
 
-    var d = data.details || {};
-    var gi = d.generalInformation || {};
-    var tm = d.trademark || {};
-    var oi = d.ownerInformation || {};
-    var ps = asArr(d.productsAndServices);
+    // La API puede devolver la data en distintas estructuras
+    var d = asObj(data.details || data.result || data);
+    var gi = asObj(d.generalInformation || d.general || data.generalInformation);
+    var tm = asObj(d.trademark || d.mark || data.trademark);
+    var oi = asObj(d.ownerInformation || d.owner || data.ownerInformation);
+    var ps = asArr(d.productsAndServices || d.products || data.productsAndServices);
 
-    var imgUrl = tm.image || (data.result && data.result.images) || '';
+    var imgUrl = '';
+    if (tm.image) imgUrl = tm.image;
+    else if (data.result && data.result.images) imgUrl = typeof data.result.images === 'string' ? data.result.images : '';
+    else if (data.images) imgUrl = typeof data.images === 'string' ? data.images : '';
     var imgHtml = imgUrl ? '<img src="' + san(imgUrl) + '" class="impi-detail-image" onerror="this.style.display=\'none\'">' : '';
 
     var ownersHtml = '';
-    var ownersList = asArr(oi.owners);
+    var ownersList = asArr(oi.owners || oi.owner || d.owners);
     if (ownersList.length > 0) {
         ownersHtml = '<div class="impi-detail-section"><h4>Titulares</h4>' + ownersList.map(function(o) {
-            var name = typeof o === 'string' ? o : o.name || '';
-            var addr = typeof o === 'object' && o.address ? '<br><small>' + san(o.address) + '</small>' : '';
+            var name = typeof o === 'string' ? o : (o && (o.name || o.fullName || o.ownerName)) || '';
+            var addr = typeof o === 'object' && o && (o.address || o.fullAddress) ? '<br><small>' + san(o.address || o.fullAddress) + '</small>' : '';
             return '<div class="impi-detail-owner"><strong>' + san(name) + '</strong>' + addr + '</div>';
         }).join('') + '</div>';
     }
@@ -358,33 +366,43 @@ function renderizarDetalleMARCia(data) {
     var productsHtml = '';
     if (ps.length > 0) {
         productsHtml = '<div class="impi-detail-section"><h4>Productos y Servicios</h4>' + ps.map(function(p) {
-            return '<div class="impi-detail-product"><strong>Clase ' + san(String(p.niceClass || p.classNumber || '')) + ':</strong> ' + san(p.description || p.goodsServices || '') + '</div>';
+            if (typeof p === 'string') return '<div class="impi-detail-product">' + san(p) + '</div>';
+            return '<div class="impi-detail-product"><strong>Clase ' + san(String(p.niceClass || p.classNumber || p.clase || '')) + ':</strong> ' + san(p.description || p.goodsServices || p.productos || '') + '</div>';
         }).join('') + '</div>';
     }
 
     var histHtml = '';
-    var histRecords = asArr(data.historyData && data.historyData.historyRecords);
-    if (histRecords.length > 0) {
+    var histSource = asObj(data.historyData || d.historyData || data.history);
+    var histRecords = asArr(histSource.historyRecords || histSource.records || histSource);
+    // Filtrar si histRecords contiene la misma fuente (objeto con historyRecords)
+    if (histRecords.length === 1 && histRecords[0] && histRecords[0].historyRecords) {
+        histRecords = asArr(histRecords[0].historyRecords);
+    }
+    if (histRecords.length > 0 && histRecords[0] && (histRecords[0].date || histRecords[0].description || histRecords[0].status)) {
         histHtml = '<div class="impi-detail-section"><h4>Historial</h4><div class="impi-history-list">' +
             histRecords.map(function(h) {
+                if (typeof h === 'string') return '<div class="impi-history-item"><span>' + san(h) + '</span></div>';
                 return '<div class="impi-history-item"><span class="impi-history-date">' + san(h.date || '') + '</span><span>' + san(h.description || h.status || '') + '</span></div>';
             }).join('') + '</div></div>';
     }
 
-    var viennaCodes = asArr(tm.viennaCodes).map(function(v) { return san(String(v)); }).join(', ');
+    var viennaCodes = asArr(tm.viennaCodes || tm.vienna).map(function(v) { return san(String(v)); }).join(', ');
+
+    // Extraer título - puede venir de distintos campos
+    var title = gi.title || gi.denomination || gi.name || tm.name || tm.denomination || d.title || data.title || 'Sin denominación';
 
     content.innerHTML =
         '<div class="impi-detail-grid">' +
             '<div class="impi-detail-left">' + imgHtml + '</div>' +
             '<div class="impi-detail-right">' +
-                '<h2>' + san(gi.title || 'Sin denominación') + '</h2>' +
+                '<h2>' + san(title) + '</h2>' +
                 '<div class="impi-detail-fields">' +
-                    campo('Tipo de solicitud', gi.appType) +
-                    campo('No. Expediente', gi.applicationNumber) +
-                    campo('No. Registro', gi.registrationNumber) +
-                    campo('Fecha de presentación', gi.applicationDate) +
+                    campo('Tipo de solicitud', gi.appType || gi.applicationType) +
+                    campo('No. Expediente', gi.applicationNumber || gi.fileNumber || d.applicationNumber) +
+                    campo('No. Registro', gi.registrationNumber || d.registrationNumber) +
+                    campo('Fecha de presentación', gi.applicationDate || gi.filingDate) +
                     campo('Fecha de registro', gi.registrationDate) +
-                    campo('Fecha de vencimiento', gi.expiryDate) +
+                    campo('Fecha de vencimiento', gi.expiryDate || gi.expirationDate) +
                     (viennaCodes ? campo('Códigos de Viena', viennaCodes) : '') +
                 '</div>' +
             '</div>' +
