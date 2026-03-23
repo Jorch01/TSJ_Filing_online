@@ -516,37 +516,86 @@ function renderizarResultadosSIGA() {
             else if (desc.includes('resolución') || desc.includes('resolucion')) resolucion = d.datoTxt || '';
         });
 
+        var collapseId = 'siga-detail-' + idx;
+
+        // Header row (always visible)
         html += '<div class="impi-result-card siga-card">' +
             '<div class="impi-result-number">#' + (idx + 1) + '</div>' +
             '<div class="impi-result-info" style="width:100%">' +
-                '<div class="impi-result-title">' + san(denominacion || 'Ficha #' + ficha.fichaId) + '</div>' +
-                '<div class="siga-card-header">' +
-                    '<span class="siga-badge-gaceta">' + san(ficha.gaceta || '') + '</span>' +
-                    '<span class="siga-badge-seccion">' + san(ficha.seccion || '') + '</span>' +
+                '<div class="siga-card-toggle" onclick="toggleSigaDetail(\'' + collapseId + '\', this)" role="button" tabindex="0">' +
+                    '<div class="siga-card-summary">' +
+                        '<div class="impi-result-title">' + san(denominacion || 'Ficha #' + ficha.fichaId) + '</div>' +
+                        '<div class="siga-card-header">' +
+                            '<span class="siga-badge-gaceta">' + san(ficha.gaceta || '') + '</span>' +
+                            '<span class="siga-badge-seccion">' + san(ficha.seccion || '') + '</span>' +
+                        '</div>' +
+                        '<div class="impi-result-meta">' +
+                            (resolucion ? '<span><strong>Resolución:</strong> ' + san(resolucion) + '</span>' : '') +
+                            (registro ? '<span><strong>Registro:</strong> ' + san(registro) + '</span>' : '') +
+                            (clase ? '<span><strong>Clase:</strong> ' + san(clase) + '</span>' : '') +
+                            '<span><strong>Ejemplar:</strong> ' + san(ficha.ejemplar || '') + '</span>' +
+                        '</div>' +
+                    '</div>' +
+                    '<span class="siga-chevron">&#9660;</span>' +
                 '</div>' +
-                '<div class="impi-result-meta">' +
-                    (resolucion ? '<span><strong>Resolución:</strong> ' + san(resolucion) + '</span>' : '') +
-                    (registro ? '<span><strong>Registro:</strong> ' + san(registro) + '</span>' : '') +
-                    (clase ? '<span><strong>Clase:</strong> ' + san(clase) + '</span>' : '') +
-                    '<span><strong>Ejemplar:</strong> ' + san(ficha.ejemplar || '') + '</span>' +
-                    '<span><strong>Publicación:</strong> ' + san(ficha.fechaPuestaCirculacion || '') + '</span>' +
-                '</div>' +
-                // Mostrar todos los datos dinámicos que no se mostraron arriba
-                '<div class="siga-datos-extra">' +
-                    datos.filter(function(d) {
-                        var desc = (d.descripcion || '').toLowerCase();
-                        return !desc.includes('denominación') && !desc.includes('denominacion') &&
-                               !desc.includes('clase') && !desc.includes('registro') &&
-                               !desc.includes('resolución') && !desc.includes('resolucion');
-                    }).map(function(d) {
-                        return '<span><strong>' + san(d.descripcion) + ':</strong> ' + san(d.datoTxt) + '</span>';
-                    }).join('') +
+                // Collapsible detail section
+                '<div id="' + collapseId + '" class="siga-detail-collapse">' +
+                    '<div class="siga-detail-content">' +
+                        // Publication info
+                        '<div class="siga-detail-section">' +
+                            '<div class="siga-detail-heading">Datos de publicación</div>' +
+                            '<table class="siga-detail-table">' +
+                                '<tr><td class="siga-detail-label">Gaceta</td><td>' + san(ficha.gaceta || '-') + '</td></tr>' +
+                                '<tr><td class="siga-detail-label">Sección</td><td>' + san(ficha.seccion || '-') + '</td></tr>' +
+                                '<tr><td class="siga-detail-label">Ejemplar</td><td>' + san(ficha.ejemplar || '-') + '</td></tr>' +
+                                '<tr><td class="siga-detail-label">Fecha de publicación</td><td>' + san(ficha.fechaPuestaCirculacion || '-') + '</td></tr>' +
+                                '<tr><td class="siga-detail-label">Área</td><td>' + san(ficha.areaId === 1 ? 'Patentes' : ficha.areaId === 2 ? 'Marcas' : ficha.areaId === 3 ? 'Protección a la PI' : String(ficha.areaId || '-')) + '</td></tr>' +
+                            '</table>' +
+                        '</div>' +
+                        // All datos from the ficha
+                        '<div class="siga-detail-section">' +
+                            '<div class="siga-detail-heading">Datos de la ficha</div>' +
+                            '<table class="siga-detail-table">' +
+                                datos.sort(function(a, b) { return (a.orden || 0) - (b.orden || 0); }).map(function(d) {
+                                    return '<tr><td class="siga-detail-label">' + san(d.descripcion || '') + '</td><td>' + san(d.datoTxt || '-') + '</td></tr>';
+                                }).join('') +
+                            '</table>' +
+                        '</div>' +
+                        (ficha.imagen ? '<div class="siga-detail-section"><div class="siga-detail-heading">Imagen</div><div class="siga-detail-img-wrap" id="siga-img-' + idx + '"><button class="btn-sm" onclick="cargarImagenSIGA(' + ficha.fichaId + ', ' + idx + ')">Cargar imagen</button></div></div>' : '') +
+                    '</div>' +
                 '</div>' +
             '</div>' +
         '</div>';
     });
 
     list.innerHTML = html;
+}
+
+function toggleSigaDetail(id, toggleEl) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var isOpen = el.classList.toggle('open');
+    var chevron = toggleEl.querySelector('.siga-chevron');
+    if (chevron) chevron.classList.toggle('open', isOpen);
+}
+
+async function cargarImagenSIGA(fichaId, idx) {
+    var wrap = document.getElementById('siga-img-' + idx);
+    if (!wrap) return;
+    wrap.innerHTML = '<span class="siga-detail-loading">Cargando imagen...</span>';
+    try {
+        var data = await proxyFetch('/siga/ficha', {
+            method: 'POST',
+            body: JSON.stringify({ id: fichaId, reCaptchaToken: '' })
+        });
+        if (data && data.data && data.data.imagen) {
+            wrap.innerHTML = '<img src="data:image/png;base64,' + data.data.imagen + '" alt="Imagen de marca" class="siga-detail-img" />';
+        } else {
+            wrap.innerHTML = '<span class="siga-detail-no-img">Imagen no disponible</span>';
+        }
+    } catch (e) {
+        wrap.innerHTML = '<span class="siga-detail-no-img">Error al cargar imagen</span>';
+    }
 }
 
 function limpiarFormularioSIGA() {
