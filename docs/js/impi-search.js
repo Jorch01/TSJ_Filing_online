@@ -30,7 +30,10 @@ var marciaState = {
 
 var sigaState = {
     results: [],
-    searching: false
+    searching: false,
+    currentQuery: null, // { Busqueda, IdArea, FechaDesde, FechaHasta }
+    savedSearches: [],
+    lastAutoCheck: null
 };
 
 function getProxyUrl() {
@@ -449,11 +452,11 @@ async function buscarSIGA() {
     var fechaHasta = document.getElementById('siga-fecha-hasta').value || '';
 
     sigaState.searching = true;
+    sigaState.currentQuery = { Busqueda: query, IdArea: area, FechaDesde: fechaDesde, FechaHasta: fechaHasta };
     var loading = document.getElementById('impi-loading');
     if (loading) loading.style.display = 'flex';
 
     try {
-        // El proxy maneja CSRF y reCAPTCHA server-side
         var data = await proxyFetch('/siga/search', {
             method: 'POST',
             body: JSON.stringify({
@@ -471,6 +474,15 @@ async function buscarSIGA() {
 
         sigaState.results = data.data || [];
         renderizarResultadosSIGA();
+
+        // Mostrar botón de guardar si hay resultados y no está ya guardada
+        var saveBtn = document.getElementById('siga-save-search-btn');
+        if (saveBtn) {
+            var yaGuardada = sigaState.savedSearches.some(function(s) {
+                return s.query === query && s.area === area;
+            });
+            saveBtn.style.display = (sigaState.results.length > 0 && !yaGuardada) ? '' : 'none';
+        }
 
     } catch (e) {
         if (e.message === 'PROXY_NOT_CONFIGURED') {
@@ -607,6 +619,252 @@ function limpiarFormularioSIGA() {
     sigaState.results = [];
 }
 
+// ==================== SIGA: BÚSQUEDAS GUARDADAS ====================
+
+// Helper: acceder al store sigaGuardadas de IndexedDB
+function sigaDB(mode) {
+    var tx = db.transaction(['sigaGuardadas'], mode);
+    return tx.objectStore('sigaGuardadas');
+}
+
+async function cargarBusquedasGuardadas() {
+    if (!db) return;
+    return new Promise(function(resolve) {
+        var store = sigaDB('readonly');
+        var req = store.getAll();
+        req.onsuccess = function() {
+            sigaState.savedSearches = req.result || [];
+            renderizarBusquedasGuardadas();
+            resolve();
+        };
+        req.onerror = function() { resolve(); };
+    });
+}
+
+function guardarBusquedaSIGA() {
+    if (!db || !sigaState.currentQuery) return;
+
+    var q = sigaState.currentQuery;
+    // Evitar duplicados
+    var existe = sigaState.savedSearches.some(function(s) {
+        return s.query === q.Busqueda && s.area === q.IdArea;
+    });
+    if (existe) {
+        mostrarToast('Esta búsqueda ya está guardada', 'warning');
+        return;
+    }
+
+    // Generar hash de fichaIds actuales para detectar cambios después
+    var fichaIds = sigaState.results.map(function(f) { return f.fichaId; }).sort();
+
+    var saved = {
+        query: q.Busqueda,
+        area: q.IdArea,
+        fechaDesde: q.FechaDesde || '',
+        fechaHasta: q.FechaHasta || '',
+        label: q.Busqueda + (q.IdArea === '1' ? ' (Patentes)' : q.IdArea === '3' ? ' (PI)' : ' (Marcas)'),
+        fechaGuardado: new Date().toISOString(),
+        lastChecked: new Date().toISOString(),
+        lastResultCount: sigaState.results.length,
+        lastFichaIds: fichaIds,
+        newCount: 0,
+        newFichas: []
+    };
+
+    var store = sigaDB('readwrite');
+    var req = store.add(saved);
+    req.onsuccess = function() {
+        saved.id = req.result;
+        sigaState.savedSearches.push(saved);
+        renderizarBusquedasGuardadas();
+        mostrarToast('Búsqueda guardada. Se verificará automáticamente.', 'success');
+    };
+}
+
+function eliminarBusquedaGuardada(id) {
+    if (!db) return;
+    var store = sigaDB('readwrite');
+    store.delete(id);
+    sigaState.savedSearches = sigaState.savedSearches.filter(function(s) { return s.id !== id; });
+    renderizarBusquedasGuardadas();
+}
+
+function renderizarBusquedasGuardadas() {
+    var section = document.getElementById('siga-saved-section');
+    var list = document.getElementById('siga-saved-list');
+    if (!section || !list) return;
+
+    if (sigaState.savedSearches.length === 0) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = '';
+    var html = '';
+    sigaState.savedSearches.forEach(function(s) {
+        var areaLabel = s.area === '1' ? 'Patentes' : s.area === '3' ? 'Protección PI' : 'Marcas';
+        var fechaCheck = s.lastChecked ? new Date(s.lastChecked).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Nunca';
+        var hasNew = s.newCount > 0;
+
+        html += '<div class="siga-saved-item' + (hasNew ? ' siga-saved-has-new' : '') + '">' +
+            '<div class="siga-saved-info">' +
+                '<div class="siga-saved-query">' +
+                    san(s.query) +
+                    (hasNew ? ' <span class="siga-new-badge">' + s.newCount + ' nueva' + (s.newCount > 1 ? 's' : '') + '</span>' : '') +
+                '</div>' +
+                '<div class="siga-saved-meta">' +
+                    '<span class="siga-badge-gaceta">' + san(areaLabel) + '</span>' +
+                    '<span>' + s.lastResultCount + ' resultado' + (s.lastResultCount !== 1 ? 's' : '') + '</span>' +
+                    '<span>Revisado: ' + fechaCheck + '</span>' +
+                '</div>' +
+            '</div>' +
+            '<div class="siga-saved-actions">' +
+                '<button class="btn btn-sm btn-primary" onclick="ejecutarBusquedaGuardada(' + s.id + ')" title="Buscar ahora">🔍</button>' +
+                '<button class="btn btn-sm btn-secondary" onclick="verificarBusquedaGuardada(' + s.id + ')" title="Verificar actualizaciones">🔄</button>' +
+                '<button class="btn btn-sm btn-danger" onclick="eliminarBusquedaGuardada(' + s.id + ')" title="Eliminar">✕</button>' +
+            '</div>' +
+        '</div>';
+    });
+    list.innerHTML = html;
+
+    // Actualizar badge global
+    var totalNew = sigaState.savedSearches.reduce(function(sum, s) { return sum + (s.newCount || 0); }, 0);
+    var badge = document.getElementById('siga-updates-badge');
+    if (badge) {
+        badge.style.display = totalNew > 0 ? '' : 'none';
+        badge.textContent = totalNew;
+    }
+
+    // Actualizar badge en el tab de SIGA
+    actualizarTabBadge(totalNew);
+}
+
+function actualizarTabBadge(count) {
+    var tab = document.querySelector('[data-impi-tab="siga"]');
+    if (!tab) return;
+    var existing = tab.querySelector('.siga-tab-badge');
+    if (count > 0) {
+        if (!existing) {
+            existing = document.createElement('span');
+            existing.className = 'siga-tab-badge';
+            tab.appendChild(existing);
+        }
+        existing.textContent = count;
+    } else if (existing) {
+        existing.remove();
+    }
+}
+
+function ejecutarBusquedaGuardada(id) {
+    var saved = sigaState.savedSearches.find(function(s) { return s.id === id; });
+    if (!saved) return;
+
+    // Llenar formulario y buscar
+    document.getElementById('siga-query').value = saved.query;
+    document.getElementById('siga-area').value = saved.area;
+    document.getElementById('siga-fecha-desde').value = saved.fechaDesde || '';
+    document.getElementById('siga-fecha-hasta').value = saved.fechaHasta || '';
+
+    // Limpiar el conteo de novedades
+    if (saved.newCount > 0) {
+        saved.newCount = 0;
+        saved.newFichas = [];
+        actualizarBusquedaEnDB(saved);
+        renderizarBusquedasGuardadas();
+    }
+
+    buscarSIGA();
+}
+
+async function verificarBusquedaGuardada(id) {
+    var saved = sigaState.savedSearches.find(function(s) { return s.id === id; });
+    if (!saved) return;
+
+    try {
+        var data = await proxyFetch('/siga/search', {
+            method: 'POST',
+            body: JSON.stringify({
+                Busqueda: saved.query,
+                IdArea: saved.area,
+                IdGaceta: [],
+                FechaDesde: saved.fechaDesde || '',
+                FechaHasta: saved.fechaHasta || ''
+            })
+        });
+
+        if (!data.successed) return;
+
+        var fichas = data.data || [];
+        var currentIds = fichas.map(function(f) { return f.fichaId; }).sort();
+        var prevIds = (saved.lastFichaIds || []);
+
+        // Detectar fichas nuevas
+        var prevSet = {};
+        prevIds.forEach(function(id) { prevSet[id] = true; });
+        var nuevas = currentIds.filter(function(id) { return !prevSet[id]; });
+
+        saved.lastChecked = new Date().toISOString();
+        saved.lastResultCount = fichas.length;
+        saved.lastFichaIds = currentIds;
+
+        if (nuevas.length > 0) {
+            saved.newCount = nuevas.length;
+            saved.newFichas = nuevas;
+        }
+
+        actualizarBusquedaEnDB(saved);
+        renderizarBusquedasGuardadas();
+
+        return { total: fichas.length, nuevas: nuevas.length };
+    } catch (e) {
+        console.error('Error verificando búsqueda guardada:', e);
+        return null;
+    }
+}
+
+function actualizarBusquedaEnDB(saved) {
+    if (!db) return;
+    var store = sigaDB('readwrite');
+    store.put(saved);
+}
+
+// Auto-check: verificar todas las búsquedas guardadas (máximo 1 vez al día)
+async function autoCheckBusquedasGuardadas() {
+    if (!db || sigaState.savedSearches.length === 0) return;
+    if (!getProxyUrl()) return;
+
+    // Revisar si ya se verificó hoy
+    var lastCheck = localStorage.getItem('siga_last_auto_check');
+    var today = new Date().toDateString();
+    if (lastCheck === today) return;
+
+    localStorage.setItem('siga_last_auto_check', today);
+
+    var totalNuevas = 0;
+    var busquedasConNovedades = [];
+
+    for (var i = 0; i < sigaState.savedSearches.length; i++) {
+        var result = await verificarBusquedaGuardada(sigaState.savedSearches[i].id);
+        if (result && result.nuevas > 0) {
+            totalNuevas += result.nuevas;
+            busquedasConNovedades.push(sigaState.savedSearches[i].query);
+        }
+        // Pequeña pausa entre requests para no saturar
+        if (i < sigaState.savedSearches.length - 1) {
+            await new Promise(function(r) { setTimeout(r, 500); });
+        }
+    }
+
+    if (totalNuevas > 0) {
+        mostrarToast(
+            totalNuevas + ' publicación' + (totalNuevas > 1 ? 'es' : '') +
+            ' nueva' + (totalNuevas > 1 ? 's' : '') +
+            ' en gacetas: ' + busquedasConNovedades.join(', '),
+            'info'
+        );
+    }
+}
+
 // ==================== ENTER KEY HANDLERS ====================
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -623,4 +881,14 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Cargar búsquedas guardadas y auto-check al inicio
+    // Esperar a que IndexedDB esté lista (initDB se llama en app.js)
+    var waitForDB = setInterval(function() {
+        if (db) {
+            clearInterval(waitForDB);
+            cargarBusquedasGuardadas().then(function() {
+                autoCheckBusquedasGuardadas();
+            });
+        }
+    }, 200);
 });

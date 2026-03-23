@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = 'TSJFilingDB';
-const DB_VERSION = 3; // Incrementado para agregar store de eliminados
+const DB_VERSION = 4; // Incrementado para agregar store de búsquedas guardadas SIGA
 
 let db = null;
 
@@ -70,6 +70,12 @@ function initDB() {
                 const eliminadosStore = database.createObjectStore('eliminados', { keyPath: 'clave' });
                 eliminadosStore.createIndex('fecha', 'fecha', { unique: false });
                 eliminadosStore.createIndex('tipo', 'tipo', { unique: false });
+            }
+
+            // Store: Búsquedas guardadas SIGA (monitoreo de gacetas)
+            if (!database.objectStoreNames.contains('sigaGuardadas')) {
+                const sigaStore = database.createObjectStore('sigaGuardadas', { keyPath: 'id', autoIncrement: true });
+                sigaStore.createIndex('query', 'query', { unique: false });
             }
 
             console.log('Stores de IndexedDB creados');
