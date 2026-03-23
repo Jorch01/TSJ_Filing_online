@@ -73,144 +73,8 @@ export default {
                 response = await handleSigaSearch(request);
             } else if (path === '/siga/ficha') {
                 response = await handleSigaFicha(request);
-            }
-            // ===== Debug: probar flujo completo CSRF de SIGA =====
-            else if (path === '/siga/debug') {
-                const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-                const results = {};
-
-                // Paso 1: GET /antiforgery/token para obtener la cookie XSRF-TOKEN
-                const afResp = await fetch(SIGA_BASE + '/antiforgery/token', {
-                    headers: {
-                        'User-Agent': UA,
-                        'Accept': 'application/json',
-                        'Origin': 'https://siga.impi.gob.mx',
-                        'Referer': 'https://siga.impi.gob.mx/'
-                    }
-                });
-                const afBody = await afResp.text();
-                const afSetCookies = afResp.headers.getSetCookie ? afResp.headers.getSetCookie() : [];
-                const afAllHeaders = {};
-                afResp.headers.forEach((v, k) => { afAllHeaders[k] = v; });
-
-                results.antiforgery = {
-                    status: afResp.status,
-                    body: afBody.substring(0, 300),
-                    setCookies: afSetCookies,
-                    headers: afAllHeaders
-                };
-
-                // Extraer XSRF-TOKEN de las cookies
-                let xsrfToken = '';
-                let allCookies = '';
-                for (const sc of afSetCookies) {
-                    const match = sc.match(/XSRF-TOKEN=([^;]+)/i);
-                    if (match) xsrfToken = match[1];
-                    // Construir string de cookies para reenviar
-                    const cookiePart = sc.split(';')[0];
-                    allCookies += (allCookies ? '; ' : '') + cookiePart;
-                }
-                results.extractedXsrfToken = xsrfToken ? xsrfToken.substring(0, 50) + '...' : 'NOT FOUND';
-                results.cookiesForReuse = allCookies ? allCookies.substring(0, 100) + '...' : 'NONE';
-
-                // Paso 2: POST GetFichas con XSRF-TOKEN cookie + header
-                if (xsrfToken) {
-                    const searchResp = await fetch(SIGA_BASE + '/api/BusquedaFicha/GetFichas', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'User-Agent': UA,
-                            'Origin': 'https://siga.impi.gob.mx',
-                            'Referer': 'https://siga.impi.gob.mx/',
-                            'X-XSRF-TOKEN': xsrfToken,
-                            'Cookie': allCookies
-                        },
-                        body: JSON.stringify({
-                            Busqueda: 'coca cola',
-                            IdArea: '2',
-                            IdGaceta: [],
-                            FechaDesde: '',
-                            FechaHasta: '',
-                            ReCaptchaToken: ''
-                        })
-                    });
-                    results.searchWithCsrf = {
-                        status: searchResp.status,
-                        body: (await searchResp.text()).substring(0, 500)
-                    };
-                }
-
-                // Paso 3: Probar CSRF/validate endpoint
-                const csrfResp = await fetch(SIGA_BASE + '/api/CSRF/validate', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'User-Agent': UA,
-                        'Origin': 'https://siga.impi.gob.mx',
-                        'Referer': 'https://siga.impi.gob.mx/',
-                        'X-XSRF-TOKEN': xsrfToken || '',
-                        'Cookie': allCookies || ''
-                    }
-                });
-                results.csrfValidate = {
-                    status: csrfResp.status,
-                    body: (await csrfResp.text()).substring(0, 300)
-                };
-
-                // Paso 4: Probar GatGacetasToday (GET sin CSRF?)
-                const todayResp = await fetch(SIGA_BASE + '/api/Gacetas/GatGacetasToday', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'User-Agent': UA,
-                        'Origin': 'https://siga.impi.gob.mx',
-                        'Referer': 'https://siga.impi.gob.mx/',
-                        'X-XSRF-TOKEN': xsrfToken || '',
-                        'Cookie': allCookies || ''
-                    },
-                    body: JSON.stringify({ reCaptchaToken: '' })
-                });
-                results.gacetasToday = {
-                    status: todayResp.status,
-                    body: (await todayResp.text()).substring(0, 500)
-                };
-
-                // Paso 5: GetAreas
-                const areasResp = await fetch(SIGA_BASE + '/api/BusquedaEstructurada/GetAreas', {
-                    headers: {
-                        'User-Agent': UA,
-                        'Accept': 'application/json',
-                        'Origin': 'https://siga.impi.gob.mx',
-                        'Referer': 'https://siga.impi.gob.mx/',
-                        'X-XSRF-TOKEN': xsrfToken || '',
-                        'Cookie': allCookies || ''
-                    }
-                });
-                results.areas = {
-                    status: areasResp.status,
-                    body: (await areasResp.text()).substring(0, 500)
-                };
-
-                // Paso 6: getAllGacetas
-                const allGacResp = await fetch(SIGA_BASE + '/api/Gacetas/getAllGacetas', {
-                    headers: {
-                        'User-Agent': UA,
-                        'Accept': 'application/json',
-                        'Origin': 'https://siga.impi.gob.mx',
-                        'Referer': 'https://siga.impi.gob.mx/',
-                        'X-XSRF-TOKEN': xsrfToken || '',
-                        'Cookie': allCookies || ''
-                    }
-                });
-                results.allGacetas = {
-                    status: allGacResp.status,
-                    body: (await allGacResp.text()).substring(0, 500)
-                };
-
-                response = new Response(JSON.stringify(results, null, 2), { headers: { 'Content-Type': 'application/json' } });
+            } else if (path === '/siga/areas') {
+                response = await handleSigaAreas(request);
             }
             // ===== Health check =====
             else if (path === '/health') {
@@ -390,45 +254,74 @@ async function handleMarciaView(request, markId) {
 
 // ==================== SIGA HANDLERS ====================
 
-// Obtiene sesión SIGA (CSRF cookie) internamente
+const SIGA_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+// Obtiene sesión SIGA: llama /antiforgery/token para obtener XSRF-TOKEN cookie
 async function ensureSigaSession(request) {
     const sessionKey = 'siga_' + getSessionKey(request);
     let session = sessions.get(sessionKey);
 
     // Reusar sesión si tiene menos de 10 min
-    if (session && (Date.now() - session.timestamp < 10 * 60 * 1000)) {
+    if (session && session.xsrfToken && (Date.now() - session.timestamp < 10 * 60 * 1000)) {
         return session;
     }
 
-    const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
-    // SIGA no envía cookies/XSRF via HTTP headers (solo via JavaScript en el navegador).
-    // Pero la API funciona sin XSRF desde server-side.
-    // Verificamos conectividad llamando GetVersion.
-    const apiResp = await fetch(SIGA_BASE + '/api/Gacetas/GetVersion', {
+    // GET /antiforgery/token → sets .AspNetCore.Antiforgery + XSRF-TOKEN cookies
+    const afResp = await fetch(SIGA_BASE + '/antiforgery/token', {
         headers: {
-            'User-Agent': UA,
+            'User-Agent': SIGA_UA,
             'Accept': 'application/json',
-            'Referer': 'https://siga.impi.gob.mx/',
-            'Origin': 'https://siga.impi.gob.mx'
+            'Origin': 'https://siga.impi.gob.mx',
+            'Referer': 'https://siga.impi.gob.mx/'
         }
     });
 
-    if (!apiResp.ok) {
-        throw new Error('SIGA API no disponible. Status: ' + apiResp.status);
+    if (!afResp.ok) {
+        throw new Error('SIGA antiforgery endpoint no disponible. Status: ' + afResp.status);
     }
 
-    // Recopilar cualquier cookie que pueda haber llegado
-    const cookies = extractCookies(apiResp);
+    // Extraer cookies del Set-Cookie header
+    const setCookies = afResp.headers.getSetCookie ? afResp.headers.getSetCookie() : [];
+    let xsrfToken = '';
+    let allCookies = '';
+    for (const sc of setCookies) {
+        const match = sc.match(/XSRF-TOKEN=([^;]+)/i);
+        if (match) xsrfToken = match[1];
+        const cookiePart = sc.split(';')[0];
+        allCookies += (allCookies ? '; ' : '') + cookiePart;
+    }
 
-    session = { cookies: cookies, timestamp: Date.now() };
+    // Fallback: try extractCookies helper
+    if (!allCookies) {
+        allCookies = extractCookies(afResp);
+    }
+
+    if (!xsrfToken) {
+        throw new Error('No se pudo obtener XSRF-TOKEN de SIGA');
+    }
+
+    session = { cookies: allCookies, xsrfToken: xsrfToken, timestamp: Date.now() };
     sessions.set(sessionKey, session);
     return session;
 }
 
+// Build standard SIGA headers with CSRF credentials
+function sigaHeaders(session, contentType) {
+    const h = {
+        'Accept': 'application/json',
+        'User-Agent': SIGA_UA,
+        'Origin': 'https://siga.impi.gob.mx',
+        'Referer': 'https://siga.impi.gob.mx/',
+        'X-XSRF-TOKEN': session.xsrfToken,
+        'Cookie': session.cookies
+    };
+    if (contentType) h['Content-Type'] = contentType;
+    return h;
+}
+
 async function handleSigaCsrf(request) {
     try {
-        const session = await ensureSigaSession(request);
+        await ensureSigaSession(request);
         return new Response(JSON.stringify({ sessionActive: true }), {
             headers: { 'Content-Type': 'application/json' }
         });
@@ -453,96 +346,74 @@ async function handleSigaSearch(request) {
 
     const body = await request.json();
 
-    // Construir payload para SIGA con un token reCAPTCHA placeholder.
-    // El proxy hace la petición desde server-side (no desde navegador),
-    // así que reCAPTCHA server-side validation puede comportarse diferente.
-    // Intentamos con token vacío primero, luego con placeholder.
     const sigaPayload = {
         Busqueda: body.Busqueda || '',
         IdArea: body.IdArea || '2',
         IdGaceta: body.IdGaceta || [],
         FechaDesde: body.FechaDesde || '',
         FechaHasta: body.FechaHasta || '',
-        ReCaptchaToken: body.ReCaptchaToken || ''
+        ReCaptchaToken: ''
     };
 
-    const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
-    const sigaHeaders = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'User-Agent': UA,
-        'Referer': 'https://siga.impi.gob.mx/',
-        'Origin': 'https://siga.impi.gob.mx'
-    };
-
-    // Agregar cookies si hay sesión activa
-    if (session.cookies) {
-        sigaHeaders['Cookie'] = session.cookies;
-    }
-
-    // Intentar búsqueda
     const resp = await fetch(SIGA_BASE + '/api/BusquedaFicha/GetFichas', {
         method: 'POST',
-        headers: sigaHeaders,
+        headers: sigaHeaders(session, 'application/json'),
         body: JSON.stringify(sigaPayload)
     });
 
-    // Guardar cookies nuevas si las hay
     const sessionKey = 'siga_' + getSessionKey(request);
     updateSessionCookies(sessionKey, resp);
 
-    let data;
-    const respText = await resp.text();
-    try {
-        data = JSON.parse(respText);
-    } catch (e) {
-        // Si no es JSON, devolver el texto como error para debug
-        return new Response(JSON.stringify({
-            error: 'Respuesta no-JSON de SIGA',
-            status: resp.status,
-            body: respText.substring(0, 1000)
-        }), {
-            status: 502,
-            headers: { 'Content-Type': 'application/json' }
-        });
-    }
-
-    return new Response(JSON.stringify(data), {
-        status: resp.status,
-        headers: { 'Content-Type': 'application/json' }
-    });
+    return sigaJsonResponse(resp);
 }
 
 async function handleSigaFicha(request) {
-    const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-    const sessionKey = 'siga_' + getSessionKey(request);
-    const session = sessions.get(sessionKey);
-
-    const headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'User-Agent': UA,
-        'Referer': 'https://siga.impi.gob.mx/',
-        'Origin': 'https://siga.impi.gob.mx'
-    };
-
-    if (session && session.cookies) {
-        headers['Cookie'] = session.cookies;
+    let session;
+    try {
+        session = await ensureSigaSession(request);
+    } catch (e) {
+        return new Response(JSON.stringify({ error: 'No se pudo conectar a SIGA: ' + e.message }), {
+            status: 502,
+            headers: { 'Content-Type': 'application/json' }
+        });
     }
 
     const body = await request.json();
 
     const resp = await fetch(SIGA_BASE + '/api/BusquedaFicha/GetFichaInfo', {
         method: 'POST',
-        headers,
+        headers: sigaHeaders(session, 'application/json'),
         body: JSON.stringify(body)
     });
 
-    if (session) updateSessionCookies(sessionKey, resp);
+    const sessionKey = 'siga_' + getSessionKey(request);
+    updateSessionCookies(sessionKey, resp);
 
-    let data;
+    return sigaJsonResponse(resp);
+}
+
+async function handleSigaAreas(request) {
+    let session;
+    try {
+        session = await ensureSigaSession(request);
+    } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), {
+            status: 502,
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
+
+    const resp = await fetch(SIGA_BASE + '/api/BusquedaEstructurada/GetAreas', {
+        headers: sigaHeaders(session)
+    });
+
+    return sigaJsonResponse(resp);
+}
+
+// Parse SIGA JSON response, handling errors gracefully
+async function sigaJsonResponse(resp) {
     const respText = await resp.text();
+    let data;
     try {
         data = JSON.parse(respText);
     } catch (e) {
