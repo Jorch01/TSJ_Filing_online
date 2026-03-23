@@ -12,7 +12,7 @@
 // URL del proxy CORS desplegado en Cloudflare Workers.
 // El developer debe actualizar esta URL después de desplegar el worker.
 // Dejar vacío '' desactiva la funcionalidad IMPI.
-var IMPI_PROXY_URL = '';
+var IMPI_PROXY_URL = 'https://throbbing-scene-1c2b.enlilh.workers.dev';
 
 // ==================== ESTADO GLOBAL ====================
 
