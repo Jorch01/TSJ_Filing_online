@@ -74,76 +74,141 @@ export default {
             } else if (path === '/siga/ficha') {
                 response = await handleSigaFicha(request);
             }
-            // ===== Debug: analizar app Angular de SIGA =====
+            // ===== Debug: probar flujo completo CSRF de SIGA =====
             else if (path === '/siga/debug') {
                 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
                 const results = {};
 
-                // 1. Obtener HTML de la página
-                const pageResp = await fetch('https://siga.impi.gob.mx/', {
-                    headers: { 'User-Agent': UA, 'Accept': 'text/html' },
-                    redirect: 'follow'
+                // Paso 1: GET /antiforgery/token para obtener la cookie XSRF-TOKEN
+                const afResp = await fetch(SIGA_BASE + '/antiforgery/token', {
+                    headers: {
+                        'User-Agent': UA,
+                        'Accept': 'application/json',
+                        'Origin': 'https://siga.impi.gob.mx',
+                        'Referer': 'https://siga.impi.gob.mx/'
+                    }
                 });
-                const pageHtml = await pageResp.text();
-                results.pageLength = pageHtml.length;
+                const afBody = await afResp.text();
+                const afSetCookies = afResp.headers.getSetCookie ? afResp.headers.getSetCookie() : [];
+                const afAllHeaders = {};
+                afResp.headers.forEach((v, k) => { afAllHeaders[k] = v; });
 
-                // Buscar scripts
-                const scriptMatches = [...pageHtml.matchAll(/src="([^"]*\.js[^"]*)"/g)].map(m => m[1]);
-                results.scripts = scriptMatches;
+                results.antiforgery = {
+                    status: afResp.status,
+                    body: afBody.substring(0, 300),
+                    setCookies: afSetCookies,
+                    headers: afAllHeaders
+                };
 
-                // Buscar tokens, csrf, antiforgery en HTML
-                const csrfMatches = pageHtml.match(/csrf|xsrf|antiforgery|__RequestVerificationToken/gi);
-                results.csrfInHtml = csrfMatches;
+                // Extraer XSRF-TOKEN de las cookies
+                let xsrfToken = '';
+                let allCookies = '';
+                for (const sc of afSetCookies) {
+                    const match = sc.match(/XSRF-TOKEN=([^;]+)/i);
+                    if (match) xsrfToken = match[1];
+                    // Construir string de cookies para reenviar
+                    const cookiePart = sc.split(';')[0];
+                    allCookies += (allCookies ? '; ' : '') + cookiePart;
+                }
+                results.extractedXsrfToken = xsrfToken ? xsrfToken.substring(0, 50) + '...' : 'NOT FOUND';
+                results.cookiesForReuse = allCookies ? allCookies.substring(0, 100) + '...' : 'NONE';
 
-                // Buscar meta tags
-                const metaMatches = [...pageHtml.matchAll(/<meta[^>]*>/gi)].map(m => m[0]);
-                results.metaTags = metaMatches;
-
-                // 2. Descargar el main.js bundle y buscar API endpoints y CSRF config
-                const mainScript = scriptMatches.find(s => s.includes('main'));
-                if (mainScript) {
-                    const jsUrl = mainScript.startsWith('http') ? mainScript : 'https://siga.impi.gob.mx/' + mainScript.replace(/^\//, '');
-                    const jsResp = await fetch(jsUrl, { headers: { 'User-Agent': UA } });
-                    const jsText = await jsResp.text();
-                    results.mainJsLength = jsText.length;
-
-                    // Buscar todos los endpoints API
-                    const apiEndpoints = [...new Set([...jsText.matchAll(/api\/[A-Za-z]+\/[A-Za-z]+/g)].map(m => m[0]))];
-                    results.apiEndpoints = apiEndpoints;
-
-                    // Buscar configuración CSRF/XSRF
-                    const xsrfContext = [];
-                    const xsrfRegex = /[^\n]{0,80}(xsrf|csrf|antiforgery|XSRF|CSRF)[^\n]{0,80}/gi;
-                    let match;
-                    while ((match = xsrfRegex.exec(jsText)) !== null && xsrfContext.length < 15) {
-                        xsrfContext.push(match[0].trim());
-                    }
-                    results.csrfContextInJs = xsrfContext;
-
-                    // Buscar reCAPTCHA config
-                    const recaptchaContext = [];
-                    const recapRegex = /[^\n]{0,60}(recaptcha|sitekey|6L)[^\n]{0,60}/gi;
-                    while ((match = recapRegex.exec(jsText)) !== null && recaptchaContext.length < 10) {
-                        recaptchaContext.push(match[0].trim());
-                    }
-                    results.recaptchaInJs = recaptchaContext;
-
-                    // Buscar cookie-related code
-                    const cookieContext = [];
-                    const cookieRegex = /[^\n]{0,60}(\.cookie|setCookie|withCredentials)[^\n]{0,60}/gi;
-                    while ((match = cookieRegex.exec(jsText)) !== null && cookieContext.length < 10) {
-                        cookieContext.push(match[0].trim());
-                    }
-                    results.cookieInJs = cookieContext;
+                // Paso 2: POST GetFichas con XSRF-TOKEN cookie + header
+                if (xsrfToken) {
+                    const searchResp = await fetch(SIGA_BASE + '/api/BusquedaFicha/GetFichas', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'User-Agent': UA,
+                            'Origin': 'https://siga.impi.gob.mx',
+                            'Referer': 'https://siga.impi.gob.mx/',
+                            'X-XSRF-TOKEN': xsrfToken,
+                            'Cookie': allCookies
+                        },
+                        body: JSON.stringify({
+                            Busqueda: 'coca cola',
+                            IdArea: '2',
+                            IdGaceta: [],
+                            FechaDesde: '',
+                            FechaHasta: '',
+                            ReCaptchaToken: ''
+                        })
+                    });
+                    results.searchWithCsrf = {
+                        status: searchResp.status,
+                        body: (await searchResp.text()).substring(0, 500)
+                    };
                 }
 
-                // 3. Probar GetFichas con X-XSRF-TOKEN header vacío vs sin él
-                const s1Resp = await fetch(SIGA_BASE + '/api/BusquedaFicha/GetFichas', {
+                // Paso 3: Probar CSRF/validate endpoint
+                const csrfResp = await fetch(SIGA_BASE + '/api/CSRF/validate', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': UA, 'Origin': 'https://siga.impi.gob.mx', 'Referer': 'https://siga.impi.gob.mx/', 'X-XSRF-TOKEN': 'test' },
-                    body: JSON.stringify({ Busqueda: 'coca cola', IdArea: '2', IdGaceta: [], FechaDesde: '', FechaHasta: '', ReCaptchaToken: '' })
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'User-Agent': UA,
+                        'Origin': 'https://siga.impi.gob.mx',
+                        'Referer': 'https://siga.impi.gob.mx/',
+                        'X-XSRF-TOKEN': xsrfToken || '',
+                        'Cookie': allCookies || ''
+                    }
                 });
-                results.searchWithXsrfHeader = { status: s1Resp.status, body: (await s1Resp.text()).substring(0, 300) };
+                results.csrfValidate = {
+                    status: csrfResp.status,
+                    body: (await csrfResp.text()).substring(0, 300)
+                };
+
+                // Paso 4: Probar GatGacetasToday (GET sin CSRF?)
+                const todayResp = await fetch(SIGA_BASE + '/api/Gacetas/GatGacetasToday', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'User-Agent': UA,
+                        'Origin': 'https://siga.impi.gob.mx',
+                        'Referer': 'https://siga.impi.gob.mx/',
+                        'X-XSRF-TOKEN': xsrfToken || '',
+                        'Cookie': allCookies || ''
+                    },
+                    body: JSON.stringify({ reCaptchaToken: '' })
+                });
+                results.gacetasToday = {
+                    status: todayResp.status,
+                    body: (await todayResp.text()).substring(0, 500)
+                };
+
+                // Paso 5: GetAreas
+                const areasResp = await fetch(SIGA_BASE + '/api/BusquedaEstructurada/GetAreas', {
+                    headers: {
+                        'User-Agent': UA,
+                        'Accept': 'application/json',
+                        'Origin': 'https://siga.impi.gob.mx',
+                        'Referer': 'https://siga.impi.gob.mx/',
+                        'X-XSRF-TOKEN': xsrfToken || '',
+                        'Cookie': allCookies || ''
+                    }
+                });
+                results.areas = {
+                    status: areasResp.status,
+                    body: (await areasResp.text()).substring(0, 500)
+                };
+
+                // Paso 6: getAllGacetas
+                const allGacResp = await fetch(SIGA_BASE + '/api/Gacetas/getAllGacetas', {
+                    headers: {
+                        'User-Agent': UA,
+                        'Accept': 'application/json',
+                        'Origin': 'https://siga.impi.gob.mx',
+                        'Referer': 'https://siga.impi.gob.mx/',
+                        'X-XSRF-TOKEN': xsrfToken || '',
+                        'Cookie': allCookies || ''
+                    }
+                });
+                results.allGacetas = {
+                    status: allGacResp.status,
+                    body: (await allGacResp.text()).substring(0, 500)
+                };
 
                 response = new Response(JSON.stringify(results, null, 2), { headers: { 'Content-Type': 'application/json' } });
             }
