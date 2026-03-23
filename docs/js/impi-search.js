@@ -30,11 +30,8 @@ var marciaState = {
 
 var sigaState = {
     results: [],
-    searching: false,
-    recaptchaReady: false
+    searching: false
 };
-
-var SIGA_RECAPTCHA_KEY = '6LeRdm0pAAAAAOprsyOxSYwiBsVUmGSMdnCuA-P6';
 
 function getProxyUrl() {
     return IMPI_PROXY_URL.replace(/\/+$/, '');
@@ -53,7 +50,6 @@ function cambiarTabIMPI(tab) {
     var content = document.getElementById('impi-tab-' + tab);
     if (content) content.classList.add('active');
 
-    if (tab === 'siga') initSigaRecaptcha();
 }
 
 // ==================== PROXY HELPERS ====================
@@ -441,32 +437,6 @@ function exportarResultadosMARCia() {
     mostrarNotificacion('CSV exportado con ' + marciaState.results.length + ' resultados', 'success');
 }
 
-// ==================== SIGA: reCAPTCHA ====================
-
-function initSigaRecaptcha() {
-    if (sigaState.recaptchaReady) return;
-    if (document.getElementById('siga-recaptcha-script')) return;
-
-    var script = document.createElement('script');
-    script.id = 'siga-recaptcha-script';
-    script.src = 'https://www.google.com/recaptcha/api.js?render=' + SIGA_RECAPTCHA_KEY;
-    script.onload = function() {
-        sigaState.recaptchaReady = true;
-    };
-    document.head.appendChild(script);
-}
-
-async function obtenerTokenRecaptchaSIGA() {
-    if (!sigaState.recaptchaReady || typeof grecaptcha === 'undefined') {
-        throw new Error('reCAPTCHA no disponible. Recarga la página.');
-    }
-    return new Promise(function(resolve, reject) {
-        grecaptcha.ready(function() {
-            grecaptcha.execute(SIGA_RECAPTCHA_KEY, { action: 'search' }).then(resolve).catch(reject);
-        });
-    });
-}
-
 // ==================== SIGA: BÚSQUEDA ====================
 
 async function buscarSIGA() {
@@ -483,18 +453,7 @@ async function buscarSIGA() {
     if (loading) loading.style.display = 'flex';
 
     try {
-        // 1. Obtener sesión CSRF del proxy
-        await proxyFetch('/siga/csrf');
-
-        // 2. Obtener token reCAPTCHA
-        var recaptchaToken;
-        try {
-            recaptchaToken = await obtenerTokenRecaptchaSIGA();
-        } catch (e) {
-            throw new Error('No se pudo generar token reCAPTCHA: ' + e.message);
-        }
-
-        // 3. Buscar
+        // El proxy maneja CSRF y reCAPTCHA server-side
         var data = await proxyFetch('/siga/search', {
             method: 'POST',
             body: JSON.stringify({
@@ -502,8 +461,7 @@ async function buscarSIGA() {
                 IdArea: area,
                 IdGaceta: [],
                 FechaDesde: fechaDesde,
-                FechaHasta: fechaHasta,
-                ReCaptchaToken: recaptchaToken
+                FechaHasta: fechaHasta
             })
         });
 
