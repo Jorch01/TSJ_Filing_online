@@ -27,6 +27,7 @@ const ALLOWED_ORIGINS = [
 
 const MARCIA_BASE = 'https://marcia.impi.gob.mx';
 const SIGA_BASE = 'https://siga.impi.gob.mx:5007';
+const MARCANET_BASE = 'https://acervomarcas.impi.gob.mx:8181';
 
 // Almacén de sesiones MARCia (CSRF token + cookies) por IP/origen
 // En producción considerar KV o Durable Objects para persistencia
@@ -76,11 +77,23 @@ export default {
             } else if (path === '/siga/areas') {
                 response = await handleSigaAreas(request);
             }
+            // ===== Rutas Marcanet =====
+            else if (path === '/marcanet/session') {
+                response = await handleMarcanetSession(request);
+            } else if (path === '/marcanet/fonetica') {
+                response = await handleMarcanetFonetica(request);
+            } else if (path === '/marcanet/expediente') {
+                response = await handleMarcanetExpediente(request);
+            } else if (path === '/marcanet/registro') {
+                response = await handleMarcanetRegistro(request);
+            } else if (path === '/marcanet/titular') {
+                response = await handleMarcanetTitular(request);
+            }
             // ===== Health check =====
             else if (path === '/health') {
                 response = new Response(JSON.stringify({
                     status: 'ok',
-                    services: ['marcia', 'siga'],
+                    services: ['marcia', 'siga', 'marcanet'],
                     timestamp: new Date().toISOString()
                 }), { headers: { 'Content-Type': 'application/json' } });
             }
@@ -488,6 +501,368 @@ function sigaJsonResponseFromText(status, respText) {
 
     return new Response(JSON.stringify(data), {
         status: status,
+        headers: { 'Content-Type': 'application/json' }
+    });
+}
+
+// ==================== MARCANET HANDLERS ====================
+
+const MARCANET_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+function marcanetHeaders(session) {
+    return {
+        'User-Agent': MARCANET_UA,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'es-MX,es;q=0.9,en;q=0.8',
+        'Cookie': session.cookies || '',
+        'Referer': MARCANET_BASE + '/marcanet/vistas/common/home.pgi',
+        'Origin': MARCANET_BASE
+    };
+}
+
+// Inicializar sesión Marcanet (obtener cookies del home)
+async function ensureMarcanetSession(request) {
+    const sessionKey = 'marcanet_' + getSessionKey(request);
+    let session = sessions.get(sessionKey);
+
+    if (session && session.cookies && (Date.now() - session.timestamp < 15 * 60 * 1000)) {
+        return session;
+    }
+
+    const resp = await fetch(MARCANET_BASE + '/marcanet/vistas/common/home.pgi', {
+        headers: {
+            'User-Agent': MARCANET_UA,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'es-MX,es;q=0.9,en;q=0.8'
+        },
+        redirect: 'follow'
+    });
+
+    const cookies = extractCookies(resp);
+    session = { cookies, timestamp: Date.now() };
+    sessions.set(sessionKey, session);
+    return session;
+}
+
+// Handler: inicializar sesión
+async function handleMarcanetSession(request) {
+    try {
+        const session = await ensureMarcanetSession(request);
+        return new Response(JSON.stringify({ sessionActive: true }), {
+            headers: { 'Content-Type': 'application/json' }
+        });
+    } catch (e) {
+        return new Response(JSON.stringify({ error: 'No se pudo iniciar sesión con Marcanet: ' + e.message }), {
+            status: 502,
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
+}
+
+// Parsear tabla HTML de resultados Marcanet a JSON
+function parseMarcanetResultsHTML(html) {
+    const results = [];
+
+    // Buscar la tabla de resultados - las tablas de Marcanet tienen filas con datos
+    // Patrón: extraer filas <tr> con <td> que contienen datos de marcas
+    const tableMatch = html.match(/<table[^>]*class="[^"]*(?:table|resultado|datos)[^"]*"[^>]*>([\s\S]*?)<\/table>/i) ||
+                        html.match(/<table[^>]*>([\s\S]*?)<\/table>/gi);
+
+    if (!tableMatch) {
+        // Intentar extraer datos de cualquier tabla presente
+        const allTables = html.match(/<table[\s\S]*?<\/table>/gi) || [];
+        // Buscar la tabla con más filas (probablemente la de resultados)
+        let bestTable = '';
+        let maxRows = 0;
+        for (const t of allTables) {
+            const rowCount = (t.match(/<tr/gi) || []).length;
+            if (rowCount > maxRows) { maxRows = rowCount; bestTable = t; }
+        }
+        if (bestTable) {
+            return parseMarcanetTable(bestTable);
+        }
+        return results;
+    }
+
+    const tableHTML = Array.isArray(tableMatch) ? tableMatch.join('') : tableMatch[1] || tableMatch[0];
+    return parseMarcanetTable(tableHTML);
+}
+
+function parseMarcanetTable(tableHTML) {
+    const results = [];
+    // Extraer encabezados
+    const headers = [];
+    const thMatches = tableHTML.match(/<th[^>]*>([\s\S]*?)<\/th>/gi) || [];
+    for (const th of thMatches) {
+        const text = th.replace(/<[^>]+>/g, '').trim();
+        headers.push(text);
+    }
+
+    // Extraer filas de datos
+    const rows = tableHTML.match(/<tr[^>]*>([\s\S]*?)<\/tr>/gi) || [];
+    for (const row of rows) {
+        const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/gi);
+        if (!cells || cells.length < 2) continue;
+
+        const rowData = {};
+        cells.forEach(function(cell, idx) {
+            // Extraer texto limpio y también enlaces
+            const linkMatch = cell.match(/href="([^"]*?)"/i);
+            const text = cell.replace(/<[^>]+>/g, '').trim();
+            const headerName = headers[idx] || ('col' + idx);
+            rowData[headerName] = text;
+            if (linkMatch) rowData['_link_' + idx] = linkMatch[1];
+        });
+        // Solo agregar filas con datos significativos
+        const values = Object.values(rowData).filter(function(v) { return v && !v.startsWith('_'); });
+        if (values.length >= 2) results.push(rowData);
+    }
+    return results;
+}
+
+// Parsear detalle de expediente HTML a JSON
+function parseMarcanetDetailHTML(html) {
+    const detail = {};
+
+    // Extraer todos los pares campo/valor de tablas
+    const rows = html.match(/<tr[^>]*>([\s\S]*?)<\/tr>/gi) || [];
+    for (const row of rows) {
+        const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/gi);
+        if (!cells || cells.length < 2) continue;
+        const label = cells[0].replace(/<[^>]+>/g, '').trim();
+        const value = cells[1].replace(/<[^>]+>/g, '').trim();
+        if (label && value) {
+            detail[label] = value;
+        }
+    }
+
+    // Intentar extraer imagen si existe
+    const imgMatch = html.match(/<img[^>]*src="([^"]*?)"[^>]*>/i);
+    if (imgMatch && imgMatch[1] && !imgMatch[1].includes('logo')) {
+        detail._imagen = imgMatch[1].startsWith('http') ? imgMatch[1] : MARCANET_BASE + imgMatch[1];
+    }
+
+    // Extraer título si existe en un h1/h2/h3
+    const titleMatch = html.match(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i);
+    if (titleMatch) {
+        detail._titulo = titleMatch[1].replace(/<[^>]+>/g, '').trim();
+    }
+
+    return detail;
+}
+
+// Handler: búsqueda fonética
+async function handleMarcanetFonetica(request) {
+    let session;
+    try { session = await ensureMarcanetSession(request); } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    const body = await request.json();
+    const denominacion = body.denominacion || '';
+    const clase = body.clase || '';
+
+    if (!denominacion) {
+        return new Response(JSON.stringify({ error: 'Denominación requerida' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    // Enviar búsqueda fonética
+    const formData = new URLSearchParams();
+    formData.append('denominacion', denominacion);
+    formData.append('clase', clase);
+    // Campos alternativos que podría usar el formulario
+    formData.append('p_denominacion', denominacion);
+    formData.append('p_clase', clase);
+    formData.append('idClase', clase);
+    formData.append('buscar', 'Buscar');
+    formData.append('action', 'buscar');
+
+    const resp = await fetch(MARCANET_BASE + '/marcanet/vistas/common/datos/bsqFonetica.pgi', {
+        method: 'POST',
+        headers: Object.assign(marcanetHeaders(session), {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }),
+        body: formData.toString(),
+        redirect: 'follow'
+    });
+
+    // Actualizar cookies
+    const sessionKey = 'marcanet_' + getSessionKey(request);
+    updateSessionCookies(sessionKey, resp);
+
+    const html = await resp.text();
+    const results = parseMarcanetResultsHTML(html);
+
+    return new Response(JSON.stringify({
+        results: results,
+        totalResults: results.length,
+        rawLength: html.length,
+        status: resp.status
+    }), {
+        headers: { 'Content-Type': 'application/json' }
+    });
+}
+
+// Handler: búsqueda por número de expediente
+async function handleMarcanetExpediente(request) {
+    let session;
+    try { session = await ensureMarcanetSession(request); } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    const body = await request.json();
+    const expediente = body.expediente || '';
+
+    if (!expediente) {
+        return new Response(JSON.stringify({ error: 'Número de expediente requerido' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    // Intentar UCMServlet con el número de expediente codificado en Base64
+    // Formato observado: tipo|número|modo|número
+    const infoStr = '3|' + expediente + '|1|' + expediente;
+    const infoB64 = btoa(infoStr);
+
+    const resp = await fetch(MARCANET_BASE + '/marcanet/UCMServlet?info=' + encodeURIComponent(infoB64), {
+        headers: marcanetHeaders(session),
+        redirect: 'follow'
+    });
+
+    const sessionKey = 'marcanet_' + getSessionKey(request);
+    updateSessionCookies(sessionKey, resp);
+
+    const html = await resp.text();
+    const detail = parseMarcanetDetailHTML(html);
+
+    // Si no hay datos suficientes del UCMServlet, intentar con la página de búsqueda
+    if (Object.keys(detail).length < 3) {
+        const formData = new URLSearchParams();
+        formData.append('expediente', expediente);
+        formData.append('p_expediente', expediente);
+        formData.append('buscar', 'Buscar');
+
+        const resp2 = await fetch(MARCANET_BASE + '/marcanet/vistas/common/datos/bsqExpediente.pgi', {
+            method: 'POST',
+            headers: Object.assign(marcanetHeaders(session), {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }),
+            body: formData.toString(),
+            redirect: 'follow'
+        });
+
+        updateSessionCookies(sessionKey, resp2);
+        const html2 = await resp2.text();
+        const detail2 = parseMarcanetDetailHTML(html2);
+        Object.assign(detail, detail2);
+    }
+
+    return new Response(JSON.stringify({
+        detail: detail,
+        fieldCount: Object.keys(detail).length
+    }), {
+        headers: { 'Content-Type': 'application/json' }
+    });
+}
+
+// Handler: búsqueda por número de registro
+async function handleMarcanetRegistro(request) {
+    let session;
+    try { session = await ensureMarcanetSession(request); } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    const body = await request.json();
+    const registro = body.registro || '';
+
+    if (!registro) {
+        return new Response(JSON.stringify({ error: 'Número de registro requerido' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    // UCMServlet con tipo 4 para registro
+    const infoStr = '4|' + registro + '|2';
+    const infoB64 = btoa(infoStr);
+
+    const resp = await fetch(MARCANET_BASE + '/marcanet/UCMServlet?info=' + encodeURIComponent(infoB64), {
+        headers: marcanetHeaders(session),
+        redirect: 'follow'
+    });
+
+    const sessionKey = 'marcanet_' + getSessionKey(request);
+    updateSessionCookies(sessionKey, resp);
+
+    const html = await resp.text();
+    const detail = parseMarcanetDetailHTML(html);
+
+    // Fallback a la página de búsqueda por registro
+    if (Object.keys(detail).length < 3) {
+        const formData = new URLSearchParams();
+        formData.append('registro', registro);
+        formData.append('p_registro', registro);
+        formData.append('buscar', 'Buscar');
+
+        const resp2 = await fetch(MARCANET_BASE + '/marcanet/vistas/common/datos/bsqRegistroCompleto.pgi', {
+            method: 'POST',
+            headers: Object.assign(marcanetHeaders(session), {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }),
+            body: formData.toString(),
+            redirect: 'follow'
+        });
+
+        updateSessionCookies(sessionKey, resp2);
+        const html2 = await resp2.text();
+        const detail2 = parseMarcanetDetailHTML(html2);
+        Object.assign(detail, detail2);
+    }
+
+    return new Response(JSON.stringify({
+        detail: detail,
+        fieldCount: Object.keys(detail).length
+    }), {
+        headers: { 'Content-Type': 'application/json' }
+    });
+}
+
+// Handler: búsqueda por titular
+async function handleMarcanetTitular(request) {
+    let session;
+    try { session = await ensureMarcanetSession(request); } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    const body = await request.json();
+    const titular = body.titular || '';
+
+    if (!titular) {
+        return new Response(JSON.stringify({ error: 'Nombre de titular requerido' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    const formData = new URLSearchParams();
+    formData.append('titular', titular);
+    formData.append('p_titular', titular);
+    formData.append('nombre', titular);
+    formData.append('buscar', 'Buscar');
+    formData.append('action', 'buscar');
+
+    const resp = await fetch(MARCANET_BASE + '/marcanet/vistas/common/datos/bsqTitularCompleta.pgi', {
+        method: 'POST',
+        headers: Object.assign(marcanetHeaders(session), {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }),
+        body: formData.toString(),
+        redirect: 'follow'
+    });
+
+    const sessionKey = 'marcanet_' + getSessionKey(request);
+    updateSessionCookies(sessionKey, resp);
+
+    const html = await resp.text();
+    const results = parseMarcanetResultsHTML(html);
+
+    return new Response(JSON.stringify({
+        results: results,
+        totalResults: results.length,
+        rawLength: html.length
+    }), {
         headers: { 'Content-Type': 'application/json' }
     });
 }
