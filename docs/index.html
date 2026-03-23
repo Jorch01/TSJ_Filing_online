@@ -1557,11 +1557,27 @@
                     </div>
                 </div>
 
-                <!-- Resultados SIGA (cuando se logra conexión directa) -->
+                <!-- Búsquedas guardadas SIGA -->
+                <div id="siga-saved-section" class="card" style="display: none;">
+                    <div class="card-header">
+                        <div class="header-with-help">
+                            <h3>⭐ Búsquedas Guardadas</h3>
+                            <span class="siga-saved-badge" id="siga-updates-badge" style="display: none;">0</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="siga-saved-list"></div>
+                    </div>
+                </div>
+
+                <!-- Resultados SIGA -->
                 <div id="siga-results-section" style="display: none;">
                     <div class="card">
                         <div class="card-header">
-                            <h3>📋 Resultados de Gacetas</h3>
+                            <div class="header-with-help">
+                                <h3>📋 Resultados de Gacetas</h3>
+                                <button class="btn btn-sm btn-outline" id="siga-save-search-btn" onclick="guardarBusquedaSIGA()" style="display: none;" title="Guardar esta búsqueda para monitoreo">⭐ Guardar búsqueda</button>
+                            </div>
                             <span class="results-count" id="siga-results-count">0 resultados</span>
                         </div>
                         <div class="card-body">

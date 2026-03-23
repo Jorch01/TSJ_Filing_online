@@ -3214,6 +3214,145 @@ textarea:focus {
     font-style: italic;
 }
 
+/* SIGA saved searches */
+.siga-saved-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.65rem 0.75rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-color);
+    margin-bottom: 0.5rem;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.siga-saved-item:last-child {
+    margin-bottom: 0;
+}
+
+.siga-saved-item:hover {
+    border-color: var(--primary);
+    background: rgba(54, 96, 146, 0.03);
+}
+
+.siga-saved-has-new {
+    border-color: #e65100;
+    background: rgba(230, 81, 0, 0.04);
+}
+
+[data-theme="dark"] .siga-saved-has-new {
+    border-color: #ff9800;
+    background: rgba(255, 152, 0, 0.08);
+}
+
+.siga-saved-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.siga-saved-query {
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 0.2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.siga-saved-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    align-items: center;
+}
+
+.siga-saved-actions {
+    display: flex;
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+
+.siga-new-badge {
+    display: inline-block;
+    background: #e65100;
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 0.1rem 0.45rem;
+    border-radius: 10px;
+    line-height: 1.3;
+}
+
+[data-theme="dark"] .siga-new-badge {
+    background: #ff9800;
+    color: #1a1a2e;
+}
+
+.siga-saved-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #e65100;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    min-width: 1.3rem;
+    height: 1.3rem;
+    padding: 0 0.3rem;
+    border-radius: 10px;
+    margin-left: 0.5rem;
+}
+
+[data-theme="dark"] .siga-saved-badge {
+    background: #ff9800;
+    color: #1a1a2e;
+}
+
+/* Badge on SIGA tab button */
+.siga-tab-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #e65100;
+    color: #fff;
+    font-size: 0.6rem;
+    font-weight: 700;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    padding: 0 0.25rem;
+    border-radius: 8px;
+    margin-left: 0.35rem;
+    vertical-align: middle;
+    animation: siga-badge-pulse 2s ease-in-out 3;
+}
+
+@keyframes siga-badge-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+}
+
+[data-theme="dark"] .siga-tab-badge {
+    background: #ff9800;
+    color: #1a1a2e;
+}
+
+/* Responsive saved searches */
+@media (max-width: 480px) {
+    .siga-saved-item {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .siga-saved-actions {
+        justify-content: flex-end;
+        margin-top: 0.35rem;
+    }
+}
+
 /* IMPI responsive */
 @media (max-width: 768px) {
     .impi-tabs {
