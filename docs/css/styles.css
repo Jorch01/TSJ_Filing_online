@@ -2665,6 +2665,28 @@ textarea:focus {
 
 /* ==================== IMPI (MARCia + SIGA) ==================== */
 
+/* IMPI local storage notice */
+.impi-local-notice {
+    background: rgba(54, 96, 146, 0.06);
+    border: 1px solid rgba(54, 96, 146, 0.15);
+    border-radius: var(--radius);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    line-height: 1.4;
+}
+
+.impi-local-notice a {
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+[data-theme="dark"] .impi-local-notice {
+    background: rgba(100, 160, 255, 0.06);
+    border-color: rgba(100, 160, 255, 0.15);
+}
+
 .impi-tabs {
     display: flex;
     gap: 0;
