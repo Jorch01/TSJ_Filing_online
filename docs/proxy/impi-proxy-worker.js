@@ -74,6 +74,41 @@ export default {
             } else if (path === '/siga/ficha') {
                 response = await handleSigaFicha(request);
             }
+            // ===== Debug: ver qué devuelve SIGA =====
+            else if (path === '/siga/debug') {
+                const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+                // Fetch página principal
+                const pageResp = await fetch('https://siga.impi.gob.mx/', {
+                    headers: { 'User-Agent': UA, 'Accept': 'text/html' },
+                    redirect: 'follow'
+                });
+                const pageHeaders = {};
+                for (const [k, v] of pageResp.headers.entries()) {
+                    pageHeaders[k] = v;
+                }
+                const pageCookies = extractCookies(pageResp);
+                const hasGetSetCookie = typeof pageResp.headers.getSetCookie === 'function';
+                const rawSetCookie = pageResp.headers.get('set-cookie');
+                const getSetCookieResult = hasGetSetCookie ? pageResp.headers.getSetCookie() : 'N/A';
+
+                // Fetch API version
+                const apiResp = await fetch('https://siga.impi.gob.mx:5007/api/Gacetas/GetVersion', {
+                    headers: { 'User-Agent': UA, 'Accept': 'application/json', 'Cookie': pageCookies, 'Referer': 'https://siga.impi.gob.mx/', 'Origin': 'https://siga.impi.gob.mx' }
+                });
+                const apiHeaders = {};
+                for (const [k, v] of apiResp.headers.entries()) {
+                    apiHeaders[k] = v;
+                }
+                const apiCookies = extractCookies(apiResp);
+                let apiBody;
+                try { apiBody = await apiResp.text(); } catch (e) { apiBody = 'error: ' + e.message; }
+
+                response = new Response(JSON.stringify({
+                    page: { status: pageResp.status, headers: pageHeaders, extractedCookies: pageCookies, rawSetCookie, hasGetSetCookie, getSetCookieResult },
+                    api: { status: apiResp.status, headers: apiHeaders, extractedCookies: apiCookies, body: apiBody.substring(0, 500) }
+                }, null, 2), { headers: { 'Content-Type': 'application/json' } });
+            }
             // ===== Health check =====
             else if (path === '/health') {
                 response = new Response(JSON.stringify({
@@ -436,16 +471,41 @@ function getSessionKey(request) {
 }
 
 function extractCookies(response) {
-    // Cloudflare Workers: getAll puede no existir en todos los contextos
     const cookies = [];
-    // Iterar headers buscando set-cookie
-    for (const [key, value] of response.headers.entries()) {
-        if (key.toLowerCase() === 'set-cookie') {
-            // Extraer nombre=valor de la cookie
-            const cookiePart = value.split(';')[0];
-            cookies.push(cookiePart);
+
+    // Método 1: getSetCookie() - estándar en Cloudflare Workers
+    if (typeof response.headers.getSetCookie === 'function') {
+        const setCookies = response.headers.getSetCookie();
+        for (const sc of setCookies) {
+            const cookiePart = sc.split(';')[0].trim();
+            if (cookiePart) cookies.push(cookiePart);
         }
     }
+
+    // Método 2: getAll (legacy Workers)
+    if (cookies.length === 0 && typeof response.headers.getAll === 'function') {
+        try {
+            const all = response.headers.getAll('set-cookie');
+            for (const sc of all) {
+                const cookiePart = sc.split(';')[0].trim();
+                if (cookiePart) cookies.push(cookiePart);
+            }
+        } catch (e) { /* ignorar si no soporta */ }
+    }
+
+    // Método 3: get() puede devolver múltiples cookies separadas por coma
+    if (cookies.length === 0) {
+        const raw = response.headers.get('set-cookie');
+        if (raw) {
+            // Split por coma pero cuidando no partir valores de cookies que contengan comas
+            const parts = raw.split(/,(?=\s*[A-Za-z_-]+=)/);
+            for (const part of parts) {
+                const cookiePart = part.split(';')[0].trim();
+                if (cookiePart) cookies.push(cookiePart);
+            }
+        }
+    }
+
     return cookies.join('; ');
 }
 
