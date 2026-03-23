@@ -74,46 +74,76 @@ export default {
             } else if (path === '/siga/ficha') {
                 response = await handleSigaFicha(request);
             }
-            // ===== Debug: probar búsqueda real en SIGA =====
+            // ===== Debug: analizar app Angular de SIGA =====
             else if (path === '/siga/debug') {
                 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
                 const results = {};
 
-                // Test 1: GetVersion (sabemos que funciona)
-                const vResp = await fetch(SIGA_BASE + '/api/Gacetas/GetVersion', {
-                    headers: { 'User-Agent': UA, 'Accept': 'application/json', 'Origin': 'https://siga.impi.gob.mx', 'Referer': 'https://siga.impi.gob.mx/' }
+                // 1. Obtener HTML de la página
+                const pageResp = await fetch('https://siga.impi.gob.mx/', {
+                    headers: { 'User-Agent': UA, 'Accept': 'text/html' },
+                    redirect: 'follow'
                 });
-                results.version = { status: vResp.status, body: await vResp.text() };
+                const pageHtml = await pageResp.text();
+                results.pageLength = pageHtml.length;
 
-                // Test 2: GetFichas SIN reCAPTCHA token
+                // Buscar scripts
+                const scriptMatches = [...pageHtml.matchAll(/src="([^"]*\.js[^"]*)"/g)].map(m => m[1]);
+                results.scripts = scriptMatches;
+
+                // Buscar tokens, csrf, antiforgery en HTML
+                const csrfMatches = pageHtml.match(/csrf|xsrf|antiforgery|__RequestVerificationToken/gi);
+                results.csrfInHtml = csrfMatches;
+
+                // Buscar meta tags
+                const metaMatches = [...pageHtml.matchAll(/<meta[^>]*>/gi)].map(m => m[0]);
+                results.metaTags = metaMatches;
+
+                // 2. Descargar el main.js bundle y buscar API endpoints y CSRF config
+                const mainScript = scriptMatches.find(s => s.includes('main'));
+                if (mainScript) {
+                    const jsUrl = mainScript.startsWith('http') ? mainScript : 'https://siga.impi.gob.mx/' + mainScript.replace(/^\//, '');
+                    const jsResp = await fetch(jsUrl, { headers: { 'User-Agent': UA } });
+                    const jsText = await jsResp.text();
+                    results.mainJsLength = jsText.length;
+
+                    // Buscar todos los endpoints API
+                    const apiEndpoints = [...new Set([...jsText.matchAll(/api\/[A-Za-z]+\/[A-Za-z]+/g)].map(m => m[0]))];
+                    results.apiEndpoints = apiEndpoints;
+
+                    // Buscar configuración CSRF/XSRF
+                    const xsrfContext = [];
+                    const xsrfRegex = /[^\n]{0,80}(xsrf|csrf|antiforgery|XSRF|CSRF)[^\n]{0,80}/gi;
+                    let match;
+                    while ((match = xsrfRegex.exec(jsText)) !== null && xsrfContext.length < 15) {
+                        xsrfContext.push(match[0].trim());
+                    }
+                    results.csrfContextInJs = xsrfContext;
+
+                    // Buscar reCAPTCHA config
+                    const recaptchaContext = [];
+                    const recapRegex = /[^\n]{0,60}(recaptcha|sitekey|6L)[^\n]{0,60}/gi;
+                    while ((match = recapRegex.exec(jsText)) !== null && recaptchaContext.length < 10) {
+                        recaptchaContext.push(match[0].trim());
+                    }
+                    results.recaptchaInJs = recaptchaContext;
+
+                    // Buscar cookie-related code
+                    const cookieContext = [];
+                    const cookieRegex = /[^\n]{0,60}(\.cookie|setCookie|withCredentials)[^\n]{0,60}/gi;
+                    while ((match = cookieRegex.exec(jsText)) !== null && cookieContext.length < 10) {
+                        cookieContext.push(match[0].trim());
+                    }
+                    results.cookieInJs = cookieContext;
+                }
+
+                // 3. Probar GetFichas con X-XSRF-TOKEN header vacío vs sin él
                 const s1Resp = await fetch(SIGA_BASE + '/api/BusquedaFicha/GetFichas', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': UA, 'Origin': 'https://siga.impi.gob.mx', 'Referer': 'https://siga.impi.gob.mx/' },
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': UA, 'Origin': 'https://siga.impi.gob.mx', 'Referer': 'https://siga.impi.gob.mx/', 'X-XSRF-TOKEN': 'test' },
                     body: JSON.stringify({ Busqueda: 'coca cola', IdArea: '2', IdGaceta: [], FechaDesde: '', FechaHasta: '', ReCaptchaToken: '' })
                 });
-                results.searchNoToken = { status: s1Resp.status, body: (await s1Resp.text()).substring(0, 500) };
-
-                // Test 3: GetFichas CON reCAPTCHA token dummy
-                const s2Resp = await fetch(SIGA_BASE + '/api/BusquedaFicha/GetFichas', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': UA, 'Origin': 'https://siga.impi.gob.mx', 'Referer': 'https://siga.impi.gob.mx/' },
-                    body: JSON.stringify({ Busqueda: 'coca cola', IdArea: '2', IdGaceta: [], FechaDesde: '', FechaHasta: '', ReCaptchaToken: 'dummy-token' })
-                });
-                results.searchDummyToken = { status: s2Resp.status, body: (await s2Resp.text()).substring(0, 500) };
-
-                // Test 4: Probar endpoint de Gacetas (que no requiere búsqueda)
-                const gResp = await fetch(SIGA_BASE + '/api/Gacetas/GetGacetas', {
-                    headers: { 'User-Agent': UA, 'Accept': 'application/json', 'Origin': 'https://siga.impi.gob.mx', 'Referer': 'https://siga.impi.gob.mx/' }
-                });
-                results.gacetas = { status: gResp.status, body: (await gResp.text()).substring(0, 500) };
-
-                // Test 5: Probar con IdArea como número, no string
-                const s3Resp = await fetch(SIGA_BASE + '/api/BusquedaFicha/GetFichas', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': UA, 'Origin': 'https://siga.impi.gob.mx', 'Referer': 'https://siga.impi.gob.mx/' },
-                    body: JSON.stringify({ Busqueda: 'coca cola', IdArea: 2, IdGaceta: [], FechaDesde: '', FechaHasta: '', ReCaptchaToken: '' })
-                });
-                results.searchNumericArea = { status: s3Resp.status, body: (await s3Resp.text()).substring(0, 500) };
+                results.searchWithXsrfHeader = { status: s1Resp.status, body: (await s1Resp.text()).substring(0, 300) };
 
                 response = new Response(JSON.stringify(results, null, 2), { headers: { 'Content-Type': 'application/json' } });
             }
