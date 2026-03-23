@@ -1,7 +1,7 @@
 {
   "name": "TSJ Filing Online",
   "short_name": "TSJ Filing",
-  "description": "Sistema de gestión de expedientes del TSJ Quintana Roo y PJF Federal",
+  "description": "Gestión de expedientes TSJ Quintana Roo, PJF Federal y búsqueda de marcas IMPI (MARCia/SIGA)",
   "start_url": "/docs/",
   "scope": "/docs/",
   "display": "standalone",

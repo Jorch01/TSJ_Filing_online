@@ -1,0 +1,10 @@
+# TSJ Filing Online - robots.txt
+# https://tsjia.empirica.mx/
+
+User-agent: *
+Allow: /
+Disallow: /proxy/
+Disallow: /google-apps-script/
+
+# Sitemap
+Sitemap: https://tsjia.empirica.mx/sitemap.xml

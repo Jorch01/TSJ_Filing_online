@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a2a4a"/>
+      <stop offset="100%" style="stop-color:#366092"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <text x="600" y="180" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="72" font-weight="700" fill="#ffffff">TSJ Filing Online</text>
+  <text x="600" y="250" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="28" fill="#a0bfe0">Empírica Legal Lab</text>
+  <line x1="350" y1="285" x2="850" y2="285" stroke="#4a7ab5" stroke-width="2"/>
+  <text x="600" y="340" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="24" fill="#d0e0f0">Gestión de Expedientes</text>
+  <text x="240" y="410" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="48">⚖️</text>
+  <text x="240" y="455" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="600" fill="#ffffff">TSJ Quintana Roo</text>
+  <text x="480" y="410" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="48">🏛️</text>
+  <text x="480" y="455" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="600" fill="#ffffff">PJF Federal</text>
+  <text x="720" y="410" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="48">🔰</text>
+  <text x="720" y="455" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="600" fill="#ffffff">IMPI Marcas</text>
+  <text x="960" y="410" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="48">📰</text>
+  <text x="960" y="455" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="600" fill="#ffffff">Gacetas SIGA</text>
+  <text x="600" y="540" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="20" fill="#8ab0d8">MARCia · SIGA 2.0 · Calendario · Notas · Monitoreo Automático</text>
+  <text x="600" y="580" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="18" fill="#6090c0">tsjia.empirica.mx — Gratuito</text>
+</svg>
