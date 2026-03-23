@@ -243,8 +243,8 @@ function renderizarResultadosMARCia() {
         var imgHtml = r.images
             ? '<img src="' + san(r.images) + '" alt="' + san(r.title) + '" class="impi-mark-image" onerror="this.style.display=\'none\'">'
             : '<div class="impi-mark-placeholder">🔰</div>';
-        var owners = (r.owners || []).map(san).join(', ');
-        var classes = (r.classes || []).join(', ');
+        var owners = (Array.isArray(r.owners) ? r.owners : (r.owners ? [r.owners] : [])).map(san).join(', ');
+        var classes = (Array.isArray(r.classes) ? r.classes : (r.classes ? [r.classes] : [])).join(', ');
         var appDate = r.dates && r.dates.application ? r.dates.application : '';
         var gi = marciaState.pageNumber * marciaState.pageSize + idx + 1;
 
@@ -333,18 +333,22 @@ function renderizarDetalleMARCia(data) {
     var content = document.getElementById('marcia-detail-content');
     document.getElementById('marcia-results-section').style.display = 'none';
 
+    // Helper: asegurar que un valor sea array
+    function asArr(v) { return Array.isArray(v) ? v : (v ? [v] : []); }
+
     var d = data.details || {};
     var gi = d.generalInformation || {};
     var tm = d.trademark || {};
     var oi = d.ownerInformation || {};
-    var ps = d.productsAndServices || [];
+    var ps = asArr(d.productsAndServices);
 
     var imgUrl = tm.image || (data.result && data.result.images) || '';
     var imgHtml = imgUrl ? '<img src="' + san(imgUrl) + '" class="impi-detail-image" onerror="this.style.display=\'none\'">' : '';
 
     var ownersHtml = '';
-    if (oi.owners && oi.owners.length > 0) {
-        ownersHtml = '<div class="impi-detail-section"><h4>Titulares</h4>' + oi.owners.map(function(o) {
+    var ownersList = asArr(oi.owners);
+    if (ownersList.length > 0) {
+        ownersHtml = '<div class="impi-detail-section"><h4>Titulares</h4>' + ownersList.map(function(o) {
             var name = typeof o === 'string' ? o : o.name || '';
             var addr = typeof o === 'object' && o.address ? '<br><small>' + san(o.address) + '</small>' : '';
             return '<div class="impi-detail-owner"><strong>' + san(name) + '</strong>' + addr + '</div>';
@@ -359,14 +363,15 @@ function renderizarDetalleMARCia(data) {
     }
 
     var histHtml = '';
-    if (data.historyData && data.historyData.historyRecords && data.historyData.historyRecords.length > 0) {
+    var histRecords = asArr(data.historyData && data.historyData.historyRecords);
+    if (histRecords.length > 0) {
         histHtml = '<div class="impi-detail-section"><h4>Historial</h4><div class="impi-history-list">' +
-            data.historyData.historyRecords.map(function(h) {
+            histRecords.map(function(h) {
                 return '<div class="impi-history-item"><span class="impi-history-date">' + san(h.date || '') + '</span><span>' + san(h.description || h.status || '') + '</span></div>';
             }).join('') + '</div></div>';
     }
 
-    var viennaCodes = (tm.viennaCodes || []).map(function(v) { return san(String(v)); }).join(', ');
+    var viennaCodes = asArr(tm.viennaCodes).map(function(v) { return san(String(v)); }).join(', ');
 
     content.innerHTML =
         '<div class="impi-detail-grid">' +
