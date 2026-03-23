@@ -281,9 +281,13 @@ async function ensureSigaSession(request) {
     }
 
     // Extraer cookies del Set-Cookie header
-    const setCookies = afResp.headers.getSetCookie ? afResp.headers.getSetCookie() : [];
     let xsrfToken = '';
     let allCookies = '';
+
+    // Method 1: getSetCookie() (standard in CF Workers)
+    const setCookies = (typeof afResp.headers.getSetCookie === 'function')
+        ? afResp.headers.getSetCookie() : [];
+
     for (const sc of setCookies) {
         const match = sc.match(/XSRF-TOKEN=([^;]+)/i);
         if (match) xsrfToken = match[1];
@@ -291,9 +295,16 @@ async function ensureSigaSession(request) {
         allCookies += (allCookies ? '; ' : '') + cookiePart;
     }
 
-    // Fallback: try extractCookies helper
-    if (!allCookies) {
-        allCookies = extractCookies(afResp);
+    // Method 2: fallback via raw set-cookie header
+    if (!xsrfToken) {
+        const raw = afResp.headers.get('set-cookie') || '';
+        const xsrfMatch = raw.match(/XSRF-TOKEN=([^;,]+)/i);
+        if (xsrfMatch) xsrfToken = xsrfMatch[1];
+        if (!allCookies && raw) {
+            // Extract cookie name=value pairs from raw header
+            const parts = raw.split(/,(?=\s*[A-Za-z._-]+=)/);
+            allCookies = parts.map(p => p.split(';')[0].trim()).filter(Boolean).join('; ');
+        }
     }
 
     if (!xsrfToken) {
@@ -334,16 +345,6 @@ async function handleSigaCsrf(request) {
 }
 
 async function handleSigaSearch(request) {
-    let session;
-    try {
-        session = await ensureSigaSession(request);
-    } catch (e) {
-        return new Response(JSON.stringify({ error: 'No se pudo conectar a SIGA: ' + e.message }), {
-            status: 502,
-            headers: { 'Content-Type': 'application/json' }
-        });
-    }
-
     const body = await request.json();
 
     const sigaPayload = {
@@ -355,41 +356,82 @@ async function handleSigaSearch(request) {
         ReCaptchaToken: ''
     };
 
-    const resp = await fetch(SIGA_BASE + '/api/BusquedaFicha/GetFichas', {
-        method: 'POST',
-        headers: sigaHeaders(session, 'application/json'),
-        body: JSON.stringify(sigaPayload)
-    });
+    // Intentar con sesión existente, reintentar con tokens frescos si falla CSRF
+    for (let attempt = 0; attempt < 2; attempt++) {
+        let session;
+        try {
+            if (attempt > 0) {
+                // Invalidar sesión vieja para forzar tokens frescos
+                const sk = 'siga_' + getSessionKey(request);
+                sessions.delete(sk);
+            }
+            session = await ensureSigaSession(request);
+        } catch (e) {
+            return new Response(JSON.stringify({ error: 'No se pudo conectar a SIGA: ' + e.message }), {
+                status: 502,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
 
-    const sessionKey = 'siga_' + getSessionKey(request);
-    updateSessionCookies(sessionKey, resp);
+        const resp = await fetch(SIGA_BASE + '/api/BusquedaFicha/GetFichas', {
+            method: 'POST',
+            headers: sigaHeaders(session, 'application/json'),
+            body: JSON.stringify(sigaPayload)
+        });
 
-    return sigaJsonResponse(resp);
+        // Si 400 con error CSRF, reintentar con sesión fresca
+        if (resp.status === 400 && attempt === 0) {
+            const text = await resp.text();
+            if (text.includes('CSRF') || text.includes('error_code')) {
+                continue; // retry
+            }
+            // 400 por otra razón, devolver
+            return sigaJsonResponseFromText(resp.status, text);
+        }
+
+        const sessionKey = 'siga_' + getSessionKey(request);
+        updateSessionCookies(sessionKey, resp);
+
+        return sigaJsonResponse(resp);
+    }
 }
 
 async function handleSigaFicha(request) {
-    let session;
-    try {
-        session = await ensureSigaSession(request);
-    } catch (e) {
-        return new Response(JSON.stringify({ error: 'No se pudo conectar a SIGA: ' + e.message }), {
-            status: 502,
-            headers: { 'Content-Type': 'application/json' }
-        });
-    }
-
     const body = await request.json();
 
-    const resp = await fetch(SIGA_BASE + '/api/BusquedaFicha/GetFichaInfo', {
-        method: 'POST',
-        headers: sigaHeaders(session, 'application/json'),
-        body: JSON.stringify(body)
-    });
+    for (let attempt = 0; attempt < 2; attempt++) {
+        let session;
+        try {
+            if (attempt > 0) {
+                sessions.delete('siga_' + getSessionKey(request));
+            }
+            session = await ensureSigaSession(request);
+        } catch (e) {
+            return new Response(JSON.stringify({ error: 'No se pudo conectar a SIGA: ' + e.message }), {
+                status: 502,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
 
-    const sessionKey = 'siga_' + getSessionKey(request);
-    updateSessionCookies(sessionKey, resp);
+        const resp = await fetch(SIGA_BASE + '/api/BusquedaFicha/GetFichaInfo', {
+            method: 'POST',
+            headers: sigaHeaders(session, 'application/json'),
+            body: JSON.stringify(body)
+        });
 
-    return sigaJsonResponse(resp);
+        if (resp.status === 400 && attempt === 0) {
+            const text = await resp.text();
+            if (text.includes('CSRF') || text.includes('error_code')) {
+                continue;
+            }
+            return sigaJsonResponseFromText(resp.status, text);
+        }
+
+        const sessionKey = 'siga_' + getSessionKey(request);
+        updateSessionCookies(sessionKey, resp);
+
+        return sigaJsonResponse(resp);
+    }
 }
 
 async function handleSigaAreas(request) {
@@ -410,16 +452,21 @@ async function handleSigaAreas(request) {
     return sigaJsonResponse(resp);
 }
 
-// Parse SIGA JSON response, handling errors gracefully
+// Parse SIGA JSON response from already-fetched Response object
 async function sigaJsonResponse(resp) {
     const respText = await resp.text();
+    return sigaJsonResponseFromText(resp.status, respText);
+}
+
+// Parse SIGA JSON response from status + text (used when body already consumed)
+function sigaJsonResponseFromText(status, respText) {
     let data;
     try {
         data = JSON.parse(respText);
     } catch (e) {
         return new Response(JSON.stringify({
             error: 'Respuesta no-JSON de SIGA',
-            status: resp.status,
+            status: status,
             body: respText.substring(0, 1000)
         }), {
             status: 502,
@@ -427,8 +474,20 @@ async function sigaJsonResponse(resp) {
         });
     }
 
+    // If SIGA returned an error response, normalize it for the frontend
+    if (status >= 400) {
+        return new Response(JSON.stringify({
+            error: data.message || data.error || ('SIGA error ' + status),
+            error_code: data.error_code,
+            status: status
+        }), {
+            status: status,
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
+
     return new Response(JSON.stringify(data), {
-        status: resp.status,
+        status: status,
         headers: { 'Content-Type': 'application/json' }
     });
 }
