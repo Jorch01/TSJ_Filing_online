@@ -1340,8 +1340,38 @@ async function handleMarcanetFullDetail(request) {
     let marciaData = null;
     const marciaSessionKey = getSessionKey(request);
     const marciaSession = sessions.get(marciaSessionKey);
+    debugSnippets['marciaSessionExists'] = !!marciaSession;
+    debugSnippets['marciaHasCsrf'] = !!(marciaSession && marciaSession.csrf);
+    debugSnippets['marciaSessionKey'] = marciaSessionKey;
 
-    if (marciaSession && marciaSession.csrf) {
+    // Si no hay sesión MARCia, intentar crear una on-the-fly
+    if (!marciaSession || !marciaSession.csrf) {
+        try {
+            const csrfResp = await fetch(MARCIA_BASE + '/marcas/search/quick', {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Accept': 'text/html,application/xhtml+xml'
+                },
+                redirect: 'follow'
+            });
+            const csrfHtml = await csrfResp.text();
+            const csrfMatch = csrfHtml.match(/<meta\s+name="_csrf"\s+content="([^"]+)"/);
+            if (csrfMatch) {
+                const newSession = {
+                    csrf: csrfMatch[1],
+                    cookies: extractCookies(csrfResp),
+                    timestamp: Date.now()
+                };
+                sessions.set(marciaSessionKey, newSession);
+                debugSnippets['marciaSessionCreated'] = true;
+            }
+        } catch (e) { debugSnippets['marciaSessionError'] = e.message; }
+    }
+
+    // Re-read session after potential creation
+    const activeMarciaSession = sessions.get(marciaSessionKey);
+
+    if (activeMarciaSession && activeMarciaSession.csrf) {
         const searchNum = expediente || registro || '';
         // Buscar por número O por denominación
         if (searchNum || denominacion) {
@@ -1349,8 +1379,8 @@ async function handleMarcanetFullDetail(request) {
                 const marciaHdrs = {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
-                    'X-XSRF-TOKEN': marciaSession.csrf,
-                    'Cookie': marciaSession.cookies,
+                    'X-XSRF-TOKEN': activeMarciaSession.csrf,
+                    'Cookie': activeMarciaSession.cookies,
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': MARCIA_BASE + '/marcas/search/result',
                     'Origin': MARCIA_BASE
