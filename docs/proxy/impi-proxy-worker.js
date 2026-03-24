@@ -1127,34 +1127,84 @@ async function handleMarcanetTitular(request) {
         }), { status: 502, headers: { 'Content-Type': 'application/json' } });
     }
 
-    // Descubrir form ID y botón de búsqueda del HTML del formulario
-    const formIdMatch = formHtml.match(/id="(frm[Bb]sq[^"]*[Tt]itular[^"]*)"/i);
-    const formId = formIdMatch ? formIdMatch[1] : 'frmBsqTitular';
+    // Descubrir IDs del formulario desde PrimeFaces widget definitions y HTML
+    // PrimeFaces generates: PrimeFaces.cw("CommandButton","widget_formId_btnId",{id:"formId:btnId"})
+    // and: PrimeFaces.cw("InputText","widget_formId_inputId",{id:"formId:inputId"})
+    const pfWidgets = {};
+    const widgetRegex = /PrimeFaces\.cw\("(\w+)","[^"]*",\{id:"([^"]*)"/g;
+    let wm;
+    while ((wm = widgetRegex.exec(formHtml)) !== null) {
+        pfWidgets[wm[2]] = wm[1]; // e.g. "frmBsqTitular:nombre" -> "InputText"
+    }
 
-    // Buscar botón de búsqueda (busquedaId, busquedaId2, j_idt* con onclick de búsqueda)
-    const searchBtnMatch = formHtml.match(/id="([^"]*busquedaId\d*[^"]*)"/i) ||
-                            formHtml.match(/id="([^"]*[Bb]uscar[^"]*)"/i);
-    const searchBtn = searchBtnMatch ? searchBtnMatch[1] : formId + ':busquedaId2';
+    // Find the form ID from <form> tags
+    const formTagMatch = formHtml.match(/<form[^>]*id="(frm[^"]*)"/i);
+    const formId = formTagMatch ? formTagMatch[1] : 'frmBsqTitular';
 
-    // Buscar campo de input del titular
-    const titularInputMatch = formHtml.match(/id="([^"]*[Tt]itular[^"]*)"[^>]*(?:type="text"|class="[^"]*ui-inputtext)/i) ||
-                               formHtml.match(/id="([^"]*[Nn]ombre[^"]*)"[^>]*(?:type="text"|class="[^"]*ui-inputtext)/i);
-    const titularInput = titularInputMatch ? titularInputMatch[1] : formId + ':titular';
+    // Find input fields (InputText widgets within our form)
+    const inputIds = Object.entries(pfWidgets)
+        .filter(([id, type]) => type === 'InputText' && id.startsWith(formId + ':'))
+        .map(([id]) => id);
 
-    // Buscar targets de render (paneles y diálogos de resultados)
-    const panelMatch = formHtml.match(/id="([^"]*pnl[Bb]sq[^"]*)"/i);
-    const dialogMatch = formHtml.match(/id="([^"]*dlg[Ll]ista[^"]*)"/i);
-    const renderTargets = [panelMatch ? panelMatch[1] : formId + ':pnlBsqTitular',
-                           dialogMatch ? dialogMatch[1] : formId + ':dlgListaTitulares'].join(' ');
+    // Find command buttons (for search)
+    const buttonIds = Object.entries(pfWidgets)
+        .filter(([id, type]) => (type === 'CommandButton' || type === 'CommandLink') && id.startsWith(formId + ':'))
+        .map(([id]) => id);
 
+    // Also look for submit buttons via HTML pattern
+    const htmlBtnMatches = formHtml.match(/id="([^"]*)"[^>]*(?:type="submit"|class="[^"]*ui-button[^"]*")[^>]*/gi) || [];
+    for (const btnHtml of htmlBtnMatches) {
+        const btnIdMatch = btnHtml.match(/id="([^"]*)"/);
+        if (btnIdMatch && btnIdMatch[1].startsWith(formId + ':') && !buttonIds.includes(btnIdMatch[1])) {
+            buttonIds.push(btnIdMatch[1]);
+        }
+    }
+
+    // Also look for PrimeFaces.ab() calls which reveal AJAX source/process/update
+    const abCalls = [];
+    const abRegex = /PrimeFaces\.ab\(\{([^}]+)\}\)/g;
+    let abm;
+    while ((abm = abRegex.exec(formHtml)) !== null) {
+        const parts = abm[1];
+        const sMatch = parts.match(/s:"([^"]*)"/);
+        const uMatch = parts.match(/u:"([^"]*)"/);
+        if (sMatch) abCalls.push({ source: sMatch[1], update: uMatch ? uMatch[1] : '' });
+    }
+
+    // Determine the best search button - prefer one with an ab() call, then busquedaId
+    let searchBtn = formId + ':busquedaId2';
+    let renderTargets = formId;
+    if (abCalls.length > 0) {
+        searchBtn = abCalls[0].source;
+        if (abCalls[0].update) renderTargets = abCalls[0].update;
+    } else if (buttonIds.length > 0) {
+        // Prefer button with "busqueda" in name
+        searchBtn = buttonIds.find(id => /busqueda/i.test(id)) || buttonIds[0];
+    }
+
+    // Find the titular input - prefer field with "titular" or "nombre" in id
+    const titularInput = inputIds.find(id => /titular/i.test(id)) ||
+                          inputIds.find(id => /nombre/i.test(id)) ||
+                          inputIds[0] ||
+                          formId + ':titular';
+
+    // Build AJAX params
     const ajaxParams = {
         'javax.faces.source': searchBtn,
         'javax.faces.partial.render': renderTargets,
         [searchBtn]: searchBtn,
         [formId]: formId,
-        [titularInput]: titular,
         'javax.faces.ViewState': viewState
     };
+    // Set all discovered input fields - the titular value goes to the right input
+    for (const inputId of inputIds) {
+        ajaxParams[inputId] = (inputId === titularInput) ? titular : '';
+    }
+    // If no inputs discovered, set explicit titular fields
+    if (inputIds.length === 0) {
+        ajaxParams[formId + ':titular'] = titular;
+        ajaxParams[formId + ':nombre'] = titular;
+    }
 
     const ajaxResp = await sendPrimeFacesAjax(session, sessionKey, formUrl, ajaxParams);
     const updates = ajaxResp.updates;
@@ -1163,11 +1213,16 @@ async function handleMarcanetTitular(request) {
     let results = [];
     const debugInfo = {
         updateKeys: Object.keys(updates), rawLength: ajaxResp.text.length,
-        formId, searchBtn, titularInput, renderTargets
+        formId, searchBtn, titularInput, renderTargets,
+        pfWidgets, inputIds, buttonIds, abCalls,
+        formHtmlSnippet: formHtml.substring(0, 4000).replace(/<style[\s\S]*?<\/style>/gi, '')
+            .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 1000)
     };
 
     for (const [updateId, updateHtml] of Object.entries(updates)) {
-        if (updateId.includes('dlgLista') || updateId.includes('pnlBsq') || updateId.includes('tblResultados')) {
+        if (updateId.includes('dlgLista') || updateId.includes('pnlBsq') ||
+            updateId.includes('tblResultados') || updateId.includes('resultadoTitular') ||
+            updateId.includes('resultado')) {
             resultsHtml += updateHtml + '\n';
         }
     }
@@ -1176,10 +1231,13 @@ async function handleMarcanetTitular(request) {
 
     results = parseMarcanetResultsHTML(resultsHtml);
 
-    // Filtrar leyendas
+    // Filtrar leyendas y filas de encabezado del formulario
     results = results.filter(function(r) {
         const vals = Object.values(r).filter(v => typeof v === 'string' && !v.startsWith('_'));
-        return !vals.every(v => /^\w+ = /.test(v) || v.length < 3);
+        // Filtrar filas que son solo labels del formulario
+        if (vals.some(v => /^Por\s+(Titular|Fonética|Expediente)/i.test(v))) return false;
+        if (vals.every(v => /^\w+ = /.test(v) || v.length < 3)) return false;
+        return true;
     });
 
     const rawSnippet = resultsHtml.substring(0, 2000).replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -1416,27 +1474,31 @@ async function handleMarcanetFullDetail(request) {
         // Buscar por número O por denominación
         if (searchNum || denominacion) {
             try {
-                const marciaHdrs = {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-XSRF-TOKEN': activeMarciaSession.csrf,
-                    'Cookie': activeMarciaSession.cookies,
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Referer': MARCIA_BASE + '/marcas/search/result',
-                    'Origin': MARCIA_BASE
+                // Helper to get fresh headers (cookies may update between calls)
+                const getMarciaHdrs = () => {
+                    const s = sessions.get(marciaSessionKey);
+                    return {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-XSRF-TOKEN': s.csrf,
+                        'Cookie': s.cookies,
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Referer': MARCIA_BASE + '/marcas/search/quick',
+                        'Origin': MARCIA_BASE
+                    };
                 };
 
                 let searchBody;
                 if (searchNum) {
-                    // Búsqueda estructurada por número de expediente/registro
+                    // Búsqueda estructurada por número - match client format exactly
                     searchBody = {
                         _type: 'Search$Structured',
                         images: [],
                         query: {
                             title: '', titleOption: '',
-                            name: { name: '', types: [] },
+                            name: null,
                             number: { name: searchNum, types: expediente ? ['APPLICATION'] : ['REGISTRATION'] },
-                            date: { date: { from: null, to: null }, types: [] },
+                            date: null,
                             status: [], classes: [], codes: [], indicators: [],
                             markType: [], appType: [],
                             goodsAndServices: '',
@@ -1453,7 +1515,7 @@ async function handleMarcanetFullDetail(request) {
                 }
 
                 const searchResp = await fetch(MARCIA_BASE + '/marcas/search/internal/record', {
-                    method: 'POST', headers: marciaHdrs, body: JSON.stringify(searchBody)
+                    method: 'POST', headers: getMarciaHdrs(), body: JSON.stringify(searchBody)
                 });
                 debugSnippets['marciaSearchStatus'] = searchResp.status;
 
@@ -1467,7 +1529,7 @@ async function handleMarcanetFullDetail(request) {
 
                     if (searchData.id) {
                         const resultResp = await fetch(MARCIA_BASE + '/marcas/search/internal/result', {
-                            method: 'POST', headers: marciaHdrs,
+                            method: 'POST', headers: getMarciaHdrs(),
                             body: JSON.stringify({
                                 searchId: searchData.id,
                                 pageSize: searchNum ? 1 : 5, pageNumber: 0,
@@ -1495,7 +1557,7 @@ async function handleMarcanetFullDetail(request) {
 
                                 const markId = bestMatch.id;
                                 const viewResp = await fetch(MARCIA_BASE + '/marcas/search/internal/view/' + encodeURIComponent(markId), {
-                                    headers: marciaHdrs
+                                    headers: getMarciaHdrs()
                                 });
                                 debugSnippets['marciaViewStatus'] = viewResp.status;
 
