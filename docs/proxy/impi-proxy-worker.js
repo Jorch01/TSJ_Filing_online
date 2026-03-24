@@ -1442,32 +1442,33 @@ async function handleMarcanetFullDetail(request) {
     debugSnippets['marciaHasCsrf'] = !!(marciaSession && marciaSession.csrf);
     debugSnippets['marciaSessionKey'] = marciaSessionKey;
 
-    // Si no hay sesión MARCia, intentar crear una on-the-fly
-    if (!marciaSession || !marciaSession.csrf) {
-        try {
-            const csrfResp = await fetch(MARCIA_BASE + '/marcas/search/quick', {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'Accept': 'text/html,application/xhtml+xml'
-                },
-                redirect: 'follow'
-            });
-            const csrfHtml = await csrfResp.text();
-            const csrfMatch = csrfHtml.match(/<meta\s+name="_csrf"\s+content="([^"]+)"/);
-            if (csrfMatch) {
-                const newSession = {
-                    csrf: csrfMatch[1],
-                    cookies: extractCookies(csrfResp),
-                    timestamp: Date.now()
-                };
-                sessions.set(marciaSessionKey, newSession);
-                debugSnippets['marciaSessionCreated'] = true;
-            }
-        } catch (e) { debugSnippets['marciaSessionError'] = e.message; }
-    }
+    // Siempre crear sesión MARCia fresca para enrichment
+    // La sesión existente pudo haber sido modificada por /marcia/search y /marcia/results del cliente
+    const enrichSessionKey = 'enrich_' + marciaSessionKey + '_' + Date.now();
+    try {
+        const csrfResp = await fetch(MARCIA_BASE + '/marcas/search/quick', {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/html,application/xhtml+xml'
+            },
+            redirect: 'follow'
+        });
+        const csrfHtml = await csrfResp.text();
+        const csrfMatch = csrfHtml.match(/<meta\s+name="_csrf"\s+content="([^"]+)"/);
+        if (csrfMatch) {
+            const freshSession = {
+                csrf: csrfMatch[1],
+                cookies: extractCookies(csrfResp),
+                timestamp: Date.now()
+            };
+            sessions.set(enrichSessionKey, freshSession);
+            debugSnippets['marciaFreshSession'] = true;
+        } else {
+            debugSnippets['marciaFreshSessionNoCsrf'] = true;
+        }
+    } catch (e) { debugSnippets['marciaSessionError'] = e.message; }
 
-    // Re-read session after potential creation
-    const activeMarciaSession = sessions.get(marciaSessionKey);
+    const activeMarciaSession = sessions.get(enrichSessionKey);
 
     if (activeMarciaSession && activeMarciaSession.csrf) {
         const searchNum = expediente || registro || '';
@@ -1476,7 +1477,7 @@ async function handleMarcanetFullDetail(request) {
             try {
                 // Helper to get fresh headers (cookies may update between calls)
                 const getMarciaHdrs = () => {
-                    const s = sessions.get(marciaSessionKey);
+                    const s = sessions.get(enrichSessionKey);
                     return {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
@@ -1523,7 +1524,7 @@ async function handleMarcanetFullDetail(request) {
                     const errText = await searchResp.text();
                     debugSnippets['marciaSearchError'] = errText.substring(0, 300);
                 } else {
-                    updateSessionCookies(marciaSessionKey, searchResp);
+                    updateSessionCookies(enrichSessionKey, searchResp);
                     const searchData = await searchResp.json();
                     debugSnippets['marciaSearchId'] = searchData.id || 'none';
 
@@ -1539,7 +1540,7 @@ async function handleMarcanetFullDetail(request) {
                         debugSnippets['marciaResultStatus'] = resultResp.status;
 
                         if (resultResp.ok) {
-                            updateSessionCookies(marciaSessionKey, resultResp);
+                            updateSessionCookies(enrichSessionKey, resultResp);
                             const resultData = await resultResp.json();
                             debugSnippets['marciaResultCount'] = resultData.resultPage ? resultData.resultPage.length : 0;
 
@@ -1562,7 +1563,7 @@ async function handleMarcanetFullDetail(request) {
                                 debugSnippets['marciaViewStatus'] = viewResp.status;
 
                                 if (viewResp.ok) {
-                                    updateSessionCookies(marciaSessionKey, viewResp);
+                                    updateSessionCookies(enrichSessionKey, viewResp);
                                     marciaData = await viewResp.json();
                                     sources.push('marcia');
                                 } else {
@@ -1579,6 +1580,9 @@ async function handleMarcanetFullDetail(request) {
             }
         }
     }
+
+    // Limpiar sesión temporal de enrichment
+    sessions.delete(enrichSessionKey);
 
     return new Response(JSON.stringify({
         detail: allDetail,
