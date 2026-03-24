@@ -975,6 +975,55 @@ setTimeout(() => {
     }
 }, 3000);
 
+// Mostrar reporte de fusión de duplicados en un modal
+function mostrarReporteFusion() {
+    const reporte = reporteFusionDuplicados;
+    if (!reporte || reporte.expedientesFusionados.length === 0) {
+        mostrarToast('No hubo duplicados fusionados en la última sincronización', 'info');
+        return;
+    }
+
+    let html = '<div class="fusion-reporte">';
+    html += '<div class="fusion-resumen">';
+    html += '<div class="fusion-stat"><span class="fusion-numero">' + reporte.expedientesFusionados.length + '</span><span class="fusion-label">Expedientes fusionados</span></div>';
+    html += '<div class="fusion-stat"><span class="fusion-numero">' + reporte.notasReasignadas + '</span><span class="fusion-label">Notas reasignadas</span></div>';
+    html += '<div class="fusion-stat"><span class="fusion-numero">' + reporte.eventosReasignados + '</span><span class="fusion-label">Eventos reasignados</span></div>';
+    html += '</div>';
+
+    html += '<div class="fusion-lista">';
+    reporte.expedientesFusionados.forEach(function(fusion) {
+        html += '<div class="fusion-item">';
+        html += '<div class="fusion-item-header">';
+        html += '<strong>' + (fusion.numero || fusion.nombre || 'Expediente') + '</strong>';
+        if (fusion.idsOriginales) {
+            html += '<span class="fusion-badge">' + fusion.idsOriginales.length + ' duplicados</span>';
+        }
+        html += '</div>';
+        if (fusion.idsOriginales && fusion.idsOriginales.length > 1) {
+            html += '<div class="fusion-item-originales">IDs originales: ' + fusion.idsOriginales.join(', ') + '</div>';
+        }
+        if (fusion._cambiosFusion) {
+            html += '<div class="fusion-item-cambios">Cambios: ' + fusion._cambiosFusion + '</div>';
+        }
+        html += '</div>';
+    });
+    html += '</div>';
+
+    html += '<div class="fusion-nota">Los expedientes duplicados fueron fusionados automáticamente conservando los datos más recientes.</div>';
+    html += '</div>';
+
+    // Usar el sistema de modales existente
+    if (typeof mostrarModal === 'function') {
+        mostrarModal('Reporte de Fusión de Duplicados', html);
+    } else {
+        // Fallback: mostrar en alert
+        var texto = 'Expedientes fusionados: ' + reporte.expedientesFusionados.length +
+            '\nNotas reasignadas: ' + reporte.notasReasignadas +
+            '\nEventos reasignados: ' + reporte.eventosReasignados;
+        alert(texto);
+    }
+}
+
 // Exportar funciones globales
 window.sincronizarDatos = sincronizarDatos;
 window.guardarConfigSync = guardarConfigSync;

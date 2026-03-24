@@ -805,18 +805,28 @@ async function handleMarcanetFonetica(request) {
     // Detectar si Marcanet devolvió la página del formulario en vez de resultados
     const isFormPage = /<form[\s\S]*?buscar/i.test(html) && results.length === 0;
 
-    // Debug: extraer todos los links y onclick del HTML
+    // Debug: extraer todos los links, onclick y PrimeFaces patterns del HTML
     const debugLinks = [];
-    const linkMatches = html.match(/href="([^"]*detalle[^"]*)"/gi) || [];
+    // Buscar cualquier href (no solo detalle)
+    const linkMatches = html.match(/href="([^"]*(?:detalle|expediente|folio|UCMServlet|pgi)[^"]*)"/gi) || [];
     for (const lm of linkMatches) {
         const m = lm.match(/href="([^"]*)"/i);
-        if (m) debugLinks.push(m[1]);
+        if (m) debugLinks.push('href:' + m[1]);
     }
-    const onclickMatches = html.match(/onclick="([^"]*(?:detalle|expediente|folio)[^"]*)"/gi) || [];
+    // Buscar cualquier onclick
+    const onclickMatches = html.match(/onclick="([^"]*)"/gi) || [];
     for (const om of onclickMatches) {
         const m = om.match(/onclick="([^"]*)"/i);
-        if (m) debugLinks.push('onclick:' + m[1]);
+        if (m && m[1].length > 5) debugLinks.push('onclick:' + m[1].substring(0, 200));
     }
+    // Buscar PrimeFaces AJAX commands (mojarra.ab, PrimeFaces.ab, jsf.ajax.request)
+    const pfMatches = html.match(/(?:mojarra|PrimeFaces|jsf)\.a[jb][^;]{10,200}/gi) || [];
+    for (const pf of pfMatches) {
+        debugLinks.push('pf:' + pf.substring(0, 200));
+    }
+    // Extraer un snippet de la primera fila <tr> que tenga <td> con datos
+    const firstDataRow = html.match(/<tr[^>]*>(?=[\s\S]*?<td)[\s\S]*?<\/tr>/i);
+    const debugFirstRow = firstDataRow ? firstDataRow[0].substring(0, 500) : '';
 
     return new Response(JSON.stringify({
         results: results,
@@ -825,7 +835,8 @@ async function handleMarcanetFonetica(request) {
         status: resp.status,
         rawSnippet: rawSnippet.substring(0, 500),
         isFormPage: isFormPage,
-        debugLinks: debugLinks.slice(0, 10)
+        debugLinks: debugLinks.slice(0, 20),
+        debugFirstRow: debugFirstRow
     }), {
         headers: { 'Content-Type': 'application/json' }
     });
@@ -1048,9 +1059,10 @@ async function handleMarcanetFullDetail(request) {
     const registro = body.registro || '';
     const link = body.link || '';
     const jsParam = body.jsParam || '';
+    const denominacion = body.denominacion || '';
 
-    if (!expediente && !registro && !link) {
-        return new Response(JSON.stringify({ error: 'Se requiere expediente, registro o link' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    if (!expediente && !registro && !link && !denominacion) {
+        return new Response(JSON.stringify({ error: 'Se requiere expediente, registro, link o denominación' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
 
     const allDetail = {};
@@ -1195,7 +1207,8 @@ async function handleMarcanetFullDetail(request) {
 
     if (marciaSession && marciaSession.csrf) {
         const searchNum = expediente || registro || '';
-        if (searchNum) {
+        // Buscar por número O por denominación
+        if (searchNum || denominacion) {
             try {
                 const marciaHdrs = {
                     'Content-Type': 'application/json',
@@ -1207,20 +1220,31 @@ async function handleMarcanetFullDetail(request) {
                     'Origin': MARCIA_BASE
                 };
 
-                const searchBody = {
-                    _type: 'Search$Structured',
-                    images: [],
-                    query: {
-                        title: '', titleOption: '',
-                        name: { name: '', types: [] },
-                        number: { name: searchNum, types: expediente ? ['APPLICATION'] : ['REGISTRATION'] },
-                        date: { date: { from: null, to: null }, types: [] },
-                        status: [], classes: [], codes: [], indicators: [],
-                        markType: [], appType: [],
-                        goodsAndServices: '',
-                        wordSet: { l: null, op: 'AND', r: null }
-                    }
-                };
+                let searchBody;
+                if (searchNum) {
+                    // Búsqueda estructurada por número de expediente/registro
+                    searchBody = {
+                        _type: 'Search$Structured',
+                        images: [],
+                        query: {
+                            title: '', titleOption: '',
+                            name: { name: '', types: [] },
+                            number: { name: searchNum, types: expediente ? ['APPLICATION'] : ['REGISTRATION'] },
+                            date: { date: { from: null, to: null }, types: [] },
+                            status: [], classes: [], codes: [], indicators: [],
+                            markType: [], appType: [],
+                            goodsAndServices: '',
+                            wordSet: { l: null, op: 'AND', r: null }
+                        }
+                    };
+                } else {
+                    // Búsqueda por denominación (similar) - cuando no tenemos números
+                    searchBody = {
+                        _type: 'Search$Quick',
+                        query: denominacion,
+                        images: []
+                    };
+                }
 
                 const searchResp = await fetch(MARCIA_BASE + '/marcas/search/internal/record', {
                     method: 'POST', headers: marciaHdrs, body: JSON.stringify(searchBody)
@@ -1233,7 +1257,7 @@ async function handleMarcanetFullDetail(request) {
                         method: 'POST', headers: marciaHdrs,
                         body: JSON.stringify({
                             searchId: searchData.id,
-                            pageSize: 1, pageNumber: 0,
+                            pageSize: searchNum ? 1 : 5, pageNumber: 0,
                             statusFilter: [], viennaCodeFilter: [], niceClassFilter: []
                         })
                     });
@@ -1241,7 +1265,19 @@ async function handleMarcanetFullDetail(request) {
                     const resultData = await resultResp.json();
 
                     if (resultData.resultPage && resultData.resultPage.length > 0) {
-                        const markId = resultData.resultPage[0].id;
+                        // Si buscamos por denominación, tratar de encontrar el match exacto
+                        let bestMatch = resultData.resultPage[0];
+                        if (!searchNum && denominacion) {
+                            const denomLower = denominacion.toLowerCase().trim();
+                            for (const rp of resultData.resultPage) {
+                                if (rp.title && rp.title.toLowerCase().trim() === denomLower) {
+                                    bestMatch = rp;
+                                    break;
+                                }
+                            }
+                        }
+
+                        const markId = bestMatch.id;
                         const viewResp = await fetch(MARCIA_BASE + '/marcas/search/internal/view/' + encodeURIComponent(markId), {
                             headers: marciaHdrs
                         });
