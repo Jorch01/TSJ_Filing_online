@@ -931,7 +931,13 @@ async function buscarMarcanet() {
                 method: 'POST',
                 body: JSON.stringify({ denominacion: denominacion.trim(), clase: clase })
             });
-            marcanetState.results = data.results || [];
+            console.log('Marcanet fonetica response:', data);
+            if (data.isFormPage) {
+                mostrarToast('Marcanet devolvió la página del formulario. Es posible que el servidor no esté procesando búsquedas. Intenta directamente en Marcanet.', 'warning');
+                marcanetState.results = [];
+            } else {
+                marcanetState.results = data.results || [];
+            }
             renderizarResultadosMarcanet();
 
         } else if (mode === 'expediente') {
@@ -941,6 +947,7 @@ async function buscarMarcanet() {
                 method: 'POST',
                 body: JSON.stringify({ expediente: expediente.trim() })
             });
+            console.log('Marcanet expediente response:', data);
             // Búsqueda por expediente devuelve detalle directo
             if (data.detail && Object.keys(data.detail).length > 0) {
                 marcanetState.detail = data.detail;
@@ -957,6 +964,7 @@ async function buscarMarcanet() {
                 method: 'POST',
                 body: JSON.stringify({ registro: registro.trim() })
             });
+            console.log('Marcanet registro response:', data);
             if (data.detail && Object.keys(data.detail).length > 0) {
                 marcanetState.detail = data.detail;
                 renderizarDetalleMarcanet(data.detail);
@@ -972,7 +980,13 @@ async function buscarMarcanet() {
                 method: 'POST',
                 body: JSON.stringify({ titular: titular.trim() })
             });
-            marcanetState.results = data.results || [];
+            console.log('Marcanet titular response:', data);
+            if (data.isFormPage) {
+                mostrarToast('Marcanet devolvió la página del formulario. Intenta directamente en Marcanet.', 'warning');
+                marcanetState.results = [];
+            } else {
+                marcanetState.results = data.results || [];
+            }
             renderizarResultadosMarcanet();
         }
 

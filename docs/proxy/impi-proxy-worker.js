@@ -559,33 +559,48 @@ async function handleMarcanetSession(request) {
     }
 }
 
+// Palabras clave que indican que una tabla es un formulario, no datos
+const FORM_LABEL_BLACKLIST = [
+    'tipo de búsqueda', 'tipo de busqueda', 'buscar', 'limpiar',
+    'seleccione', 'ingrese', 'escriba', 'captur'
+];
+
+// Detectar si una tabla contiene elementos de formulario
+function isFormTable(tableHTML) {
+    return /<(?:input|select|textarea|button)\b/i.test(tableHTML);
+}
+
+// Detectar si un row parece ser un label de formulario
+function isFormLabelRow(rowData) {
+    const keys = Object.keys(rowData).filter(function(k) { return !k.startsWith('_'); });
+    const vals = keys.map(function(k) { return (rowData[k] || '').toLowerCase(); });
+    const allText = keys.concat(vals).join(' ').toLowerCase();
+    return FORM_LABEL_BLACKLIST.some(function(bl) { return allText.indexOf(bl) >= 0; });
+}
+
 // Parsear tabla HTML de resultados Marcanet a JSON
 function parseMarcanetResultsHTML(html) {
-    const results = [];
+    // Extraer todas las tablas
+    const allTables = html.match(/<table[\s\S]*?<\/table>/gi) || [];
 
-    // Buscar la tabla de resultados - las tablas de Marcanet tienen filas con datos
-    // Patrón: extraer filas <tr> con <td> que contienen datos de marcas
-    const tableMatch = html.match(/<table[^>]*class="[^"]*(?:table|resultado|datos)[^"]*"[^>]*>([\s\S]*?)<\/table>/i) ||
-                        html.match(/<table[^>]*>([\s\S]*?)<\/table>/gi);
+    // Filtrar tablas que son formularios (contienen <input>, <select>, etc.)
+    const dataTables = allTables.filter(function(t) { return !isFormTable(t); });
 
-    if (!tableMatch) {
-        // Intentar extraer datos de cualquier tabla presente
-        const allTables = html.match(/<table[\s\S]*?<\/table>/gi) || [];
-        // Buscar la tabla con más filas (probablemente la de resultados)
-        let bestTable = '';
-        let maxRows = 0;
-        for (const t of allTables) {
-            const rowCount = (t.match(/<tr/gi) || []).length;
-            if (rowCount > maxRows) { maxRows = rowCount; bestTable = t; }
+    // Si no hay tablas sin formularios, intentar con todas pero con filtrado estricto
+    const candidates = dataTables.length > 0 ? dataTables : allTables;
+
+    // Buscar la mejor tabla candidata (más filas de datos, no de formulario)
+    let bestResults = [];
+    for (const t of candidates) {
+        const parsed = parseMarcanetTable(t);
+        // Filtrar filas que parecen ser labels de formulario
+        const realData = parsed.filter(function(row) { return !isFormLabelRow(row); });
+        if (realData.length > bestResults.length) {
+            bestResults = realData;
         }
-        if (bestTable) {
-            return parseMarcanetTable(bestTable);
-        }
-        return results;
     }
 
-    const tableHTML = Array.isArray(tableMatch) ? tableMatch.join('') : tableMatch[1] || tableMatch[0];
-    return parseMarcanetTable(tableHTML);
+    return bestResults;
 }
 
 function parseMarcanetTable(tableHTML) {
@@ -624,15 +639,27 @@ function parseMarcanetTable(tableHTML) {
 function parseMarcanetDetailHTML(html) {
     const detail = {};
 
+    // Labels de formulario que NO son datos de marcas
+    const detailBlacklist = ['tipo de búsqueda', 'tipo de busqueda', 'buscar', 'limpiar',
+        'seleccione', 'ingrese', 'escriba', 'captur', 'acción', 'accion'];
+
     // Extraer todos los pares campo/valor de tablas
     const rows = html.match(/<tr[^>]*>([\s\S]*?)<\/tr>/gi) || [];
     for (const row of rows) {
+        // Saltar filas que contienen elementos de formulario
+        if (/<(?:input|select|textarea|button)\b/i.test(row)) continue;
+
         const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/gi);
         if (!cells || cells.length < 2) continue;
         const label = cells[0].replace(/<[^>]+>/g, '').trim();
         const value = cells[1].replace(/<[^>]+>/g, '').trim();
         if (label && value) {
-            detail[label] = value;
+            // Verificar que no es un label de formulario
+            const labelLower = label.toLowerCase();
+            const isBlacklisted = detailBlacklist.some(function(bl) { return labelLower.indexOf(bl) >= 0; });
+            if (!isBlacklisted) {
+                detail[label] = value;
+            }
         }
     }
 
@@ -693,11 +720,18 @@ async function handleMarcanetFonetica(request) {
     const html = await resp.text();
     const results = parseMarcanetResultsHTML(html);
 
+    // Debug: incluir snippet del HTML para diagnosticar problemas de parsing
+    const rawSnippet = html.substring(0, 1500).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    // Detectar si Marcanet devolvió la página del formulario en vez de resultados
+    const isFormPage = /<form[\s\S]*?buscar/i.test(html) && results.length === 0;
+
     return new Response(JSON.stringify({
         results: results,
         totalResults: results.length,
         rawLength: html.length,
-        status: resp.status
+        status: resp.status,
+        rawSnippet: rawSnippet.substring(0, 500),
+        isFormPage: isFormPage
     }), {
         headers: { 'Content-Type': 'application/json' }
     });
@@ -755,9 +789,11 @@ async function handleMarcanetExpediente(request) {
         Object.assign(detail, detail2);
     }
 
+    const rawSnippet = html.substring(0, 1500).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     return new Response(JSON.stringify({
         detail: detail,
-        fieldCount: Object.keys(detail).length
+        fieldCount: Object.keys(detail).length,
+        rawSnippet: rawSnippet.substring(0, 500)
     }), {
         headers: { 'Content-Type': 'application/json' }
     });
@@ -814,9 +850,11 @@ async function handleMarcanetRegistro(request) {
         Object.assign(detail, detail2);
     }
 
+    const rawSnippet2 = html.substring(0, 1500).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     return new Response(JSON.stringify({
         detail: detail,
-        fieldCount: Object.keys(detail).length
+        fieldCount: Object.keys(detail).length,
+        rawSnippet: rawSnippet2.substring(0, 500)
     }), {
         headers: { 'Content-Type': 'application/json' }
     });
@@ -858,10 +896,15 @@ async function handleMarcanetTitular(request) {
     const html = await resp.text();
     const results = parseMarcanetResultsHTML(html);
 
+    const rawSnippet = html.substring(0, 1500).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const isFormPage = /<form[\s\S]*?buscar/i.test(html) && results.length === 0;
+
     return new Response(JSON.stringify({
         results: results,
         totalResults: results.length,
-        rawLength: html.length
+        rawLength: html.length,
+        rawSnippet: rawSnippet.substring(0, 500),
+        isFormPage: isFormPage
     }), {
         headers: { 'Content-Type': 'application/json' }
     });
