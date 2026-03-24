@@ -215,6 +215,7 @@ async function obtenerResultadosMARCia() {
         renderizarResultadosMARCia();
         renderizarFiltrosMARCia();
         renderizarPaginacionMARCia();
+        actualizarBotonesGuardar();
     } catch (e) {
         mostrarToast('Error obteniendo resultados: ' + e.message, 'error');
     } finally {
@@ -504,15 +505,7 @@ async function buscarSIGA() {
 
         sigaState.results = data.data || [];
         renderizarResultadosSIGA();
-
-        // Mostrar botón de guardar si hay resultados y no está ya guardada
-        var saveBtn = document.getElementById('siga-save-search-btn');
-        if (saveBtn) {
-            var yaGuardada = sigaState.savedSearches.some(function(s) {
-                return s.query === query && s.area === area;
-            });
-            saveBtn.style.display = (sigaState.results.length > 0 && !yaGuardada) ? '' : 'none';
-        }
+        actualizarBotonesGuardar();
 
     } catch (e) {
         if (e.message === 'PROXY_NOT_CONFIGURED') {
@@ -649,9 +642,14 @@ function limpiarFormularioSIGA() {
     sigaState.results = [];
 }
 
-// ==================== SIGA: BÚSQUEDAS GUARDADAS ====================
+// ==================== BÚSQUEDAS GUARDADAS (TODAS LAS HERRAMIENTAS) ====================
 
-// Helper: acceder al store sigaGuardadas de IndexedDB
+// Estado global de búsquedas guardadas (todas las herramientas)
+var savedSearchesState = {
+    searches: [] // { id, tool: 'siga'|'marcia'|'marcanet', query, label, ... }
+};
+
+// Helper: acceder al store sigaGuardadas de IndexedDB (usado para todas las herramientas)
 function sigaDB(mode) {
     var tx = db.transaction(['sigaGuardadas'], mode);
     return tx.objectStore('sigaGuardadas');
@@ -663,7 +661,10 @@ async function cargarBusquedasGuardadas() {
         var store = sigaDB('readonly');
         var req = store.getAll();
         req.onsuccess = function() {
-            sigaState.savedSearches = req.result || [];
+            var all = req.result || [];
+            // Separar por herramienta
+            sigaState.savedSearches = all.filter(function(s) { return !s.tool || s.tool === 'siga'; });
+            savedSearchesState.searches = all;
             renderizarBusquedasGuardadas();
             resolve();
         };
@@ -671,11 +672,43 @@ async function cargarBusquedasGuardadas() {
     });
 }
 
+// Guardar búsqueda genérica
+function guardarBusqueda(tool, searchData) {
+    if (!db) return;
+
+    // Evitar duplicados
+    var existe = savedSearchesState.searches.some(function(s) {
+        return (s.tool || 'siga') === tool && s.query === searchData.query && (s.subtype || '') === (searchData.subtype || '');
+    });
+    if (existe) {
+        mostrarToast('Esta búsqueda ya está guardada', 'warning');
+        return;
+    }
+
+    var saved = Object.assign({
+        tool: tool,
+        fechaGuardado: new Date().toISOString(),
+        lastChecked: new Date().toISOString(),
+        newCount: 0,
+        newFichas: []
+    }, searchData);
+
+    var store = sigaDB('readwrite');
+    var req = store.add(saved);
+    req.onsuccess = function() {
+        saved.id = req.result;
+        savedSearchesState.searches.push(saved);
+        if (tool === 'siga') sigaState.savedSearches.push(saved);
+        renderizarBusquedasGuardadas();
+        mostrarToast('Búsqueda guardada.', 'success');
+    };
+}
+
 function guardarBusquedaSIGA() {
     if (!db || !sigaState.currentQuery) return;
 
     var q = sigaState.currentQuery;
-    // Evitar duplicados
+    // Evitar duplicados (legacy check)
     var existe = sigaState.savedSearches.some(function(s) {
         return s.query === q.Busqueda && s.area === q.IdArea;
     });
@@ -688,6 +721,7 @@ function guardarBusquedaSIGA() {
     var fichaIds = sigaState.results.map(function(f) { return f.fichaId; }).sort();
 
     var saved = {
+        tool: 'siga',
         query: q.Busqueda,
         area: q.IdArea,
         fechaDesde: q.FechaDesde || '',
@@ -706,9 +740,53 @@ function guardarBusquedaSIGA() {
     req.onsuccess = function() {
         saved.id = req.result;
         sigaState.savedSearches.push(saved);
+        savedSearchesState.searches.push(saved);
         renderizarBusquedasGuardadas();
         mostrarToast('Búsqueda guardada. Se verificará automáticamente.', 'success');
     };
+}
+
+// Guardar búsqueda MARCia
+function guardarBusquedaMARCia() {
+    if (!db || marciaState.results.length === 0) return;
+    var query = '';
+    if (marciaState.searchMode === 'rapida') {
+        query = (document.getElementById('marcia-query').value || '').trim();
+    } else {
+        query = (document.getElementById('marcia-adv-title').value || '').trim() ||
+                (document.getElementById('marcia-adv-owner').value || '').trim() ||
+                (document.getElementById('marcia-adv-number').value || '').trim();
+    }
+    if (!query) { mostrarToast('No se pudo determinar el término de búsqueda', 'warning'); return; }
+
+    guardarBusqueda('marcia', {
+        query: query,
+        subtype: marciaState.searchMode,
+        label: query + ' (MARCia)',
+        lastResultCount: marciaState.totalResults || marciaState.results.length,
+        lastResultIds: marciaState.results.slice(0, 100).map(function(r) { return r.applicationNumber || r.id || ''; }).sort()
+    });
+}
+
+// Guardar búsqueda Marcanet
+function guardarBusquedaMarcanet() {
+    if (!db || marcanetState.results.length === 0) return;
+    var mode = marcanetState.searchMode;
+    var query = '';
+    var inputMap = { fonetica: 'mcn-denominacion', expediente: 'mcn-num-expediente', registro: 'mcn-num-registro', titular: 'mcn-titular' };
+    query = (document.getElementById(inputMap[mode]) || {}).value || '';
+    query = query.trim();
+    if (!query) { mostrarToast('No se pudo determinar el término de búsqueda', 'warning'); return; }
+
+    var modeLabels = { fonetica: 'Fonética', expediente: 'Expediente', registro: 'Registro', titular: 'Titular' };
+    guardarBusqueda('marcanet', {
+        query: query,
+        subtype: mode,
+        clase: mode === 'fonetica' ? ((document.getElementById('mcn-clase') || {}).value || '') : '',
+        label: query + ' (Marcanet ' + modeLabels[mode] + ')',
+        lastResultCount: marcanetState.results.length,
+        lastResultIds: marcanetState.results.slice(0, 100).map(function(r) { return r['Expediente'] || r['Registro'] || ''; }).sort()
+    });
 }
 
 function eliminarBusquedaGuardada(id) {
@@ -716,6 +794,7 @@ function eliminarBusquedaGuardada(id) {
     var store = sigaDB('readwrite');
     store.delete(id);
     sigaState.savedSearches = sigaState.savedSearches.filter(function(s) { return s.id !== id; });
+    savedSearchesState.searches = savedSearchesState.searches.filter(function(s) { return s.id !== id; });
     renderizarBusquedasGuardadas();
 }
 
@@ -724,40 +803,56 @@ function renderizarBusquedasGuardadas() {
     var list = document.getElementById('siga-saved-list');
     if (!section || !list) return;
 
-    if (sigaState.savedSearches.length === 0) {
+    var allSearches = savedSearchesState.searches;
+    if (allSearches.length === 0) {
         section.style.display = 'none';
         return;
     }
 
     section.style.display = '';
     var html = '';
-    sigaState.savedSearches.forEach(function(s) {
-        var areaLabel = s.area === '1' ? 'Patentes' : s.area === '3' ? 'Protección PI' : 'Marcas';
+
+    var toolIcons = { siga: '📰', marcia: '🔍', marcanet: '📋' };
+    var toolColors = { siga: '#e67e22', marcia: '#3498db', marcanet: '#27ae60' };
+
+    allSearches.forEach(function(s) {
+        var tool = s.tool || 'siga';
+        var toolLabel = tool.toUpperCase();
+        if (tool === 'siga') {
+            var areaLabel = s.area === '1' ? 'Patentes' : s.area === '3' ? 'Protección PI' : 'Marcas';
+            toolLabel = 'SIGA · ' + areaLabel;
+        } else if (tool === 'marcanet' && s.subtype) {
+            var subtypeLabels = { fonetica: 'Fonética', expediente: 'Expediente', registro: 'Registro', titular: 'Titular' };
+            toolLabel = 'MARCANET · ' + (subtypeLabels[s.subtype] || s.subtype);
+        } else if (tool === 'marcia') {
+            toolLabel = 'MARCia';
+        }
+
         var fechaCheck = s.lastChecked ? new Date(s.lastChecked).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Nunca';
         var hasNew = s.newCount > 0;
 
         html += '<div class="siga-saved-item' + (hasNew ? ' siga-saved-has-new' : '') + '">' +
             '<div class="siga-saved-info">' +
                 '<div class="siga-saved-query">' +
-                    san(s.query) +
+                    (toolIcons[tool] || '') + ' ' + san(s.query) +
                     (hasNew ? ' <span class="siga-new-badge">' + s.newCount + ' nueva' + (s.newCount > 1 ? 's' : '') + '</span>' : '') +
                 '</div>' +
                 '<div class="siga-saved-meta">' +
-                    '<span class="siga-badge-gaceta">' + san(areaLabel) + '</span>' +
-                    '<span>' + s.lastResultCount + ' resultado' + (s.lastResultCount !== 1 ? 's' : '') + '</span>' +
-                    '<span>Revisado: ' + fechaCheck + '</span>' +
+                    '<span class="siga-badge-gaceta" style="background:' + (toolColors[tool] || '#888') + ';color:#fff">' + san(toolLabel) + '</span>' +
+                    '<span>' + (s.lastResultCount || 0) + ' resultado' + ((s.lastResultCount || 0) !== 1 ? 's' : '') + '</span>' +
+                    '<span>Guardado: ' + fechaCheck + '</span>' +
                 '</div>' +
             '</div>' +
             '<div class="siga-saved-actions">' +
                 '<button class="btn btn-sm btn-primary" onclick="ejecutarBusquedaGuardada(' + s.id + ')" title="Buscar ahora">🔍</button>' +
-                '<button class="btn btn-sm btn-secondary" onclick="verificarBusquedaGuardada(' + s.id + ')" title="Verificar actualizaciones">🔄</button>' +
+                (tool === 'siga' ? '<button class="btn btn-sm btn-secondary" onclick="verificarBusquedaGuardada(' + s.id + ')" title="Verificar actualizaciones">🔄</button>' : '') +
                 '<button class="btn btn-sm btn-danger" onclick="eliminarBusquedaGuardada(' + s.id + ')" title="Eliminar">✕</button>' +
             '</div>' +
         '</div>';
     });
     list.innerHTML = html;
 
-    // Actualizar badge global
+    // Actualizar badge global (solo SIGA tiene auto-check)
     var totalNew = sigaState.savedSearches.reduce(function(sum, s) { return sum + (s.newCount || 0); }, 0);
     var badge = document.getElementById('siga-updates-badge');
     if (badge) {
@@ -767,6 +862,9 @@ function renderizarBusquedasGuardadas() {
 
     // Actualizar badge en el tab de SIGA
     actualizarTabBadge(totalNew);
+
+    // Mostrar/ocultar botones de guardar según estado actual
+    actualizarBotonesGuardar();
 }
 
 function actualizarTabBadge(count) {
@@ -786,14 +884,10 @@ function actualizarTabBadge(count) {
 }
 
 function ejecutarBusquedaGuardada(id) {
-    var saved = sigaState.savedSearches.find(function(s) { return s.id === id; });
+    var saved = savedSearchesState.searches.find(function(s) { return s.id === id; });
     if (!saved) return;
 
-    // Llenar formulario y buscar
-    document.getElementById('siga-query').value = saved.query;
-    document.getElementById('siga-area').value = saved.area;
-    document.getElementById('siga-fecha-desde').value = saved.fechaDesde || '';
-    document.getElementById('siga-fecha-hasta').value = saved.fechaHasta || '';
+    var tool = saved.tool || 'siga';
 
     // Limpiar el conteo de novedades
     if (saved.newCount > 0) {
@@ -803,7 +897,35 @@ function ejecutarBusquedaGuardada(id) {
         renderizarBusquedasGuardadas();
     }
 
-    buscarSIGA();
+    if (tool === 'siga') {
+        cambiarTabIMPI('siga');
+        document.getElementById('siga-query').value = saved.query;
+        document.getElementById('siga-area').value = saved.area || '2';
+        document.getElementById('siga-fecha-desde').value = saved.fechaDesde || '';
+        document.getElementById('siga-fecha-hasta').value = saved.fechaHasta || '';
+        buscarSIGA();
+    } else if (tool === 'marcia') {
+        cambiarTabIMPI('marcia');
+        if (saved.subtype === 'avanzada') {
+            toggleMARCiaMode('avanzada');
+        } else {
+            toggleMARCiaMode('rapida');
+            document.getElementById('marcia-query').value = saved.query;
+        }
+        buscarMARCia();
+    } else if (tool === 'marcanet') {
+        cambiarTabIMPI('marcanet');
+        var mode = saved.subtype || 'fonetica';
+        toggleMarcanetMode(mode);
+        var inputMap = { fonetica: 'mcn-denominacion', expediente: 'mcn-num-expediente', registro: 'mcn-num-registro', titular: 'mcn-titular' };
+        var input = document.getElementById(inputMap[mode]);
+        if (input) input.value = saved.query;
+        if (mode === 'fonetica' && saved.clase) {
+            var claseInput = document.getElementById('mcn-clase');
+            if (claseInput) claseInput.value = saved.clase;
+        }
+        buscarMarcanet();
+    }
 }
 
 async function verificarBusquedaGuardada(id) {
@@ -895,6 +1017,92 @@ async function autoCheckBusquedasGuardadas() {
     }
 }
 
+// ==================== BUSCAR EN LAS 3 HERRAMIENTAS ====================
+
+async function buscarEnLas3() {
+    var queryInput = document.getElementById('impi-unified-query');
+    var query = queryInput ? queryInput.value.trim() : '';
+    if (!query) { mostrarToast('Ingresa un término de búsqueda', 'warning'); return; }
+
+    var loading = document.getElementById('impi-loading');
+    if (loading) loading.style.display = 'flex';
+
+    // Llenar los 3 formularios con el mismo término
+    var marciaQ = document.getElementById('marcia-query');
+    if (marciaQ) marciaQ.value = query;
+    toggleMARCiaMode('rapida');
+
+    var mcnDenom = document.getElementById('mcn-denominacion');
+    if (mcnDenom) mcnDenom.value = query;
+    toggleMarcanetMode('fonetica');
+
+    var sigaQ = document.getElementById('siga-query');
+    if (sigaQ) sigaQ.value = query;
+
+    // Lanzar las 3 búsquedas en paralelo
+    var results = { marcia: null, marcanet: null, siga: null };
+    var errors = [];
+
+    await Promise.allSettled([
+        buscarMARCia().then(function() { results.marcia = true; }).catch(function(e) { errors.push('MARCia: ' + e.message); }),
+        buscarMarcanet().then(function() { results.marcanet = true; }).catch(function(e) { errors.push('Marcanet: ' + e.message); }),
+        buscarSIGA().then(function() { results.siga = true; }).catch(function(e) { errors.push('SIGA: ' + e.message); })
+    ]);
+
+    if (loading) loading.style.display = 'none';
+
+    // Mostrar resumen
+    var resumen = [];
+    if (results.marcia) resumen.push('MARCia: ' + (marciaState.totalResults || marciaState.results.length) + ' resultados');
+    if (results.marcanet) resumen.push('Marcanet: ' + marcanetState.results.length + ' resultados');
+    if (results.siga) resumen.push('SIGA: ' + sigaState.results.length + ' resultados');
+    if (errors.length > 0) resumen.push('Errores: ' + errors.join(', '));
+
+    mostrarToast(resumen.join(' | '), errors.length > 0 ? 'warning' : 'success');
+
+    // Mostrar el tab con más resultados
+    var counts = [
+        { tab: 'marcia', count: marciaState.totalResults || marciaState.results.length },
+        { tab: 'marcanet', count: marcanetState.results.length },
+        { tab: 'siga', count: sigaState.results.length }
+    ];
+    counts.sort(function(a, b) { return b.count - a.count; });
+    if (counts[0].count > 0) cambiarTabIMPI(counts[0].tab);
+}
+
+// Actualizar visibilidad de botones de guardar
+function actualizarBotonesGuardar() {
+    // MARCia save button
+    var marciaSaveBtn = document.getElementById('marcia-save-search-btn');
+    if (marciaSaveBtn) {
+        var marciaQuery = (document.getElementById('marcia-query') || {}).value || '';
+        var yaGuardadaMarcia = savedSearchesState.searches.some(function(s) {
+            return s.tool === 'marcia' && s.query === marciaQuery.trim();
+        });
+        marciaSaveBtn.style.display = (marciaState.results.length > 0 && !yaGuardadaMarcia) ? '' : 'none';
+    }
+
+    // Marcanet save button
+    var mcnSaveBtn = document.getElementById('mcn-save-search-btn');
+    if (mcnSaveBtn) {
+        var inputMap = { fonetica: 'mcn-denominacion', expediente: 'mcn-num-expediente', registro: 'mcn-num-registro', titular: 'mcn-titular' };
+        var mcnQuery = (document.getElementById(inputMap[marcanetState.searchMode]) || {}).value || '';
+        var yaGuardadaMcn = savedSearchesState.searches.some(function(s) {
+            return s.tool === 'marcanet' && s.query === mcnQuery.trim();
+        });
+        mcnSaveBtn.style.display = (marcanetState.results.length > 0 && !yaGuardadaMcn) ? '' : 'none';
+    }
+
+    // SIGA save button (existing logic)
+    var sigaSaveBtn = document.getElementById('siga-save-search-btn');
+    if (sigaSaveBtn && sigaState.currentQuery) {
+        var yaGuardadaSiga = sigaState.savedSearches.some(function(s) {
+            return s.query === sigaState.currentQuery.Busqueda && s.area === sigaState.currentQuery.IdArea;
+        });
+        sigaSaveBtn.style.display = (sigaState.results.length > 0 && !yaGuardadaSiga) ? '' : 'none';
+    }
+}
+
 // ==================== ENTER KEY HANDLERS ====================
 
 // ==================== Marcanet: TOGGLE MODO ====================
@@ -941,6 +1149,7 @@ async function buscarMarcanet() {
                 marcanetState.results = data.results || [];
             }
             renderizarResultadosMarcanet();
+            actualizarBotonesGuardar();
 
         } else if (mode === 'expediente') {
             var expediente = (document.getElementById('mcn-num-expediente') || {}).value || '';
@@ -990,6 +1199,7 @@ async function buscarMarcanet() {
                 marcanetState.results = data.results || [];
             }
             renderizarResultadosMarcanet();
+            actualizarBotonesGuardar();
         }
 
     } catch (e) {
@@ -1429,6 +1639,14 @@ function cerrarDetalleMarcanet() {
 // ==================== DOMContentLoaded ====================
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Enter key para búsqueda unificada
+    var unifiedInput = document.getElementById('impi-unified-query');
+    if (unifiedInput) {
+        unifiedInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); buscarEnLas3(); }
+        });
+    }
+
     var marciaInput = document.getElementById('marcia-query');
     if (marciaInput) {
         marciaInput.addEventListener('keydown', function(e) {
