@@ -1401,7 +1401,7 @@ function renderizarDetalleMarcanetCompleto(data, resultadoOriginal) {
         var expClean = expNum.replace(/\D/g, '');
         var infoB64 = btoa('1|1|1985|' + expClean);
         html += '<a href="' + san('https://acervomarcas.impi.gob.mx:8181/marcanet/UCMServlet?info=' + encodeURIComponent(infoB64)) + '" ' +
-            'target="_blank" rel="noopener" class="btn btn-sm btn-outline">↗️ Ver en Marcanet</a>';
+            'target="_blank" rel="noopener" class="btn btn-sm btn-outline">↗️ Ver expediente en Marcanet</a>';
     }
     html += '</div>';
 
