@@ -932,6 +932,7 @@ async function buscarMarcanet() {
                 body: JSON.stringify({ denominacion: denominacion.trim(), clase: clase })
             });
             console.log('Marcanet fonetica response:', data);
+            if (data.debugLinks && data.debugLinks.length > 0) console.log('Marcanet debug links found in results:', data.debugLinks);
             if (data.isFormPage) {
                 mostrarToast('Marcanet devolvió la página del formulario. Es posible que el servidor no esté procesando búsquedas. Intenta directamente en Marcanet.', 'warning');
                 marcanetState.results = [];
@@ -1028,12 +1029,6 @@ function renderizarResultadosMarcanet() {
         var titular = r['Titular'] || r['titular'] || r['Nombre'] || '';
         var status = r['Situación'] || r['Status'] || r['Estado'] || r['situacion'] || '';
 
-        // Buscar enlace para detalle
-        var detailLink = '';
-        for (var k in r) {
-            if (k.startsWith('_link_') && r[k]) { detailLink = r[k]; break; }
-        }
-
         var statusClass = '';
         if (status) {
             var sl = status.toLowerCase();
@@ -1041,6 +1036,20 @@ function renderizarResultadosMarcanet() {
             else if (sl.indexOf('trámite') >= 0 || sl.indexOf('tramite') >= 0) statusClass = 'impi-status-pending';
             else statusClass = 'impi-status-cancelled';
         }
+
+        // Recopilar campos adicionales no mapeados
+        var mappedKeys = ['Denominación', 'denominacion', 'Marca', 'marca',
+            'Expediente', 'No. Expediente', 'expediente', 'No. de Expediente',
+            'Registro', 'No. Registro', 'registro', 'No. de Registro',
+            'Clase', 'clase', 'Clase Niza',
+            'Titular', 'titular', 'Nombre',
+            'Situación', 'Status', 'Estado', 'situacion'];
+        var extraMeta = '';
+        keys.forEach(function(k) {
+            if (mappedKeys.indexOf(k) < 0 && r[k] && k !== keys[0]) {
+                extraMeta += '<span><strong>' + san(k) + ':</strong> ' + san(r[k]) + '</span>';
+            }
+        });
 
         html += '<div class="impi-result-card mcn-result-card" onclick="verDetalleMarcanetDesdeResultado(' + idx + ')">' +
             '<div class="impi-result-number">#' + (idx + 1) + '</div>' +
@@ -1053,21 +1062,10 @@ function renderizarResultadosMarcanet() {
                     (clase ? '<span><strong>Clase:</strong> ' + san(clase) + '</span>' : '') +
                 '</div>' +
                 (titular ? '<div class="impi-result-owner"><strong>Titular:</strong> ' + san(titular) + '</div>' : '') +
+                (extraMeta ? '<div class="impi-result-meta" style="margin-top: 4px; font-size: 0.85em;">' + extraMeta + '</div>' : '') +
+                '<div style="margin-top: 6px; font-size: 0.8em; color: var(--primary-color);">Click para ver expediente completo →</div>' +
             '</div></div>';
     });
-
-    // Si no se pudieron mapear campos, mostrar datos crudos
-    if (!html && marcanetState.results.length > 0) {
-        html = '<div class="mcn-raw-results">';
-        marcanetState.results.forEach(function(r, idx) {
-            html += '<div class="mcn-raw-row">';
-            for (var k in r) {
-                if (!k.startsWith('_')) html += '<span><strong>' + san(k) + ':</strong> ' + san(r[k]) + '</span> ';
-            }
-            html += '</div>';
-        });
-        html += '</div>';
-    }
 
     list.innerHTML = html;
 }
@@ -1081,9 +1079,11 @@ async function verDetalleMarcanetDesdeResultado(idx) {
     // Extraer datos del resultado para buscar detalle completo
     var expediente = r['Expediente'] || r['No. Expediente'] || r['expediente'] || r['No. de Expediente'] || '';
     var registro = r['Registro'] || r['No. Registro'] || r['registro'] || r['No. de Registro'] || '';
-    var link = '';
+    var link = r['_link_tr'] || '';
+    var jsParam = '';
     for (var k in r) {
-        if (k.startsWith('_link_') && r[k]) { link = r[k]; break; }
+        if (k.startsWith('_link_') && r[k] && !link) { link = r[k]; }
+        if (k.startsWith('_js_param_') && r[k] && !jsParam) { jsParam = r[k]; }
     }
 
     // Limpiar números
@@ -1100,10 +1100,12 @@ async function verDetalleMarcanetDesdeResultado(idx) {
             body: JSON.stringify({
                 expediente: expClean,
                 registro: regClean,
-                link: link
+                link: link,
+                jsParam: jsParam
             })
         });
         console.log('Marcanet full-detail response:', data);
+        if (data.debug) console.log('Marcanet debug snippets:', data.debug);
 
         // Renderizar con todos los datos disponibles
         renderizarDetalleMarcanetCompleto(data, r);
