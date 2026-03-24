@@ -970,8 +970,8 @@ async function handleMarcanetExpediente(request) {
     }
 
     // Intentar UCMServlet con el número de expediente codificado en Base64
-    // Formato observado: tipo|número|modo|número
-    const infoStr = '3|' + expediente + '|1|' + expediente;
+    // Formato correcto: 1|1|1985|expediente (observado en URLs de Marcanet)
+    const infoStr = '1|1|1985|' + expediente;
     const infoB64 = btoa(infoStr);
 
     const resp = await fetch(MARCANET_BASE + '/marcanet/UCMServlet?info=' + encodeURIComponent(infoB64), {
@@ -1031,8 +1031,8 @@ async function handleMarcanetRegistro(request) {
         return new Response(JSON.stringify({ error: 'Número de registro requerido' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
 
-    // UCMServlet con tipo 4 para registro
-    const infoStr = '4|' + registro + '|2';
+    // UCMServlet con formato correcto: 1|1|1985|registro
+    const infoStr = '1|1|1985|' + registro;
     const infoB64 = btoa(infoStr);
 
     const resp = await fetch(MARCANET_BASE + '/marcanet/UCMServlet?info=' + encodeURIComponent(infoB64), {
@@ -1388,7 +1388,7 @@ async function handleMarcanetFullDetail(request) {
         // === PRIORIDAD 3: UCMServlet con expediente ===
         if (expediente) {
             try {
-                const infoStr = '3|' + expediente + '|1|' + expediente;
+                const infoStr = '1|1|1985|' + expediente;
                 const resp = await fetch(MARCANET_BASE + '/marcanet/UCMServlet?info=' + encodeURIComponent(btoa(infoStr)), {
                     headers: hdrs, redirect: 'follow'
                 });
@@ -1402,7 +1402,7 @@ async function handleMarcanetFullDetail(request) {
         // === PRIORIDAD 4: UCMServlet con registro ===
         if (registro) {
             try {
-                const infoStr = '4|' + registro + '|2';
+                const infoStr = '1|1|1985|' + registro;
                 const resp = await fetch(MARCANET_BASE + '/marcanet/UCMServlet?info=' + encodeURIComponent(btoa(infoStr)), {
                     headers: hdrs, redirect: 'follow'
                 });
