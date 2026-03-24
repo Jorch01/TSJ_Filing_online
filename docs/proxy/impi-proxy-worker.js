@@ -548,6 +548,68 @@ async function ensureMarcanetSession(request) {
     return session;
 }
 
+// Obtener ViewState de una página PrimeFaces/JSF
+function extractViewState(html) {
+    // Buscar javax.faces.ViewState en inputs hidden
+    const match = html.match(/name="javax\.faces\.ViewState"[^>]*value="([^"]*)"/i) ||
+                  html.match(/id="j_id1:javax\.faces\.ViewState:0"[^>]*value="([^"]*)"/i) ||
+                  html.match(/javax\.faces\.ViewState[^>]*value="([^"]*)"/i);
+    return match ? match[1] : null;
+}
+
+// Parsear respuesta PrimeFaces AJAX (XML partial-response)
+function parsePrimeFacesResponse(xmlText) {
+    const updates = {};
+    // Extraer bloques <update id="..."><![CDATA[...]]></update>
+    const updateMatches = xmlText.match(/<update\s+id="([^"]*)">([\s\S]*?)<\/update>/gi) || [];
+    for (const upd of updateMatches) {
+        const idMatch = upd.match(/<update\s+id="([^"]*)"/i);
+        const cdataMatch = upd.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+        if (idMatch) {
+            updates[idMatch[1]] = cdataMatch ? cdataMatch[1] : upd.replace(/<\/?update[^>]*>/gi, '');
+        }
+    }
+    return updates;
+}
+
+// Obtener página de formulario PrimeFaces y extraer ViewState
+async function getMarcanetFormPage(session, sessionKey, formUrl) {
+    const resp = await fetch(formUrl, {
+        headers: marcanetHeaders(session),
+        redirect: 'follow'
+    });
+    updateSessionCookies(sessionKey, resp);
+    const html = await resp.text();
+    const viewState = extractViewState(html);
+    return { html, viewState };
+}
+
+// Enviar AJAX PrimeFaces
+async function sendPrimeFacesAjax(session, sessionKey, formUrl, params) {
+    const formData = new URLSearchParams();
+    formData.append('javax.faces.partial.ajax', 'true');
+    formData.append('javax.faces.partial.execute', '@all');
+    for (const [k, v] of Object.entries(params)) {
+        formData.append(k, v);
+    }
+
+    const resp = await fetch(formUrl, {
+        method: 'POST',
+        headers: Object.assign({}, marcanetHeaders(session), {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'Faces-Request': 'partial/ajax',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/xml, text/xml, */*; q=0.01'
+        }),
+        body: formData.toString(),
+        redirect: 'follow'
+    });
+
+    updateSessionCookies(sessionKey, resp);
+    const text = await resp.text();
+    return { text, updates: parsePrimeFacesResponse(text) };
+}
+
 // Handler: inicializar sesión
 async function handleMarcanetSession(request) {
     try {
@@ -773,70 +835,83 @@ async function handleMarcanetFonetica(request) {
         return new Response(JSON.stringify({ error: 'Denominación requerida' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
 
-    // Enviar búsqueda fonética
-    const formData = new URLSearchParams();
-    formData.append('denominacion', denominacion);
-    formData.append('clase', clase);
-    // Campos alternativos que podría usar el formulario
-    formData.append('p_denominacion', denominacion);
-    formData.append('p_clase', clase);
-    formData.append('idClase', clase);
-    formData.append('buscar', 'Buscar');
-    formData.append('action', 'buscar');
+    const sessionKey = 'marcanet_' + getSessionKey(request);
+    const formUrl = MARCANET_BASE + '/marcanet/vistas/common/datos/bsqFonetica.pgi';
 
-    const resp = await fetch(MARCANET_BASE + '/marcanet/vistas/common/datos/bsqFonetica.pgi', {
-        method: 'POST',
-        headers: Object.assign(marcanetHeaders(session), {
-            'Content-Type': 'application/x-www-form-urlencoded'
-        }),
-        body: formData.toString(),
-        redirect: 'follow'
+    // PASO 1: Obtener la página del formulario para extraer ViewState
+    let viewState;
+    try {
+        const formPage = await getMarcanetFormPage(session, sessionKey, formUrl);
+        viewState = formPage.viewState;
+    } catch (e) {
+        return new Response(JSON.stringify({ error: 'No se pudo acceder al formulario de Marcanet: ' + e.message }),
+            { status: 502, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    if (!viewState) {
+        return new Response(JSON.stringify({ error: 'No se encontró ViewState en formulario Marcanet' }),
+            { status: 502, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    // PASO 2: Enviar búsqueda PrimeFaces AJAX
+    // Simular: PrimeFaces.ab({s:"frmBsqFonetica:busquedaId2", f:"frmBsqFonetica",
+    //   u:"frmBsqFonetica:pnlBsqFonetica frmBsqFonetica:dlgListaFoneticos"})
+    const ajaxParams = {
+        'javax.faces.source': 'frmBsqFonetica:busquedaId2',
+        'javax.faces.partial.render': 'frmBsqFonetica:pnlBsqFonetica frmBsqFonetica:dlgListaFoneticos',
+        'frmBsqFonetica:busquedaId2': 'frmBsqFonetica:busquedaId2',
+        'frmBsqFonetica': 'frmBsqFonetica',
+        'frmBsqFonetica:denominacion': denominacion,
+        'javax.faces.ViewState': viewState
+    };
+
+    // Agregar clase si se seleccionó
+    if (clase) {
+        ajaxParams['frmBsqFonetica:idClase'] = clase;
+        ajaxParams['frmBsqFonetica:clase'] = clase;
+    }
+
+    const ajaxResp = await sendPrimeFacesAjax(session, sessionKey, formUrl, ajaxParams);
+    const updates = ajaxResp.updates;
+
+    // PASO 3: Extraer resultados del HTML de la respuesta AJAX
+    // Los resultados deberían estar en el update de dlgListaFoneticos o pnlBsqFonetica
+    let resultsHtml = '';
+    let results = [];
+    const debugInfo = { updateKeys: Object.keys(updates), rawLength: ajaxResp.text.length };
+
+    for (const [updateId, updateHtml] of Object.entries(updates)) {
+        if (updateId.includes('dlgListaFoneticos') || updateId.includes('pnlBsqFonetica') || updateId.includes('tblResultados')) {
+            resultsHtml += updateHtml + '\n';
+        }
+    }
+
+    // Si no se encontraron en updates específicos, buscar en todo el response
+    if (!resultsHtml) {
+        resultsHtml = ajaxResp.text;
+    }
+
+    results = parseMarcanetResultsHTML(resultsHtml);
+
+    // Filtrar resultados que son leyendas de formulario (como "TM = Tipo de marca")
+    results = results.filter(function(r) {
+        const vals = Object.values(r).filter(v => typeof v === 'string' && !v.startsWith('_'));
+        // Si todos los valores contienen " = " son leyendas, no resultados
+        const isLegend = vals.every(v => /^\w+ = /.test(v) || v.length < 3);
+        return !isLegend;
     });
 
-    // Actualizar cookies
-    const sessionKey = 'marcanet_' + getSessionKey(request);
-    updateSessionCookies(sessionKey, resp);
-
-    const html = await resp.text();
-    const results = parseMarcanetResultsHTML(html);
-
-    // Debug: incluir snippet del HTML para diagnosticar problemas de parsing
-    const rawSnippet = html.substring(0, 1500).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-    // Detectar si Marcanet devolvió la página del formulario en vez de resultados
-    const isFormPage = /<form[\s\S]*?buscar/i.test(html) && results.length === 0;
-
-    // Debug: extraer todos los links, onclick y PrimeFaces patterns del HTML
-    const debugLinks = [];
-    // Buscar cualquier href (no solo detalle)
-    const linkMatches = html.match(/href="([^"]*(?:detalle|expediente|folio|UCMServlet|pgi)[^"]*)"/gi) || [];
-    for (const lm of linkMatches) {
-        const m = lm.match(/href="([^"]*)"/i);
-        if (m) debugLinks.push('href:' + m[1]);
-    }
-    // Buscar cualquier onclick
-    const onclickMatches = html.match(/onclick="([^"]*)"/gi) || [];
-    for (const om of onclickMatches) {
-        const m = om.match(/onclick="([^"]*)"/i);
-        if (m && m[1].length > 5) debugLinks.push('onclick:' + m[1].substring(0, 200));
-    }
-    // Buscar PrimeFaces AJAX commands (mojarra.ab, PrimeFaces.ab, jsf.ajax.request)
-    const pfMatches = html.match(/(?:mojarra|PrimeFaces|jsf)\.a[jb][^;]{10,200}/gi) || [];
-    for (const pf of pfMatches) {
-        debugLinks.push('pf:' + pf.substring(0, 200));
-    }
-    // Extraer un snippet de la primera fila <tr> que tenga <td> con datos
-    const firstDataRow = html.match(/<tr[^>]*>(?=[\s\S]*?<td)[\s\S]*?<\/tr>/i);
-    const debugFirstRow = firstDataRow ? firstDataRow[0].substring(0, 500) : '';
+    // Debug snippet
+    const rawSnippet = resultsHtml.substring(0, 2000).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    debugInfo.rawSnippet = rawSnippet.substring(0, 800);
+    debugInfo.fullResponseSnippet = ajaxResp.text.substring(0, 1500).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 500);
 
     return new Response(JSON.stringify({
         results: results,
         totalResults: results.length,
-        rawLength: html.length,
-        status: resp.status,
-        rawSnippet: rawSnippet.substring(0, 500),
-        isFormPage: isFormPage,
-        debugLinks: debugLinks.slice(0, 20),
-        debugFirstRow: debugFirstRow
+        rawLength: ajaxResp.text.length,
+        status: 200,
+        debug: debugInfo
     }), {
         headers: { 'Content-Type': 'application/json' }
     });
@@ -979,37 +1054,69 @@ async function handleMarcanetTitular(request) {
         return new Response(JSON.stringify({ error: 'Nombre de titular requerido' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
 
-    const formData = new URLSearchParams();
-    formData.append('titular', titular);
-    formData.append('p_titular', titular);
-    formData.append('nombre', titular);
-    formData.append('buscar', 'Buscar');
-    formData.append('action', 'buscar');
+    const sessionKey = 'marcanet_' + getSessionKey(request);
+    const formUrl = MARCANET_BASE + '/marcanet/vistas/common/datos/bsqTitularCompleta.pgi';
 
-    const resp = await fetch(MARCANET_BASE + '/marcanet/vistas/common/datos/bsqTitularCompleta.pgi', {
-        method: 'POST',
-        headers: Object.assign(marcanetHeaders(session), {
-            'Content-Type': 'application/x-www-form-urlencoded'
-        }),
-        body: formData.toString(),
-        redirect: 'follow'
+    // PASO 1: Obtener ViewState del formulario
+    let viewState;
+    try {
+        const formPage = await getMarcanetFormPage(session, sessionKey, formUrl);
+        viewState = formPage.viewState;
+    } catch (e) {
+        return new Response(JSON.stringify({ error: 'No se pudo acceder al formulario: ' + e.message }),
+            { status: 502, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    if (!viewState) {
+        return new Response(JSON.stringify({ error: 'No se encontró ViewState en formulario Marcanet' }),
+            { status: 502, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    // PASO 2: Enviar búsqueda PrimeFaces AJAX
+    // El formulario de titular probablemente usa un patrón similar al de fonética
+    const ajaxParams = {
+        'javax.faces.source': 'frmBsqTitular:busquedaId2',
+        'javax.faces.partial.render': 'frmBsqTitular:pnlBsqTitular frmBsqTitular:dlgListaTitulares',
+        'frmBsqTitular:busquedaId2': 'frmBsqTitular:busquedaId2',
+        'frmBsqTitular': 'frmBsqTitular',
+        'frmBsqTitular:titular': titular,
+        'frmBsqTitular:nombre': titular,
+        'javax.faces.ViewState': viewState
+    };
+
+    const ajaxResp = await sendPrimeFacesAjax(session, sessionKey, formUrl, ajaxParams);
+    const updates = ajaxResp.updates;
+
+    // Extraer resultados
+    let resultsHtml = '';
+    let results = [];
+    const debugInfo = { updateKeys: Object.keys(updates), rawLength: ajaxResp.text.length };
+
+    for (const [updateId, updateHtml] of Object.entries(updates)) {
+        if (updateId.includes('dlgLista') || updateId.includes('pnlBsq') || updateId.includes('tblResultados')) {
+            resultsHtml += updateHtml + '\n';
+        }
+    }
+
+    if (!resultsHtml) resultsHtml = ajaxResp.text;
+
+    results = parseMarcanetResultsHTML(resultsHtml);
+
+    // Filtrar leyendas
+    results = results.filter(function(r) {
+        const vals = Object.values(r).filter(v => typeof v === 'string' && !v.startsWith('_'));
+        return !vals.every(v => /^\w+ = /.test(v) || v.length < 3);
     });
 
-    const sessionKey = 'marcanet_' + getSessionKey(request);
-    updateSessionCookies(sessionKey, resp);
-
-    const html = await resp.text();
-    const results = parseMarcanetResultsHTML(html);
-
-    const rawSnippet = html.substring(0, 1500).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-    const isFormPage = /<form[\s\S]*?buscar/i.test(html) && results.length === 0;
+    const rawSnippet = resultsHtml.substring(0, 2000).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    debugInfo.rawSnippet = rawSnippet.substring(0, 800);
 
     return new Response(JSON.stringify({
         results: results,
         totalResults: results.length,
-        rawLength: html.length,
-        rawSnippet: rawSnippet.substring(0, 500),
-        isFormPage: isFormPage
+        rawLength: ajaxResp.text.length,
+        status: 200,
+        debug: debugInfo
     }), {
         headers: { 'Content-Type': 'application/json' }
     });

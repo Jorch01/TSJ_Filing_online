@@ -932,7 +932,7 @@ async function buscarMarcanet() {
                 body: JSON.stringify({ denominacion: denominacion.trim(), clase: clase })
             });
             console.log('Marcanet fonetica response:', data);
-            if (data.debugLinks && data.debugLinks.length > 0) console.log('Marcanet debug links found in results:', data.debugLinks);
+            if (data.debug) console.log('Marcanet fonetica debug:', data.debug);
             if (data.results && data.results.length > 0) console.log('Marcanet first result keys/values:', JSON.stringify(data.results[0]));
             if (data.isFormPage) {
                 mostrarToast('Marcanet devolvió la página del formulario. Es posible que el servidor no esté procesando búsquedas. Intenta directamente en Marcanet.', 'warning');
