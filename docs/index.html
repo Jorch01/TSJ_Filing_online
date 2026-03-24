@@ -1319,8 +1319,9 @@
 
             <!-- Tabs de navegación interna IMPI -->
             <div class="impi-tabs">
-                <button class="impi-tab active" data-impi-tab="marcia" onclick="cambiarTabIMPI('marcia')">🔍 MARCia - Marcas</button>
-                <button class="impi-tab" data-impi-tab="siga" onclick="cambiarTabIMPI('siga')">📰 SIGA - Gacetas</button>
+                <button class="impi-tab active" data-impi-tab="marcia" onclick="cambiarTabIMPI('marcia')">🔍 MARCia</button>
+                <button class="impi-tab" data-impi-tab="marcanet" onclick="cambiarTabIMPI('marcanet')">📋 Marcanet</button>
+                <button class="impi-tab" data-impi-tab="siga" onclick="cambiarTabIMPI('siga')">📰 SIGA</button>
             </div>
 
             <!-- Loading spinner IMPI -->
@@ -1567,6 +1568,162 @@
             </div>
 
             <!-- TAB: SIGA - Búsqueda de Gacetas -->
+            <!-- TAB: Marcanet - Expedientes de Marcas -->
+            <div class="impi-tab-content" id="impi-tab-marcanet">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="header-with-help">
+                            <h3>📋 Consulta de Expedientes (Marcanet)</h3>
+                            <div class="tooltip-container">
+                                <button class="help-btn" type="button">?</button>
+                                <div class="tooltip-content tooltip-left">
+                                    <h4>¿Cómo funciona?</h4>
+                                    <ul>
+                                        <li>Consulta expedientes de marcas directamente del acervo del IMPI</li>
+                                        <li>Busca por denominación (fonética), número de expediente, registro o titular</li>
+                                        <li>Los resultados provienen de acervomarcas.impi.gob.mx (Marcanet)</li>
+                                    </ul>
+                                    <p><strong>Aviso:</strong> La información es meramente orientativa. No constituye una comunicación oficial del IMPI.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <!-- Selector de tipo de búsqueda -->
+                        <div class="form-group" style="margin-bottom: 12px;">
+                            <label>Tipo de búsqueda</label>
+                            <div class="impi-search-toggle">
+                                <button class="btn btn-sm btn-outline active" id="btn-mcn-fonetica" onclick="toggleMarcanetMode('fonetica')">Fonética</button>
+                                <button class="btn btn-sm btn-outline" id="btn-mcn-expediente" onclick="toggleMarcanetMode('expediente')">Expediente</button>
+                                <button class="btn btn-sm btn-outline" id="btn-mcn-registro" onclick="toggleMarcanetMode('registro')">Registro</button>
+                                <button class="btn btn-sm btn-outline" id="btn-mcn-titular" onclick="toggleMarcanetMode('titular')">Titular</button>
+                            </div>
+                        </div>
+
+                        <!-- Formulario fonética -->
+                        <div id="mcn-form-fonetica">
+                            <div class="form-row">
+                                <div class="form-group" style="flex: 2;">
+                                    <label for="mcn-denominacion">Denominación</label>
+                                    <input type="text" id="mcn-denominacion" placeholder="Ej: Nike, Coca Cola, Apple...">
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="mcn-clase">Clase Niza</label>
+                                    <select id="mcn-clase">
+                                        <option value="">Todas</option>
+                                        <option value="1">1 - Químicos</option>
+                                        <option value="2">2 - Pinturas</option>
+                                        <option value="3">3 - Cosméticos</option>
+                                        <option value="4">4 - Aceites industriales</option>
+                                        <option value="5">5 - Farmacéuticos</option>
+                                        <option value="6">6 - Metales comunes</option>
+                                        <option value="7">7 - Máquinas</option>
+                                        <option value="8">8 - Herramientas manuales</option>
+                                        <option value="9">9 - Aparatos científicos/electrónicos</option>
+                                        <option value="10">10 - Aparatos médicos</option>
+                                        <option value="11">11 - Iluminación/calefacción</option>
+                                        <option value="12">12 - Vehículos</option>
+                                        <option value="13">13 - Armas de fuego</option>
+                                        <option value="14">14 - Joyería</option>
+                                        <option value="15">15 - Instrumentos musicales</option>
+                                        <option value="16">16 - Papelería</option>
+                                        <option value="17">17 - Caucho/plástico</option>
+                                        <option value="18">18 - Cuero/equipaje</option>
+                                        <option value="19">19 - Materiales construcción</option>
+                                        <option value="20">20 - Muebles</option>
+                                        <option value="21">21 - Utensilios domésticos</option>
+                                        <option value="22">22 - Cuerdas/fibras textiles</option>
+                                        <option value="23">23 - Hilos textiles</option>
+                                        <option value="24">24 - Tejidos</option>
+                                        <option value="25">25 - Vestimenta/calzado</option>
+                                        <option value="26">26 - Mercería</option>
+                                        <option value="27">27 - Alfombras</option>
+                                        <option value="28">28 - Juegos/deportes</option>
+                                        <option value="29">29 - Alimentos (carne/lácteos)</option>
+                                        <option value="30">30 - Alimentos (café/cereales)</option>
+                                        <option value="31">31 - Productos agrícolas</option>
+                                        <option value="32">32 - Bebidas sin alcohol</option>
+                                        <option value="33">33 - Bebidas alcohólicas</option>
+                                        <option value="34">34 - Tabaco</option>
+                                        <option value="35">35 - Publicidad/negocios</option>
+                                        <option value="36">36 - Seguros/finanzas</option>
+                                        <option value="37">37 - Construcción/reparación</option>
+                                        <option value="38">38 - Telecomunicaciones</option>
+                                        <option value="39">39 - Transporte</option>
+                                        <option value="40">40 - Tratamiento materiales</option>
+                                        <option value="41">41 - Educación/entretenimiento</option>
+                                        <option value="42">42 - Servicios científicos/tecnológicos</option>
+                                        <option value="43">43 - Alimentos/hospedaje</option>
+                                        <option value="44">44 - Servicios médicos</option>
+                                        <option value="45">45 - Servicios jurídicos</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Formulario expediente -->
+                        <div id="mcn-form-expediente" style="display: none;">
+                            <div class="form-group">
+                                <label for="mcn-num-expediente">Número de expediente</label>
+                                <input type="text" id="mcn-num-expediente" placeholder="Ej: 2345678">
+                            </div>
+                        </div>
+
+                        <!-- Formulario registro -->
+                        <div id="mcn-form-registro" style="display: none;">
+                            <div class="form-group">
+                                <label for="mcn-num-registro">Número de registro</label>
+                                <input type="text" id="mcn-num-registro" placeholder="Ej: 1234567">
+                            </div>
+                        </div>
+
+                        <!-- Formulario titular -->
+                        <div id="mcn-form-titular" style="display: none;">
+                            <div class="form-group">
+                                <label for="mcn-titular">Nombre del titular</label>
+                                <input type="text" id="mcn-titular" placeholder="Ej: Nike Inc, Coca Cola Company...">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <a class="btn btn-secondary" href="https://acervomarcas.impi.gob.mx:8181/marcanet/vistas/common/home.pgi" target="_blank" rel="noopener">
+                            ↗️ Abrir Marcanet
+                        </a>
+                        <button class="btn btn-primary btn-lg" onclick="buscarMarcanet()">
+                            🔍 Buscar en Marcanet
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Resultados Marcanet -->
+                <div id="mcn-results-section" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>📋 Resultados</h3>
+                            <span class="results-count" id="mcn-results-count">0 resultados</span>
+                        </div>
+                        <div class="card-body">
+                            <div id="mcn-results-list" class="impi-results-grid"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detalle expediente Marcanet -->
+                <div id="mcn-detail-section" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="header-with-help">
+                                <h3>📄 Detalle del Expediente</h3>
+                                <button class="btn btn-sm btn-outline" onclick="cerrarDetalleMarcanet()">← Volver</button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div id="mcn-detail-content"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="impi-tab-content" id="impi-tab-siga">
                 <div class="card">
                     <div class="card-header">

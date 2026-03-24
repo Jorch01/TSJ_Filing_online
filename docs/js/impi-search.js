@@ -1,5 +1,5 @@
-// ==================== BÚSQUEDA IMPI (MARCia + SIGA) ====================
-// Integración directa con MARCia (marcas) y SIGA 2.0 (gacetas) del IMPI.
+// ==================== BÚSQUEDA IMPI (MARCia + SIGA + Marcanet) ====================
+// Integración directa con MARCia (marcas), SIGA 2.0 (gacetas) y Marcanet (expedientes) del IMPI.
 // Usa un proxy CORS (Cloudflare Worker) para bypass de CORS y manejo de sesiones.
 //
 // SETUP (solo developer):
@@ -34,6 +34,13 @@ var sigaState = {
     currentQuery: null, // { Busqueda, IdArea, FechaDesde, FechaHasta }
     savedSearches: [],
     lastAutoCheck: null
+};
+
+var marcanetState = {
+    searchMode: 'fonetica', // 'fonetica', 'expediente', 'registro', 'titular'
+    results: [],
+    searching: false,
+    detail: null
 };
 
 function getProxyUrl() {
@@ -890,6 +897,287 @@ async function autoCheckBusquedasGuardadas() {
 
 // ==================== ENTER KEY HANDLERS ====================
 
+// ==================== Marcanet: TOGGLE MODO ====================
+
+function toggleMarcanetMode(mode) {
+    marcanetState.searchMode = mode;
+    var modes = ['fonetica', 'expediente', 'registro', 'titular'];
+    modes.forEach(function(m) {
+        var form = document.getElementById('mcn-form-' + m);
+        var btn = document.getElementById('btn-mcn-' + m);
+        if (form) form.style.display = m === mode ? '' : 'none';
+        if (btn) btn.classList.toggle('active', m === mode);
+    });
+}
+
+// ==================== Marcanet: BÚSQUEDA ====================
+
+async function buscarMarcanet() {
+    if (marcanetState.searching) return;
+    marcanetState.searching = true;
+
+    var loading = document.getElementById('impi-loading');
+    if (loading) loading.style.display = 'flex';
+
+    try {
+        var mode = marcanetState.searchMode;
+        var data;
+
+        if (mode === 'fonetica') {
+            var denominacion = (document.getElementById('mcn-denominacion') || {}).value || '';
+            var clase = (document.getElementById('mcn-clase') || {}).value || '';
+            if (!denominacion.trim()) { mostrarToast('Ingresa una denominación para buscar.', 'warning'); return; }
+            data = await proxyFetch('/marcanet/fonetica', {
+                method: 'POST',
+                body: JSON.stringify({ denominacion: denominacion.trim(), clase: clase })
+            });
+            marcanetState.results = data.results || [];
+            renderizarResultadosMarcanet();
+
+        } else if (mode === 'expediente') {
+            var expediente = (document.getElementById('mcn-num-expediente') || {}).value || '';
+            if (!expediente.trim()) { mostrarToast('Ingresa un número de expediente.', 'warning'); return; }
+            data = await proxyFetch('/marcanet/expediente', {
+                method: 'POST',
+                body: JSON.stringify({ expediente: expediente.trim() })
+            });
+            // Búsqueda por expediente devuelve detalle directo
+            if (data.detail && Object.keys(data.detail).length > 0) {
+                marcanetState.detail = data.detail;
+                renderizarDetalleMarcanet(data.detail);
+            } else {
+                mostrarToast('No se encontraron datos para el expediente ' + san(expediente), 'warning');
+            }
+            return;
+
+        } else if (mode === 'registro') {
+            var registro = (document.getElementById('mcn-num-registro') || {}).value || '';
+            if (!registro.trim()) { mostrarToast('Ingresa un número de registro.', 'warning'); return; }
+            data = await proxyFetch('/marcanet/registro', {
+                method: 'POST',
+                body: JSON.stringify({ registro: registro.trim() })
+            });
+            if (data.detail && Object.keys(data.detail).length > 0) {
+                marcanetState.detail = data.detail;
+                renderizarDetalleMarcanet(data.detail);
+            } else {
+                mostrarToast('No se encontraron datos para el registro ' + san(registro), 'warning');
+            }
+            return;
+
+        } else if (mode === 'titular') {
+            var titular = (document.getElementById('mcn-titular') || {}).value || '';
+            if (!titular.trim()) { mostrarToast('Ingresa un nombre de titular.', 'warning'); return; }
+            data = await proxyFetch('/marcanet/titular', {
+                method: 'POST',
+                body: JSON.stringify({ titular: titular.trim() })
+            });
+            marcanetState.results = data.results || [];
+            renderizarResultadosMarcanet();
+        }
+
+    } catch (e) {
+        console.error('Marcanet error:', e);
+        mostrarToast('Error en Marcanet: ' + e.message, 'error');
+    } finally {
+        marcanetState.searching = false;
+        if (loading) loading.style.display = 'none';
+    }
+}
+
+// ==================== Marcanet: RENDERIZAR RESULTADOS ====================
+
+function renderizarResultadosMarcanet() {
+    var section = document.getElementById('mcn-results-section');
+    var list = document.getElementById('mcn-results-list');
+    var countEl = document.getElementById('mcn-results-count');
+    var detailSection = document.getElementById('mcn-detail-section');
+
+    if (detailSection) detailSection.style.display = 'none';
+    section.style.display = '';
+    countEl.textContent = marcanetState.results.length + ' resultado' + (marcanetState.results.length !== 1 ? 's' : '');
+
+    if (marcanetState.results.length === 0) {
+        list.innerHTML = '<div class="empty-state"><span class="empty-icon">📋</span><h3>Sin resultados</h3><p>No se encontraron registros con los criterios proporcionados.</p>' +
+            '<p style="margin-top: 8px; font-size: 0.85em; color: var(--text-secondary);">Nota: Si Marcanet no responde, intenta directamente en <a href="https://acervomarcas.impi.gob.mx:8181/marcanet/vistas/common/home.pgi" target="_blank" rel="noopener">acervomarcas.impi.gob.mx</a></p></div>';
+        return;
+    }
+
+    var html = '';
+    marcanetState.results.forEach(function(r, idx) {
+        // Intentar mapear las columnas a campos conocidos
+        var keys = Object.keys(r).filter(function(k) { return !k.startsWith('_'); });
+        var title = r['Denominación'] || r['denominacion'] || r['Marca'] || r['marca'] || r[keys[0]] || '';
+        var expediente = r['Expediente'] || r['No. Expediente'] || r['expediente'] || r['No. de Expediente'] || '';
+        var registro = r['Registro'] || r['No. Registro'] || r['registro'] || r['No. de Registro'] || '';
+        var clase = r['Clase'] || r['clase'] || r['Clase Niza'] || '';
+        var titular = r['Titular'] || r['titular'] || r['Nombre'] || '';
+        var status = r['Situación'] || r['Status'] || r['Estado'] || r['situacion'] || '';
+
+        // Buscar enlace para detalle
+        var detailLink = '';
+        for (var k in r) {
+            if (k.startsWith('_link_') && r[k]) { detailLink = r[k]; break; }
+        }
+
+        var statusClass = '';
+        if (status) {
+            var sl = status.toLowerCase();
+            if (sl.indexOf('registr') >= 0 || sl.indexOf('concedi') >= 0) statusClass = 'impi-status-registered';
+            else if (sl.indexOf('trámite') >= 0 || sl.indexOf('tramite') >= 0) statusClass = 'impi-status-pending';
+            else statusClass = 'impi-status-cancelled';
+        }
+
+        html += '<div class="impi-result-card mcn-result-card" onclick="verDetalleMarcanetDesdeResultado(' + idx + ')">' +
+            '<div class="impi-result-number">#' + (idx + 1) + '</div>' +
+            '<div class="impi-result-info">' +
+                '<div class="impi-result-title">' + san(title || 'Sin denominación') + '</div>' +
+                (status ? '<span class="impi-status-badge ' + statusClass + '">' + san(status) + '</span>' : '') +
+                '<div class="impi-result-meta">' +
+                    (expediente ? '<span><strong>Exp:</strong> ' + san(expediente) + '</span>' : '') +
+                    (registro ? '<span><strong>Reg:</strong> ' + san(registro) + '</span>' : '') +
+                    (clase ? '<span><strong>Clase:</strong> ' + san(clase) + '</span>' : '') +
+                '</div>' +
+                (titular ? '<div class="impi-result-owner"><strong>Titular:</strong> ' + san(titular) + '</div>' : '') +
+            '</div></div>';
+    });
+
+    // Si no se pudieron mapear campos, mostrar datos crudos
+    if (!html && marcanetState.results.length > 0) {
+        html = '<div class="mcn-raw-results">';
+        marcanetState.results.forEach(function(r, idx) {
+            html += '<div class="mcn-raw-row">';
+            for (var k in r) {
+                if (!k.startsWith('_')) html += '<span><strong>' + san(k) + ':</strong> ' + san(r[k]) + '</span> ';
+            }
+            html += '</div>';
+        });
+        html += '</div>';
+    }
+
+    list.innerHTML = html;
+}
+
+// ==================== Marcanet: VER DETALLE ====================
+
+async function verDetalleMarcanetDesdeResultado(idx) {
+    var r = marcanetState.results[idx];
+    if (!r) return;
+
+    // Buscar número de expediente en los datos del resultado
+    var expediente = r['Expediente'] || r['No. Expediente'] || r['expediente'] || r['No. de Expediente'] || '';
+
+    if (expediente) {
+        // Buscar detalle completo via UCMServlet
+        var loading = document.getElementById('impi-loading');
+        if (loading) loading.style.display = 'flex';
+
+        try {
+            var data = await proxyFetch('/marcanet/expediente', {
+                method: 'POST',
+                body: JSON.stringify({ expediente: expediente.replace(/\D/g, '') })
+            });
+            if (data.detail && Object.keys(data.detail).length > 0) {
+                renderizarDetalleMarcanet(data.detail);
+            } else {
+                // Mostrar los datos crudos del resultado como detalle
+                renderizarDetalleMarcanet(r);
+            }
+        } catch (e) {
+            // Fallback: mostrar datos del resultado
+            renderizarDetalleMarcanet(r);
+        } finally {
+            if (loading) loading.style.display = 'none';
+        }
+    } else {
+        // Sin número de expediente, mostrar datos disponibles
+        renderizarDetalleMarcanet(r);
+    }
+}
+
+function renderizarDetalleMarcanet(detail) {
+    var section = document.getElementById('mcn-detail-section');
+    var content = document.getElementById('mcn-detail-content');
+    var resultsSection = document.getElementById('mcn-results-section');
+    if (resultsSection) resultsSection.style.display = 'none';
+
+    // Construir tabla de detalle con todos los campos
+    var html = '';
+
+    // Imagen si existe
+    if (detail._imagen) {
+        html += '<div style="text-align: center; margin-bottom: 16px;">' +
+            '<img src="' + san(detail._imagen) + '" style="max-width: 200px; max-height: 200px; border-radius: 8px; border: 1px solid var(--border-color);" onerror="this.style.display=\'none\'">' +
+            '</div>';
+    }
+
+    // Título si existe
+    if (detail._titulo) {
+        html += '<h2 style="text-align: center; margin-bottom: 16px; color: var(--primary-color);">' + san(detail._titulo) + '</h2>';
+    }
+
+    // Campos principales conocidos (en orden de importancia)
+    var camposOrdenados = [
+        'Denominación', 'denominacion', 'Marca',
+        'No. Expediente', 'Expediente', 'expediente', 'Número de expediente',
+        'No. Registro', 'Registro', 'registro', 'Número de registro',
+        'Situación', 'Status', 'Estado', 'situacion',
+        'Tipo de marca', 'Tipo de solicitud', 'Tipo',
+        'Clase', 'clase', 'Clase Niza',
+        'Titular', 'titular', 'Nombre', 'Datos del titular',
+        'Fecha de presentación', 'Fecha presentación',
+        'Fecha de concesión', 'Fecha concesión',
+        'Fecha de vigencia', 'Vigencia',
+        'Fecha de publicación de la solicitud',
+        'Fecha de inicio de uso',
+        'Número de registro internacional',
+        'Código de la clasificación de Viena',
+        'Leyendas y figuras no reservables'
+    ];
+
+    // Recopilar campos mostrados para no duplicar
+    var mostrados = {};
+    html += '<table class="mcn-detail-table">';
+
+    // Primero campos ordenados
+    camposOrdenados.forEach(function(campo) {
+        if (detail[campo] && !mostrados[campo]) {
+            html += '<tr><td class="mcn-detail-label">' + san(campo) + '</td><td class="mcn-detail-value">' + san(detail[campo]) + '</td></tr>';
+            mostrados[campo] = true;
+        }
+    });
+
+    // Luego campos restantes
+    for (var k in detail) {
+        if (!k.startsWith('_') && !mostrados[k] && detail[k]) {
+            html += '<tr><td class="mcn-detail-label">' + san(k) + '</td><td class="mcn-detail-value">' + san(detail[k]) + '</td></tr>';
+        }
+    }
+
+    html += '</table>';
+
+    // Link directo a Marcanet
+    var expNum = detail['No. Expediente'] || detail['Expediente'] || detail['expediente'] || '';
+    if (expNum) {
+        var infoB64 = btoa('3|' + expNum.replace(/\D/g, '') + '|1|' + expNum.replace(/\D/g, ''));
+        html += '<div style="text-align: center; margin-top: 16px;">' +
+            '<a href="' + san('https://acervomarcas.impi.gob.mx:8181/marcanet/UCMServlet?info=' + encodeURIComponent(infoB64)) + '" ' +
+            'target="_blank" rel="noopener" class="btn btn-sm btn-outline">↗️ Ver en Marcanet (sitio oficial)</a></div>';
+    }
+
+    content.innerHTML = html;
+    section.style.display = '';
+}
+
+function cerrarDetalleMarcanet() {
+    document.getElementById('mcn-detail-section').style.display = 'none';
+    if (marcanetState.results.length > 0) {
+        document.getElementById('mcn-results-section').style.display = '';
+    }
+}
+
+// ==================== DOMContentLoaded ====================
+
 document.addEventListener('DOMContentLoaded', function() {
     var marciaInput = document.getElementById('marcia-query');
     if (marciaInput) {
@@ -903,6 +1191,16 @@ document.addEventListener('DOMContentLoaded', function() {
             if (e.key === 'Enter') { e.preventDefault(); buscarSIGA(); }
         });
     }
+
+    // Enter key para inputs de Marcanet
+    ['mcn-denominacion', 'mcn-num-expediente', 'mcn-num-registro', 'mcn-titular'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') { e.preventDefault(); buscarMarcanet(); }
+            });
+        }
+    });
 
     // Cargar búsquedas guardadas y auto-check al inicio
     // Esperar a que IndexedDB esté lista (initDB se llama en app.js)
