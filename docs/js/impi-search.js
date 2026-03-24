@@ -1078,109 +1078,307 @@ async function verDetalleMarcanetDesdeResultado(idx) {
     var r = marcanetState.results[idx];
     if (!r) return;
 
-    // Buscar número de expediente en los datos del resultado
+    // Extraer datos del resultado para buscar detalle completo
     var expediente = r['Expediente'] || r['No. Expediente'] || r['expediente'] || r['No. de Expediente'] || '';
+    var registro = r['Registro'] || r['No. Registro'] || r['registro'] || r['No. de Registro'] || '';
+    var link = '';
+    for (var k in r) {
+        if (k.startsWith('_link_') && r[k]) { link = r[k]; break; }
+    }
 
-    if (expediente) {
-        // Buscar detalle completo via UCMServlet
-        var loading = document.getElementById('impi-loading');
-        if (loading) loading.style.display = 'flex';
+    // Limpiar números
+    var expClean = expediente.replace(/\D/g, '');
+    var regClean = registro.replace(/\D/g, '');
 
+    var loading = document.getElementById('impi-loading');
+    if (loading) loading.style.display = 'flex';
+
+    try {
+        // Usar el endpoint full-detail que combina Marcanet + MARCia
+        var data = await proxyFetch('/marcanet/full-detail', {
+            method: 'POST',
+            body: JSON.stringify({
+                expediente: expClean,
+                registro: regClean,
+                link: link
+            })
+        });
+        console.log('Marcanet full-detail response:', data);
+
+        // Renderizar con todos los datos disponibles
+        renderizarDetalleMarcanetCompleto(data, r);
+
+    } catch (e) {
+        console.error('Full detail error:', e);
+        // Fallback: intentar endpoint simple
         try {
-            var data = await proxyFetch('/marcanet/expediente', {
-                method: 'POST',
-                body: JSON.stringify({ expediente: expediente.replace(/\D/g, '') })
-            });
-            if (data.detail && Object.keys(data.detail).length > 0) {
-                renderizarDetalleMarcanet(data.detail);
-            } else {
-                // Mostrar los datos crudos del resultado como detalle
-                renderizarDetalleMarcanet(r);
+            if (expClean) {
+                var data2 = await proxyFetch('/marcanet/expediente', {
+                    method: 'POST',
+                    body: JSON.stringify({ expediente: expClean })
+                });
+                if (data2.detail && Object.keys(data2.detail).length > 0) {
+                    renderizarDetalleMarcanetCompleto({ detail: data2.detail, sources: ['marcanet-expediente'] }, r);
+                    return;
+                }
             }
-        } catch (e) {
-            // Fallback: mostrar datos del resultado
-            renderizarDetalleMarcanet(r);
-        } finally {
-            if (loading) loading.style.display = 'none';
-        }
-    } else {
-        // Sin número de expediente, mostrar datos disponibles
-        renderizarDetalleMarcanet(r);
+        } catch (e2) { /* ignorar */ }
+        // Último fallback: mostrar datos del resultado
+        renderizarDetalleMarcanetCompleto({ detail: r, sources: ['resultado-local'] }, r);
+    } finally {
+        if (loading) loading.style.display = 'none';
     }
 }
 
-function renderizarDetalleMarcanet(detail) {
+// Renderizar detalle completo con datos de múltiples fuentes
+function renderizarDetalleMarcanetCompleto(data, resultadoOriginal) {
     var section = document.getElementById('mcn-detail-section');
     var content = document.getElementById('mcn-detail-content');
     var resultsSection = document.getElementById('mcn-results-section');
     if (resultsSection) resultsSection.style.display = 'none';
 
-    // Construir tabla de detalle con todos los campos
+    var detail = data.detail || {};
+    var marcia = data.marcia || null;
+    var sources = data.sources || [];
+
     var html = '';
 
-    // Imagen si existe
-    if (detail._imagen) {
-        html += '<div style="text-align: center; margin-bottom: 16px;">' +
-            '<img src="' + san(detail._imagen) + '" style="max-width: 200px; max-height: 200px; border-radius: 8px; border: 1px solid var(--border-color);" onerror="this.style.display=\'none\'">' +
-            '</div>';
-    }
+    // === SECCIÓN 1: Información de MARCia (si disponible, es la más completa) ===
+    if (marcia && marcia.details) {
+        var gi = marcia.details.generalInformation || {};
+        var tm = marcia.details.trademark || {};
+        var owners = (marcia.details.ownerInformation || {}).owners || [];
+        var prods = marcia.details.productsAndServices || [];
+        var avisos = marcia.details.avisos || [];
+        var history = (marcia.historyData || {}).historyRecords || [];
+        var result = marcia.result || {};
 
-    // Título si existe
-    if (detail._titulo) {
-        html += '<h2 style="text-align: center; margin-bottom: 16px; color: var(--primary-color);">' + san(detail._titulo) + '</h2>';
-    }
-
-    // Campos principales conocidos (en orden de importancia)
-    var camposOrdenados = [
-        'Denominación', 'denominacion', 'Marca',
-        'No. Expediente', 'Expediente', 'expediente', 'Número de expediente',
-        'No. Registro', 'Registro', 'registro', 'Número de registro',
-        'Situación', 'Status', 'Estado', 'situacion',
-        'Tipo de marca', 'Tipo de solicitud', 'Tipo',
-        'Clase', 'clase', 'Clase Niza',
-        'Titular', 'titular', 'Nombre', 'Datos del titular',
-        'Fecha de presentación', 'Fecha presentación',
-        'Fecha de concesión', 'Fecha concesión',
-        'Fecha de vigencia', 'Vigencia',
-        'Fecha de publicación de la solicitud',
-        'Fecha de inicio de uso',
-        'Número de registro internacional',
-        'Código de la clasificación de Viena',
-        'Leyendas y figuras no reservables'
-    ];
-
-    // Recopilar campos mostrados para no duplicar
-    var mostrados = {};
-    html += '<table class="mcn-detail-table">';
-
-    // Primero campos ordenados
-    camposOrdenados.forEach(function(campo) {
-        if (detail[campo] && !mostrados[campo]) {
-            html += '<tr><td class="mcn-detail-label">' + san(campo) + '</td><td class="mcn-detail-value">' + san(detail[campo]) + '</td></tr>';
-            mostrados[campo] = true;
+        // Imagen de MARCia (TrademarkVision)
+        if (tm.image || result.image) {
+            html += '<div style="text-align: center; margin-bottom: 16px;">' +
+                '<img src="' + san(tm.image || result.image) + '" style="max-width: 250px; max-height: 250px; border-radius: 8px; border: 2px solid var(--primary-color); padding: 4px; background: white;" onerror="this.style.display=\'none\'">' +
+                '</div>';
         }
-    });
 
-    // Luego campos restantes
-    for (var k in detail) {
-        if (!k.startsWith('_') && !mostrados[k] && detail[k]) {
-            html += '<tr><td class="mcn-detail-label">' + san(k) + '</td><td class="mcn-detail-value">' + san(detail[k]) + '</td></tr>';
+        // Título/Denominación
+        var titulo = gi.title || result.title || '';
+        if (titulo) {
+            html += '<h2 style="text-align: center; margin-bottom: 4px; color: var(--primary-color);">' + san(titulo) + '</h2>';
+        }
+
+        // Status badge
+        var status = result.status || '';
+        if (status) {
+            var statusClass = '';
+            var sl = status.toLowerCase();
+            if (sl.indexOf('registr') >= 0 || sl.indexOf('concedi') >= 0) statusClass = 'impi-status-registered';
+            else if (sl.indexOf('trámite') >= 0 || sl.indexOf('tramite') >= 0) statusClass = 'impi-status-pending';
+            else statusClass = 'impi-status-cancelled';
+            html += '<div style="text-align: center; margin-bottom: 16px;"><span class="impi-status-badge ' + statusClass + '" style="font-size: 1em; padding: 4px 12px;">' + san(status) + '</span></div>';
+        }
+
+        // Información General
+        html += '<div class="mcn-section"><h3 class="mcn-section-title">Información General</h3>';
+        html += '<table class="mcn-detail-table">';
+        var giFields = [
+            ['Denominación', gi.title],
+            ['Tipo de Solicitud', gi.appType],
+            ['No. de Expediente', gi.applicationNumber],
+            ['No. de Registro', gi.registrationNumber],
+            ['Fecha de Presentación', gi.applicationDate],
+            ['Fecha de Registro', gi.registrationDate],
+            ['Fecha de Vencimiento', gi.expiryDate],
+            ['Estatus', status]
+        ];
+        giFields.forEach(function(f) {
+            if (f[1]) html += '<tr><td class="mcn-detail-label">' + san(f[0]) + '</td><td class="mcn-detail-value">' + san(f[1]) + '</td></tr>';
+        });
+
+        // Clases de Niza
+        if (result.classes && result.classes.length > 0) {
+            html += '<tr><td class="mcn-detail-label">Clases de Niza</td><td class="mcn-detail-value">' + san(result.classes.join(', ')) + '</td></tr>';
+        }
+
+        // Códigos de Viena
+        if (tm.viennaCodes && tm.viennaCodes.length > 0) {
+            html += '<tr><td class="mcn-detail-label">Códigos de Viena</td><td class="mcn-detail-value">' + san(tm.viennaCodes.join(', ')) + '</td></tr>';
+        }
+
+        html += '</table></div>';
+
+        // Titulares
+        if (owners.length > 0) {
+            html += '<div class="mcn-section"><h3 class="mcn-section-title">Titular(es)</h3>';
+            html += '<table class="mcn-detail-table">';
+            owners.forEach(function(owner, i) {
+                var ownerName = owner.name || owner.nombre || '';
+                var ownerType = owner.type || owner.tipo || '';
+                if (ownerName) {
+                    html += '<tr><td class="mcn-detail-label">' + san(ownerType || ('Titular ' + (i + 1))) + '</td><td class="mcn-detail-value">' + san(ownerName) + '</td></tr>';
+                }
+                if (owner.address) html += '<tr><td class="mcn-detail-label">Domicilio</td><td class="mcn-detail-value">' + san(owner.address) + '</td></tr>';
+                if (owner.country) html += '<tr><td class="mcn-detail-label">País</td><td class="mcn-detail-value">' + san(owner.country) + '</td></tr>';
+            });
+            html += '</table></div>';
+        }
+
+        // Productos y Servicios
+        if (prods.length > 0) {
+            html += '<div class="mcn-section"><h3 class="mcn-section-title">Productos y Servicios</h3>';
+            prods.forEach(function(ps) {
+                var claseNum = ps.classNumber || ps.niceClass || ps['class'] || '';
+                var desc = ps.description || ps.goodsServices || ps.productos || '';
+                if (desc) {
+                    html += '<div class="mcn-products-item">';
+                    if (claseNum) html += '<strong>Clase ' + san(String(claseNum)) + ':</strong> ';
+                    html += '<span>' + san(desc) + '</span>';
+                    html += '</div>';
+                }
+            });
+            html += '</div>';
+        }
+
+        // Avisos
+        if (avisos.length > 0) {
+            html += '<div class="mcn-section"><h3 class="mcn-section-title">Avisos / Publicaciones</h3>';
+            html += '<table class="mcn-detail-table">';
+            avisos.forEach(function(aviso) {
+                for (var ak in aviso) {
+                    if (aviso[ak]) html += '<tr><td class="mcn-detail-label">' + san(ak) + '</td><td class="mcn-detail-value">' + san(String(aviso[ak])) + '</td></tr>';
+                }
+            });
+            html += '</table></div>';
+        }
+
+        // Historial
+        if (history.length > 0) {
+            html += '<div class="mcn-section"><h3 class="mcn-section-title">Historial del Expediente</h3>';
+            html += '<div class="mcn-history-list">';
+            history.forEach(function(h) {
+                html += '<div class="mcn-history-item">';
+                if (h.date || h.fecha) html += '<span class="mcn-history-date">' + san(h.date || h.fecha) + '</span>';
+                if (h.description || h.descripcion || h.action) html += '<span class="mcn-history-desc">' + san(h.description || h.descripcion || h.action) + '</span>';
+                // Mostrar todos los campos adicionales del historial
+                for (var hk in h) {
+                    if (hk !== 'date' && hk !== 'fecha' && hk !== 'description' && hk !== 'descripcion' && hk !== 'action' && h[hk]) {
+                        html += '<span class="mcn-history-extra"><em>' + san(hk) + ':</em> ' + san(String(h[hk])) + '</span>';
+                    }
+                }
+                html += '</div>';
+            });
+            html += '</div></div>';
         }
     }
 
-    html += '</table>';
+    // === SECCIÓN 2: Datos de Marcanet (complementarios o únicos) ===
+    var marcanetKeys = Object.keys(detail).filter(function(k) { return !k.startsWith('_'); });
+    if (marcanetKeys.length > 0) {
+        // Si ya mostramos MARCia, agregar como sección adicional
+        if (marcia && marcia.details) {
+            html += '<div class="mcn-section"><h3 class="mcn-section-title">Datos adicionales (Marcanet)</h3>';
+        } else {
+            // Marcanet es la única fuente
+            // Imagen
+            if (detail._imagen) {
+                html += '<div style="text-align: center; margin-bottom: 16px;">' +
+                    '<img src="' + san(detail._imagen) + '" style="max-width: 250px; max-height: 250px; border-radius: 8px; border: 2px solid var(--primary-color); padding: 4px; background: white;" onerror="this.style.display=\'none\'">' +
+                    '</div>';
+            }
+            if (detail._titulo) {
+                html += '<h2 style="text-align: center; margin-bottom: 16px; color: var(--primary-color);">' + san(detail._titulo) + '</h2>';
+            }
+            html += '<div class="mcn-section"><h3 class="mcn-section-title">Información del Expediente</h3>';
+        }
 
-    // Link directo a Marcanet
-    var expNum = detail['No. Expediente'] || detail['Expediente'] || detail['expediente'] || '';
+        html += '<table class="mcn-detail-table">';
+
+        // Campos ordenados primero
+        var camposOrdenados = [
+            'Denominación', 'denominacion', 'Marca',
+            'No. Expediente', 'Expediente', 'expediente', 'Número de expediente',
+            'No. Registro', 'Registro', 'registro', 'Número de registro',
+            'Situación', 'Status', 'Estado', 'situacion',
+            'Tipo de marca', 'Tipo de solicitud', 'Tipo',
+            'Clase', 'clase', 'Clase Niza', 'Clase(s)',
+            'Titular', 'titular', 'Nombre', 'Datos del titular',
+            'Apoderado', 'apoderado', 'Representante',
+            'Fecha de presentación', 'Fecha presentación',
+            'Fecha de concesión', 'Fecha concesión',
+            'Fecha de vigencia', 'Vigencia',
+            'Fecha de publicación de la solicitud',
+            'Fecha de publicación del registro',
+            'Fecha de inicio de uso',
+            'Productos y/o servicios', 'Productos', 'Servicios',
+            'Número de registro internacional',
+            'Código de la clasificación de Viena',
+            'Leyendas y figuras no reservables',
+            'Aviso comercial', 'Nombre comercial',
+            'País de origen', 'Domicilio',
+            'Observaciones', 'Notas'
+        ];
+
+        var mostrados = {};
+        camposOrdenados.forEach(function(campo) {
+            if (detail[campo] && !mostrados[campo]) {
+                html += '<tr><td class="mcn-detail-label">' + san(campo) + '</td><td class="mcn-detail-value">' + san(detail[campo]) + '</td></tr>';
+                mostrados[campo] = true;
+            }
+        });
+
+        // Todos los campos restantes
+        for (var k in detail) {
+            if (!k.startsWith('_') && !mostrados[k] && detail[k]) {
+                html += '<tr><td class="mcn-detail-label">' + san(k) + '</td><td class="mcn-detail-value">' + san(detail[k]) + '</td></tr>';
+            }
+        }
+        html += '</table></div>';
+    }
+
+    // === SECCIÓN 3: Datos del resultado original (si hay campos que no aparecieron) ===
+    if (resultadoOriginal) {
+        var extraFields = [];
+        for (var rk in resultadoOriginal) {
+            if (!rk.startsWith('_') && resultadoOriginal[rk] && !detail[rk]) {
+                extraFields.push([rk, resultadoOriginal[rk]]);
+            }
+        }
+        if (extraFields.length > 0) {
+            html += '<div class="mcn-section"><h3 class="mcn-section-title">Datos del resultado</h3>';
+            html += '<table class="mcn-detail-table">';
+            extraFields.forEach(function(f) {
+                html += '<tr><td class="mcn-detail-label">' + san(f[0]) + '</td><td class="mcn-detail-value">' + san(f[1]) + '</td></tr>';
+            });
+            html += '</table></div>';
+        }
+    }
+
+    // === Links directos ===
+    var expNum = detail['No. Expediente'] || detail['Expediente'] || detail['expediente'] ||
+        (resultadoOriginal && (resultadoOriginal['Expediente'] || resultadoOriginal['No. Expediente'] || resultadoOriginal['expediente'])) || '';
+    var regNum = detail['No. Registro'] || detail['Registro'] || detail['registro'] ||
+        (resultadoOriginal && (resultadoOriginal['Registro'] || resultadoOriginal['No. Registro'] || resultadoOriginal['registro'])) || '';
+
+    html += '<div style="text-align: center; margin-top: 16px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">';
     if (expNum) {
-        var infoB64 = btoa('3|' + expNum.replace(/\D/g, '') + '|1|' + expNum.replace(/\D/g, ''));
-        html += '<div style="text-align: center; margin-top: 16px;">' +
-            '<a href="' + san('https://acervomarcas.impi.gob.mx:8181/marcanet/UCMServlet?info=' + encodeURIComponent(infoB64)) + '" ' +
-            'target="_blank" rel="noopener" class="btn btn-sm btn-outline">↗️ Ver en Marcanet (sitio oficial)</a></div>';
+        var expClean = expNum.replace(/\D/g, '');
+        var infoB64 = btoa('3|' + expClean + '|1|' + expClean);
+        html += '<a href="' + san('https://acervomarcas.impi.gob.mx:8181/marcanet/UCMServlet?info=' + encodeURIComponent(infoB64)) + '" ' +
+            'target="_blank" rel="noopener" class="btn btn-sm btn-outline">↗️ Ver en Marcanet</a>';
+    }
+    html += '</div>';
+
+    // Fuentes de datos
+    if (sources.length > 0) {
+        html += '<div style="text-align: center; margin-top: 12px; font-size: 0.8em; color: var(--text-secondary);">Fuentes: ' + san(sources.join(', ')) + '</div>';
     }
 
     content.innerHTML = html;
     section.style.display = '';
+}
+
+// Compatibilidad: función legacy para cuando se llama sin datos de MARCia
+function renderizarDetalleMarcanet(detail) {
+    renderizarDetalleMarcanetCompleto({ detail: detail, sources: ['marcanet'] }, null);
 }
 
 function cerrarDetalleMarcanet() {

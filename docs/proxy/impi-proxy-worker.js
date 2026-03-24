@@ -88,6 +88,10 @@ export default {
                 response = await handleMarcanetRegistro(request);
             } else if (path === '/marcanet/titular') {
                 response = await handleMarcanetTitular(request);
+            } else if (path === '/marcanet/detail-link') {
+                response = await handleMarcanetDetailLink(request);
+            } else if (path === '/marcanet/full-detail') {
+                response = await handleMarcanetFullDetail(request);
             }
             // ===== Health check =====
             else if (path === '/health') {
@@ -663,10 +667,57 @@ function parseMarcanetDetailHTML(html) {
         }
     }
 
+    // También extraer datos de tablas con 3+ columnas (filas de datos tabulares)
+    for (const row of rows) {
+        if (/<(?:input|select|textarea|button)\b/i.test(row)) continue;
+        const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/gi);
+        if (!cells || cells.length < 3) continue;
+        // Tablas de 3+ cols: podría ser datos como "Campo | Valor | Extra"
+        // Ya procesadas arriba para pares de 2, aquí capturar más columnas
+        for (let i = 0; i < cells.length - 1; i += 2) {
+            const label = cells[i].replace(/<[^>]+>/g, '').trim();
+            const value = cells[i + 1].replace(/<[^>]+>/g, '').trim();
+            if (label && value && !detail[label]) {
+                const labelLower = label.toLowerCase();
+                const isBlacklisted = detailBlacklist.some(function(bl) { return labelLower.indexOf(bl) >= 0; });
+                if (!isBlacklisted) {
+                    detail[label] = value;
+                }
+            }
+        }
+    }
+
+    // Extraer datos de listas de definición <dl><dt>/<dd>
+    const dtMatches = html.match(/<dt[^>]*>([\s\S]*?)<\/dt>\s*<dd[^>]*>([\s\S]*?)<\/dd>/gi) || [];
+    for (const dtdd of dtMatches) {
+        const dtMatch = dtdd.match(/<dt[^>]*>([\s\S]*?)<\/dt>/i);
+        const ddMatch = dtdd.match(/<dd[^>]*>([\s\S]*?)<\/dd>/i);
+        if (dtMatch && ddMatch) {
+            const label = dtMatch[1].replace(/<[^>]+>/g, '').trim();
+            const value = ddMatch[1].replace(/<[^>]+>/g, '').trim();
+            if (label && value && !detail[label]) {
+                detail[label] = value;
+            }
+        }
+    }
+
+    // Extraer datos de divs con label/value pattern
+    const labelValueDivs = html.match(/<(?:span|label|strong|b)[^>]*class="[^"]*label[^"]*"[^>]*>([\s\S]*?)<\/(?:span|label|strong|b)>\s*:?\s*<(?:span|div)[^>]*>([\s\S]*?)<\/(?:span|div)>/gi) || [];
+    for (const lv of labelValueDivs) {
+        const parts = lv.replace(/<[^>]+>/g, '|').split('|').map(function(s) { return s.trim(); }).filter(Boolean);
+        if (parts.length >= 2 && !detail[parts[0]]) {
+            detail[parts[0]] = parts.slice(1).join(' ').trim();
+        }
+    }
+
     // Intentar extraer imagen si existe
-    const imgMatch = html.match(/<img[^>]*src="([^"]*?)"[^>]*>/i);
-    if (imgMatch && imgMatch[1] && !imgMatch[1].includes('logo')) {
-        detail._imagen = imgMatch[1].startsWith('http') ? imgMatch[1] : MARCANET_BASE + imgMatch[1];
+    const imgMatches = html.match(/<img[^>]*src="([^"]*?)"[^>]*>/gi) || [];
+    for (const img of imgMatches) {
+        const srcMatch = img.match(/src="([^"]*?)"/i);
+        if (srcMatch && srcMatch[1] && !srcMatch[1].includes('logo') && !srcMatch[1].includes('banner') && !srcMatch[1].includes('icon')) {
+            detail._imagen = srcMatch[1].startsWith('http') ? srcMatch[1] : MARCANET_BASE + srcMatch[1];
+            break;
+        }
     }
 
     // Extraer título si existe en un h1/h2/h3
@@ -905,6 +956,222 @@ async function handleMarcanetTitular(request) {
         rawLength: html.length,
         rawSnippet: rawSnippet.substring(0, 500),
         isFormPage: isFormPage
+    }), {
+        headers: { 'Content-Type': 'application/json' }
+    });
+}
+
+// Handler: seguir un enlace directo de resultados Marcanet
+async function handleMarcanetDetailLink(request) {
+    let session;
+    try { session = await ensureMarcanetSession(request); } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    const body = await request.json();
+    const link = body.link || '';
+
+    if (!link) {
+        return new Response(JSON.stringify({ error: 'Link requerido' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    // Construir URL completa si es relativa
+    const url = link.startsWith('http') ? link : MARCANET_BASE + (link.startsWith('/') ? '' : '/marcanet/') + link;
+
+    const resp = await fetch(url, {
+        headers: marcanetHeaders(session),
+        redirect: 'follow'
+    });
+
+    const sessionKey = 'marcanet_' + getSessionKey(request);
+    updateSessionCookies(sessionKey, resp);
+
+    const html = await resp.text();
+    const detail = parseMarcanetDetailHTML(html);
+
+    return new Response(JSON.stringify({
+        detail: detail,
+        fieldCount: Object.keys(detail).length,
+        rawSnippet: html.substring(0, 1500).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 500)
+    }), {
+        headers: { 'Content-Type': 'application/json' }
+    });
+}
+
+// Handler: obtener detalle completo combinando Marcanet + MARCia
+async function handleMarcanetFullDetail(request) {
+    const body = await request.json();
+    const expediente = body.expediente || '';
+    const registro = body.registro || '';
+    const link = body.link || '';
+
+    if (!expediente && !registro && !link) {
+        return new Response(JSON.stringify({ error: 'Se requiere expediente, registro o link' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    const allDetail = {};
+    const sources = [];
+
+    // 1. Obtener datos de Marcanet
+    let session;
+    try { session = await ensureMarcanetSession(request); } catch (e) { /* ignorar */ }
+
+    if (session) {
+        const sessionKey = 'marcanet_' + getSessionKey(request);
+
+        // Intentar via link directo primero
+        if (link) {
+            try {
+                const url = link.startsWith('http') ? link : MARCANET_BASE + (link.startsWith('/') ? '' : '/marcanet/') + link;
+                const resp = await fetch(url, { headers: marcanetHeaders(session), redirect: 'follow' });
+                updateSessionCookies(sessionKey, resp);
+                const html = await resp.text();
+                const detail = parseMarcanetDetailHTML(html);
+                if (Object.keys(detail).length > 0) {
+                    Object.assign(allDetail, detail);
+                    sources.push('marcanet-link');
+                }
+            } catch (e) { /* ignorar */ }
+        }
+
+        // Intentar via UCMServlet con expediente
+        if (expediente) {
+            try {
+                const infoStr = '3|' + expediente + '|1|' + expediente;
+                const resp = await fetch(MARCANET_BASE + '/marcanet/UCMServlet?info=' + encodeURIComponent(btoa(infoStr)), {
+                    headers: marcanetHeaders(session), redirect: 'follow'
+                });
+                updateSessionCookies(sessionKey, resp);
+                const html = await resp.text();
+                const detail = parseMarcanetDetailHTML(html);
+                if (Object.keys(detail).length > 0) {
+                    // Merge sin sobreescribir datos existentes
+                    for (const k in detail) {
+                        if (!allDetail[k] || !allDetail[k].trim()) allDetail[k] = detail[k];
+                    }
+                    sources.push('marcanet-ucm');
+                }
+            } catch (e) { /* ignorar */ }
+        }
+
+        // Intentar via UCMServlet con registro
+        if (registro) {
+            try {
+                const infoStr = '4|' + registro + '|2';
+                const resp = await fetch(MARCANET_BASE + '/marcanet/UCMServlet?info=' + encodeURIComponent(btoa(infoStr)), {
+                    headers: marcanetHeaders(session), redirect: 'follow'
+                });
+                updateSessionCookies(sessionKey, resp);
+                const html = await resp.text();
+                const detail = parseMarcanetDetailHTML(html);
+                if (Object.keys(detail).length > 0) {
+                    for (const k in detail) {
+                        if (!allDetail[k] || !allDetail[k].trim()) allDetail[k] = detail[k];
+                    }
+                    sources.push('marcanet-ucm-reg');
+                }
+            } catch (e) { /* ignorar */ }
+        }
+    }
+
+    // 2. Intentar enriquecer con MARCia (tiene datos más estructurados)
+    let marciaData = null;
+    const marciaSessionKey = getSessionKey(request);
+    const marciaSession = sessions.get(marciaSessionKey);
+
+    if (marciaSession && marciaSession.csrf) {
+        // Intentar buscar por número de expediente en MARCia
+        const searchNum = expediente || registro || '';
+        if (searchNum) {
+            try {
+                // Buscar en MARCia por número
+                const searchBody = {
+                    _type: 'Search$Structured',
+                    images: [],
+                    query: {
+                        title: '', titleOption: '',
+                        name: { name: '', types: [] },
+                        number: { name: searchNum, types: expediente ? ['APPLICATION'] : ['REGISTRATION'] },
+                        date: { date: { from: null, to: null }, types: [] },
+                        status: [], classes: [], codes: [], indicators: [],
+                        markType: [], appType: [],
+                        goodsAndServices: '',
+                        wordSet: { l: null, op: 'AND', r: null }
+                    }
+                };
+
+                const searchResp = await fetch(MARCIA_BASE + '/marcas/search/internal/record', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-XSRF-TOKEN': marciaSession.csrf,
+                        'Cookie': marciaSession.cookies,
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Referer': MARCIA_BASE + '/marcas/search/result',
+                        'Origin': MARCIA_BASE
+                    },
+                    body: JSON.stringify(searchBody)
+                });
+
+                updateSessionCookies(marciaSessionKey, searchResp);
+                const searchData = await searchResp.json();
+
+                if (searchData.id) {
+                    // Obtener primer resultado
+                    const resultResp = await fetch(MARCIA_BASE + '/marcas/search/internal/result', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-XSRF-TOKEN': marciaSession.csrf,
+                            'Cookie': marciaSession.cookies,
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                            'Referer': MARCIA_BASE + '/marcas/search/result',
+                            'Origin': MARCIA_BASE
+                        },
+                        body: JSON.stringify({
+                            searchId: searchData.id,
+                            pageSize: 1,
+                            pageNumber: 0,
+                            statusFilter: [],
+                            viennaCodeFilter: [],
+                            niceClassFilter: []
+                        })
+                    });
+
+                    updateSessionCookies(marciaSessionKey, resultResp);
+                    const resultData = await resultResp.json();
+
+                    if (resultData.resultPage && resultData.resultPage.length > 0) {
+                        const markId = resultData.resultPage[0].id;
+
+                        // Obtener detalle completo de MARCia
+                        const viewResp = await fetch(MARCIA_BASE + '/marcas/search/internal/view/' + encodeURIComponent(markId), {
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-XSRF-TOKEN': marciaSession.csrf,
+                                'Cookie': marciaSession.cookies,
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                                'Referer': MARCIA_BASE + '/marcas/search/result',
+                                'Origin': MARCIA_BASE
+                            }
+                        });
+
+                        updateSessionCookies(marciaSessionKey, viewResp);
+                        marciaData = await viewResp.json();
+                        sources.push('marcia');
+                    }
+                }
+            } catch (e) { /* MARCia no disponible, continuar solo con Marcanet */ }
+        }
+    }
+
+    return new Response(JSON.stringify({
+        detail: allDetail,
+        marcia: marciaData,
+        fieldCount: Object.keys(allDetail).length,
+        sources: sources
     }), {
         headers: { 'Content-Type': 'application/json' }
     });
