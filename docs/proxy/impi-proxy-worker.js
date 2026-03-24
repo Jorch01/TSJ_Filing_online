@@ -689,7 +689,9 @@ function parseMarcanetTable(tableHTML) {
         cells.forEach(function(cell, idx) {
             // Extraer texto limpio y también enlaces
             const linkMatch = cell.match(/href="([^"]*?)"/i);
-            const text = cell.replace(/<[^>]+>/g, '').trim();
+            // Strip <script> blocks before removing tags to avoid script content leaking into text
+            const cleanCell = cell.replace(/<script[\s\S]*?<\/script>/gi, '');
+            const text = cleanCell.replace(/<[^>]+>/g, '').trim();
             const headerName = headers[idx] || ('col' + idx);
             rowData[headerName] = text;
             if (linkMatch) rowData['_link_' + idx] = linkMatch[1];
@@ -698,6 +700,12 @@ function parseMarcanetTable(tableHTML) {
             const onclickMatch = cell.match(/onclick="([^"]*)"/i);
             if (onclickMatch) {
                 rowData['_onclick_' + idx] = onclickMatch[1];
+                // Extraer URL de window.open('...') - common in PrimeFaces Marcanet
+                const winOpenMatch = onclickMatch[1].match(/window\.open\s*\(\s*'([^']*)'/i);
+                if (winOpenMatch) {
+                    // Decode HTML entities (&amp; → &)
+                    rowData['_link_' + idx] = winOpenMatch[1].replace(/&amp;/g, '&');
+                }
                 // Extraer URL de location.href='...'
                 const locMatch = onclickMatch[1].match(/location\.href\s*=\s*'([^']*)'/i);
                 if (locMatch) rowData['_link_' + idx] = locMatch[1];
@@ -710,6 +718,8 @@ function parseMarcanetTable(tableHTML) {
             const aOnclickMatch = cell.match(/<a[^>]*onclick="([^"]*)"/i);
             if (aOnclickMatch) {
                 rowData['_onclick_' + idx] = aOnclickMatch[1];
+                const winOpenMatch2 = aOnclickMatch[1].match(/window\.open\s*\(\s*'([^']*)'/i);
+                if (winOpenMatch2) rowData['_link_' + idx] = winOpenMatch2[1].replace(/&amp;/g, '&');
                 const locMatch2 = aOnclickMatch[1].match(/location\.href\s*=\s*'([^']*)'/i);
                 if (locMatch2) rowData['_link_' + idx] = locMatch2[1];
             }
@@ -734,12 +744,45 @@ function parseMarcanetTable(tableHTML) {
 function parseMarcanetDetailHTML(html) {
     const detail = {};
 
+    // Strip <script> blocks to avoid script content leaking into text
+    const cleanHtml = html.replace(/<script[\s\S]*?<\/script>/gi, '');
+
     // Labels de formulario que NO son datos de marcas
     const detailBlacklist = ['tipo de búsqueda', 'tipo de busqueda', 'buscar', 'limpiar',
         'seleccione', 'ingrese', 'escriba', 'captur', 'acción', 'accion'];
 
+    function isBlacklisted(label) {
+        const l = label.toLowerCase();
+        return detailBlacklist.some(function(bl) { return l.indexOf(bl) >= 0; });
+    }
+
+    // PrimeFaces ui-outputlabel + value pattern
+    // <label class="ui-outputlabel">Expediente:</label> <span>123456</span>
+    const pfLabelMatches = cleanHtml.match(/<label[^>]*class="[^"]*ui-outputlabel[^"]*"[^>]*>[\s\S]*?<\/label>\s*(?:<[^>]*>)?\s*[\s\S]*?(?=<label|<\/div|<\/td|$)/gi) || [];
+    for (const lv of pfLabelMatches) {
+        const labelMatch = lv.match(/<label[^>]*>([\s\S]*?)<\/label>/i);
+        if (!labelMatch) continue;
+        const label = labelMatch[1].replace(/<[^>]+>/g, '').replace(/[:\s*]+$/, '').trim();
+        const valueText = lv.substring(lv.indexOf('</label>') + 8).replace(/<[^>]+>/g, '').trim();
+        if (label && valueText && !isBlacklisted(label) && !detail[label]) {
+            detail[label] = valueText;
+        }
+    }
+
+    // PrimeFaces control_label_impi pattern
+    // <span class="control_label_impi">Label</span> ... <span>Value</span>
+    const impiLabelMatches = cleanHtml.match(/<span[^>]*class="[^"]*control_label_impi[^"]*"[^>]*>[\s\S]*?<\/span>[\s\S]*?(?=<span[^>]*class="[^"]*control_label_impi|<\/tr|<\/div|$)/gi) || [];
+    for (const lv of impiLabelMatches) {
+        const parts = lv.replace(/<[^>]+>/g, '|').split('|').map(s => s.trim()).filter(Boolean);
+        if (parts.length >= 2 && !isBlacklisted(parts[0]) && !detail[parts[0]]) {
+            const label = parts[0].replace(/[:\s*]+$/, '').trim();
+            const value = parts.slice(1).join(' ').trim();
+            if (label && value) detail[label] = value;
+        }
+    }
+
     // Extraer todos los pares campo/valor de tablas
-    const rows = html.match(/<tr[^>]*>([\s\S]*?)<\/tr>/gi) || [];
+    const rows = cleanHtml.match(/<tr[^>]*>([\s\S]*?)<\/tr>/gi) || [];
     for (const row of rows) {
         // Saltar filas que contienen elementos de formulario
         if (/<(?:input|select|textarea|button)\b/i.test(row)) continue;
@@ -749,10 +792,7 @@ function parseMarcanetDetailHTML(html) {
         const label = cells[0].replace(/<[^>]+>/g, '').trim();
         const value = cells[1].replace(/<[^>]+>/g, '').trim();
         if (label && value) {
-            // Verificar que no es un label de formulario
-            const labelLower = label.toLowerCase();
-            const isBlacklisted = detailBlacklist.some(function(bl) { return labelLower.indexOf(bl) >= 0; });
-            if (!isBlacklisted) {
+            if (!isBlacklisted(label) && !detail[label]) {
                 detail[label] = value;
             }
         }
@@ -763,23 +803,17 @@ function parseMarcanetDetailHTML(html) {
         if (/<(?:input|select|textarea|button)\b/i.test(row)) continue;
         const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/gi);
         if (!cells || cells.length < 3) continue;
-        // Tablas de 3+ cols: podría ser datos como "Campo | Valor | Extra"
-        // Ya procesadas arriba para pares de 2, aquí capturar más columnas
         for (let i = 0; i < cells.length - 1; i += 2) {
             const label = cells[i].replace(/<[^>]+>/g, '').trim();
             const value = cells[i + 1].replace(/<[^>]+>/g, '').trim();
-            if (label && value && !detail[label]) {
-                const labelLower = label.toLowerCase();
-                const isBlacklisted = detailBlacklist.some(function(bl) { return labelLower.indexOf(bl) >= 0; });
-                if (!isBlacklisted) {
-                    detail[label] = value;
-                }
+            if (label && value && !detail[label] && !isBlacklisted(label)) {
+                detail[label] = value;
             }
         }
     }
 
     // Extraer datos de listas de definición <dl><dt>/<dd>
-    const dtMatches = html.match(/<dt[^>]*>([\s\S]*?)<\/dt>\s*<dd[^>]*>([\s\S]*?)<\/dd>/gi) || [];
+    const dtMatches = cleanHtml.match(/<dt[^>]*>([\s\S]*?)<\/dt>\s*<dd[^>]*>([\s\S]*?)<\/dd>/gi) || [];
     for (const dtdd of dtMatches) {
         const dtMatch = dtdd.match(/<dt[^>]*>([\s\S]*?)<\/dt>/i);
         const ddMatch = dtdd.match(/<dd[^>]*>([\s\S]*?)<\/dd>/i);
@@ -793,7 +827,7 @@ function parseMarcanetDetailHTML(html) {
     }
 
     // Extraer datos de divs con label/value pattern
-    const labelValueDivs = html.match(/<(?:span|label|strong|b)[^>]*class="[^"]*label[^"]*"[^>]*>([\s\S]*?)<\/(?:span|label|strong|b)>\s*:?\s*<(?:span|div)[^>]*>([\s\S]*?)<\/(?:span|div)>/gi) || [];
+    const labelValueDivs = cleanHtml.match(/<(?:span|label|strong|b)[^>]*class="[^"]*label[^"]*"[^>]*>([\s\S]*?)<\/(?:span|label|strong|b)>\s*:?\s*<(?:span|div)[^>]*>([\s\S]*?)<\/(?:span|div)>/gi) || [];
     for (const lv of labelValueDivs) {
         const parts = lv.replace(/<[^>]+>/g, '|').split('|').map(function(s) { return s.trim(); }).filter(Boolean);
         if (parts.length >= 2 && !detail[parts[0]]) {
@@ -802,7 +836,7 @@ function parseMarcanetDetailHTML(html) {
     }
 
     // Intentar extraer imagen si existe
-    const imgMatches = html.match(/<img[^>]*src="([^"]*?)"[^>]*>/gi) || [];
+    const imgMatches = cleanHtml.match(/<img[^>]*src="([^"]*?)"[^>]*>/gi) || [];
     for (const img of imgMatches) {
         const srcMatch = img.match(/src="([^"]*?)"/i);
         if (srcMatch && srcMatch[1] && !srcMatch[1].includes('logo') && !srcMatch[1].includes('banner') && !srcMatch[1].includes('icon')) {
@@ -1196,18 +1230,30 @@ async function handleMarcanetFullDetail(request) {
         const sessionKey = 'marcanet_' + getSessionKey(request);
         const hdrs = marcanetHeaders(session);
 
-        // === PRIORIDAD 1: detalleExpedienteParcial.pgi (la página más completa) ===
-        // Intentar con POST y GET, probando varios nombres de parámetro
-        if (expediente || registro || jsParam) {
+        // === PRIORIDAD 1: Link directo del resultado (tiene URL completa con tipo/anio/expediente) ===
+        if (link) {
+            try {
+                const url = link.startsWith('http') ? link : MARCANET_BASE + (link.startsWith('/') ? '' : '/marcanet/') + link;
+                const resp = await fetch(url, { headers: hdrs, redirect: 'follow' });
+                updateSessionCookies(sessionKey, resp);
+                const html = await resp.text();
+                const detail = parseMarcanetDetailHTML(html);
+                const nonInternal = Object.keys(detail).filter(k => !k.startsWith('_'));
+                if (nonInternal.length > 0) {
+                    Object.assign(allDetail, detail);
+                    sources.push('marcanet-link');
+                    debugSnippets['link'] = html.substring(0, 3000).replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 800);
+                }
+            } catch (e) { /* ignorar */ }
+        }
+
+        // === PRIORIDAD 2: detalleExpedienteParcial.pgi con parámetros conocidos ===
+        if ((expediente || registro || jsParam) && Object.keys(allDetail).filter(k => !k.startsWith('_')).length < 3) {
             const numToTry = expediente || jsParam || registro;
             const detailUrls = [
-                // POST con form data - múltiples variantes de parámetros
-                { method: 'POST', url: MARCANET_BASE + '/marcanet/vistas/common/busquedas/detalleExpedienteParcial.pgi',
-                  body: 'expediente=' + numToTry + '&p_expediente=' + numToTry + '&idExpediente=' + numToTry + '&folio=' + numToTry },
-                // GET con query params
+                // GET con query params - formato Marcanet PrimeFaces: tipo=1&anio=1985&expediente=XXXXX
+                { method: 'GET', url: MARCANET_BASE + '/marcanet/vistas/common/busquedas/detalleExpedienteParcial.pgi?tipo=1&anio=1985&expediente=' + numToTry },
                 { method: 'GET', url: MARCANET_BASE + '/marcanet/vistas/common/busquedas/detalleExpedienteParcial.pgi?expediente=' + numToTry },
-                { method: 'GET', url: MARCANET_BASE + '/marcanet/vistas/common/busquedas/detalleExpedienteParcial.pgi?idExpediente=' + numToTry },
-                { method: 'GET', url: MARCANET_BASE + '/marcanet/vistas/common/busquedas/detalleExpedienteParcial.pgi?folio=' + numToTry },
             ];
 
             for (const attempt of detailUrls) {
@@ -1241,21 +1287,6 @@ async function handleMarcanetFullDetail(request) {
             }
         }
 
-        // === PRIORIDAD 2: Link directo del resultado ===
-        if (link) {
-            try {
-                const url = link.startsWith('http') ? link : MARCANET_BASE + (link.startsWith('/') ? '' : '/marcanet/') + link;
-                const resp = await fetch(url, { headers: hdrs, redirect: 'follow' });
-                updateSessionCookies(sessionKey, resp);
-                const html = await resp.text();
-                const detail = parseMarcanetDetailHTML(html);
-                mergeDetail(detail, 'marcanet-link');
-                if (Object.keys(detail).filter(k => !k.startsWith('_')).length > 0) {
-                    debugSnippets['link'] = html.substring(0, 2000).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 500);
-                }
-            } catch (e) { /* ignorar */ }
-        }
-
         // === PRIORIDAD 3: UCMServlet con expediente ===
         if (expediente) {
             try {
@@ -1284,25 +1315,23 @@ async function handleMarcanetFullDetail(request) {
             } catch (e) { /* ignorar */ }
         }
 
-        // === PRIORIDAD 5: Búsqueda por expediente en formulario ===
+        // === PRIORIDAD 5: Búsqueda por expediente via PrimeFaces AJAX ===
         if (expediente && Object.keys(allDetail).filter(k => !k.startsWith('_')).length < 3) {
             try {
-                const formData = new URLSearchParams();
-                formData.append('expediente', expediente);
-                formData.append('p_expediente', expediente);
-                formData.append('buscar', 'Buscar');
-
-                const resp = await fetch(MARCANET_BASE + '/marcanet/vistas/common/datos/bsqExpediente.pgi', {
-                    method: 'POST',
-                    headers: Object.assign({}, hdrs, { 'Content-Type': 'application/x-www-form-urlencoded' }),
-                    body: formData.toString(),
-                    redirect: 'follow'
-                });
-
-                updateSessionCookies(sessionKey, resp);
-                const html = await resp.text();
-                const detail = parseMarcanetDetailHTML(html);
-                mergeDetail(detail, 'marcanet-bsq');
+                const bsqExpUrl = MARCANET_BASE + '/marcanet/vistas/common/datos/bsqExpediente.pgi';
+                const formPage = await getMarcanetFormPage(session, sessionKey, bsqExpUrl);
+                if (formPage.viewState) {
+                    const ajaxResp = await sendPrimeFacesAjax(session, sessionKey, bsqExpUrl, {
+                        'javax.faces.source': 'frmBsqExpediente:busquedaId2',
+                        'javax.faces.partial.render': 'frmBsqExpediente:pnlBsqExpediente frmBsqExpediente:dlgListaExpedientes',
+                        'frmBsqExpediente:busquedaId2': 'frmBsqExpediente:busquedaId2',
+                        'frmBsqExpediente': 'frmBsqExpediente',
+                        'frmBsqExpediente:expediente': expediente,
+                        'javax.faces.ViewState': formPage.viewState
+                    });
+                    const detail = parseMarcanetDetailHTML(ajaxResp.text);
+                    mergeDetail(detail, 'marcanet-bsq-exp');
+                }
             } catch (e) { /* ignorar */ }
         }
     }
