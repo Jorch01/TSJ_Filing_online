@@ -933,6 +933,7 @@ async function buscarMarcanet() {
             });
             console.log('Marcanet fonetica response:', data);
             if (data.debugLinks && data.debugLinks.length > 0) console.log('Marcanet debug links found in results:', data.debugLinks);
+            if (data.results && data.results.length > 0) console.log('Marcanet first result keys/values:', JSON.stringify(data.results[0]));
             if (data.isFormPage) {
                 mostrarToast('Marcanet devolvió la página del formulario. Es posible que el servidor no esté procesando búsquedas. Intenta directamente en Marcanet.', 'warning');
                 marcanetState.results = [];
@@ -1076,19 +1077,53 @@ async function verDetalleMarcanetDesdeResultado(idx) {
     var r = marcanetState.results[idx];
     if (!r) return;
 
+    console.log('Marcanet result clicked:', JSON.stringify(r));
+
     // Extraer datos del resultado para buscar detalle completo
-    var expediente = r['Expediente'] || r['No. Expediente'] || r['expediente'] || r['No. de Expediente'] || '';
-    var registro = r['Registro'] || r['No. Registro'] || r['registro'] || r['No. de Registro'] || '';
+    // Intentar múltiples nombres de campo posibles
+    var expediente = r['Expediente'] || r['No. Expediente'] || r['expediente'] || r['No. de Expediente'] ||
+        r['No. Exp.'] || r['Exp.'] || r['No_Expediente'] || '';
+    var registro = r['Registro'] || r['No. Registro'] || r['registro'] || r['No. de Registro'] ||
+        r['No. Reg.'] || r['Reg.'] || r['No_Registro'] || '';
     var link = r['_link_tr'] || '';
     var jsParam = '';
+    var denominacion = r['Denominación'] || r['denominacion'] || r['Marca'] || r['marca'] || '';
+
     for (var k in r) {
         if (k.startsWith('_link_') && r[k] && !link) { link = r[k]; }
         if (k.startsWith('_js_param_') && r[k] && !jsParam) { jsParam = r[k]; }
     }
 
+    // Si no encontramos expediente/registro con nombres conocidos, buscar en TODOS los campos
+    // un valor que parezca número de expediente (5-8 dígitos)
+    if (!expediente && !registro) {
+        var keys = Object.keys(r).filter(function(k) { return !k.startsWith('_'); });
+        for (var i = 0; i < keys.length; i++) {
+            var val = String(r[keys[i]]).trim();
+            // Un número de 5-8 dígitos es probablemente un expediente
+            if (/^\d{5,8}$/.test(val)) {
+                expediente = val;
+                console.log('Marcanet: found likely expediente in field "' + keys[i] + '": ' + val);
+                break;
+            }
+        }
+    }
+
     // Limpiar números
-    var expClean = expediente.replace(/\D/g, '');
-    var regClean = registro.replace(/\D/g, '');
+    var expClean = expediente ? expediente.replace(/\D/g, '') : '';
+    var regClean = registro ? registro.replace(/\D/g, '') : '';
+
+    // Si no hay datos suficientes, al menos extraer la denominación
+    if (!expClean && !regClean && !link && !jsParam && !denominacion) {
+        // Tomar el primer valor no vacío como denominación
+        var keys2 = Object.keys(r).filter(function(k) { return !k.startsWith('_'); });
+        for (var j = 0; j < keys2.length; j++) {
+            if (r[keys2[j]] && String(r[keys2[j]]).trim().length > 2) {
+                denominacion = String(r[keys2[j]]).trim();
+                break;
+            }
+        }
+    }
 
     var loading = document.getElementById('impi-loading');
     if (loading) loading.style.display = 'flex';
@@ -1101,7 +1136,8 @@ async function verDetalleMarcanetDesdeResultado(idx) {
                 expediente: expClean,
                 registro: regClean,
                 link: link,
-                jsParam: jsParam
+                jsParam: jsParam,
+                denominacion: denominacion
             })
         });
         console.log('Marcanet full-detail response:', data);
