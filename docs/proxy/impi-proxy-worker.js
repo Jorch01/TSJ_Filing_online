@@ -631,9 +631,38 @@ function parseMarcanetTable(tableHTML) {
             const headerName = headers[idx] || ('col' + idx);
             rowData[headerName] = text;
             if (linkMatch) rowData['_link_' + idx] = linkMatch[1];
+
+            // Capturar onclick con JavaScript (ej: onclick="verDetalle('123')" o location.href='...')
+            const onclickMatch = cell.match(/onclick="([^"]*)"/i);
+            if (onclickMatch) {
+                rowData['_onclick_' + idx] = onclickMatch[1];
+                // Extraer URL de location.href='...'
+                const locMatch = onclickMatch[1].match(/location\.href\s*=\s*'([^']*)'/i);
+                if (locMatch) rowData['_link_' + idx] = locMatch[1];
+                // Extraer parámetros de funciones JS como verDetalle('123')
+                const funcMatch = onclickMatch[1].match(/\w+\s*\(\s*'([^']*)'/i);
+                if (funcMatch && !rowData['_link_' + idx]) rowData['_js_param_' + idx] = funcMatch[1];
+            }
+
+            // Capturar onclick en <a> tags dentro del cell
+            const aOnclickMatch = cell.match(/<a[^>]*onclick="([^"]*)"/i);
+            if (aOnclickMatch) {
+                rowData['_onclick_' + idx] = aOnclickMatch[1];
+                const locMatch2 = aOnclickMatch[1].match(/location\.href\s*=\s*'([^']*)'/i);
+                if (locMatch2) rowData['_link_' + idx] = locMatch2[1];
+            }
         });
+
+        // También capturar onclick en el <tr> mismo
+        const trOnclick = row.match(/<tr[^>]*onclick="([^"]*)"/i);
+        if (trOnclick) {
+            rowData['_tr_onclick'] = trOnclick[1];
+            const locMatch3 = trOnclick[1].match(/location\.href\s*=\s*'([^']*)'/i);
+            if (locMatch3) rowData['_link_tr'] = locMatch3[1];
+        }
+
         // Solo agregar filas con datos significativos
-        const values = Object.values(rowData).filter(function(v) { return v && !v.startsWith('_'); });
+        const values = Object.values(rowData).filter(function(v) { return v && !String(v).startsWith('_'); });
         if (values.length >= 2) results.push(rowData);
     }
     return results;
@@ -776,13 +805,27 @@ async function handleMarcanetFonetica(request) {
     // Detectar si Marcanet devolvió la página del formulario en vez de resultados
     const isFormPage = /<form[\s\S]*?buscar/i.test(html) && results.length === 0;
 
+    // Debug: extraer todos los links y onclick del HTML
+    const debugLinks = [];
+    const linkMatches = html.match(/href="([^"]*detalle[^"]*)"/gi) || [];
+    for (const lm of linkMatches) {
+        const m = lm.match(/href="([^"]*)"/i);
+        if (m) debugLinks.push(m[1]);
+    }
+    const onclickMatches = html.match(/onclick="([^"]*(?:detalle|expediente|folio)[^"]*)"/gi) || [];
+    for (const om of onclickMatches) {
+        const m = om.match(/onclick="([^"]*)"/i);
+        if (m) debugLinks.push('onclick:' + m[1]);
+    }
+
     return new Response(JSON.stringify({
         results: results,
         totalResults: results.length,
         rawLength: html.length,
         status: resp.status,
         rawSnippet: rawSnippet.substring(0, 500),
-        isFormPage: isFormPage
+        isFormPage: isFormPage,
+        debugLinks: debugLinks.slice(0, 10)
     }), {
         headers: { 'Content-Type': 'application/json' }
     });
@@ -1004,6 +1047,7 @@ async function handleMarcanetFullDetail(request) {
     const expediente = body.expediente || '';
     const registro = body.registro || '';
     const link = body.link || '';
+    const jsParam = body.jsParam || '';
 
     if (!expediente && !registro && !link) {
         return new Response(JSON.stringify({ error: 'Se requiere expediente, registro o link' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
@@ -1011,6 +1055,19 @@ async function handleMarcanetFullDetail(request) {
 
     const allDetail = {};
     const sources = [];
+    const debugSnippets = {};
+
+    // Helper: merge sin sobreescribir
+    function mergeDetail(newData, sourceName) {
+        let added = 0;
+        for (const k in newData) {
+            if (!allDetail[k] || (typeof allDetail[k] === 'string' && !allDetail[k].trim())) {
+                allDetail[k] = newData[k];
+                added++;
+            }
+        }
+        if (added > 0) sources.push(sourceName);
+    }
 
     // 1. Obtener datos de Marcanet
     let session;
@@ -1018,58 +1075,115 @@ async function handleMarcanetFullDetail(request) {
 
     if (session) {
         const sessionKey = 'marcanet_' + getSessionKey(request);
+        const hdrs = marcanetHeaders(session);
 
-        // Intentar via link directo primero
+        // === PRIORIDAD 1: detalleExpedienteParcial.pgi (la página más completa) ===
+        // Intentar con POST y GET, probando varios nombres de parámetro
+        if (expediente || registro || jsParam) {
+            const numToTry = expediente || jsParam || registro;
+            const detailUrls = [
+                // POST con form data - múltiples variantes de parámetros
+                { method: 'POST', url: MARCANET_BASE + '/marcanet/vistas/common/busquedas/detalleExpedienteParcial.pgi',
+                  body: 'expediente=' + numToTry + '&p_expediente=' + numToTry + '&idExpediente=' + numToTry + '&folio=' + numToTry },
+                // GET con query params
+                { method: 'GET', url: MARCANET_BASE + '/marcanet/vistas/common/busquedas/detalleExpedienteParcial.pgi?expediente=' + numToTry },
+                { method: 'GET', url: MARCANET_BASE + '/marcanet/vistas/common/busquedas/detalleExpedienteParcial.pgi?idExpediente=' + numToTry },
+                { method: 'GET', url: MARCANET_BASE + '/marcanet/vistas/common/busquedas/detalleExpedienteParcial.pgi?folio=' + numToTry },
+            ];
+
+            for (const attempt of detailUrls) {
+                try {
+                    const fetchOpts = { headers: Object.assign({}, hdrs), redirect: 'follow' };
+                    if (attempt.method === 'POST') {
+                        fetchOpts.method = 'POST';
+                        fetchOpts.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+                        fetchOpts.body = attempt.body;
+                    }
+                    const resp = await fetch(attempt.url, fetchOpts);
+                    updateSessionCookies(sessionKey, resp);
+                    const html = await resp.text();
+
+                    // Solo procesar si no es un formulario vacío
+                    const isForm = /<form[\s\S]{0,500}buscar/i.test(html);
+                    const detail = parseMarcanetDetailHTML(html);
+                    const nonInternalKeys = Object.keys(detail).filter(k => !k.startsWith('_'));
+
+                    if (nonInternalKeys.length >= 3) {
+                        // Encontramos datos reales
+                        Object.assign(allDetail, detail);
+                        sources.push('detalle-expediente');
+                        debugSnippets['detalle'] = html.substring(0, 3000).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 800);
+                        break;
+                    } else if (nonInternalKeys.length > 0 && !isForm) {
+                        mergeDetail(detail, 'detalle-parcial');
+                        debugSnippets['detalle-parcial'] = html.substring(0, 2000).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 500);
+                    }
+                } catch (e) { /* siguiente intento */ }
+            }
+        }
+
+        // === PRIORIDAD 2: Link directo del resultado ===
         if (link) {
             try {
                 const url = link.startsWith('http') ? link : MARCANET_BASE + (link.startsWith('/') ? '' : '/marcanet/') + link;
-                const resp = await fetch(url, { headers: marcanetHeaders(session), redirect: 'follow' });
+                const resp = await fetch(url, { headers: hdrs, redirect: 'follow' });
                 updateSessionCookies(sessionKey, resp);
                 const html = await resp.text();
                 const detail = parseMarcanetDetailHTML(html);
-                if (Object.keys(detail).length > 0) {
-                    Object.assign(allDetail, detail);
-                    sources.push('marcanet-link');
+                mergeDetail(detail, 'marcanet-link');
+                if (Object.keys(detail).filter(k => !k.startsWith('_')).length > 0) {
+                    debugSnippets['link'] = html.substring(0, 2000).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 500);
                 }
             } catch (e) { /* ignorar */ }
         }
 
-        // Intentar via UCMServlet con expediente
+        // === PRIORIDAD 3: UCMServlet con expediente ===
         if (expediente) {
             try {
                 const infoStr = '3|' + expediente + '|1|' + expediente;
                 const resp = await fetch(MARCANET_BASE + '/marcanet/UCMServlet?info=' + encodeURIComponent(btoa(infoStr)), {
-                    headers: marcanetHeaders(session), redirect: 'follow'
+                    headers: hdrs, redirect: 'follow'
                 });
                 updateSessionCookies(sessionKey, resp);
                 const html = await resp.text();
                 const detail = parseMarcanetDetailHTML(html);
-                if (Object.keys(detail).length > 0) {
-                    // Merge sin sobreescribir datos existentes
-                    for (const k in detail) {
-                        if (!allDetail[k] || !allDetail[k].trim()) allDetail[k] = detail[k];
-                    }
-                    sources.push('marcanet-ucm');
-                }
+                mergeDetail(detail, 'marcanet-ucm');
             } catch (e) { /* ignorar */ }
         }
 
-        // Intentar via UCMServlet con registro
+        // === PRIORIDAD 4: UCMServlet con registro ===
         if (registro) {
             try {
                 const infoStr = '4|' + registro + '|2';
                 const resp = await fetch(MARCANET_BASE + '/marcanet/UCMServlet?info=' + encodeURIComponent(btoa(infoStr)), {
-                    headers: marcanetHeaders(session), redirect: 'follow'
+                    headers: hdrs, redirect: 'follow'
                 });
                 updateSessionCookies(sessionKey, resp);
                 const html = await resp.text();
                 const detail = parseMarcanetDetailHTML(html);
-                if (Object.keys(detail).length > 0) {
-                    for (const k in detail) {
-                        if (!allDetail[k] || !allDetail[k].trim()) allDetail[k] = detail[k];
-                    }
-                    sources.push('marcanet-ucm-reg');
-                }
+                mergeDetail(detail, 'marcanet-ucm-reg');
+            } catch (e) { /* ignorar */ }
+        }
+
+        // === PRIORIDAD 5: Búsqueda por expediente en formulario ===
+        if (expediente && Object.keys(allDetail).filter(k => !k.startsWith('_')).length < 3) {
+            try {
+                const formData = new URLSearchParams();
+                formData.append('expediente', expediente);
+                formData.append('p_expediente', expediente);
+                formData.append('buscar', 'Buscar');
+
+                const resp = await fetch(MARCANET_BASE + '/marcanet/vistas/common/datos/bsqExpediente.pgi', {
+                    method: 'POST',
+                    headers: Object.assign({}, hdrs, { 'Content-Type': 'application/x-www-form-urlencoded' }),
+                    body: formData.toString(),
+                    redirect: 'follow'
+                });
+
+                updateSessionCookies(sessionKey, resp);
+                const html = await resp.text();
+                const detail = parseMarcanetDetailHTML(html);
+                mergeDetail(detail, 'marcanet-bsq');
             } catch (e) { /* ignorar */ }
         }
     }
@@ -1080,11 +1194,19 @@ async function handleMarcanetFullDetail(request) {
     const marciaSession = sessions.get(marciaSessionKey);
 
     if (marciaSession && marciaSession.csrf) {
-        // Intentar buscar por número de expediente en MARCia
         const searchNum = expediente || registro || '';
         if (searchNum) {
             try {
-                // Buscar en MARCia por número
+                const marciaHdrs = {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-XSRF-TOKEN': marciaSession.csrf,
+                    'Cookie': marciaSession.cookies,
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Referer': MARCIA_BASE + '/marcas/search/result',
+                    'Origin': MARCIA_BASE
+                };
+
                 const searchBody = {
                     _type: 'Search$Structured',
                     images: [],
@@ -1101,63 +1223,28 @@ async function handleMarcanetFullDetail(request) {
                 };
 
                 const searchResp = await fetch(MARCIA_BASE + '/marcas/search/internal/record', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-XSRF-TOKEN': marciaSession.csrf,
-                        'Cookie': marciaSession.cookies,
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                        'Referer': MARCIA_BASE + '/marcas/search/result',
-                        'Origin': MARCIA_BASE
-                    },
-                    body: JSON.stringify(searchBody)
+                    method: 'POST', headers: marciaHdrs, body: JSON.stringify(searchBody)
                 });
-
                 updateSessionCookies(marciaSessionKey, searchResp);
                 const searchData = await searchResp.json();
 
                 if (searchData.id) {
-                    // Obtener primer resultado
                     const resultResp = await fetch(MARCIA_BASE + '/marcas/search/internal/result', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'X-XSRF-TOKEN': marciaSession.csrf,
-                            'Cookie': marciaSession.cookies,
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                            'Referer': MARCIA_BASE + '/marcas/search/result',
-                            'Origin': MARCIA_BASE
-                        },
+                        method: 'POST', headers: marciaHdrs,
                         body: JSON.stringify({
                             searchId: searchData.id,
-                            pageSize: 1,
-                            pageNumber: 0,
-                            statusFilter: [],
-                            viennaCodeFilter: [],
-                            niceClassFilter: []
+                            pageSize: 1, pageNumber: 0,
+                            statusFilter: [], viennaCodeFilter: [], niceClassFilter: []
                         })
                     });
-
                     updateSessionCookies(marciaSessionKey, resultResp);
                     const resultData = await resultResp.json();
 
                     if (resultData.resultPage && resultData.resultPage.length > 0) {
                         const markId = resultData.resultPage[0].id;
-
-                        // Obtener detalle completo de MARCia
                         const viewResp = await fetch(MARCIA_BASE + '/marcas/search/internal/view/' + encodeURIComponent(markId), {
-                            headers: {
-                                'Accept': 'application/json',
-                                'X-XSRF-TOKEN': marciaSession.csrf,
-                                'Cookie': marciaSession.cookies,
-                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                                'Referer': MARCIA_BASE + '/marcas/search/result',
-                                'Origin': MARCIA_BASE
-                            }
+                            headers: marciaHdrs
                         });
-
                         updateSessionCookies(marciaSessionKey, viewResp);
                         marciaData = await viewResp.json();
                         sources.push('marcia');
@@ -1170,8 +1257,9 @@ async function handleMarcanetFullDetail(request) {
     return new Response(JSON.stringify({
         detail: allDetail,
         marcia: marciaData,
-        fieldCount: Object.keys(allDetail).length,
-        sources: sources
+        fieldCount: Object.keys(allDetail).filter(k => !k.startsWith('_')).length,
+        sources: sources,
+        debug: debugSnippets
     }), {
         headers: { 'Content-Type': 'application/json' }
     });
