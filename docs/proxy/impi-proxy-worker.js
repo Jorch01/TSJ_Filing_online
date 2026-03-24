@@ -550,10 +550,14 @@ async function ensureMarcanetSession(request) {
 
 // Obtener ViewState de una página PrimeFaces/JSF
 function extractViewState(html) {
-    // Buscar javax.faces.ViewState en inputs hidden
+    // Buscar javax.faces.ViewState en inputs hidden - multiple patterns
     const match = html.match(/name="javax\.faces\.ViewState"[^>]*value="([^"]*)"/i) ||
                   html.match(/id="j_id1:javax\.faces\.ViewState:0"[^>]*value="([^"]*)"/i) ||
-                  html.match(/javax\.faces\.ViewState[^>]*value="([^"]*)"/i);
+                  html.match(/javax\.faces\.ViewState[^>]*value="([^"]*)"/i) ||
+                  // value before name order
+                  html.match(/value="([^"]*)"[^>]*name="javax\.faces\.ViewState"/i) ||
+                  // ViewState in any hidden input near "ViewState" text
+                  html.match(/ViewState[^>]*value="([^"]+)"/i);
     return match ? match[1] : null;
 }
 
@@ -1089,42 +1093,78 @@ async function handleMarcanetTitular(request) {
     }
 
     const sessionKey = 'marcanet_' + getSessionKey(request);
-    const formUrl = MARCANET_BASE + '/marcanet/vistas/common/datos/bsqTitularCompleta.pgi';
 
-    // PASO 1: Obtener ViewState del formulario
-    let viewState;
-    try {
-        const formPage = await getMarcanetFormPage(session, sessionKey, formUrl);
-        viewState = formPage.viewState;
-    } catch (e) {
-        return new Response(JSON.stringify({ error: 'No se pudo acceder al formulario: ' + e.message }),
-            { status: 502, headers: { 'Content-Type': 'application/json' } });
+    // Intentar múltiples URLs de formulario de titular
+    const formUrls = [
+        MARCANET_BASE + '/marcanet/vistas/common/datos/bsqTitularCompleta.pgi',
+        MARCANET_BASE + '/marcanet/vistas/common/datos/bsqTitular.pgi'
+    ];
+
+    let viewState = null;
+    let formHtml = '';
+    let formUrl = formUrls[0];
+
+    for (const url of formUrls) {
+        try {
+            const formPage = await getMarcanetFormPage(session, sessionKey, url);
+            formHtml = formPage.html;
+            if (formPage.viewState) {
+                viewState = formPage.viewState;
+                formUrl = url;
+                break;
+            }
+        } catch (e) { /* intentar siguiente */ }
     }
 
     if (!viewState) {
-        return new Response(JSON.stringify({ error: 'No se encontró ViewState en formulario Marcanet' }),
-            { status: 502, headers: { 'Content-Type': 'application/json' } });
+        // Debug: extraer nombres de forms e inputs del HTML
+        const formIds = (formHtml.match(/id="(frm[^"]*)"/gi) || []).map(m => m.match(/id="([^"]*)"/i)[1]);
+        const inputNames = (formHtml.match(/name="([^"]*ViewState[^"]*)"/gi) || []).map(m => m.match(/name="([^"]*)"/i)[1]);
+        const htmlSnippet = formHtml.substring(0, 3000).replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 500);
+        return new Response(JSON.stringify({
+            error: 'No se encontró ViewState en formulario de titular Marcanet',
+            debug: { formIds, inputNames, htmlSnippet, htmlLength: formHtml.length }
+        }), { status: 502, headers: { 'Content-Type': 'application/json' } });
     }
 
-    // PASO 2: Enviar búsqueda PrimeFaces AJAX
-    // El formulario de titular probablemente usa un patrón similar al de fonética
+    // Descubrir form ID y botón de búsqueda del HTML del formulario
+    const formIdMatch = formHtml.match(/id="(frm[Bb]sq[^"]*[Tt]itular[^"]*)"/i);
+    const formId = formIdMatch ? formIdMatch[1] : 'frmBsqTitular';
+
+    // Buscar botón de búsqueda (busquedaId, busquedaId2, j_idt* con onclick de búsqueda)
+    const searchBtnMatch = formHtml.match(/id="([^"]*busquedaId\d*[^"]*)"/i) ||
+                            formHtml.match(/id="([^"]*[Bb]uscar[^"]*)"/i);
+    const searchBtn = searchBtnMatch ? searchBtnMatch[1] : formId + ':busquedaId2';
+
+    // Buscar campo de input del titular
+    const titularInputMatch = formHtml.match(/id="([^"]*[Tt]itular[^"]*)"[^>]*(?:type="text"|class="[^"]*ui-inputtext)/i) ||
+                               formHtml.match(/id="([^"]*[Nn]ombre[^"]*)"[^>]*(?:type="text"|class="[^"]*ui-inputtext)/i);
+    const titularInput = titularInputMatch ? titularInputMatch[1] : formId + ':titular';
+
+    // Buscar targets de render (paneles y diálogos de resultados)
+    const panelMatch = formHtml.match(/id="([^"]*pnl[Bb]sq[^"]*)"/i);
+    const dialogMatch = formHtml.match(/id="([^"]*dlg[Ll]ista[^"]*)"/i);
+    const renderTargets = [panelMatch ? panelMatch[1] : formId + ':pnlBsqTitular',
+                           dialogMatch ? dialogMatch[1] : formId + ':dlgListaTitulares'].join(' ');
+
     const ajaxParams = {
-        'javax.faces.source': 'frmBsqTitular:busquedaId2',
-        'javax.faces.partial.render': 'frmBsqTitular:pnlBsqTitular frmBsqTitular:dlgListaTitulares',
-        'frmBsqTitular:busquedaId2': 'frmBsqTitular:busquedaId2',
-        'frmBsqTitular': 'frmBsqTitular',
-        'frmBsqTitular:titular': titular,
-        'frmBsqTitular:nombre': titular,
+        'javax.faces.source': searchBtn,
+        'javax.faces.partial.render': renderTargets,
+        [searchBtn]: searchBtn,
+        [formId]: formId,
+        [titularInput]: titular,
         'javax.faces.ViewState': viewState
     };
 
     const ajaxResp = await sendPrimeFacesAjax(session, sessionKey, formUrl, ajaxParams);
     const updates = ajaxResp.updates;
 
-    // Extraer resultados
     let resultsHtml = '';
     let results = [];
-    const debugInfo = { updateKeys: Object.keys(updates), rawLength: ajaxResp.text.length };
+    const debugInfo = {
+        updateKeys: Object.keys(updates), rawLength: ajaxResp.text.length,
+        formId, searchBtn, titularInput, renderTargets
+    };
 
     for (const [updateId, updateHtml] of Object.entries(updates)) {
         if (updateId.includes('dlgLista') || updateId.includes('pnlBsq') || updateId.includes('tblResultados')) {
@@ -1142,7 +1182,7 @@ async function handleMarcanetTitular(request) {
         return !vals.every(v => /^\w+ = /.test(v) || v.length < 3);
     });
 
-    const rawSnippet = resultsHtml.substring(0, 2000).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const rawSnippet = resultsHtml.substring(0, 2000).replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     debugInfo.rawSnippet = rawSnippet.substring(0, 800);
 
     return new Response(JSON.stringify({
@@ -1415,44 +1455,66 @@ async function handleMarcanetFullDetail(request) {
                 const searchResp = await fetch(MARCIA_BASE + '/marcas/search/internal/record', {
                     method: 'POST', headers: marciaHdrs, body: JSON.stringify(searchBody)
                 });
-                updateSessionCookies(marciaSessionKey, searchResp);
-                const searchData = await searchResp.json();
+                debugSnippets['marciaSearchStatus'] = searchResp.status;
 
-                if (searchData.id) {
-                    const resultResp = await fetch(MARCIA_BASE + '/marcas/search/internal/result', {
-                        method: 'POST', headers: marciaHdrs,
-                        body: JSON.stringify({
-                            searchId: searchData.id,
-                            pageSize: searchNum ? 1 : 5, pageNumber: 0,
-                            statusFilter: [], viennaCodeFilter: [], niceClassFilter: []
-                        })
-                    });
-                    updateSessionCookies(marciaSessionKey, resultResp);
-                    const resultData = await resultResp.json();
+                if (!searchResp.ok) {
+                    const errText = await searchResp.text();
+                    debugSnippets['marciaSearchError'] = errText.substring(0, 300);
+                } else {
+                    updateSessionCookies(marciaSessionKey, searchResp);
+                    const searchData = await searchResp.json();
+                    debugSnippets['marciaSearchId'] = searchData.id || 'none';
 
-                    if (resultData.resultPage && resultData.resultPage.length > 0) {
-                        // Si buscamos por denominación, tratar de encontrar el match exacto
-                        let bestMatch = resultData.resultPage[0];
-                        if (!searchNum && denominacion) {
-                            const denomLower = denominacion.toLowerCase().trim();
-                            for (const rp of resultData.resultPage) {
-                                if (rp.title && rp.title.toLowerCase().trim() === denomLower) {
-                                    bestMatch = rp;
-                                    break;
+                    if (searchData.id) {
+                        const resultResp = await fetch(MARCIA_BASE + '/marcas/search/internal/result', {
+                            method: 'POST', headers: marciaHdrs,
+                            body: JSON.stringify({
+                                searchId: searchData.id,
+                                pageSize: searchNum ? 1 : 5, pageNumber: 0,
+                                statusFilter: [], viennaCodeFilter: [], niceClassFilter: []
+                            })
+                        });
+                        debugSnippets['marciaResultStatus'] = resultResp.status;
+
+                        if (resultResp.ok) {
+                            updateSessionCookies(marciaSessionKey, resultResp);
+                            const resultData = await resultResp.json();
+                            debugSnippets['marciaResultCount'] = resultData.resultPage ? resultData.resultPage.length : 0;
+
+                            if (resultData.resultPage && resultData.resultPage.length > 0) {
+                                let bestMatch = resultData.resultPage[0];
+                                if (!searchNum && denominacion) {
+                                    const denomLower = denominacion.toLowerCase().trim();
+                                    for (const rp of resultData.resultPage) {
+                                        if (rp.title && rp.title.toLowerCase().trim() === denomLower) {
+                                            bestMatch = rp;
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                const markId = bestMatch.id;
+                                const viewResp = await fetch(MARCIA_BASE + '/marcas/search/internal/view/' + encodeURIComponent(markId), {
+                                    headers: marciaHdrs
+                                });
+                                debugSnippets['marciaViewStatus'] = viewResp.status;
+
+                                if (viewResp.ok) {
+                                    updateSessionCookies(marciaSessionKey, viewResp);
+                                    marciaData = await viewResp.json();
+                                    sources.push('marcia');
+                                } else {
+                                    debugSnippets['marciaViewError'] = (await viewResp.text()).substring(0, 300);
                                 }
                             }
+                        } else {
+                            debugSnippets['marciaResultError'] = (await resultResp.text()).substring(0, 300);
                         }
-
-                        const markId = bestMatch.id;
-                        const viewResp = await fetch(MARCIA_BASE + '/marcas/search/internal/view/' + encodeURIComponent(markId), {
-                            headers: marciaHdrs
-                        });
-                        updateSessionCookies(marciaSessionKey, viewResp);
-                        marciaData = await viewResp.json();
-                        sources.push('marcia');
                     }
                 }
-            } catch (e) { /* MARCia no disponible, continuar solo con Marcanet */ }
+            } catch (e) {
+                debugSnippets['marciaError'] = e.message;
+            }
         }
     }
 
