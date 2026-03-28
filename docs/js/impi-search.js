@@ -907,9 +907,9 @@ function ejecutarBusquedaGuardada(id) {
     } else if (tool === 'marcia') {
         cambiarTabIMPI('marcia');
         if (saved.subtype === 'avanzada') {
-            toggleMARCiaMode('avanzada');
+            toggleMarciaSearchMode('avanzada');
         } else {
-            toggleMARCiaMode('rapida');
+            toggleMarciaSearchMode('rapida');
             document.getElementById('marcia-query').value = saved.query;
         }
         buscarMARCia();
@@ -1030,7 +1030,7 @@ async function buscarEnLas3() {
     // Llenar los 3 formularios con el mismo término
     var marciaQ = document.getElementById('marcia-query');
     if (marciaQ) marciaQ.value = query;
-    toggleMARCiaMode('rapida');
+    toggleMarciaSearchMode('rapida');
 
     var mcnDenom = document.getElementById('mcn-denominacion');
     if (mcnDenom) mcnDenom.value = query;
