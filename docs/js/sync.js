@@ -252,6 +252,11 @@ async function descargarDatosRemotos() {
 }
 
 // Subir datos al servidor (usando POST para datos grandes)
+// IMPORTANTE: usamos text/plain con body JSON (no URLSearchParams) para evitar:
+//   1) Inflado ~3x del body por URL-encoding de base64 (+, /, = → %2B, %2F, %3D)
+//   2) Que Apps Script rechace/timeoutee el POST y devuelva HTML sin CORS.
+// text/plain es "simple request" (no dispara preflight) y el doPost del Apps Script
+// ya soporta leer JSON desde e.postData.contents.
 async function subirDatosRemotos(datosCifrados) {
     const url = PREMIUM_CONFIG.apiUrl;
 
@@ -259,14 +264,14 @@ async function subirDatosRemotos(datosCifrados) {
         const response = await fetchConReintentos(url, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Type': 'text/plain;charset=utf-8'
             },
-            body: new URLSearchParams({
+            body: JSON.stringify({
                 action: 'guardar_sync',
                 codigo: estadoPremium.codigo,
                 datos: datosCifrados
             }),
-            timeout: 60000 // 60 segundos para subida (datos grandes)
+            timeout: 120000 // 2 minutos para datos grandes
         });
 
         const texto = await response.text();
