@@ -386,37 +386,9 @@ async function cargarExpedientes() {
         `;
     }
 
-    lista.innerHTML = advertenciaHTML + expedientes.map((exp, index) => {
-        const instBadge = exp.institucion === 'PJF'
-            ? '<span class="institucion-badge pjf">🏛️ PJF</span>'
-            : exp.institucion === 'OTRO'
-            ? '<span class="institucion-badge otro">📋 Varios</span>'
-            : '<span class="institucion-badge tsj">⚖️ TSJ</span>';
-        return `
-        <div class="expediente-card" data-id="${exp.id}" data-orden="${exp.orden || index}" draggable="true">
-            <div class="drag-handle" title="Arrastra para reordenar">⋮⋮</div>
-            <div class="expediente-header">
-                <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
-                ${instBadge}
-                <span class="expediente-categoria">${escapeText(exp.categoria || 'General')}</span>
-            </div>
-            <div class="expediente-body">
-                <h3 class="expediente-titulo">${escapeText(exp.numero || exp.nombre)}</h3>
-                <p class="expediente-juzgado">${escapeText(exp.juzgado)}</p>
-                ${exp.comentario ? `<p class="expediente-comentario">${escapeText(exp.comentario)}</p>` : ''}
-            </div>
-            <div class="expediente-footer">
-                <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
-                <div class="expediente-actions">
-                    <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
-                    <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
-                    <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
-                    <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
-                </div>
-            </div>
-        </div>
-    `;
-    }).join('');
+    lista.innerHTML = advertenciaHTML + expedientes.map((exp, index) =>
+        renderTarjetaExpedienteHTML(exp, { draggable: true, orden: exp.orden || index })
+    ).join('');
 
     // Inicializar drag and drop
     inicializarDragAndDrop();
@@ -431,28 +403,7 @@ async function cargarExpedientes() {
     // Poblar tabla
     const tablaBody = document.getElementById('tabla-expedientes-body');
     if (tablaBody) {
-        tablaBody.innerHTML = expedientes.map(exp => {
-            const instLabel = exp.institucion === 'PJF' ? '🏛️ PJF'
-                           : exp.institucion === 'OTRO' ? '📋 Varios'
-                           : '⚖️ TSJ';
-            return `
-            <tr data-id="${exp.id}">
-                <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
-                <td><strong>${escapeText(exp.numero || exp.nombre)}</strong></td>
-                <td>${escapeText(exp.juzgado)}</td>
-                <td><span class="categoria-badge">${escapeText(exp.categoria || 'General')}</span></td>
-                <td>${instLabel}</td>
-                <td class="comentario-cell" title="${escapeText(exp.comentario || '')}">${escapeText(exp.comentario || '-')}</td>
-                <td>${formatearFecha(exp.fechaCreacion)}</td>
-                <td class="acciones-cell">
-                    <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
-                    <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
-                    <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
-                    <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
-                </td>
-            </tr>
-        `;
-        }).join('');
+        tablaBody.innerHTML = expedientes.map(exp => renderFilaExpedienteHTML(exp)).join('');
     }
 
     // Aplicar vista actual
@@ -925,24 +876,37 @@ function cerrarArchivo() {
     aplicarVistaExpedientes();
 }
 
-async function cargarArchivo() {
-    const archivados = await obtenerExpedientesArchivados();
-    const lista = document.getElementById('lista-archivo');
-    const count = document.getElementById('count-archivo');
+// Núcleo compartido de carga de archivo (usado por TSJ y PJF)
+async function _cargarArchivoComun({ listaId, countId, soloPJF, mensajeVacio }) {
+    let archivados = await obtenerExpedientesArchivados();
+    if (soloPJF) archivados = archivados.filter(e => e.institucion === 'PJF');
+
+    const lista = document.getElementById(listaId);
+    const count = document.getElementById(countId);
+    if (!lista) return;
 
     if (archivados.length === 0) {
         lista.innerHTML = `
             <div class="empty-state">
                 <span class="empty-icon">📦</span>
                 <h3>Archivo vacío</h3>
-                <p>No hay expedientes archivados</p>
+                <p>${mensajeVacio}</p>
             </div>
         `;
     } else {
         lista.innerHTML = archivados.map(exp => renderCardArchivado(exp)).join('');
     }
 
-    count.textContent = `${archivados.length} archivado${archivados.length !== 1 ? 's' : ''}`;
+    if (count) count.textContent = `${archivados.length} archivado${archivados.length !== 1 ? 's' : ''}`;
+}
+
+async function cargarArchivo() {
+    return _cargarArchivoComun({
+        listaId: 'lista-archivo',
+        countId: 'count-archivo',
+        soloPJF: false,
+        mensajeVacio: 'No hay expedientes archivados'
+    });
 }
 
 function renderCardArchivado(exp) {
@@ -984,11 +948,138 @@ function renderCardArchivado(exp) {
     `;
 }
 
-async function filtrarArchivo() {
-    const busqueda = (document.getElementById('buscar-archivo')?.value || '').toLowerCase();
-    const motivo = document.getElementById('filtro-motivo-archivo')?.value || '';
+// ==================== RENDERERS COMPARTIDOS TSJ/PJF ====================
+// Helpers para no duplicar las plantillas de tarjetas y filas entre TSJ y PJF.
+// Antes había 4 copias del template (cargarExpedientes, filtrarExpedientes y
+// los dos gemelos PJF), todas con riesgo de divergir al editar.
+
+function _badgeInstitucionHTML(institucion) {
+    if (institucion === 'PJF') return '<span class="institucion-badge pjf">🏛️ PJF</span>';
+    if (institucion === 'OTRO') return '<span class="institucion-badge otro">📋 Varios</span>';
+    return '<span class="institucion-badge tsj">⚖️ TSJ</span>';
+}
+
+function _labelInstitucionCorto(institucion) {
+    if (institucion === 'PJF') return '🏛️ PJF';
+    if (institucion === 'OTRO') return '📋 Varios';
+    return '⚖️ TSJ';
+}
+
+// Render de una tarjeta de expediente activo.
+// opciones:
+//   institucion: 'TSJ' | 'PJF' | 'OTRO' (default: exp.institucion || 'TSJ')
+//   draggable: muestra drag-handle y atributo draggable. Default false.
+//   orden: número para data-orden (cuando se permite reordenar).
+//   selectable / selected: modo selección PJF.
+//   showSearchBtn: incluye botón "🔍 Buscar en PJF".
+//   editarFn / eliminarFn: nombre de la función JS a invocar.
+//   categoriaDefault: texto cuando exp.categoria está vacío.
+function renderTarjetaExpedienteHTML(exp, opciones = {}) {
+    const institucion = opciones.institucion || exp.institucion || 'TSJ';
+    const draggable = !!opciones.draggable;
+    const orden = opciones.orden;
+    const selectable = !!opciones.selectable;
+    const selected = !!opciones.selected;
+    const showSearchBtn = !!opciones.showSearchBtn;
+    const editarFn = opciones.editarFn || 'editarExpediente';
+    const eliminarFn = opciones.eliminarFn || 'confirmarEliminarExpediente';
+    const categoriaDefault = opciones.categoriaDefault || (institucion === 'PJF' ? 'PJF Federal' : 'General');
+
+    const ordenAttr = orden !== undefined ? ` data-orden="${orden}"` : '';
+    const draggableAttr = draggable && !selectable ? ' draggable="true"' : (selectable ? ' draggable="false"' : '');
+    const cardClasses = `expediente-card${selectable ? ' selection-mode' : ''}`;
+
+    let leadingControl = '';
+    if (selectable) {
+        leadingControl = `
+            <div class="pjf-checkbox-wrap" onclick="event.stopPropagation()" style="display:flex;align-items:center;padding:0.4rem 0.5rem 0;">
+                <input type="checkbox" class="pjf-check" data-exp-id="${exp.id}"
+                    ${selected ? 'checked' : ''}
+                    onchange="toggleSeleccionExpedientePJF(${exp.id}, this)"
+                    style="width:1.2rem;height:1.2rem;cursor:pointer;accent-color:var(--primary,#366092);">
+                <span style="font-size:0.8rem;margin-left:0.4rem;color:var(--text-secondary,#6c757d);">Seleccionar</span>
+            </div>`;
+    } else if (draggable) {
+        leadingControl = '<div class="drag-handle" title="Arrastra para reordenar">⋮⋮</div>';
+    }
+
+    let actionsHTML = '';
+    if (!selectable) {
+        if (showSearchBtn) {
+            actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍 Buscar</button>`;
+        }
+        actionsHTML += `<button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>`;
+        actionsHTML += `<button class="btn btn-sm btn-secondary" onclick="${editarFn}(${exp.id}, event)">✏️</button>`;
+        actionsHTML += `<button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>`;
+        actionsHTML += `<button class="btn btn-sm btn-danger" onclick="${eliminarFn}(${exp.id}, event)">🗑️</button>`;
+    }
+
+    return `
+        <div class="${cardClasses}" data-id="${exp.id}"${ordenAttr}${draggableAttr}>
+            ${leadingControl}
+            <div class="expediente-header">
+                <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
+                ${_badgeInstitucionHTML(institucion)}
+                <span class="expediente-categoria">${escapeText(exp.categoria || categoriaDefault)}</span>
+            </div>
+            <div class="expediente-body">
+                <h3 class="expediente-titulo">${escapeText(exp.numero || exp.nombre)}</h3>
+                <p class="expediente-juzgado">${escapeText(exp.juzgado)}</p>
+                ${exp.comentario ? `<p class="expediente-comentario">${escapeText(exp.comentario)}</p>` : ''}
+            </div>
+            <div class="expediente-footer">
+                <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
+                <div class="expediente-actions">${actionsHTML}</div>
+            </div>
+        </div>`;
+}
+
+// Render de una fila de tabla.
+// opciones:
+//   institucion: igual que en tarjeta.
+//   showInstColumn: incluir columna de institución (TSJ la usa, PJF no — todas son PJF).
+//   showSearchBtn: incluir botón "🔍 Buscar en PJF".
+//   editarFn / eliminarFn: función JS a invocar.
+//   categoriaDefault.
+function renderFilaExpedienteHTML(exp, opciones = {}) {
+    const institucion = opciones.institucion || exp.institucion || 'TSJ';
+    const showInstColumn = opciones.showInstColumn !== false;
+    const showSearchBtn = !!opciones.showSearchBtn;
+    const editarFn = opciones.editarFn || 'editarExpediente';
+    const eliminarFn = opciones.eliminarFn || 'confirmarEliminarExpediente';
+    const categoriaDefault = opciones.categoriaDefault || (institucion === 'PJF' ? 'PJF Federal' : 'General');
+
+    const instCell = showInstColumn ? `<td>${_labelInstitucionCorto(institucion)}</td>` : '';
+
+    let actionsHTML = '';
+    if (showSearchBtn) {
+        actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍</button>`;
+    }
+    actionsHTML += `<button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>`;
+    actionsHTML += `<button class="btn btn-sm btn-secondary" onclick="${editarFn}(${exp.id}, event)">✏️</button>`;
+    actionsHTML += `<button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>`;
+    actionsHTML += `<button class="btn btn-sm btn-danger" onclick="${eliminarFn}(${exp.id}, event)">🗑️</button>`;
+
+    return `
+        <tr data-id="${exp.id}">
+            <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
+            <td><strong>${escapeText(exp.numero || exp.nombre)}</strong></td>
+            <td>${escapeText(exp.juzgado)}</td>
+            <td><span class="categoria-badge">${escapeText(exp.categoria || categoriaDefault)}</span></td>
+            ${instCell}
+            <td class="comentario-cell" title="${escapeText(exp.comentario || '')}">${escapeText(exp.comentario || '-')}</td>
+            <td>${formatearFecha(exp.fechaCreacion)}</td>
+            <td class="acciones-cell">${actionsHTML}</td>
+        </tr>`;
+}
+
+// Núcleo compartido de filtro de archivo (usado por TSJ y PJF)
+async function _filtrarArchivoComun({ listaId, countId, soloPJF, busquedaId, motivoId, mensajeSinResultados }) {
+    const busqueda = (document.getElementById(busquedaId)?.value || '').toLowerCase();
+    const motivo = document.getElementById(motivoId)?.value || '';
 
     let archivados = await obtenerExpedientesArchivados();
+    if (soloPJF) archivados = archivados.filter(e => e.institucion === 'PJF');
 
     if (busqueda) {
         archivados = archivados.filter(e =>
@@ -1004,28 +1095,42 @@ async function filtrarArchivo() {
         archivados = archivados.filter(e => e.motivoArchivo === motivo);
     }
 
-    const lista = document.getElementById('lista-archivo');
-    const count = document.getElementById('count-archivo');
+    const lista = document.getElementById(listaId);
+    const count = document.getElementById(countId);
+    if (!lista) return;
 
     if (archivados.length === 0) {
         lista.innerHTML = `
             <div class="empty-state">
                 <span class="empty-icon">🔍</span>
                 <h3>Sin resultados</h3>
-                <p>No se encontraron expedientes archivados con esos filtros</p>
+                <p>${mensajeSinResultados}</p>
             </div>
         `;
     } else {
         lista.innerHTML = archivados.map(exp => renderCardArchivado(exp)).join('');
     }
 
-    count.textContent = `${archivados.length} archivado${archivados.length !== 1 ? 's' : ''}`;
+    if (count) count.textContent = `${archivados.length} archivado${archivados.length !== 1 ? 's' : ''}`;
 }
 
-async function actualizarBadgeArchivo() {
+async function filtrarArchivo() {
+    return _filtrarArchivoComun({
+        listaId: 'lista-archivo',
+        countId: 'count-archivo',
+        soloPJF: false,
+        busquedaId: 'buscar-archivo',
+        motivoId: 'filtro-motivo-archivo',
+        mensajeSinResultados: 'No se encontraron expedientes archivados con esos filtros'
+    });
+}
+
+// Núcleo compartido del badge de archivo
+async function _actualizarBadgeArchivoComun(badgeId, soloPJF) {
     try {
-        const archivados = await obtenerExpedientesArchivados();
-        const badge = document.getElementById('count-archivo-badge');
+        let archivados = await obtenerExpedientesArchivados();
+        if (soloPJF) archivados = archivados.filter(e => e.institucion === 'PJF');
+        const badge = document.getElementById(badgeId);
         if (badge) {
             if (archivados.length > 0) {
                 badge.textContent = archivados.length;
@@ -1034,9 +1139,11 @@ async function actualizarBadgeArchivo() {
                 badge.style.display = 'none';
             }
         }
-    } catch (e) {
-        // Ignorar errores silenciosamente
-    }
+    } catch (e) { /* ignorar */ }
+}
+
+async function actualizarBadgeArchivo() {
+    return _actualizarBadgeArchivoComun('count-archivo-badge', false);
 }
 
 // ==================== ÍNDICE DE BÚSQUEDA EN CACHÉ ====================
@@ -1154,59 +1261,10 @@ async function filtrarExpedientes() {
         if (vistaExpedientes === 'table') {
             const tablaBody = document.getElementById('tabla-expedientes-body');
             if (tablaBody) {
-                tablaBody.innerHTML = expedientes.map(exp => {
-                    const instLabel = exp.institucion === 'PJF' ? '🏛️ PJF'
-                                   : exp.institucion === 'OTRO' ? '📋 Varios'
-                                   : '⚖️ TSJ';
-                    return `
-                    <tr data-id="${exp.id}">
-                        <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
-                        <td><strong>${escapeText(exp.numero || exp.nombre)}</strong></td>
-                        <td>${escapeText(exp.juzgado)}</td>
-                        <td><span class="categoria-badge">${escapeText(exp.categoria || 'General')}</span></td>
-                        <td>${instLabel}</td>
-                        <td class="comentario-cell" title="${escapeText(exp.comentario || '')}">${escapeText(exp.comentario || '-')}</td>
-                        <td>${formatearFecha(exp.fechaCreacion)}</td>
-                        <td class="acciones-cell">
-                            <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
-                            <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
-                            <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
-                            <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
-                        </td>
-                    </tr>
-                `;
-                }).join('');
+                tablaBody.innerHTML = expedientes.map(exp => renderFilaExpedienteHTML(exp)).join('');
             }
         } else {
-            const instBadgeFor = (exp) => exp.institucion === 'PJF'
-                ? '<span class="institucion-badge pjf">🏛️ PJF</span>'
-                : exp.institucion === 'OTRO'
-                ? '<span class="institucion-badge otro">📋 Varios</span>'
-                : '<span class="institucion-badge tsj">⚖️ TSJ</span>';
-
-            lista.innerHTML = expedientes.map(exp => `
-                <div class="expediente-card" data-id="${exp.id}">
-                    <div class="expediente-header">
-                        <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
-                        ${instBadgeFor(exp)}
-                        <span class="expediente-categoria">${escapeText(exp.categoria || 'General')}</span>
-                    </div>
-                    <div class="expediente-body">
-                        <h3 class="expediente-titulo">${escapeText(exp.numero || exp.nombre)}</h3>
-                        <p class="expediente-juzgado">${escapeText(exp.juzgado)}</p>
-                        ${exp.comentario ? `<p class="expediente-comentario">${escapeText(exp.comentario)}</p>` : ''}
-                    </div>
-                    <div class="expediente-footer">
-                        <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
-                        <div class="expediente-actions">
-                            <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
-                            <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
-                            <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
-                            <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
+            lista.innerHTML = expedientes.map(exp => renderTarjetaExpedienteHTML(exp)).join('');
         }
     }
 
@@ -5614,59 +5672,31 @@ async function cargarExpedientesPJF() {
         `;
     }
 
-    lista.innerHTML = advertenciaPJFHTML + pjfExps.map((exp, index) => `
-        <div class="expediente-card${modoSeleccionPJF ? ' selection-mode' : ''}" data-id="${exp.id}" data-orden="${exp.orden || index}" draggable="${!modoSeleccionPJF}">
-            ${modoSeleccionPJF ? `
-            <div class="pjf-checkbox-wrap" onclick="event.stopPropagation()" style="display:flex;align-items:center;padding:0.4rem 0.5rem 0;">
-                <input type="checkbox" class="pjf-check" data-exp-id="${exp.id}"
-                    ${expedientesPJFSeleccionados.has(exp.id) ? 'checked' : ''}
-                    onchange="toggleSeleccionExpedientePJF(${exp.id}, this)"
-                    style="width:1.2rem;height:1.2rem;cursor:pointer;accent-color:var(--primary,#366092);">
-                <span style="font-size:0.8rem;margin-left:0.4rem;color:var(--text-secondary,#6c757d);">Seleccionar</span>
-            </div>` : '<div class="drag-handle" title="Arrastra para reordenar">⋮⋮</div>'}
-            <div class="expediente-header">
-                <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
-                <span class="institucion-badge pjf">🏛️ PJF</span>
-                <span class="expediente-categoria">${escapeText(exp.categoria || 'PJF Federal')}</span>
-            </div>
-            <div class="expediente-body">
-                <h3 class="expediente-titulo">${escapeText(exp.numero || exp.nombre)}</h3>
-                <p class="expediente-juzgado">${escapeText(exp.juzgado)}</p>
-                ${exp.comentario ? `<p class="expediente-comentario">${escapeText(exp.comentario)}</p>` : ''}
-            </div>
-            <div class="expediente-footer">
-                <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
-                <div class="expediente-actions">
-                    ${!modoSeleccionPJF ? `<button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍 Buscar</button>` : ''}
-                    ${!modoSeleccionPJF ? `<button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>` : ''}
-                    ${!modoSeleccionPJF ? `<button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>` : ''}
-                    ${!modoSeleccionPJF ? `<button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>` : ''}
-                    ${!modoSeleccionPJF ? `<button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>` : ''}
-                </div>
-            </div>
-        </div>
-    `).join('');
+    lista.innerHTML = advertenciaPJFHTML + pjfExps.map((exp, index) =>
+        renderTarjetaExpedienteHTML(exp, {
+            institucion: 'PJF',
+            draggable: true,
+            orden: exp.orden || index,
+            selectable: !!modoSeleccionPJF,
+            selected: expedientesPJFSeleccionados.has(exp.id),
+            showSearchBtn: true,
+            editarFn: 'editarExpedientePJF',
+            eliminarFn: 'confirmarEliminarExpedientePJF'
+        })
+    ).join('');
 
     // Populate table view
     const tablaBody = document.getElementById('tabla-expedientes-body-pjf');
     if (tablaBody) {
-        tablaBody.innerHTML = pjfExps.map(exp => `
-            <tr data-id="${exp.id}">
-                <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
-                <td><strong>${escapeText(exp.numero || exp.nombre)}</strong></td>
-                <td>${escapeText(exp.juzgado)}</td>
-                <td><span class="categoria-badge">${escapeText(exp.categoria || 'PJF Federal')}</span></td>
-                <td class="comentario-cell" title="${escapeText(exp.comentario || '')}">${escapeText(exp.comentario || '-')}</td>
-                <td>${formatearFecha(exp.fechaCreacion)}</td>
-                <td class="acciones-cell">
-                    <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍</button>
-                    <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
-                    <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
-                    <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
-                    <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
-                </td>
-            </tr>
-        `).join('');
+        tablaBody.innerHTML = pjfExps.map(exp =>
+            renderFilaExpedienteHTML(exp, {
+                institucion: 'PJF',
+                showInstColumn: false,
+                showSearchBtn: true,
+                editarFn: 'editarExpedientePJF',
+                eliminarFn: 'confirmarEliminarExpedientePJF'
+            })
+        ).join('');
     }
 
     // Initialize drag and drop for PJF
@@ -5738,81 +5768,27 @@ function cerrarArchivoPJF() {
 }
 
 async function cargarArchivoPJF() {
-    const archivados = await obtenerExpedientesArchivados();
-    const pjfArchivados = archivados.filter(e => e.institucion === 'PJF');
-    const lista = document.getElementById('lista-archivo-pjf');
-    const count = document.getElementById('count-archivo-pjf');
-
-    if (pjfArchivados.length === 0) {
-        lista.innerHTML = `
-            <div class="empty-state">
-                <span class="empty-icon">📦</span>
-                <h3>Archivo vacío</h3>
-                <p>No hay expedientes PJF archivados</p>
-            </div>
-        `;
-    } else {
-        lista.innerHTML = pjfArchivados.map(exp => renderCardArchivado(exp)).join('');
-    }
-
-    count.textContent = `${pjfArchivados.length} archivado${pjfArchivados.length !== 1 ? 's' : ''}`;
+    return _cargarArchivoComun({
+        listaId: 'lista-archivo-pjf',
+        countId: 'count-archivo-pjf',
+        soloPJF: true,
+        mensajeVacio: 'No hay expedientes PJF archivados'
+    });
 }
 
 async function filtrarArchivoPJF() {
-    const busqueda = (document.getElementById('buscar-archivo-pjf')?.value || '').toLowerCase();
-    const motivo = document.getElementById('filtro-motivo-archivo-pjf')?.value || '';
-
-    const archivados = await obtenerExpedientesArchivados();
-    let pjfArchivados = archivados.filter(e => e.institucion === 'PJF');
-
-    if (busqueda) {
-        pjfArchivados = pjfArchivados.filter(e =>
-            (e.numero && e.numero.toLowerCase().includes(busqueda)) ||
-            (e.nombre && e.nombre.toLowerCase().includes(busqueda)) ||
-            (e.juzgado && e.juzgado.toLowerCase().includes(busqueda)) ||
-            (e.comentario && e.comentario.toLowerCase().includes(busqueda)) ||
-            (e.etiquetaArchivo && e.etiquetaArchivo.toLowerCase().includes(busqueda))
-        );
-    }
-
-    if (motivo) {
-        pjfArchivados = pjfArchivados.filter(e => e.motivoArchivo === motivo);
-    }
-
-    const lista = document.getElementById('lista-archivo-pjf');
-    const count = document.getElementById('count-archivo-pjf');
-
-    if (pjfArchivados.length === 0) {
-        lista.innerHTML = `
-            <div class="empty-state">
-                <span class="empty-icon">🔍</span>
-                <h3>Sin resultados</h3>
-                <p>No se encontraron expedientes PJF archivados con esos filtros</p>
-            </div>
-        `;
-    } else {
-        lista.innerHTML = pjfArchivados.map(exp => renderCardArchivado(exp)).join('');
-    }
-
-    count.textContent = `${pjfArchivados.length} archivado${pjfArchivados.length !== 1 ? 's' : ''}`;
+    return _filtrarArchivoComun({
+        listaId: 'lista-archivo-pjf',
+        countId: 'count-archivo-pjf',
+        soloPJF: true,
+        busquedaId: 'buscar-archivo-pjf',
+        motivoId: 'filtro-motivo-archivo-pjf',
+        mensajeSinResultados: 'No se encontraron expedientes PJF archivados con esos filtros'
+    });
 }
 
 async function actualizarBadgeArchivoPJF() {
-    try {
-        const archivados = await obtenerExpedientesArchivados();
-        const pjfArchivados = archivados.filter(e => e.institucion === 'PJF');
-        const badge = document.getElementById('count-archivo-badge-pjf');
-        if (badge) {
-            if (pjfArchivados.length > 0) {
-                badge.textContent = pjfArchivados.length;
-                badge.style.display = 'inline';
-            } else {
-                badge.style.display = 'none';
-            }
-        }
-    } catch (e) {
-        // Ignorar errores silenciosamente
-    }
+    return _actualizarBadgeArchivoComun('count-archivo-badge-pjf', true);
 }
 
 // Abrir búsqueda en PJF para un expediente guardado
@@ -6033,50 +6009,27 @@ async function filtrarExpedientesPJF() {
         if (vistaExpedientesPJF === 'table') {
             const tablaBody = document.getElementById('tabla-expedientes-body-pjf');
             if (tablaBody) {
-                tablaBody.innerHTML = pjfExps.map(exp => `
-                    <tr data-id="${exp.id}">
-                        <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
-                        <td><strong>${escapeText(exp.numero || exp.nombre)}</strong></td>
-                        <td>${escapeText(exp.juzgado)}</td>
-                        <td><span class="categoria-badge">${escapeText(exp.categoria || 'PJF Federal')}</span></td>
-                        <td class="comentario-cell" title="${escapeText(exp.comentario || '')}">${escapeText(exp.comentario || '-')}</td>
-                        <td>${formatearFecha(exp.fechaCreacion)}</td>
-                        <td class="acciones-cell">
-                            <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍</button>
-                            <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
-                            <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
-                            <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
-                            <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
-                        </td>
-                    </tr>
-                `).join('');
+                tablaBody.innerHTML = pjfExps.map(exp =>
+                    renderFilaExpedienteHTML(exp, {
+                        institucion: 'PJF',
+                        showInstColumn: false,
+                        showSearchBtn: true,
+                        editarFn: 'editarExpedientePJF',
+                        eliminarFn: 'confirmarEliminarExpedientePJF'
+                    })
+                ).join('');
             }
         } else {
-            lista.innerHTML = pjfExps.map((exp, index) => `
-                <div class="expediente-card" data-id="${exp.id}" data-orden="${exp.orden || index}" draggable="true">
-                    <div class="drag-handle" title="Arrastra para reordenar">⋮⋮</div>
-                    <div class="expediente-header">
-                        <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
-                        <span class="institucion-badge pjf">🏛️ PJF</span>
-                        <span class="expediente-categoria">${escapeText(exp.categoria || 'PJF Federal')}</span>
-                    </div>
-                    <div class="expediente-body">
-                        <h3 class="expediente-titulo">${escapeText(exp.numero || exp.nombre)}</h3>
-                        <p class="expediente-juzgado">${escapeText(exp.juzgado)}</p>
-                        ${exp.comentario ? `<p class="expediente-comentario">${escapeText(exp.comentario)}</p>` : ''}
-                    </div>
-                    <div class="expediente-footer">
-                        <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
-                        <div class="expediente-actions">
-                            <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍 Buscar</button>
-                            <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
-                            <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
-                            <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
-                            <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
+            lista.innerHTML = pjfExps.map((exp, index) =>
+                renderTarjetaExpedienteHTML(exp, {
+                    institucion: 'PJF',
+                    draggable: true,
+                    orden: exp.orden || index,
+                    showSearchBtn: true,
+                    editarFn: 'editarExpedientePJF',
+                    eliminarFn: 'confirmarEliminarExpedientePJF'
+                })
+            ).join('');
 
             inicializarDragAndDropPJF();
         }
