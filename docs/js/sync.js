@@ -8,6 +8,53 @@ let syncState = {
     syncInProgress: false
 };
 
+// ==================== TRACKING DE CAMBIOS PENDIENTES ====================
+// Marca que hay cambios locales pendientes de subir al servidor. Sirve para
+// recuperarse de syncs abortados (típicamente iOS Safari suspende fetch en
+// segundo plano y la subida fire-and-forget se mata). Si un sync queda a medias,
+// el flag persiste en localStorage y la siguiente carga o volver al foreground
+// dispara el reintento.
+function marcarPendienteSync() {
+    try {
+        localStorage.setItem('sync_pendiente', Date.now().toString());
+    } catch (e) {}
+    actualizarBadgePendiente();
+}
+
+function limpiarPendienteSync() {
+    try {
+        localStorage.removeItem('sync_pendiente');
+    } catch (e) {}
+    actualizarBadgePendiente();
+}
+
+function hayPendienteSync() {
+    return !!localStorage.getItem('sync_pendiente');
+}
+
+function actualizarBadgePendiente() {
+    const badge = document.getElementById('sync-pendiente-badge');
+    if (badge) {
+        badge.style.display = hayPendienteSync() ? 'inline-flex' : 'none';
+    }
+}
+
+// Helper para usar desde app.js tras guardar/eliminar/archivar:
+//   - Marca el cambio como pendiente.
+//   - Dispara sincronizarDatos y AWAITEA para que el usuario vea el indicador
+//     "Sincronizando…" hasta que termine.
+//   - Si falla (red, iOS aborta), el flag de pendiente queda y se reintentará
+//     al recargar la app o al volver la pestaña a primer plano.
+async function marcarYSincronizar() {
+    if (typeof estadoPremium === 'undefined' || !estadoPremium.activo || !estadoPremium.codigo) return;
+    marcarPendienteSync();
+    try {
+        await sincronizarDatos();
+    } catch (e) {
+        console.warn('Sync falló, queda pendiente para reintento:', e && e.message ? e.message : e);
+    }
+}
+
 // ==================== CIFRADO AES-256-GCM ====================
 async function generarClaveDesdePassword(password, salt) {
     const encoder = new TextEncoder();
@@ -159,6 +206,7 @@ async function sincronizarDatos() {
 
         syncState.lastSync = Date.now();
         localStorage.setItem('sync_last_sync', syncState.lastSync.toString());
+        limpiarPendienteSync();
 
         actualizarUISync('success');
 
@@ -437,69 +485,82 @@ function sonExpedientesDuplicados(exp1, exp2) {
     return { esDuplicado: false, confianza: 0, razon: null };
 }
 
-// Fusionar dos expedientes conservando la información más completa
+// Obtener el timestamp de un campo concreto: usa _fieldTimestamps si existe,
+// y cae a fechaActualizacion/fechaCreacion para datos antiguos sin tracking
+// por campo. Permite que datos antiguos sigan funcionando con merge por
+// expediente, mientras los nuevos ganan por campo.
+function obtenerTimestampCampo(exp, campo) {
+    if (exp._fieldTimestamps && exp._fieldTimestamps[campo]) {
+        return exp._fieldTimestamps[campo];
+    }
+    return exp.fechaActualizacion || exp.fechaCreacion || '';
+}
+
+// Fusionar dos expedientes conservando la información más completa.
+// Ahora el merge gana por CAMPO, no por expediente: si editas el comentario en
+// iPhone y luego el juzgado en PC, cada campo conserva su edición más reciente
+// según su timestamp individual. Además permite vaciar campos a propósito
+// (el "borrado" con timestamp más nuevo gana sobre el valor antiguo).
 function fusionarExpedientesInteligente(exp1, exp2) {
     const fusionado = { ...exp1 };
     const cambios = [];
+    const fieldTimestampsFusionados = { ...(exp1._fieldTimestamps || {}) };
 
-    // Para cada campo, conservar el valor más reciente según fechaActualizacion
-    const campos = ['numero', 'nombre', 'juzgado', 'tipo', 'actor', 'demandado',
-                    'materia', 'estado', 'abogado', 'observaciones', 'etiquetas',
-                    'comentario', 'categoria', 'color'];
+    // Campos sujetos a merge por timestamp individual
+    const camposPorCampo = ['numero', 'nombre', 'juzgado', 'tipo', 'actor', 'demandado',
+                    'materia', 'estado', 'abogado', 'observaciones',
+                    'comentario', 'categoria', 'color',
+                    'institucion', 'pjfOrgId', 'pjfTipoAsunto', 'pjfTipoProcedimiento',
+                    'archivado', 'motivoArchivo', 'etiquetaArchivo', 'fechaArchivo'];
 
-    campos.forEach(campo => {
+    camposPorCampo.forEach(campo => {
         const val1 = exp1[campo];
         const val2 = exp2[campo];
+        const ts1 = obtenerTimestampCampo(exp1, campo);
+        const ts2 = obtenerTimestampCampo(exp2, campo);
 
-        // Si uno tiene valor y el otro no, usar el que tiene valor
-        if (!val1 && val2) {
-            fusionado[campo] = val2;
-            cambios.push({ campo, de: val1, a: val2, origen: 'exp2' });
-        } else if (val1 && val2 && val1 !== val2) {
-            if (Array.isArray(val1) && Array.isArray(val2)) {
-                // Arrays (ej: etiquetas): siempre unión
-                fusionado[campo] = [...new Set([...val1, ...val2])];
-                cambios.push({ campo, de: val1, a: fusionado[campo], origen: 'fusion_arrays' });
-            } else if (typeof val1 === 'string' && typeof val2 === 'string') {
-                // Strings: usa el valor del expediente con fechaActualizacion más reciente
-                const ts1 = exp1.fechaActualizacion || exp1.fechaCreacion || '';
-                const ts2 = exp2.fechaActualizacion || exp2.fechaCreacion || '';
-                if (ts2 > ts1) {
-                    // exp2 es más reciente — usar su valor
-                    fusionado[campo] = val2;
-                    cambios.push({ campo, de: val1, a: val2, origen: 'exp2_mas_reciente' });
-                }
-                // si exp1 es igual o más reciente, fusionado[campo] ya tiene val1 (del spread inicial)
+        // Si exp2 tiene timestamp más nuevo para este campo, usar su valor
+        // (incluso si está vacío — eso permite "vaciado intencional").
+        if (ts2 > ts1) {
+            if (val2 === undefined || val2 === null || val2 === '') {
+                delete fusionado[campo];
+            } else {
+                fusionado[campo] = val2;
             }
+            fieldTimestampsFusionados[campo] = ts2;
+            if (val1 !== val2) {
+                cambios.push({ campo, de: val1, a: val2, origen: 'exp2_ts_mas_reciente' });
+            }
+        } else if (ts1 > ts2) {
+            // exp1 ya está en fusionado por el spread inicial; solo registramos timestamp
+            fieldTimestampsFusionados[campo] = ts1;
+        } else {
+            // Empate de timestamps: si uno tiene valor y el otro no, preferir el que tiene
+            if ((val1 === undefined || val1 === null || val1 === '') && val2 !== undefined && val2 !== null && val2 !== '') {
+                fusionado[campo] = val2;
+                cambios.push({ campo, de: val1, a: val2, origen: 'exp2_lleno' });
+            }
+            fieldTimestampsFusionados[campo] = ts1 || ts2;
+        }
+
+        // Limpiar timestamp si el campo terminó vacío y no había timestamp previo
+        if (!fieldTimestampsFusionados[campo]) {
+            delete fieldTimestampsFusionados[campo];
         }
     });
 
-    // Fusionar campos de archivo: usar el estado más reciente
-    const ts1 = exp1.fechaActualizacion || exp1.fechaCreacion || '';
-    const ts2 = exp2.fechaActualizacion || exp2.fechaCreacion || '';
-    const exp2MasReciente = ts2 > ts1;
-    const expReciente = exp2MasReciente ? exp2 : exp1;
-
-    // Si alguno tiene archivado, usar el estado del más reciente
-    if (exp1.archivado !== undefined || exp2.archivado !== undefined) {
-        fusionado.archivado = expReciente.archivado || false;
-        fusionado.motivoArchivo = expReciente.motivoArchivo || fusionado.motivoArchivo;
-        fusionado.etiquetaArchivo = expReciente.etiquetaArchivo || fusionado.etiquetaArchivo;
-        fusionado.fechaArchivo = expReciente.fechaArchivo || fusionado.fechaArchivo;
-
-        if (exp1.archivado !== exp2.archivado) {
-            cambios.push({ campo: 'archivado', de: exp1.archivado, a: fusionado.archivado, origen: exp2MasReciente ? 'exp2_mas_reciente' : 'exp1' });
-        }
+    // etiquetas: caso especial — siempre unión (los arrays no se "pisan",
+    // se suman, manteniendo etiquetas agregadas desde cualquier dispositivo)
+    const etiq1 = Array.isArray(exp1.etiquetas) ? exp1.etiquetas : [];
+    const etiq2 = Array.isArray(exp2.etiquetas) ? exp2.etiquetas : [];
+    if (etiq1.length > 0 || etiq2.length > 0) {
+        fusionado.etiquetas = [...new Set([...etiq1, ...etiq2])];
+        const tsE1 = obtenerTimestampCampo(exp1, 'etiquetas');
+        const tsE2 = obtenerTimestampCampo(exp2, 'etiquetas');
+        fieldTimestampsFusionados.etiquetas = tsE1 > tsE2 ? tsE1 : tsE2;
     }
 
-    // Fusionar campos de institución y PJF
-    if (!fusionado.institucion && exp2.institucion) fusionado.institucion = exp2.institucion;
-    if (exp2MasReciente && exp2.institucion) fusionado.institucion = exp2.institucion;
-    const camposPJF = ['pjfOrgId', 'pjfTipoAsunto', 'pjfTipoProcedimiento'];
-    camposPJF.forEach(campo => {
-        if (!fusionado[campo] && exp2[campo]) fusionado[campo] = exp2[campo];
-        if (exp2MasReciente && exp2[campo]) fusionado[campo] = exp2[campo];
-    });
+    fusionado._fieldTimestamps = fieldTimestampsFusionados;
 
     // Combinar historial si existe
     if (exp1.historial || exp2.historial) {
@@ -856,7 +917,32 @@ function inicializarSync() {
 
     // Mostrar/ocultar sección según estado premium
     actualizarVisibilidadSync();
+
+    // Reflejar inmediatamente el badge de pendiente (si quedó un sync abortado)
+    actualizarBadgePendiente();
+
+    // Si había cambios pendientes de un sync que se cortó (clásico de iOS:
+    // background, tab matada, fetch abortada), reintentar ahora que la app
+    // está cargando en primer plano.
+    if (hayPendienteSync()) {
+        setTimeout(() => {
+            if (syncState.syncInProgress) return;
+            if (typeof estadoPremium === 'undefined' || !estadoPremium.activo || !estadoPremium.codigo) return;
+            sincronizarDatos().catch(e => console.warn('Reintento de sync pendiente falló:', e && e.message ? e.message : e));
+        }, 1500);
+    }
 }
+
+// Cuando el usuario vuelve a la pestaña/app después de tenerla en segundo
+// plano, si hay un sync pendiente lo reintentamos. Esto cubre iOS Safari que
+// aborta fetch en background pero conserva el estado de la app.
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (!hayPendienteSync()) return;
+    if (syncState.syncInProgress) return;
+    if (typeof estadoPremium === 'undefined' || !estadoPremium.activo || !estadoPremium.codigo) return;
+    sincronizarDatos().catch(e => console.warn('Sync al volver a foreground falló:', e && e.message ? e.message : e));
+});
 
 function actualizarVisibilidadSync() {
     const syncSection = document.getElementById('sync-section');
@@ -1031,6 +1117,11 @@ function mostrarReporteFusion() {
 
 // Exportar funciones globales
 window.sincronizarDatos = sincronizarDatos;
+window.marcarYSincronizar = marcarYSincronizar;
+window.marcarPendienteSync = marcarPendienteSync;
+window.limpiarPendienteSync = limpiarPendienteSync;
+window.hayPendienteSync = hayPendienteSync;
+window.actualizarBadgePendiente = actualizarBadgePendiente;
 window.guardarConfigSync = guardarConfigSync;
 window.sincronizarDespuesDeGuardar = sincronizarDespuesDeGuardar;
 window.actualizarVisibilidadSync = actualizarVisibilidadSync;

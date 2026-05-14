@@ -782,8 +782,10 @@ async function guardarExpediente(event) {
         cerrarFormularioExpediente();
         await cargarExpedientes();
         await cargarEstadisticas();
-        // Sincronizar con otros dispositivos
-        if (typeof sincronizarDatos === 'function' && typeof estadoPremium !== 'undefined' && estadoPremium.activo && estadoPremium.codigo) sincronizarDatos();
+        // Sincronizar con otros dispositivos (await: bloquea brevemente con
+        // indicador "Sincronizando…" para garantizar que el cambio sí subió,
+        // especialmente en iOS Safari que aborta fetch al backgroundear).
+        if (typeof marcarYSincronizar === 'function') await marcarYSincronizar();
     } catch (error) {
         mostrarToast('Error al guardar: ' + error.message, 'error');
     } finally {
@@ -812,7 +814,7 @@ function confirmarEliminarExpediente(id, event) {
                 return Promise.all(tareas);
             })
             .then(() => {
-                if (typeof sincronizarDatos === 'function' && typeof estadoPremium !== 'undefined' && estadoPremium.activo && estadoPremium.codigo) sincronizarDatos();
+                if (typeof marcarYSincronizar === 'function') return marcarYSincronizar();
             })
             .catch(err => {
                 Logger.error('Error al eliminar expediente:', err);
@@ -870,7 +872,7 @@ async function ejecutarArchivar(id) {
         mostrarToast('Expediente archivado', 'success');
         await Promise.all([cargarExpedientes(), cargarExpedientesPJF(), cargarEstadisticas()]);
         // Sincronizar cambio con otros dispositivos
-        if (typeof sincronizarDatos === 'function' && typeof estadoPremium !== 'undefined' && estadoPremium.activo && estadoPremium.codigo) sincronizarDatos();
+        if (typeof marcarYSincronizar === 'function') await marcarYSincronizar();
     } catch (err) {
         mostrarToast('Error al archivar: ' + (err.message || 'Error desconocido'), 'error');
     }
@@ -891,7 +893,7 @@ async function desarchivarExpediente(id, event) {
         if (archivoPJFVisible) await cargarArchivoPJF();
         await Promise.all([cargarExpedientes(), cargarExpedientesPJF(), cargarEstadisticas()]);
         // Sincronizar cambio con otros dispositivos
-        if (typeof sincronizarDatos === 'function' && typeof estadoPremium !== 'undefined' && estadoPremium.activo && estadoPremium.codigo) sincronizarDatos();
+        if (typeof marcarYSincronizar === 'function') await marcarYSincronizar();
     } catch (err) {
         mostrarToast('Error al restaurar: ' + (err.message || 'Error desconocido'), 'error');
     }
@@ -4068,9 +4070,7 @@ async function guardarResultadosIA() {
     mostrarToast(`${guardados} elementos guardados`, 'success');
 
     // Sincronizar automáticamente con otros dispositivos
-    if (typeof sincronizarDatos === 'function' && typeof estadoPremium !== 'undefined' && estadoPremium.activo && estadoPremium.codigo) {
-        sincronizarDatos();
-    }
+    if (typeof marcarYSincronizar === 'function') await marcarYSincronizar();
 }
 
 // Actualizar select de expedientes para IA
@@ -5660,7 +5660,7 @@ function confirmarEliminarExpedientePJF(id, event) {
                 return Promise.all([cargarExpedientesPJF(), cargarExpedientes(), cargarEstadisticas()]);
             })
             .then(() => {
-                if (typeof sincronizarDatos === 'function' && typeof estadoPremium !== 'undefined' && estadoPremium.activo && estadoPremium.codigo) sincronizarDatos();
+                if (typeof marcarYSincronizar === 'function') return marcarYSincronizar();
             })
             .catch(err => {
                 Logger.error('Error al eliminar expediente PJF:', err);
@@ -6651,9 +6651,7 @@ async function guardarResultadosIAPJF() {
     mostrarToast(`${guardados} elementos PJF guardados`, 'success');
 
     // Sincronizar automáticamente con otros dispositivos
-    if (typeof sincronizarDatos === 'function' && typeof estadoPremium !== 'undefined' && estadoPremium.activo && estadoPremium.codigo) {
-        sincronizarDatos();
-    }
+    if (typeof marcarYSincronizar === 'function') await marcarYSincronizar();
 }
 
 
