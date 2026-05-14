@@ -848,6 +848,10 @@ async function aplicarDatosLocalmente(datos) {
         tx.onerror = () => reject(tx.error);
     });
 
+    // El blob remoto trae nuevas notas e historial: invalidar el caché de
+    // búsqueda para que la próxima consulta lo reconstruya.
+    if (typeof invalidarIndiceBusqueda === 'function') invalidarIndiceBusqueda();
+
     // Recargar UI
     await cargarExpedientes();
     await cargarNotas();

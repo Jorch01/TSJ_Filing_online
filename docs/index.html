@@ -480,7 +480,7 @@
             <div class="filters-section">
                 <div class="search-box">
                     <span class="search-icon">🔍</span>
-                    <input type="text" id="buscar-expediente" placeholder="Buscar expedientes..." oninput="filtrarExpedientes()">
+                    <input type="text" id="buscar-expediente" placeholder="Buscar expedientes..." oninput="filtrarExpedientesDebounced()">
                 </div>
                 <select id="filtro-categoria" onchange="filtrarExpedientes()">
                     <option value="">Todas las categorías</option>
@@ -1085,7 +1085,7 @@
                         <div class="filters-section" style="margin-bottom: 1rem;">
                             <div class="search-box">
                                 <span class="search-icon">🔍</span>
-                                <input type="text" id="buscar-expediente-pjf" placeholder="Buscar expedientes PJF..." oninput="filtrarExpedientesPJF()">
+                                <input type="text" id="buscar-expediente-pjf" placeholder="Buscar expedientes PJF..." oninput="filtrarExpedientesPJFDebounced()">
                             </div>
                             <div class="view-toggle">
                                 <button class="view-btn pjf-view-btn active" data-view="cards" onclick="cambiarVistaExpedientesPJF('cards')" title="Vista tarjetas">

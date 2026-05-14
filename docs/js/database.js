@@ -445,7 +445,10 @@ async function agregarNota(nota) {
 
         const request = store.add(nota);
 
-        request.onsuccess = () => resolve(request.result);
+        request.onsuccess = () => {
+            if (typeof invalidarIndiceBusqueda === 'function') invalidarIndiceBusqueda();
+            resolve(request.result);
+        };
         request.onerror = () => reject(request.error);
     });
 }
@@ -489,7 +492,10 @@ async function actualizarNota(id, cambios) {
             const actualizada = { ...nota, ...cambios, fechaActualizacion: new Date().toISOString() };
             const putRequest = store.put(actualizada);
 
-            putRequest.onsuccess = () => resolve();
+            putRequest.onsuccess = () => {
+                if (typeof invalidarIndiceBusqueda === 'function') invalidarIndiceBusqueda();
+                resolve();
+            };
             putRequest.onerror = () => reject(putRequest.error);
         };
         getRequest.onerror = () => reject(getRequest.error);
@@ -502,7 +508,10 @@ async function eliminarNota(id) {
         const store = transaction.objectStore('notas');
         const request = store.delete(id);
 
-        request.onsuccess = () => resolve();
+        request.onsuccess = () => {
+            if (typeof invalidarIndiceBusqueda === 'function') invalidarIndiceBusqueda();
+            resolve();
+        };
         request.onerror = () => reject(request.error);
     });
 }
@@ -738,7 +747,10 @@ async function agregarHistorial(registro) {
 
         const request = store.add(registro);
 
-        request.onsuccess = () => resolve(request.result);
+        request.onsuccess = () => {
+            if (typeof invalidarIndiceBusqueda === 'function') invalidarIndiceBusqueda();
+            resolve(request.result);
+        };
         request.onerror = () => reject(request.error);
     });
 }
