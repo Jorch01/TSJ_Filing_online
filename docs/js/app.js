@@ -1264,7 +1264,11 @@ async function filtrarExpedientes() {
                 tablaBody.innerHTML = expedientes.map(exp => renderFilaExpedienteHTML(exp)).join('');
             }
         } else {
-            lista.innerHTML = expedientes.map(exp => renderTarjetaExpedienteHTML(exp)).join('');
+            lista.innerHTML = expedientes.map((exp, index) =>
+                renderTarjetaExpedienteHTML(exp, { draggable: true, orden: exp.orden || index })
+            ).join('');
+            // Re-attach drag listeners (innerHTML replacement discards them).
+            inicializarDragAndDrop();
         }
     }
 
