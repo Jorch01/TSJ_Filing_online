@@ -471,7 +471,7 @@ async function cargarExpedientes() {
 // Cambiar vista de expedientes
 function cambiarVistaExpedientes(vista) {
     vistaExpedientes = vista;
-    localStorage.setItem('vistaExpedientes', vista);
+    try { localStorage.setItem('vistaExpedientes', vista); } catch (e) {}
 
     // Actualizar solo botones de TSJ (excluir PJF view buttons)
     document.querySelectorAll('#page-expedientes .view-btn').forEach(btn => {
@@ -479,6 +479,9 @@ function cambiarVistaExpedientes(vista) {
     });
 
     aplicarVistaExpedientes();
+    // Re-renderizar el contenido para la nueva vista (ya que solo renderizamos
+    // la vista activa por rendimiento; al cambiar, la otra está vacía).
+    filtrarExpedientes();
 }
 
 // Aplicar vista actual
@@ -1036,6 +1039,59 @@ async function actualizarBadgeArchivo() {
     }
 }
 
+// ==================== ÍNDICE DE BÚSQUEDA EN CACHÉ ====================
+// La búsqueda en notas e historial requiere indexar todos los registros por
+// expedienteId. Antes se rehacía en CADA keystroke (re-leer IndexedDB + rearmar
+// Maps), causando lag visible en iPhone con muchos expedientes. Ahora cacheamos
+// los índices y solo los invalidamos cuando notas o historial cambian.
+let _searchIndexCache = null;
+let _searchIndexVersion = -1;
+let _dataMutationCounter = 0;
+
+function invalidarIndiceBusqueda() {
+    _dataMutationCounter++;
+}
+window.invalidarIndiceBusqueda = invalidarIndiceBusqueda;
+
+async function obtenerIndiceBusqueda() {
+    if (_searchIndexCache && _searchIndexVersion === _dataMutationCounter) {
+        return _searchIndexCache;
+    }
+    const [notas, historial] = await Promise.all([
+        obtenerNotas(),
+        obtenerTodoHistorial()
+    ]);
+    const notasPorExp = new Map();
+    for (const n of notas) {
+        const lst = notasPorExp.get(n.expedienteId);
+        if (lst) lst.push(n);
+        else notasPorExp.set(n.expedienteId, [n]);
+    }
+    const historialPorExp = new Map();
+    for (const h of historial) {
+        const lst = historialPorExp.get(h.expedienteId);
+        if (lst) lst.push(h);
+        else historialPorExp.set(h.expedienteId, [h]);
+    }
+    _searchIndexCache = { notasPorExp, historialPorExp };
+    _searchIndexVersion = _dataMutationCounter;
+    return _searchIndexCache;
+}
+
+// Debounce: no filtra en cada keystroke, espera 150ms tras la última pulsación.
+let _filtrarTSJTimer = null;
+function filtrarExpedientesDebounced() {
+    clearTimeout(_filtrarTSJTimer);
+    _filtrarTSJTimer = setTimeout(() => filtrarExpedientes(), 150);
+}
+let _filtrarPJFTimer = null;
+function filtrarExpedientesPJFDebounced() {
+    clearTimeout(_filtrarPJFTimer);
+    _filtrarPJFTimer = setTimeout(() => filtrarExpedientesPJF(), 150);
+}
+window.filtrarExpedientesDebounced = filtrarExpedientesDebounced;
+window.filtrarExpedientesPJFDebounced = filtrarExpedientesPJFDebounced;
+
 async function filtrarExpedientes() {
     const busqueda = document.getElementById('buscar-expediente').value.toLowerCase();
     const categoria = document.getElementById('filtro-categoria').value;
@@ -1043,21 +1099,7 @@ async function filtrarExpedientes() {
     let expedientes = await obtenerExpedientes();
 
     if (busqueda) {
-        // Obtener notas e historial para búsqueda profunda
-        const todasNotas = await obtenerNotas();
-        const todosHistorial = await obtenerTodoHistorial();
-
-        // Indexar por expedienteId para búsqueda rápida
-        const notasPorExp = {};
-        for (const n of todasNotas) {
-            if (!notasPorExp[n.expedienteId]) notasPorExp[n.expedienteId] = [];
-            notasPorExp[n.expedienteId].push(n);
-        }
-        const historialPorExp = {};
-        for (const h of todosHistorial) {
-            if (!historialPorExp[h.expedienteId]) historialPorExp[h.expedienteId] = [];
-            historialPorExp[h.expedienteId].push(h);
-        }
+        const { notasPorExp, historialPorExp } = await obtenerIndiceBusqueda();
 
         expedientes = expedientes.filter(e => {
             // Búsqueda en campos directos del expediente
@@ -1069,19 +1111,23 @@ async function filtrarExpedientes() {
                 return true;
             }
             // Búsqueda en notas del expediente
-            const notas = notasPorExp[e.id] || [];
-            for (const n of notas) {
-                if ((n.titulo && n.titulo.toLowerCase().includes(busqueda)) ||
-                    (n.contenido && n.contenido.toLowerCase().includes(busqueda))) {
-                    return true;
+            const notas = notasPorExp.get(e.id);
+            if (notas) {
+                for (const n of notas) {
+                    if ((n.titulo && n.titulo.toLowerCase().includes(busqueda)) ||
+                        (n.contenido && n.contenido.toLowerCase().includes(busqueda))) {
+                        return true;
+                    }
                 }
             }
             // Búsqueda en historial/actualizaciones del expediente
-            const historial = historialPorExp[e.id] || [];
-            for (const h of historial) {
-                if ((h.descripcion && h.descripcion.toLowerCase().includes(busqueda)) ||
-                    (h.detalle && h.detalle.toLowerCase().includes(busqueda))) {
-                    return true;
+            const historial = historialPorExp.get(e.id);
+            if (historial) {
+                for (const h of historial) {
+                    if ((h.descripcion && h.descripcion.toLowerCase().includes(busqueda)) ||
+                        (h.detalle && h.detalle.toLowerCase().includes(busqueda))) {
+                        return true;
+                    }
                 }
             }
             return false;
@@ -1104,62 +1150,63 @@ async function filtrarExpedientes() {
             </div>
         `;
     } else {
-        // Renderizar cards con comentarios
-        const instBadgeFor = (exp) => exp.institucion === 'PJF'
-            ? '<span class="institucion-badge pjf">🏛️ PJF</span>'
-            : exp.institucion === 'OTRO'
-            ? '<span class="institucion-badge otro">📋 Varios</span>'
-            : '<span class="institucion-badge tsj">⚖️ TSJ</span>';
+        // Renderizar solo la vista activa para no duplicar trabajo.
+        if (vistaExpedientes === 'table') {
+            const tablaBody = document.getElementById('tabla-expedientes-body');
+            if (tablaBody) {
+                tablaBody.innerHTML = expedientes.map(exp => {
+                    const instLabel = exp.institucion === 'PJF' ? '🏛️ PJF'
+                                   : exp.institucion === 'OTRO' ? '📋 Varios'
+                                   : '⚖️ TSJ';
+                    return `
+                    <tr data-id="${exp.id}">
+                        <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
+                        <td><strong>${escapeText(exp.numero || exp.nombre)}</strong></td>
+                        <td>${escapeText(exp.juzgado)}</td>
+                        <td><span class="categoria-badge">${escapeText(exp.categoria || 'General')}</span></td>
+                        <td>${instLabel}</td>
+                        <td class="comentario-cell" title="${escapeText(exp.comentario || '')}">${escapeText(exp.comentario || '-')}</td>
+                        <td>${formatearFecha(exp.fechaCreacion)}</td>
+                        <td class="acciones-cell">
+                            <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
+                            <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
+                            <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
+                            <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
+                        </td>
+                    </tr>
+                `;
+                }).join('');
+            }
+        } else {
+            const instBadgeFor = (exp) => exp.institucion === 'PJF'
+                ? '<span class="institucion-badge pjf">🏛️ PJF</span>'
+                : exp.institucion === 'OTRO'
+                ? '<span class="institucion-badge otro">📋 Varios</span>'
+                : '<span class="institucion-badge tsj">⚖️ TSJ</span>';
 
-        lista.innerHTML = expedientes.map(exp => `
-            <div class="expediente-card" data-id="${exp.id}">
-                <div class="expediente-header">
-                    <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
-                    ${instBadgeFor(exp)}
-                    <span class="expediente-categoria">${escapeText(exp.categoria || 'General')}</span>
-                </div>
-                <div class="expediente-body">
-                    <h3 class="expediente-titulo">${escapeText(exp.numero || exp.nombre)}</h3>
-                    <p class="expediente-juzgado">${escapeText(exp.juzgado)}</p>
-                    ${exp.comentario ? `<p class="expediente-comentario">${escapeText(exp.comentario)}</p>` : ''}
-                </div>
-                <div class="expediente-footer">
-                    <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
-                    <div class="expediente-actions">
-                        <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
-                        <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
-                        <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
-                        <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
+            lista.innerHTML = expedientes.map(exp => `
+                <div class="expediente-card" data-id="${exp.id}">
+                    <div class="expediente-header">
+                        <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
+                        ${instBadgeFor(exp)}
+                        <span class="expediente-categoria">${escapeText(exp.categoria || 'General')}</span>
+                    </div>
+                    <div class="expediente-body">
+                        <h3 class="expediente-titulo">${escapeText(exp.numero || exp.nombre)}</h3>
+                        <p class="expediente-juzgado">${escapeText(exp.juzgado)}</p>
+                        ${exp.comentario ? `<p class="expediente-comentario">${escapeText(exp.comentario)}</p>` : ''}
+                    </div>
+                    <div class="expediente-footer">
+                        <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
+                        <div class="expediente-actions">
+                            <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
+                            <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
+                            <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
+                            <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
+                        </div>
                     </div>
                 </div>
-            </div>
-        `).join('');
-
-        // Actualizar tabla (vista lista) con los mismos resultados filtrados
-        const tablaBody = document.getElementById('tabla-expedientes-body');
-        if (tablaBody) {
-            tablaBody.innerHTML = expedientes.map(exp => {
-                const instLabel = exp.institucion === 'PJF' ? '🏛️ PJF'
-                               : exp.institucion === 'OTRO' ? '📋 Varios'
-                               : '⚖️ TSJ';
-                return `
-                <tr data-id="${exp.id}">
-                    <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
-                    <td><strong>${escapeText(exp.numero || exp.nombre)}</strong></td>
-                    <td>${escapeText(exp.juzgado)}</td>
-                    <td><span class="categoria-badge">${escapeText(exp.categoria || 'General')}</span></td>
-                    <td>${instLabel}</td>
-                    <td class="comentario-cell" title="${escapeText(exp.comentario || '')}">${escapeText(exp.comentario || '-')}</td>
-                    <td>${formatearFecha(exp.fechaCreacion)}</td>
-                    <td class="acciones-cell">
-                        <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
-                        <button class="btn btn-sm btn-secondary" onclick="editarExpediente(${exp.id}, event)">✏️</button>
-                        <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
-                        <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
-                    </td>
-                </tr>
-            `;
-            }).join('');
+            `).join('');
         }
     }
 
@@ -5904,13 +5951,15 @@ async function _confirmarAbrirPJF() {
 // PJF view toggle
 function cambiarVistaExpedientesPJF(vista) {
     vistaExpedientesPJF = vista;
-    localStorage.setItem('vistaExpedientesPJF', vista);
+    try { localStorage.setItem('vistaExpedientesPJF', vista); } catch (e) {}
 
     document.querySelectorAll('.pjf-view-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.view === vista);
     });
 
     aplicarVistaExpedientesPJF();
+    // Re-renderizar el contenido para la nueva vista.
+    filtrarExpedientesPJF();
 }
 
 function aplicarVistaExpedientesPJF() {
@@ -5933,20 +5982,7 @@ async function filtrarExpedientesPJF() {
     let pjfExps = expedientes.filter(e => e.institucion === 'PJF');
 
     if (busqueda) {
-        // Obtener notas e historial para búsqueda profunda
-        const todasNotas = await obtenerNotas();
-        const todosHistorial = await obtenerTodoHistorial();
-
-        const notasPorExp = {};
-        for (const n of todasNotas) {
-            if (!notasPorExp[n.expedienteId]) notasPorExp[n.expedienteId] = [];
-            notasPorExp[n.expedienteId].push(n);
-        }
-        const historialPorExp = {};
-        for (const h of todosHistorial) {
-            if (!historialPorExp[h.expedienteId]) historialPorExp[h.expedienteId] = [];
-            historialPorExp[h.expedienteId].push(h);
-        }
+        const { notasPorExp, historialPorExp } = await obtenerIndiceBusqueda();
 
         pjfExps = pjfExps.filter(e => {
             if ((e.numero && e.numero.toLowerCase().includes(busqueda)) ||
@@ -5956,18 +5992,22 @@ async function filtrarExpedientesPJF() {
                 (e.categoria && e.categoria.toLowerCase().includes(busqueda))) {
                 return true;
             }
-            const notas = notasPorExp[e.id] || [];
-            for (const n of notas) {
-                if ((n.titulo && n.titulo.toLowerCase().includes(busqueda)) ||
-                    (n.contenido && n.contenido.toLowerCase().includes(busqueda))) {
-                    return true;
+            const notas = notasPorExp.get(e.id);
+            if (notas) {
+                for (const n of notas) {
+                    if ((n.titulo && n.titulo.toLowerCase().includes(busqueda)) ||
+                        (n.contenido && n.contenido.toLowerCase().includes(busqueda))) {
+                        return true;
+                    }
                 }
             }
-            const historial = historialPorExp[e.id] || [];
-            for (const h of historial) {
-                if ((h.descripcion && h.descripcion.toLowerCase().includes(busqueda)) ||
-                    (h.detalle && h.detalle.toLowerCase().includes(busqueda))) {
-                    return true;
+            const historial = historialPorExp.get(e.id);
+            if (historial) {
+                for (const h of historial) {
+                    if ((h.descripcion && h.descripcion.toLowerCase().includes(busqueda)) ||
+                        (h.detalle && h.detalle.toLowerCase().includes(busqueda))) {
+                        return true;
+                    }
                 }
             }
             return false;
@@ -5989,54 +6029,57 @@ async function filtrarExpedientesPJF() {
         const tablaBody = document.getElementById('tabla-expedientes-body-pjf');
         if (tablaBody) tablaBody.innerHTML = '';
     } else {
-        lista.innerHTML = pjfExps.map((exp, index) => `
-            <div class="expediente-card" data-id="${exp.id}" data-orden="${exp.orden || index}" draggable="true">
-                <div class="drag-handle" title="Arrastra para reordenar">⋮⋮</div>
-                <div class="expediente-header">
-                    <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
-                    <span class="institucion-badge pjf">🏛️ PJF</span>
-                    <span class="expediente-categoria">${escapeText(exp.categoria || 'PJF Federal')}</span>
-                </div>
-                <div class="expediente-body">
-                    <h3 class="expediente-titulo">${escapeText(exp.numero || exp.nombre)}</h3>
-                    <p class="expediente-juzgado">${escapeText(exp.juzgado)}</p>
-                    ${exp.comentario ? `<p class="expediente-comentario">${escapeText(exp.comentario)}</p>` : ''}
-                </div>
-                <div class="expediente-footer">
-                    <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
-                    <div class="expediente-actions">
-                        <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍 Buscar</button>
-                        <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
-                        <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
-                        <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
-                        <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
+        // Renderizar solo la vista activa (cards o tabla) para no duplicar trabajo.
+        if (vistaExpedientesPJF === 'table') {
+            const tablaBody = document.getElementById('tabla-expedientes-body-pjf');
+            if (tablaBody) {
+                tablaBody.innerHTML = pjfExps.map(exp => `
+                    <tr data-id="${exp.id}">
+                        <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
+                        <td><strong>${escapeText(exp.numero || exp.nombre)}</strong></td>
+                        <td>${escapeText(exp.juzgado)}</td>
+                        <td><span class="categoria-badge">${escapeText(exp.categoria || 'PJF Federal')}</span></td>
+                        <td class="comentario-cell" title="${escapeText(exp.comentario || '')}">${escapeText(exp.comentario || '-')}</td>
+                        <td>${formatearFecha(exp.fechaCreacion)}</td>
+                        <td class="acciones-cell">
+                            <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍</button>
+                            <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
+                            <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
+                            <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
+                            <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        } else {
+            lista.innerHTML = pjfExps.map((exp, index) => `
+                <div class="expediente-card" data-id="${exp.id}" data-orden="${exp.orden || index}" draggable="true">
+                    <div class="drag-handle" title="Arrastra para reordenar">⋮⋮</div>
+                    <div class="expediente-header">
+                        <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
+                        <span class="institucion-badge pjf">🏛️ PJF</span>
+                        <span class="expediente-categoria">${escapeText(exp.categoria || 'PJF Federal')}</span>
+                    </div>
+                    <div class="expediente-body">
+                        <h3 class="expediente-titulo">${escapeText(exp.numero || exp.nombre)}</h3>
+                        <p class="expediente-juzgado">${escapeText(exp.juzgado)}</p>
+                        ${exp.comentario ? `<p class="expediente-comentario">${escapeText(exp.comentario)}</p>` : ''}
+                    </div>
+                    <div class="expediente-footer">
+                        <span class="expediente-fecha">${formatearFecha(exp.fechaCreacion)}</span>
+                        <div class="expediente-actions">
+                            <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍 Buscar</button>
+                            <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
+                            <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
+                            <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
+                            <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
+                        </div>
                     </div>
                 </div>
-            </div>
-        `).join('');
-
-        const tablaBody = document.getElementById('tabla-expedientes-body-pjf');
-        if (tablaBody) {
-            tablaBody.innerHTML = pjfExps.map(exp => `
-                <tr data-id="${exp.id}">
-                    <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
-                    <td><strong>${escapeText(exp.numero || exp.nombre)}</strong></td>
-                    <td>${escapeText(exp.juzgado)}</td>
-                    <td><span class="categoria-badge">${escapeText(exp.categoria || 'PJF Federal')}</span></td>
-                    <td class="comentario-cell" title="${escapeText(exp.comentario || '')}">${escapeText(exp.comentario || '-')}</td>
-                    <td>${formatearFecha(exp.fechaCreacion)}</td>
-                    <td class="acciones-cell">
-                        <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍</button>
-                        <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>
-                        <button class="btn btn-sm btn-secondary" onclick="editarExpedientePJF(${exp.id}, event)">✏️</button>
-                        <button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>
-                        <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpedientePJF(${exp.id}, event)">🗑️</button>
-                    </td>
-                </tr>
             `).join('');
-        }
 
-        inicializarDragAndDropPJF();
+            inicializarDragAndDropPJF();
+        }
     }
 
     if (count) count.textContent = `${pjfExps.length} expediente${pjfExps.length !== 1 ? 's' : ''}`;
