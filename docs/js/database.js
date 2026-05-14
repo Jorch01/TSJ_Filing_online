@@ -90,9 +90,19 @@ async function agregarExpediente(expediente) {
         const transaction = db.transaction(['expedientes'], 'readwrite');
         const store = transaction.objectStore('expedientes');
 
-        expediente.fechaCreacion = new Date().toISOString();
-        expediente.fechaActualizacion = new Date().toISOString();
+        const ahora = new Date().toISOString();
+        expediente.fechaCreacion = ahora;
+        expediente.fechaActualizacion = ahora;
         expediente.activo = true;
+
+        // Timestamps por campo para merge granular (resuelve conflictos campo-a-campo
+        // en sincronización: si editas comentario en iPhone y juzgado en PC, no se
+        // pisan entre sí).
+        expediente._fieldTimestamps = expediente._fieldTimestamps || {};
+        for (const key of Object.keys(expediente)) {
+            if (key === '_fieldTimestamps' || key === 'id' || key === 'orden') continue;
+            expediente._fieldTimestamps[key] = ahora;
+        }
 
         const request = store.add(expediente);
 
@@ -198,13 +208,23 @@ async function actualizarExpediente(id, cambios) {
         const camposModificados = {};
         const valoresAnteriores = {};
         for (const [key, value] of Object.entries(cambios)) {
-            if (expediente[key] !== value && key !== 'fechaActualizacion' && key !== 'orden') {
+            if (expediente[key] !== value && key !== 'fechaActualizacion' && key !== 'orden' && key !== '_fieldTimestamps') {
                 valoresAnteriores[key] = expediente[key];
                 camposModificados[key] = value;
             }
         }
 
-        const actualizado = { ...expediente, ...cambios, fechaActualizacion: new Date().toISOString() };
+        const ahora = new Date().toISOString();
+        // Actualizar timestamps por campo solo para los campos que cambiaron.
+        // Esto permite que la sync por campo gane el conflicto correcto: si el
+        // usuario solo cambió el comentario, otro dispositivo que cambió juzgado
+        // después no pisará el comentario.
+        const fieldTimestamps = { ...(expediente._fieldTimestamps || {}) };
+        for (const key of Object.keys(camposModificados)) {
+            fieldTimestamps[key] = ahora;
+        }
+
+        const actualizado = { ...expediente, ...cambios, fechaActualizacion: ahora, _fieldTimestamps: fieldTimestamps };
 
         const transaction = db.transaction(['expedientes'], 'readwrite');
         const store = transaction.objectStore('expedientes');
