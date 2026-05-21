@@ -2868,28 +2868,42 @@ async function enviarRecordatorioEvento(evento, diasRestantes, serviceId, public
     emailjs.init(publicKey);
 
     const diasTexto = diasRestantes === 1 ? '1 día' : `${diasRestantes} días`;
-    const fechaEvento = new Date(evento.fechaInicio || evento.fecha).toLocaleDateString('es-MX', {
+    const fechaObj = new Date(evento.fechaInicio || evento.fecha);
+    const fechaEvento = fechaObj.toLocaleDateString('es-MX', {
         weekday: 'long',
         year: 'numeric',
         month: 'long',
         day: 'numeric'
     });
 
+    // Hora solo si el evento NO es de todo el día. La hora viene en fechaInicio,
+    // que es un ISO con tz local. Para IA-generated, parsearHoraIA ya validó.
+    let horaTexto = '';
+    if (!evento.todoElDia && !isNaN(fechaObj.getTime())) {
+        const horas = String(fechaObj.getHours()).padStart(2, '0');
+        const minutos = String(fechaObj.getMinutes()).padStart(2, '0');
+        horaTexto = `${horas}:${minutos}`;
+    }
+
+    const lineasMensaje = [
+        'RECORDATORIO DE EVENTO',
+        '',
+        `Evento: ${evento.titulo}`,
+        `Fecha: ${fechaEvento}`
+    ];
+    if (horaTexto) lineasMensaje.push(`Hora: ${horaTexto}`);
+    lineasMensaje.push(`Faltan: ${diasTexto}`);
+    lineasMensaje.push('');
+    if (evento.descripcion) lineasMensaje.push(evento.descripcion);
+    lineasMensaje.push('');
+    lineasMensaje.push('---');
+    lineasMensaje.push('TSJ Filing Online');
+
+    const asuntoHora = horaTexto ? ` ${horaTexto}` : '';
     const templateParams = {
         to_email: emailDestino,
-        subject: `📅 Recordatorio: ${evento.titulo} en ${diasTexto}`,
-        message: `
-RECORDATORIO DE EVENTO
-
-Evento: ${evento.titulo}
-Fecha: ${fechaEvento}
-Faltan: ${diasTexto}
-
-${evento.descripcion || ''}
-
----
-TSJ Filing Online
-        `.trim(),
+        subject: `📅 Recordatorio: ${evento.titulo}${asuntoHora} en ${diasTexto}`,
+        message: lineasMensaje.join('\n').trim(),
         from_name: 'TSJ Filing Online'
     };
 

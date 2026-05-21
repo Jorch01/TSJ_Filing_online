@@ -5,8 +5,67 @@
 // ==================== ESTADO ====================
 let syncState = {
     lastSync: null,
-    syncInProgress: false
+    syncInProgress: false,
+    // Versión (hash SHA-256) del blob remoto en la última descarga. Se envía en
+    // la subida para que el servidor detecte si otro dispositivo escribió en
+    // medio y nos responda con conflict en vez de sobrescribir.
+    remoteVersion: null
 };
+
+// ==================== LOCK MULTI-PESTAÑA ====================
+// localStorage es compartido entre pestañas del mismo origen. Una pestaña
+// que va a sincronizar pone un token con timestamp; las demás lo respetan
+// si es reciente. Evita que dos pestañas suban a la vez y se pisen el
+// resultado del merge.
+const SYNC_TAB_LOCK_KEY = 'sync_tab_lock';
+const SYNC_TAB_LOCK_TTL_MS = 90 * 1000; // 90s: más que cualquier sync típica
+const SYNC_TAB_ID = (() => {
+    try {
+        const k = 'sync_tab_id';
+        let id = sessionStorage.getItem(k);
+        if (!id) {
+            id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+            sessionStorage.setItem(k, id);
+        }
+        return id;
+    } catch (e) {
+        return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    }
+})();
+
+function adquirirLockSync() {
+    try {
+        const raw = localStorage.getItem(SYNC_TAB_LOCK_KEY);
+        if (raw) {
+            const lock = JSON.parse(raw);
+            if (lock && lock.tabId !== SYNC_TAB_ID && (Date.now() - (lock.ts || 0)) < SYNC_TAB_LOCK_TTL_MS) {
+                return false;
+            }
+        }
+        localStorage.setItem(SYNC_TAB_LOCK_KEY, JSON.stringify({ tabId: SYNC_TAB_ID, ts: Date.now() }));
+        return true;
+    } catch (e) {
+        return true; // si localStorage falla, no bloquear
+    }
+}
+
+function liberarLockSync() {
+    try {
+        const raw = localStorage.getItem(SYNC_TAB_LOCK_KEY);
+        if (raw) {
+            const lock = JSON.parse(raw);
+            if (lock && lock.tabId === SYNC_TAB_ID) {
+                localStorage.removeItem(SYNC_TAB_LOCK_KEY);
+            }
+        }
+    } catch (e) {}
+}
+
+// Si la pestaña se cierra durante un sync, liberar el lock para no bloquear
+// a las demás durante 90s.
+window.addEventListener('beforeunload', () => {
+    if (syncState.syncInProgress) liberarLockSync();
+});
 
 // ==================== TRACKING DE CAMBIOS PENDIENTES ====================
 // Marca que hay cambios locales pendientes de subir al servidor. Sirve para
@@ -130,6 +189,93 @@ async function descifrarDatos(datosCifradosBase64, codigoPremium) {
 }
 
 // ==================== SINCRONIZACIÓN ====================
+// Ejecuta UN intento de ciclo descargar → fusionar → aplicar → subir.
+// Si el servidor responde conflict (otro dispositivo escribió mientras tanto),
+// la función externa sincronizarDatos llama de nuevo a este intento.
+async function _intentoSincronizar() {
+    // 1. Obtener datos remotos (si existen) y su versión
+    let datosRemotos = null;
+    let versionRemota = null;
+    try {
+        const respuestaRemota = await descargarDatosRemotos();
+        if (respuestaRemota) {
+            versionRemota = respuestaRemota.version || null;
+            if (respuestaRemota.datos) {
+                datosRemotos = await descifrarDatos(respuestaRemota.datos, estadoPremium.codigo);
+            }
+        }
+    } catch (e) {
+        console.log('No hay datos remotos o error:', e.message);
+    }
+    syncState.remoteVersion = versionRemota;
+
+    // 2. Obtener datos locales
+    const datosLocales = await obtenerTodosLosDatos();
+    datosLocales.metadata = {
+        ultimaModificacion: Date.now(),
+        dispositivo: obtenerDeviceId(),
+        version: '2.0'
+    };
+
+    // 3. Aplicar eliminaciones remotas primero (si hay datos remotos)
+    let eliminadosAplicados = 0;
+    if (datosRemotos && datosRemotos.eliminados && datosRemotos.eliminados.length > 0) {
+        eliminadosAplicados = await aplicarEliminacionesRemotas(datosRemotos.eliminados);
+        if (eliminadosAplicados > 0) {
+            console.log(`Se eliminaron ${eliminadosAplicados} expediente(s) por sincronización remota`);
+        }
+    }
+
+    // 4. Obtener datos locales actualizados (después de aplicar eliminaciones)
+    const datosLocalesActualizados = await obtenerTodosLosDatos();
+    datosLocalesActualizados.metadata = datosLocales.metadata;
+
+    // 5. Fusionar datos
+    let datosFinales;
+    let huboDuplicados = false;
+    if (datosRemotos && datosRemotos.metadata) {
+        datosFinales = fusionarDatos(datosLocalesActualizados, datosRemotos);
+        await aplicarDatosLocalmente(datosFinales);
+
+        huboDuplicados = reporteFusionDuplicados.expedientesFusionados.length > 0;
+    } else {
+        datosFinales = datosLocalesActualizados;
+    }
+
+    // 6. Decidir si hay algo nuevo que subir.
+    // Comparamos el CONTENIDO CLARO (no el cifrado): el cifrado usa IV aleatorio
+    // y el hash del blob cambia en cada cifrado aunque los datos sean idénticos.
+    // Si el cleartext fusionado es igual al remoto que descargamos, no hace
+    // falta volver a subir — solo gastaríamos cuota de Apps Script.
+    const huellaLocal = huellaContenido(datosFinales);
+    const huellaRemota = datosRemotos ? huellaContenido(datosRemotos) : null;
+
+    let subido = false;
+    let conflictoServidor = false;
+
+    if (huellaLocal !== huellaRemota) {
+        const datosCifrados = await cifrarDatos(datosFinales, estadoPremium.codigo);
+        const respSubida = await subirDatosRemotos(datosCifrados, versionRemota);
+        if (respSubida && respSubida.conflict) {
+            conflictoServidor = true;
+        } else if (respSubida && respSubida.success) {
+            subido = true;
+            if (respSubida.version) {
+                syncState.remoteVersion = respSubida.version;
+            }
+        }
+    }
+    // Si huellaLocal === huellaRemota: ya está alineado, no subimos nada.
+
+    return {
+        conflictoServidor,
+        subido,
+        eliminadosAplicados,
+        huboDuplicados,
+        habiaDatosRemotos: !!(datosRemotos && datosRemotos.metadata)
+    };
+}
+
 async function sincronizarDatos() {
     // Verificar premium
     if (!estadoPremium.activo || !estadoPremium.codigo) {
@@ -142,67 +288,40 @@ async function sincronizarDatos() {
         return;
     }
 
+    if (!adquirirLockSync()) {
+        console.log('Otra pestaña está sincronizando, omitiendo en esta');
+        return;
+    }
+
     syncState.syncInProgress = true;
     actualizarUISync('syncing');
 
     try {
-        // 1. Obtener datos remotos (si existen)
-        let datosRemotos = null;
-        try {
-            const remotos = await descargarDatosRemotos();
-            if (remotos) {
-                datosRemotos = await descifrarDatos(remotos, estadoPremium.codigo);
-            }
-        } catch (e) {
-            console.log('No hay datos remotos o error:', e.message);
+        // Hasta 3 ciclos en caso de conflict (otro dispositivo escribió mientras
+        // estábamos fusionando). Cada reintento re-descarga y vuelve a fusionar.
+        let resultado = null;
+        for (let intento = 0; intento < 3; intento++) {
+            resultado = await _intentoSincronizar();
+            if (!resultado.conflictoServidor) break;
+            console.log('Conflict de sync, reintentando con datos frescos…');
+            await new Promise(r => setTimeout(r, 500));
         }
 
-        // 2. Obtener datos locales
-        const datosLocales = await obtenerTodosLosDatos();
-        datosLocales.metadata = {
-            ultimaModificacion: Date.now(),
-            dispositivo: obtenerDeviceId(),
-            version: '2.0'
-        };
-
-        // 3. Aplicar eliminaciones remotas primero (si hay datos remotos)
-        let eliminadosAplicados = 0;
-        if (datosRemotos && datosRemotos.eliminados && datosRemotos.eliminados.length > 0) {
-            eliminadosAplicados = await aplicarEliminacionesRemotas(datosRemotos.eliminados);
-            if (eliminadosAplicados > 0) {
-                console.log(`Se eliminaron ${eliminadosAplicados} expediente(s) por sincronización remota`);
-            }
+        if (resultado && resultado.conflictoServidor) {
+            // Tras 3 intentos seguimos en conflict — el servidor está cambiando
+            // muy rápido. Dejamos el flag pendiente para el próximo trigger.
+            throw new Error('Conflictos repetidos con otro dispositivo. Se reintentará.');
         }
 
-        // 4. Obtener datos locales actualizados (después de aplicar eliminaciones)
-        const datosLocalesActualizados = await obtenerTodosLosDatos();
-        datosLocalesActualizados.metadata = datosLocales.metadata;
-
-        // 5. Fusionar datos
-        let datosFinales;
-        let huboDuplicados = false;
-        if (datosRemotos && datosRemotos.metadata) {
-            datosFinales = fusionarDatos(datosLocalesActualizados, datosRemotos);
-            // Aplicar datos fusionados localmente
-            await aplicarDatosLocalmente(datosFinales);
-
-            // Verificar si hubo duplicados fusionados
-            huboDuplicados = reporteFusionDuplicados.expedientesFusionados.length > 0;
-
-            if (eliminadosAplicados > 0) {
-                mostrarToast(`Sincronización completada. ${eliminadosAplicados} expediente(s) eliminado(s)`, 'success');
-            } else if (huboDuplicados) {
+        if (resultado && resultado.habiaDatosRemotos) {
+            if (resultado.eliminadosAplicados > 0) {
+                mostrarToast(`Sincronización completada. ${resultado.eliminadosAplicados} expediente(s) eliminado(s)`, 'success');
+            } else if (resultado.huboDuplicados) {
                 mostrarToast('Sincronización completada con fusión de duplicados', 'success');
-            } else {
-                mostrarToast('Datos sincronizados desde otro dispositivo', 'success');
+            } else if (resultado.subido) {
+                mostrarToast('Datos sincronizados', 'success');
             }
-        } else {
-            datosFinales = datosLocalesActualizados;
         }
-
-        // 4. Subir datos cifrados
-        const datosCifrados = await cifrarDatos(datosFinales, estadoPremium.codigo);
-        await subirDatosRemotos(datosCifrados);
 
         syncState.lastSync = Date.now();
         localStorage.setItem('sync_last_sync', syncState.lastSync.toString());
@@ -216,6 +335,31 @@ async function sincronizarDatos() {
         mostrarToast('Error: ' + error.message, 'error');
     } finally {
         syncState.syncInProgress = false;
+        liberarLockSync();
+    }
+}
+
+// Huella estable del contenido de sincronización, omitiendo metadata volátil
+// (timestamp de la ejecución actual, dispositivo). Sirve para detectar si los
+// datos a subir son realmente nuevos vs lo que acabamos de descargar — el
+// cifrado AES-GCM usa IV aleatorio por lo que comparar el blob cifrado no
+// sirve. JSON.stringify es estable mientras las claves vengan en el mismo orden;
+// como datosFinales y datosRemotos vienen del mismo fusionador / sheet, su
+// orden de keys coincide.
+function huellaContenido(datos) {
+    if (!datos) return '';
+    const copia = {
+        expedientes: datos.expedientes || [],
+        notas: datos.notas || [],
+        eventos: datos.eventos || [],
+        eliminados: datos.eliminados || [],
+        historial: datos.historial || [],
+        sigaGuardadas: datos.sigaGuardadas || []
+    };
+    try {
+        return JSON.stringify(copia);
+    } catch (e) {
+        return Math.random().toString(); // forzar upload si no se puede serializar
     }
 }
 
@@ -290,7 +434,11 @@ async function descargarDatosRemotos() {
         }
 
         if (resultado.success && resultado.datos) {
-            return resultado.datos;
+            return { datos: resultado.datos, version: resultado.version || null };
+        }
+        if (resultado.success) {
+            // Cuenta válida pero sin datos remotos todavía.
+            return { datos: null, version: resultado.version || '' };
         }
         return null;
     } catch (error) {
@@ -305,20 +453,28 @@ async function descargarDatosRemotos() {
 //   2) Que Apps Script rechace/timeoutee el POST y devuelva HTML sin CORS.
 // text/plain es "simple request" (no dispara preflight) y el doPost del Apps Script
 // ya soporta leer JSON desde e.postData.contents.
-async function subirDatosRemotos(datosCifrados) {
+// version_expected es el hash que vimos en la última descarga. El servidor
+// rechaza la subida con conflict si su cell tiene un hash distinto (alguien
+// más escribió en medio).
+async function subirDatosRemotos(datosCifrados, versionExpected) {
     const url = PREMIUM_CONFIG.apiUrl;
 
     try {
+        const body = {
+            action: 'guardar_sync',
+            codigo: estadoPremium.codigo,
+            datos: datosCifrados
+        };
+        if (versionExpected !== undefined && versionExpected !== null) {
+            body.version_expected = versionExpected;
+        }
+
         const response = await fetchConReintentos(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'text/plain;charset=utf-8'
             },
-            body: JSON.stringify({
-                action: 'guardar_sync',
-                codigo: estadoPremium.codigo,
-                datos: datosCifrados
-            }),
+            body: JSON.stringify(body),
             timeout: 120000 // 2 minutos para datos grandes
         });
 
@@ -330,6 +486,11 @@ async function subirDatosRemotos(datosCifrados) {
         } catch (e) {
             console.error('Respuesta no es JSON:', texto);
             throw new Error('Respuesta inválida del servidor');
+        }
+
+        // Conflict no es un error fatal: el caller lo maneja re-fusionando.
+        if (resultado.conflict) {
+            return { success: false, conflict: true, version: resultado.version || null };
         }
 
         if (!resultado.success) {
