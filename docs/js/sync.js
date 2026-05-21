@@ -114,6 +114,47 @@ async function marcarYSincronizar() {
     }
 }
 
+// ==================== COMPRESIÓN GZIP (reduce el blob 60-70%) ====================
+// Comprime antes de cifrar y descomprime después de descifrar.
+// Esto evita que el blob supere el límite de 50 000 chars de la celda de Google Sheets
+// incluso cuando los expedientes contienen _fieldTimestamps u otros campos extra.
+// API disponible en Chrome 80+, Firefox 113+, Safari 16.4+.
+// Si no está disponible, se cae silenciosamente a sin compresión.
+async function _gzipEncode(str) {
+    if (typeof CompressionStream === 'undefined') return null;
+    try {
+        const bytes = new TextEncoder().encode(str);
+        const cs = new CompressionStream('gzip');
+        const writer = cs.writable.getWriter();
+        writer.write(bytes);
+        writer.close();
+        const buf = await new Response(cs.readable).arrayBuffer();
+        return new Uint8Array(buf);
+    } catch (e) {
+        return null;
+    }
+}
+
+async function _gzipDecode(bytes) {
+    const ds = new DecompressionStream('gzip');
+    const writer = ds.writable.getWriter();
+    writer.write(bytes);
+    writer.close();
+    const buf = await new Response(ds.readable).arrayBuffer();
+    return new TextDecoder().decode(buf);
+}
+
+// Convierte Uint8Array → base64 en chunks para no reventar el call stack
+// con el operador spread en arrays grandes (>100k bytes).
+function _uint8ToBase64(bytes) {
+    let binary = '';
+    const chunk = 8192;
+    for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+    }
+    return btoa(binary);
+}
+
 // ==================== CIFRADO AES-256-GCM ====================
 async function generarClaveDesdePassword(password, salt) {
     const encoder = new TextEncoder();
@@ -145,8 +186,11 @@ async function cifrarDatos(datos, codigoPremium) {
         const clave = await generarClaveDesdePassword(codigoPremium, salt);
 
         const iv = crypto.getRandomValues(new Uint8Array(12));
-        const encoder = new TextEncoder();
-        const datosBytes = encoder.encode(JSON.stringify(datos));
+        const json = JSON.stringify(datos);
+
+        // Comprimir antes de cifrar. Si el browser no soporta la API, se usa UTF-8 directo.
+        const compressed = await _gzipEncode(json);
+        const datosBytes = compressed || new TextEncoder().encode(json);
 
         const datosCifrados = await crypto.subtle.encrypt(
             { name: 'AES-GCM', iv: iv },
@@ -158,7 +202,7 @@ async function cifrarDatos(datos, codigoPremium) {
         resultado.set(iv);
         resultado.set(new Uint8Array(datosCifrados), iv.length);
 
-        return btoa(String.fromCharCode(...resultado));
+        return _uint8ToBase64(resultado);
     } catch (error) {
         console.error('Error al cifrar:', error);
         throw new Error('Error al cifrar datos');
@@ -180,8 +224,17 @@ async function descifrarDatos(datosCifradosBase64, codigoPremium) {
             datosCifrados
         );
 
-        const decoder = new TextDecoder();
-        return JSON.parse(decoder.decode(datosDescifrados));
+        const bytes = new Uint8Array(datosDescifrados);
+
+        // Intentar descomprimir (formato nuevo). Si falla, el blob es texto JSON
+        // plano (formato antiguo) — decodificar como UTF-8 directo.
+        let json;
+        try {
+            json = await _gzipDecode(bytes);
+        } catch (e) {
+            json = new TextDecoder().decode(bytes);
+        }
+        return JSON.parse(json);
     } catch (error) {
         console.error('Error al descifrar:', error);
         throw new Error('Error al descifrar. ¿Código incorrecto?');
