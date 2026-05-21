@@ -1011,6 +1011,7 @@ function renderTarjetaExpedienteHTML(exp, opciones = {}) {
             actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍 Buscar</button>`;
         }
         actionsHTML += `<button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>`;
+        actionsHTML += `<button class="btn btn-sm btn-info" onclick="verTimelineExpediente(${exp.id}, event)" title="Ver timeline">📅</button>`;
         actionsHTML += `<button class="btn btn-sm btn-secondary" onclick="${editarFn}(${exp.id}, event)">✏️</button>`;
         actionsHTML += `<button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>`;
         actionsHTML += `<button class="btn btn-sm btn-danger" onclick="${eliminarFn}(${exp.id}, event)">🗑️</button>`;
@@ -1058,6 +1059,7 @@ function renderFilaExpedienteHTML(exp, opciones = {}) {
         actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍</button>`;
     }
     actionsHTML += `<button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>`;
+    actionsHTML += `<button class="btn btn-sm btn-info" onclick="verTimelineExpediente(${exp.id}, event)" title="Timeline">📅</button>`;
     actionsHTML += `<button class="btn btn-sm btn-secondary" onclick="${editarFn}(${exp.id}, event)">✏️</button>`;
     actionsHTML += `<button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>`;
     actionsHTML += `<button class="btn btn-sm btn-danger" onclick="${eliminarFn}(${exp.id}, event)">🗑️</button>`;
@@ -2236,10 +2238,14 @@ async function guardarEvento(event) {
         await cargarEventos();
         await cargarEstadisticas();
         renderizarCalendario();
-        // Propagar el cambio a otros dispositivos. Antes los eventos creados/
-        // editados manualmente desde el calendario no se sincronizaban hasta
-        // que el usuario pulsara "Sincronizar ahora".
+        // Propagar el cambio a otros dispositivos.
         if (typeof marcarYSincronizar === 'function') await marcarYSincronizar();
+        // Sincronizar con Google Calendar si está configurado (no bloquea si falla)
+        if (typeof GCAL !== 'undefined' && GCAL.estaConectado()) {
+            const eventosActuales = await obtenerEventos();
+            const eventoGuardado = eventosActuales.find(e => e.titulo === evento.titulo && e.fechaInicio === evento.fechaInicio);
+            if (eventoGuardado) GCAL.hookGuardarEvento(eventoGuardado);
+        }
     } catch (error) {
         mostrarToast('Error: ' + error.message, 'error');
     }
@@ -2290,16 +2296,19 @@ async function editarEvento(id) {
             }
         }
 
-        // Botón "Ver expediente" cuando el evento está vinculado a uno real.
-        // Permite saltar desde el calendario al detalle del expediente sin
-        // tener que navegar manualmente.
         const verExpBtn = evento.expedienteId
             ? `<button class="btn btn-info" onclick="verExpedienteDesdeEvento(${evento.expedienteId})" title="Abrir el expediente relacionado">📂 Ver expediente</button>`
+            : '';
+
+        const gcalUrl = (typeof GCAL !== 'undefined') ? GCAL.urlAgregarGCal(evento) : null;
+        const gcalBtn = gcalUrl
+            ? `<a class="btn btn-secondary" href="${gcalUrl}" target="_blank" rel="noopener" title="Agregar a Google Calendar">📅 GCal</a>`
             : '';
 
         document.getElementById('modal-footer').innerHTML = `
             <button class="btn btn-danger" onclick="confirmarEliminarEvento(${id})">🗑️ Eliminar</button>
             ${verExpBtn}
+            ${gcalBtn}
             <button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>
             <button class="btn btn-primary" onclick="document.getElementById('evento-form').requestSubmit()">💾 Guardar</button>
         `;

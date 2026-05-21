@@ -1911,6 +1911,14 @@
                         <button class="btn btn-secondary" onclick="document.getElementById('import-file').click()">Importar</button>
                         <input type="file" id="import-file" accept=".json" style="display:none" onchange="importarDatos(event)">
                     </div>
+                    <div class="data-card">
+                        <div class="data-icon">📅</div>
+                        <div class="data-info">
+                            <h4>Google Calendar</h4>
+                            <p>Exportar eventos o activar sincronización automática</p>
+                        </div>
+                        <button class="btn btn-secondary" onclick="GCAL.mostrarConfigGCal()">Configurar</button>
+                    </div>
                 </div>
 
                 <div class="config-item" style="margin-top: 1rem;">
@@ -2453,5 +2461,8 @@
     <script src="js/impi-search.js"></script>
     <script src="js/app.js"></script>
     <script src="js/sync.js"></script>
+    <script src="js/timeline.js"></script>
+    <script src="js/gcal-sync.js"></script>
+    <script src="js/command-palette.js"></script>
 </body>
 </html>
