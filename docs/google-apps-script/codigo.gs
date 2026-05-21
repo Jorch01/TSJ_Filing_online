@@ -612,19 +612,27 @@ function transferirLicencia(params) {
 
 // ==================== SINCRONIZACIÓN DE DATOS ====================
 
-// Hash SHA-256 hex de un string (usado como "version" del blob de sync para
-// detectar conflictos cuando dos dispositivos editan a la vez).
+// Hash ligero del blob de sync para detectar conflictos entre dispositivos.
+// Usamos MD5 (disponible en todas las versiones de Apps Script) en vez de
+// SHA-256 para evitar problemas con el parámetro Charset que en algunos
+// entornos de Apps Script lanza excepción. MD5 es suficiente para detectar
+// si el cell cambió — no es criptográfico aquí, solo comparativo.
 function computeSyncHash(str) {
-  if (!str) return '';
-  const s = String(str);
-  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, s, Utilities.Charset.UTF_8);
-  let hex = '';
-  for (let i = 0; i < bytes.length; i++) {
-    const b = bytes[i] < 0 ? bytes[i] + 256 : bytes[i];
-    const h = b.toString(16);
-    hex += h.length === 1 ? '0' + h : h;
+  try {
+    if (!str) return '';
+    const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, String(str));
+    let hex = '';
+    for (let i = 0; i < bytes.length; i++) {
+      const b = bytes[i] < 0 ? bytes[i] + 256 : bytes[i];
+      const h = b.toString(16);
+      hex += h.length === 1 ? '0' + h : h;
+    }
+    return hex;
+  } catch (e) {
+    // Si computeDigest falla, usar longitud+prefijo como fallback mínimo.
+    const s = String(str);
+    return s.length + '_' + s.substring(0, 20).replace(/[^a-zA-Z0-9]/g, '');
   }
-  return hex;
 }
 
 function obtenerDatosSync(params) {
@@ -667,10 +675,9 @@ function obtenerDatosSync(params) {
 function guardarDatosSync(params) {
   const codigo = params.codigo;
   const datos = params.datos;
-  // Hash que el cliente recibió en su última descarga. Si no coincide con el
-  // hash del cell ahora, otro dispositivo escribió en medio y este upload
-  // pisaría datos. En ese caso devolvemos conflict para que el cliente
-  // re-descargue, re-fusione y reintente.
+  // Hash que el cliente recibió en su última descarga. Si difiere del hash
+  // actual del cell, otro dispositivo escribió en medio y devolvemos conflict
+  // para que el cliente re-descargue, re-fusione y reintente.
   const versionExpected = params.version_expected;
   const forzar = params.forzar === true || params.forzar === 'true';
 
@@ -682,63 +689,50 @@ function guardarDatosSync(params) {
     return { success: false, mensaje: 'Datos requeridos' };
   }
 
-  // Serializar accesos concurrentes para que dos POST simultáneos no
-  // sobrescriban uno al otro entre el read y el write.
-  const lock = LockService.getScriptLock();
-  try {
-    lock.waitLock(15000);
-  } catch (e) {
-    return { success: false, mensaje: 'Servidor ocupado, reintenta', conflict: true };
-  }
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
 
-  try {
-    const sheet = getSheet();
-    const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][COL.CODIGO] === codigo) {
+      const row = data[i];
+      const infoFecha = obtenerFechaExpiracion(row);
 
-    for (let i = 1; i < data.length; i++) {
-      if (data[i][COL.CODIGO] === codigo) {
-        const row = data[i];
-        const infoFecha = obtenerFechaExpiracion(row);
+      if (!esEstadoActivo(row[COL.ESTADO])) {
+        return { success: false, mensaje: 'Licencia inactiva' };
+      }
 
-        if (!esEstadoActivo(row[COL.ESTADO])) {
-          return { success: false, mensaje: 'Licencia inactiva' };
-        }
+      if (licenciaExpirada(infoFecha)) {
+        return { success: false, mensaje: 'Licencia expirada' };
+      }
 
-        if (licenciaExpirada(infoFecha)) {
-          return { success: false, mensaje: 'Licencia expirada' };
-        }
+      const rowNum = i + 1;
 
-        // Releer el cell DENTRO del lock para no comparar contra una lectura vieja.
-        const rowNum = i + 1;
+      // Verificar versión solo cuando el cliente la envió explícitamente.
+      if (!forzar && versionExpected !== undefined && versionExpected !== null && versionExpected !== '') {
         const datosActuales = sheet.getRange(rowNum, COL.DATOS_SYNC + 1).getValue() || '';
         const versionActual = computeSyncHash(String(datosActuales));
-
-        if (!forzar && versionExpected !== undefined && versionExpected !== null) {
-          if (String(versionExpected) !== versionActual) {
-            return {
-              success: false,
-              conflict: true,
-              mensaje: 'Otro dispositivo actualizó los datos. Re-sincroniza.',
-              version: versionActual
-            };
-          }
+        if (String(versionExpected) !== versionActual) {
+          return {
+            success: false,
+            conflict: true,
+            mensaje: 'Otro dispositivo actualizó los datos. Re-sincroniza.',
+            version: versionActual
+          };
         }
-
-        sheet.getRange(rowNum, COL.DATOS_SYNC + 1).setValue(datos);
-        sheet.getRange(rowNum, COL.ULTIMO_ACCESO + 1).setValue(new Date());
-
-        return {
-          success: true,
-          mensaje: 'Datos sincronizados correctamente',
-          version: computeSyncHash(datos)
-        };
       }
-    }
 
-    return { success: false, mensaje: 'Código no encontrado' };
-  } finally {
-    try { lock.releaseLock(); } catch (e) {}
+      sheet.getRange(rowNum, COL.DATOS_SYNC + 1).setValue(datos);
+      sheet.getRange(rowNum, COL.ULTIMO_ACCESO + 1).setValue(new Date());
+
+      return {
+        success: true,
+        mensaje: 'Datos sincronizados correctamente',
+        version: computeSyncHash(String(datos))
+      };
+    }
   }
+
+  return { success: false, mensaje: 'Código no encontrado' };
 }
 
 // ==================== FUNCIONES DE ADMINISTRACIÓN ====================
