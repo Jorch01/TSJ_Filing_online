@@ -797,3 +797,26 @@ function inicializarTodosLosCodigos() {
   Logger.log(`Inicialización completada: ${inicializados} licencias actualizadas`);
   return { success: true, inicializados: inicializados };
 }
+
+/**
+ * Limpia la celda de sincronización de un código.
+ * Usar cuando el blob guardado está corrupto (p.ej. si testDoPost lo sobreescribió
+ * con datos de prueba). Después de ejecutar, el dispositivo principal debe
+ * sincronizar para volver a subir los datos cifrados correctos.
+ *
+ * Cambia CODIGO_A_LIMPIAR por el código premium que quieres resetear.
+ */
+function limpiarCeldaSync() {
+  const CODIGO_A_LIMPIAR = 'PONER_CODIGO_AQUI'; // <-- cambia esto
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][COL.CODIGO]).trim() === CODIGO_A_LIMPIAR) {
+      sheet.getRange(i + 1, COL.DATOS_SYNC + 1).setValue('');
+      Logger.log('Celda de sync limpiada para: ' + CODIGO_A_LIMPIAR);
+      return 'OK - celda limpiada para ' + CODIGO_A_LIMPIAR;
+    }
+  }
+  Logger.log('Código no encontrado: ' + CODIGO_A_LIMPIAR);
+  return 'Código no encontrado';
+}
