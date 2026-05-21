@@ -278,28 +278,36 @@ async function registrarEliminacion(tipo, registro) {
         const transaction = db.transaction(['eliminados'], 'readwrite');
         const store = transaction.objectStore('eliminados');
 
-        // Generar clave única basada en contenido (no ID, porque cambia entre dispositivos)
+        // Generar clave única basada en contenido (no ID, porque cambia entre dispositivos).
+        // Para notas/eventos normalizamos (lowercase + trim) para que coincida con
+        // la clave usada por las funciones de fusión en sync.js.
         let clave;
+        let datos = {};
         if (tipo === 'expediente') {
             const numero = (registro.numero || '').trim().toLowerCase();
             const nombre = (registro.nombre || '').trim().toLowerCase();
             const juzgado = (registro.juzgado || '').trim().toLowerCase();
             clave = `exp|${numero}|${nombre}|${juzgado}`;
+            datos = { numero: registro.numero, nombre: registro.nombre, juzgado: registro.juzgado };
         } else if (tipo === 'nota') {
-            clave = `nota|${registro.expedienteId}|${(registro.contenido || '').substring(0, 50)}`;
+            const contenido = (registro.contenido || '').substring(0, 100).trim().toLowerCase();
+            const expedienteId = registro.expedienteId || 'sin-exp';
+            const fecha = (registro.fechaCreacion || '').substring(0, 10);
+            clave = `nota|${expedienteId}|${contenido}|${fecha}`;
+            datos = { expedienteId: registro.expedienteId, titulo: registro.titulo };
         } else if (tipo === 'evento') {
-            clave = `evento|${registro.expedienteId}|${registro.titulo}|${registro.fecha || registro.fechaInicio}`;
+            const titulo = (registro.titulo || '').trim().toLowerCase();
+            const fechaInicio = (registro.fechaInicio || registro.fecha || '');
+            const expedienteId = registro.expedienteId || 'sin-exp';
+            clave = `evento|${titulo}|${fechaInicio}|${expedienteId}`;
+            datos = { titulo: registro.titulo, fechaInicio: registro.fechaInicio, expedienteId: registro.expedienteId };
         }
 
         const eliminado = {
             clave,
             tipo,
             fecha: new Date().toISOString(),
-            datos: {
-                numero: registro.numero,
-                nombre: registro.nombre,
-                juzgado: registro.juzgado
-            }
+            datos
         };
 
         const request = store.put(eliminado);
@@ -335,40 +343,85 @@ async function agregarEliminados(eliminados) {
     });
 }
 
-// Aplicar eliminaciones remotas: eliminar expedientes que están en la lista de eliminados
+// Aplicar eliminaciones remotas: eliminar expedientes, notas y eventos que están
+// en la lista de eliminados remotos. Las claves deben coincidir con las generadas
+// por registrarEliminacion() / claveNota() / claveEvento() / claveEliminacionExpediente().
 async function aplicarEliminacionesRemotas(eliminadosRemotos) {
     if (!eliminadosRemotos || eliminadosRemotos.length === 0) return 0;
 
-    const expedientes = await obtenerExpedientes();
     let eliminadosCount = 0;
 
-    // Crear set de claves eliminadas
-    const clavesEliminadas = new Set(
-        eliminadosRemotos
-            .filter(e => e.tipo === 'expediente')
-            .map(e => e.clave)
-    );
+    const clavesExpediente = new Set(eliminadosRemotos.filter(e => e.tipo === 'expediente').map(e => e.clave));
+    const clavesNota = new Set(eliminadosRemotos.filter(e => e.tipo === 'nota').map(e => e.clave));
+    const clavesEvento = new Set(eliminadosRemotos.filter(e => e.tipo === 'evento').map(e => e.clave));
 
-    for (const exp of expedientes) {
-        const numero = (exp.numero || '').trim().toLowerCase();
-        const nombre = (exp.nombre || '').trim().toLowerCase();
-        const juzgado = (exp.juzgado || '').trim().toLowerCase();
-        const clave = `exp|${numero}|${nombre}|${juzgado}`;
+    // Expedientes
+    if (clavesExpediente.size > 0) {
+        const expedientes = await obtenerExpedientes();
+        for (const exp of expedientes) {
+            const numero = (exp.numero || '').trim().toLowerCase();
+            const nombre = (exp.nombre || '').trim().toLowerCase();
+            const juzgado = (exp.juzgado || '').trim().toLowerCase();
+            const clave = `exp|${numero}|${nombre}|${juzgado}`;
 
-        if (clavesEliminadas.has(clave)) {
-            // Eliminar sin registrar (ya está registrado remotamente)
-            await new Promise((resolve, reject) => {
-                const transaction = db.transaction(['expedientes'], 'readwrite');
-                const store = transaction.objectStore('expedientes');
-                const request = store.delete(exp.id);
-                request.onsuccess = () => resolve();
-                request.onerror = () => reject(request.error);
-            });
-            eliminadosCount++;
+            if (clavesExpediente.has(clave)) {
+                await new Promise((resolve, reject) => {
+                    const transaction = db.transaction(['expedientes'], 'readwrite');
+                    const store = transaction.objectStore('expedientes');
+                    const request = store.delete(exp.id);
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
+                eliminadosCount++;
+            }
         }
     }
 
-    // Guardar los eliminados remotos localmente
+    // Notas
+    if (clavesNota.size > 0) {
+        const notas = await obtenerNotas();
+        for (const nota of notas) {
+            const contenido = (nota.contenido || '').substring(0, 100).trim().toLowerCase();
+            const expedienteId = nota.expedienteId || 'sin-exp';
+            const fecha = (nota.fechaCreacion || '').substring(0, 10);
+            const clave = `nota|${expedienteId}|${contenido}|${fecha}`;
+
+            if (clavesNota.has(clave)) {
+                await new Promise((resolve, reject) => {
+                    const transaction = db.transaction(['notas'], 'readwrite');
+                    const store = transaction.objectStore('notas');
+                    const request = store.delete(nota.id);
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
+                eliminadosCount++;
+            }
+        }
+    }
+
+    // Eventos
+    if (clavesEvento.size > 0) {
+        const eventos = await obtenerEventos();
+        for (const ev of eventos) {
+            const titulo = (ev.titulo || '').trim().toLowerCase();
+            const fechaInicio = (ev.fechaInicio || ev.fecha || '');
+            const expedienteId = ev.expedienteId || 'sin-exp';
+            const clave = `evento|${titulo}|${fechaInicio}|${expedienteId}`;
+
+            if (clavesEvento.has(clave)) {
+                await new Promise((resolve, reject) => {
+                    const transaction = db.transaction(['eventos'], 'readwrite');
+                    const store = transaction.objectStore('eventos');
+                    const request = store.delete(ev.id);
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
+                eliminadosCount++;
+            }
+        }
+    }
+
+    // Guardar los eliminados remotos localmente para conservar la "tombstone"
     await agregarEliminados(eliminadosRemotos);
 
     return eliminadosCount;
@@ -440,8 +493,18 @@ async function agregarNota(nota) {
         const transaction = db.transaction(['notas'], 'readwrite');
         const store = transaction.objectStore('notas');
 
-        nota.fechaCreacion = new Date().toISOString();
-        nota.fechaActualizacion = new Date().toISOString();
+        const ahora = new Date().toISOString();
+        nota.fechaCreacion = ahora;
+        nota.fechaActualizacion = ahora;
+
+        // Timestamps por campo para merge granular en sync (ganador por campo,
+        // no por nota completa). Si dos dispositivos editan campos distintos,
+        // ninguno pisa al otro.
+        nota._fieldTimestamps = nota._fieldTimestamps || {};
+        for (const key of Object.keys(nota)) {
+            if (key === '_fieldTimestamps' || key === 'id') continue;
+            nota._fieldTimestamps[key] = ahora;
+        }
 
         const request = store.add(nota);
 
@@ -489,7 +552,16 @@ async function actualizarNota(id, cambios) {
                 return;
             }
 
-            const actualizada = { ...nota, ...cambios, fechaActualizacion: new Date().toISOString() };
+            const ahora = new Date().toISOString();
+            // Marcar timestamp solo para campos que cambiaron, así el merge por
+            // campo no pisa ediciones independientes hechas en otro dispositivo.
+            const fieldTimestamps = { ...(nota._fieldTimestamps || {}) };
+            for (const [key, value] of Object.entries(cambios)) {
+                if (key === '_fieldTimestamps' || key === 'id' || key === 'fechaActualizacion') continue;
+                if (nota[key] !== value) fieldTimestamps[key] = ahora;
+            }
+
+            const actualizada = { ...nota, ...cambios, fechaActualizacion: ahora, _fieldTimestamps: fieldTimestamps };
             const putRequest = store.put(actualizada);
 
             putRequest.onsuccess = () => {
@@ -503,6 +575,19 @@ async function actualizarNota(id, cambios) {
 }
 
 async function eliminarNota(id) {
+    // Registrar la eliminación antes de borrar localmente, así la sincronización
+    // propaga el "borrado" a otros dispositivos y la nota no resucita.
+    const nota = await new Promise((resolve) => {
+        const tx = db.transaction(['notas'], 'readonly');
+        const req = tx.objectStore('notas').get(id);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+    });
+
+    if (nota) {
+        try { await registrarEliminacion('nota', nota); } catch (e) { console.error('No se pudo registrar eliminación de nota:', e); }
+    }
+
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(['notas'], 'readwrite');
         const store = transaction.objectStore('notas');
@@ -523,8 +608,17 @@ async function agregarEvento(evento) {
         const transaction = db.transaction(['eventos'], 'readwrite');
         const store = transaction.objectStore('eventos');
 
-        evento.fechaCreacion = new Date().toISOString();
+        const ahora = new Date().toISOString();
+        evento.fechaCreacion = ahora;
+        evento.fechaActualizacion = ahora;
         evento.alertaEnviada = false;
+
+        // Timestamps por campo para merge granular en sync (ganador por campo).
+        evento._fieldTimestamps = evento._fieldTimestamps || {};
+        for (const key of Object.keys(evento)) {
+            if (key === '_fieldTimestamps' || key === 'id') continue;
+            evento._fieldTimestamps[key] = ahora;
+        }
 
         const request = store.add(evento);
 
@@ -565,7 +659,16 @@ async function actualizarEvento(id, cambios) {
                 return;
             }
 
-            const actualizado = { ...evento, ...cambios };
+            const ahora = new Date().toISOString();
+            // Timestamp por campo solo para los que cambiaron — así la sync
+            // por campo deja el cambio más reciente de cada lado sin pisarse.
+            const fieldTimestamps = { ...(evento._fieldTimestamps || {}) };
+            for (const [key, value] of Object.entries(cambios)) {
+                if (key === '_fieldTimestamps' || key === 'id' || key === 'fechaActualizacion' || key === 'alertaEnviada') continue;
+                if (evento[key] !== value) fieldTimestamps[key] = ahora;
+            }
+
+            const actualizado = { ...evento, ...cambios, fechaActualizacion: ahora, _fieldTimestamps: fieldTimestamps };
             const putRequest = store.put(actualizado);
 
             putRequest.onsuccess = () => resolve();
@@ -576,6 +679,19 @@ async function actualizarEvento(id, cambios) {
 }
 
 async function eliminarEvento(id) {
+    // Registrar la eliminación antes de borrar localmente, así la sincronización
+    // propaga el "borrado" a otros dispositivos y el evento no resucita.
+    const evento = await new Promise((resolve) => {
+        const tx = db.transaction(['eventos'], 'readonly');
+        const req = tx.objectStore('eventos').get(id);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+    });
+
+    if (evento) {
+        try { await registrarEliminacion('evento', evento); } catch (e) { console.error('No se pudo registrar eliminación de evento:', e); }
+    }
+
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(['eventos'], 'readwrite');
         const store = transaction.objectStore('eventos');
@@ -774,13 +890,18 @@ async function obtenerHistorialExpediente(expedienteId) {
 }
 
 async function obtenerTodoHistorial() {
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction(['historial'], 'readonly');
-        const store = transaction.objectStore('historial');
-        const request = store.getAll();
-
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
+    return new Promise((resolve) => {
+        // Tolerante a DBs antiguas sin el store 'historial'
+        try {
+            if (!db.objectStoreNames.contains('historial')) return resolve([]);
+            const transaction = db.transaction(['historial'], 'readonly');
+            const store = transaction.objectStore('historial');
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result || []);
+            request.onerror = () => resolve([]);
+        } catch (e) {
+            resolve([]);
+        }
     });
 }
 
@@ -794,4 +915,68 @@ async function registrarCambioExpediente(expedienteId, tipo, cambiosAnteriores, 
     };
 
     return agregarHistorial(registro);
+}
+
+// ==================== SIGA: BÚSQUEDAS GUARDADAS ====================
+// Helpers usados por la sincronización para incluir las búsquedas SIGA
+// guardadas en el blob remoto. El store puede no existir en DBs antiguas,
+// así que toda la familia tolera ausencia silenciosa.
+
+async function obtenerBusquedasSIGA() {
+    return new Promise((resolve) => {
+        try {
+            if (!db.objectStoreNames.contains('sigaGuardadas')) return resolve([]);
+            const tx = db.transaction(['sigaGuardadas'], 'readonly');
+            const req = tx.objectStore('sigaGuardadas').getAll();
+            req.onsuccess = () => resolve(req.result || []);
+            req.onerror = () => resolve([]);
+        } catch (e) {
+            resolve([]);
+        }
+    });
+}
+
+async function reemplazarBusquedasSIGA(items) {
+    if (!Array.isArray(items)) return;
+    return new Promise((resolve) => {
+        try {
+            if (!db.objectStoreNames.contains('sigaGuardadas')) return resolve();
+            const tx = db.transaction(['sigaGuardadas'], 'readwrite');
+            const store = tx.objectStore('sigaGuardadas');
+            const clearReq = store.clear();
+            clearReq.onsuccess = () => {
+                for (const item of items) {
+                    // Mantener el ID si viene; si no, autoIncrement le pondrá uno.
+                    try { store.put(item); } catch (e) {}
+                }
+            };
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => resolve();
+            tx.onabort = () => resolve();
+        } catch (e) {
+            resolve();
+        }
+    });
+}
+
+async function reemplazarHistorial(items) {
+    if (!Array.isArray(items)) return;
+    return new Promise((resolve) => {
+        try {
+            if (!db.objectStoreNames.contains('historial')) return resolve();
+            const tx = db.transaction(['historial'], 'readwrite');
+            const store = tx.objectStore('historial');
+            const clearReq = store.clear();
+            clearReq.onsuccess = () => {
+                for (const item of items) {
+                    try { store.put(item); } catch (e) {}
+                }
+            };
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => resolve();
+            tx.onabort = () => resolve();
+        } catch (e) {
+            resolve();
+        }
+    });
 }

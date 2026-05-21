@@ -359,12 +359,48 @@ function fusionarDatos(local, remoto) {
             remoto.expedientes || [],
             clavesEliminadas
         ),
-        notas: fusionarNotas(local.notas || [], remoto.notas || []),
-        eventos: fusionarEventos(local.eventos || [], remoto.eventos || []),
+        notas: fusionarNotas(local.notas || [], remoto.notas || [], clavesEliminadas),
+        eventos: fusionarEventos(local.eventos || [], remoto.eventos || [], clavesEliminadas),
+        // historial y sigaGuardadas son append-only / por-ID: no requieren merge
+        // sofisticado, basta con la unión sin duplicados.
+        historial: fusionarHistorial(local.historial || [], remoto.historial || []),
+        sigaGuardadas: fusionarSIGA(local.sigaGuardadas || [], remoto.sigaGuardadas || []),
         eliminados: eliminadosFusionados,
         metadata: local.metadata
     };
     return resultado;
+}
+
+// Une listas de historial deduplicando por id+fecha+expedienteId (los IDs
+// autoincrementales pueden chocar entre dispositivos, pero la combinación
+// con fecha+expedienteId es prácticamente única).
+function fusionarHistorial(locales, remotos) {
+    const mapa = new Map();
+    const todos = [...remotos, ...locales];
+    for (const h of todos) {
+        const clave = `${h.expedienteId || '0'}|${h.fecha || ''}|${h.tipo || ''}|${(h.descripcion || '').substring(0, 80)}`;
+        if (!mapa.has(clave)) mapa.set(clave, h);
+    }
+    return Array.from(mapa.values());
+}
+
+// Une búsquedas SIGA guardadas deduplicando por query (no por id).
+function fusionarSIGA(locales, remotos) {
+    const mapa = new Map();
+    const todos = [...remotos, ...locales];
+    for (const s of todos) {
+        const clave = (s.query || JSON.stringify(s)).toLowerCase().trim();
+        const existente = mapa.get(clave);
+        if (!existente) {
+            mapa.set(clave, s);
+        } else {
+            // Mantener el de timestamp más reciente
+            const fNueva = new Date(s.fechaActualizacion || s.fechaCreacion || 0);
+            const fVieja = new Date(existente.fechaActualizacion || existente.fechaCreacion || 0);
+            if (fNueva > fVieja) mapa.set(clave, s);
+        }
+    }
+    return Array.from(mapa.values());
 }
 
 // Fusionar listas de eliminados
@@ -614,12 +650,32 @@ function claveNota(nota) {
     return `${expedienteId}|${contenido}|${fecha.substring(0, 10)}`;
 }
 
-// Generar clave única para evento
+// Generar clave única para evento.
+// IMPORTANTE: incluimos la fechaInicio completa (no solo el día). De lo contrario
+// dos audiencias del mismo expediente el mismo día (p.ej. 10:00 y 14:00) colisionan
+// y la sincronización las funde en una sola.
 function claveEvento(evento) {
     const titulo = (evento.titulo || '').trim().toLowerCase();
-    const fecha = (evento.fecha || evento.fechaInicio || '').substring(0, 10);
+    const fechaInicio = (evento.fechaInicio || evento.fecha || '');
     const expedienteId = evento.expedienteId || 'sin-exp';
-    return `${titulo}|${fecha}|${expedienteId}`;
+    return `${titulo}|${fechaInicio}|${expedienteId}`;
+}
+
+// Generar clave de eliminación de evento (debe coincidir con la de
+// registrarEliminacion('evento', ...) en database.js).
+function claveEliminacionEvento(ev) {
+    const titulo = (ev.titulo || '').trim().toLowerCase();
+    const fechaInicio = (ev.fechaInicio || ev.fecha || '');
+    const expedienteId = ev.expedienteId || 'sin-exp';
+    return `evento|${titulo}|${fechaInicio}|${expedienteId}`;
+}
+
+// Generar clave de eliminación de nota.
+function claveEliminacionNota(n) {
+    const contenido = (n.contenido || '').substring(0, 100).trim().toLowerCase();
+    const expedienteId = n.expedienteId || 'sin-exp';
+    const fecha = (n.fechaCreacion || '').substring(0, 10);
+    return `nota|${expedienteId}|${contenido}|${fecha}`;
 }
 
 // Generar clave de eliminación para un expediente
@@ -711,14 +767,75 @@ function crearMapaReasignacion() {
     return mapa;
 }
 
-// Fusionar notas sin duplicar y reasignar de expedientes fusionados
-function fusionarNotas(locales, remotas) {
+// Merge genérico por campo: aplica la misma lógica que fusionarExpedientesInteligente
+// pero sin la parte específica de etiquetas/historial de expediente. Si dos
+// dispositivos editan campos distintos de la misma nota o evento, ninguno pisa
+// al otro: cada campo conserva el valor con el timestamp más reciente.
+function fusionarRegistroPorCampo(a, b, omitirKeys = new Set(['id', '_fieldTimestamps', '_reasignada', '_reasignado'])) {
+    const fusionado = { ...a };
+    const fieldTimestamps = { ...(a._fieldTimestamps || {}) };
+
+    const todasLasKeys = new Set([...Object.keys(a), ...Object.keys(b)]);
+    todasLasKeys.forEach(campo => {
+        if (omitirKeys.has(campo)) return;
+        const valA = a[campo];
+        const valB = b[campo];
+        const tsA = obtenerTimestampCampo(a, campo);
+        const tsB = obtenerTimestampCampo(b, campo);
+
+        if (tsB > tsA) {
+            if (valB === undefined || valB === null || valB === '') {
+                delete fusionado[campo];
+            } else {
+                fusionado[campo] = valB;
+            }
+            fieldTimestamps[campo] = tsB;
+        } else if (tsA > tsB) {
+            // a ya está por el spread inicial
+            fieldTimestamps[campo] = tsA;
+        } else {
+            // Empate: si uno tiene valor y el otro no, preferir el lleno
+            if ((valA === undefined || valA === null || valA === '') && valB !== undefined && valB !== null && valB !== '') {
+                fusionado[campo] = valB;
+            }
+            fieldTimestamps[campo] = tsA || tsB;
+        }
+
+        if (!fieldTimestamps[campo]) delete fieldTimestamps[campo];
+    });
+
+    // fechaActualizacion = la más reciente de ambas
+    const fechaA = a.fechaActualizacion || a.fechaCreacion;
+    const fechaB = b.fechaActualizacion || b.fechaCreacion;
+    if (fechaA && fechaB) {
+        fusionado.fechaActualizacion = fechaA > fechaB ? fechaA : fechaB;
+    } else if (fechaA || fechaB) {
+        fusionado.fechaActualizacion = fechaA || fechaB;
+    }
+
+    // fechaCreacion = la más antigua de ambas
+    if (a.fechaCreacion && b.fechaCreacion) {
+        fusionado.fechaCreacion = a.fechaCreacion < b.fechaCreacion ? a.fechaCreacion : b.fechaCreacion;
+    }
+
+    fusionado._fieldTimestamps = fieldTimestamps;
+    return fusionado;
+}
+
+// Fusionar notas sin duplicar, con merge por campo, reasignación de
+// expedientes fusionados y filtrado de notas eliminadas remotamente.
+function fusionarNotas(locales, remotas, clavesEliminadas = new Set()) {
     const mapa = new Map();
     const mapaReasignacion = crearMapaReasignacion();
 
-    const todasNotas = [...remotas, ...locales];
+    // Locales primero como base, para que ediciones locales recientes ganen
+    // sobre versiones remotas más viejas en el mismo campo.
+    const todasNotas = [...locales, ...remotas];
 
     todasNotas.forEach(nota => {
+        // Filtrar si está en la lista de eliminados
+        if (clavesEliminadas.has(claveEliminacionNota(nota))) return;
+
         // Reasignar expedienteId si el expediente fue fusionado
         let notaProcesada = { ...nota };
         if (nota.expedienteId && mapaReasignacion.has(nota.expedienteId)) {
@@ -734,30 +851,28 @@ function fusionarNotas(locales, remotas) {
         if (!existente) {
             mapa.set(clave, notaProcesada);
         } else {
-            const fechaNueva = new Date(notaProcesada.fechaActualizacion || notaProcesada.fechaCreacion || 0);
-            const fechaExistente = new Date(existente.fechaActualizacion || existente.fechaCreacion || 0);
-            if (fechaNueva >= fechaExistente) {
-                mapa.set(clave, notaProcesada);
-            }
+            // Merge por campo: ninguna edición se pierde si afectó campos distintos
+            mapa.set(clave, fusionarRegistroPorCampo(existente, notaProcesada));
         }
     });
 
-    // Limpiar campos temporales
     return Array.from(mapa.values()).map(nota => {
         delete nota._reasignada;
         return nota;
     });
 }
 
-// Fusionar eventos sin duplicar y reasignar de expedientes fusionados
-function fusionarEventos(locales, remotos) {
+// Fusionar eventos sin duplicar, con merge por campo, reasignación de
+// expedientes fusionados y filtrado de eventos eliminados remotamente.
+function fusionarEventos(locales, remotos, clavesEliminadas = new Set()) {
     const mapa = new Map();
     const mapaReasignacion = crearMapaReasignacion();
 
-    const todosEventos = [...remotos, ...locales];
+    const todosEventos = [...locales, ...remotos];
 
     todosEventos.forEach(evento => {
-        // Reasignar expedienteId si el expediente fue fusionado
+        if (clavesEliminadas.has(claveEliminacionEvento(evento))) return;
+
         let eventoProcesado = { ...evento };
         if (evento.expedienteId && mapaReasignacion.has(evento.expedienteId)) {
             eventoProcesado.expedienteId = mapaReasignacion.get(evento.expedienteId);
@@ -772,15 +887,10 @@ function fusionarEventos(locales, remotos) {
         if (!existente) {
             mapa.set(clave, eventoProcesado);
         } else {
-            const fechaNueva = new Date(eventoProcesado.fechaCreacion || 0);
-            const fechaExistente = new Date(existente.fechaCreacion || 0);
-            if (fechaNueva >= fechaExistente) {
-                mapa.set(clave, eventoProcesado);
-            }
+            mapa.set(clave, fusionarRegistroPorCampo(existente, eventoProcesado));
         }
     });
 
-    // Limpiar campos temporales
     return Array.from(mapa.values()).map(evento => {
         delete evento._reasignado;
         return evento;
@@ -796,7 +906,20 @@ async function obtenerTodosLosDatos() {
     const eventos = await obtenerEventos();
     const eliminados = await obtenerEliminados();
 
-    return { expedientes: [...expedientes, ...archivados], notas, eventos, eliminados };
+    // historial y sigaGuardadas son opcionales (DB antigua puede no tenerlos)
+    const historial = typeof obtenerTodoHistorial === 'function'
+        ? await obtenerTodoHistorial().catch(() => []) : [];
+    const sigaGuardadas = typeof obtenerBusquedasSIGA === 'function'
+        ? await obtenerBusquedasSIGA().catch(() => []) : [];
+
+    return {
+        expedientes: [...expedientes, ...archivados],
+        notas,
+        eventos,
+        eliminados,
+        historial,
+        sigaGuardadas
+    };
 }
 
 // Escape HTML para evitar XSS
@@ -848,6 +971,15 @@ async function aplicarDatosLocalmente(datos) {
         tx.onerror = () => reject(tx.error);
     });
 
+    // Aplicar historial y sigaGuardadas en transacciones separadas
+    // (sus stores pueden no existir en DBs antiguas; las helpers son tolerantes)
+    if (typeof reemplazarHistorial === 'function' && datos.historial) {
+        try { await reemplazarHistorial(datos.historial); } catch (e) { console.warn('No se pudo aplicar historial sincronizado:', e); }
+    }
+    if (typeof reemplazarBusquedasSIGA === 'function' && datos.sigaGuardadas) {
+        try { await reemplazarBusquedasSIGA(datos.sigaGuardadas); } catch (e) { console.warn('No se pudieron aplicar búsquedas SIGA sincronizadas:', e); }
+    }
+
     // El blob remoto trae nuevas notas e historial: invalidar el caché de
     // búsqueda para que la próxima consulta lo reconstruya.
     if (typeof invalidarIndiceBusqueda === 'function') invalidarIndiceBusqueda();
@@ -872,6 +1004,11 @@ async function aplicarDatosLocalmente(datos) {
     const archivoPJF = document.getElementById('archivo-section-pjf');
     if (archivoPJF && archivoPJF.style.display === 'block' && typeof cargarArchivoPJF === 'function') {
         await cargarArchivoPJF();
+    }
+
+    // Refrescar listas dependientes de los nuevos stores sincronizados
+    if (typeof cargarBusquedasGuardadas === 'function') {
+        try { await cargarBusquedasGuardadas(); } catch (e) {}
     }
 }
 
@@ -990,7 +1127,10 @@ function cargarConfigSync() {
     if (checkOnSave) checkOnSave.checked = syncOnSave;
 }
 
-// Verificar si debe sincronizar al cargar
+// Verificar si debe sincronizar al cargar.
+// Cuando el usuario activó "Sincronizar al iniciar" en Configuración, el sync
+// debe ser silencioso: no tiene sentido pedirle confirmación cada vez. El
+// usuario ya consintió globalmente activando la opción.
 async function verificarSyncAlCargar() {
     if (!estadoPremium.activo) return;
 
@@ -1000,23 +1140,10 @@ async function verificarSyncAlCargar() {
     // Esperar un poco para que la app termine de cargar
     setTimeout(async () => {
         try {
-            // Preguntar al usuario si quiere sincronizar
-            const datosRemotos = await verificarDatosRemotos();
-
-            if (datosRemotos) {
-                const confirmar = confirm(
-                    '🔄 Se encontraron datos en otro dispositivo.\n\n' +
-                    '¿Deseas sincronizar ahora?\n\n' +
-                    '• Sí: Combina los datos de ambos dispositivos\n' +
-                    '• No: Continuar solo con datos locales'
-                );
-
-                if (confirmar) {
-                    await sincronizarDatos();
-                }
-            }
+            if (syncState.syncInProgress) return;
+            await sincronizarDatos();
         } catch (error) {
-            console.log('No hay datos remotos o error al verificar:', error.message);
+            console.log('Sync al iniciar falló:', error.message);
         }
     }, 2000);
 }

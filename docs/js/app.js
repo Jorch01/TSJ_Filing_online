@@ -527,12 +527,14 @@ async function guardarOrdenExpedientes() {
 
     for (let i = 0; i < cards.length; i++) {
         const id = parseInt(cards[i].dataset.id);
-        const expediente = await obtenerExpedientePorId(id);
-        if (expediente) {
-            expediente.orden = i;
-            await actualizarExpediente(expediente);
-        }
+        // Antes llamaba a obtenerExpedientePorId (no existe) y a
+        // actualizarExpediente(expediente) con firma incorrecta — el reorden
+        // TSJ fallaba silenciosamente. Se usa la misma firma que la versión PJF.
+        await actualizarExpediente(id, { orden: i });
     }
+
+    // Propagar el nuevo orden a los demás dispositivos vinculados
+    if (typeof marcarYSincronizar === 'function') await marcarYSincronizar();
 }
 
 function actualizarExpedientesRecientes(expedientes) {
@@ -1557,6 +1559,8 @@ async function guardarNota(event) {
         cerrarModal();
         await cargarNotas();
         await cargarEstadisticas();
+        // Propagar a otros dispositivos vinculados
+        if (typeof marcarYSincronizar === 'function') await marcarYSincronizar();
     } catch (error) {
         mostrarToast('Error: ' + error.message, 'error');
     }
@@ -1600,11 +1604,14 @@ async function editarNota(id) {
 
 function confirmarEliminarNota(id) {
     if (confirm('¿Eliminar esta nota?')) {
-        eliminarNota(id).then(() => {
+        eliminarNota(id).then(async () => {
             cerrarModal();
-            cargarNotas();
-            cargarEstadisticas();
+            await cargarNotas();
+            await cargarEstadisticas();
             mostrarToast('Nota eliminada', 'success');
+            // Propagar el borrado: eliminarNota registró la tombstone para
+            // que no resucite en otros dispositivos al sincronizar.
+            if (typeof marcarYSincronizar === 'function') await marcarYSincronizar();
         });
     }
 }
@@ -1751,10 +1758,16 @@ function actualizarEventosHoy(eventos) {
                 (e.descripcion.length > 80 ? e.descripcion.substring(0, 80) + '...' : e.descripcion) :
                 'Sin descripción';
 
+            const filasContextoIA = e.origenIA ? `
+                        ${e.tipoAcuerdo ? `<div class="event-tooltip-row"><span class="event-tooltip-label">Acuerdo:</span><span class="event-tooltip-value">${escapeText(e.tipoAcuerdo)}</span></div>` : ''}
+                        ${e.juzgadoOrigen ? `<div class="event-tooltip-row"><span class="event-tooltip-label">Órgano:</span><span class="event-tooltip-value">${escapeText(e.juzgadoOrigen)}</span></div>` : ''}
+                        ${e.resumen ? `<div class="event-tooltip-row"><span class="event-tooltip-label">Resumen:</span><span class="event-tooltip-value">${escapeText(e.resumen.length > 120 ? e.resumen.substring(0, 120) + '…' : e.resumen)}</span></div>` : ''}
+            ` : '';
+
             return `
                 <div class="list-item list-item-with-tooltip" style="border-left: 3px solid ${e.color || '#3788d8'}">
                     <div class="list-item-info">
-                        <span class="list-item-title">${e.titulo}</span>
+                        <span class="list-item-title">${e.titulo}${e.origenIA ? ' <span style="background:#e0e7ff;color:#3730a3;font-size:0.65rem;padding:1px 6px;border-radius:8px;margin-left:4px;">🤖 IA</span>' : ''}</span>
                         <span class="list-item-subtitle">${fechaTexto} • ${horaTexto}</span>
                     </div>
                     <div class="event-tooltip">
@@ -1779,6 +1792,7 @@ function actualizarEventosHoy(eventos) {
                             <span class="event-tooltip-label">Expediente:</span>
                             <span class="event-tooltip-value">${expedienteInfo}</span>
                         </div>
+                        ${filasContextoIA}
                         <div class="event-tooltip-row">
                             <span class="event-tooltip-label">Detalles:</span>
                             <span class="event-tooltip-value">${descripcionCorta}</span>
@@ -2041,11 +2055,22 @@ async function actualizarPanelEventos(eventos) {
                 : e.institucion === 'OTRO'
                 ? '<span class="institucion-badge otro" style="font-size: 0.6rem; margin-left: 0.3rem;">Varios</span>'
                 : '';
+            const iaBadge = e.origenIA
+                ? '<span class="ia-badge" style="font-size:0.6rem; margin-left:0.3rem; background:#e0e7ff; color:#3730a3; padding:1px 6px; border-radius:8px;" title="Creado desde análisis IA">🤖 IA</span>'
+                : '';
+            const expLabel = e.numeroExpediente || e.expedienteTexto || (e.expedienteId ? `#${e.expedienteId}` : '');
+            const expLinea = expLabel
+                ? `<span class="evento-expediente" style="font-size:0.72rem; color:#555; display:block; margin-top:2px;">📂 Exp. ${escapeText(expLabel)}</span>`
+                : '';
+            const horaTexto = e.todoElDia
+                ? 'Todo el día'
+                : new Date(e.fechaInicio).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
             return `
             <div class="evento-item" onclick="editarEvento(${e.id})" style="border-left: 3px solid ${escapeText(e.color || '#3788d8')}">
                 <div class="evento-info">
-                    <span class="evento-titulo">${escapeText(e.titulo)}${instBadgeEvt}</span>
-                    <span class="evento-hora">${e.todoElDia ? 'Todo el día' : new Date(e.fechaInicio).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span class="evento-titulo">${escapeText(e.titulo)}${instBadgeEvt}${iaBadge}</span>
+                    <span class="evento-hora">${horaTexto}</span>
+                    ${expLinea}
                 </div>
                 ${e.alerta ? '<span class="evento-alerta">🔔</span>' : ''}
             </div>
@@ -2211,6 +2236,10 @@ async function guardarEvento(event) {
         await cargarEventos();
         await cargarEstadisticas();
         renderizarCalendario();
+        // Propagar el cambio a otros dispositivos. Antes los eventos creados/
+        // editados manualmente desde el calendario no se sincronizaban hasta
+        // que el usuario pulsara "Sincronizar ahora".
+        if (typeof marcarYSincronizar === 'function') await marcarYSincronizar();
     } catch (error) {
         mostrarToast('Error: ' + error.message, 'error');
     }
@@ -2242,22 +2271,76 @@ async function editarEvento(id) {
             document.getElementById('evento-expediente').value = evento.expedienteId || '';
         }
 
+        // Si el evento viene de un análisis IA, mostrar contexto del acuerdo
+        // por encima del formulario para que el usuario lo vea al editar.
+        const formBody = document.getElementById('modal-body');
+        if (formBody && evento.origenIA) {
+            const ya = formBody.querySelector('.evento-contexto-acuerdo');
+            if (ya) ya.remove();
+            const ctxLineas = [];
+            if (evento.tipoAcuerdo) ctxLineas.push(`<div><strong>📝 Tipo de acuerdo:</strong> ${escapeText(evento.tipoAcuerdo)}</div>`);
+            if (evento.juzgadoOrigen) ctxLineas.push(`<div><strong>🏛️ Órgano:</strong> ${escapeText(evento.juzgadoOrigen)}</div>`);
+            if (evento.resumen) ctxLineas.push(`<div style="margin-top:0.5rem;"><strong>📄 Resumen:</strong> ${escapeText(evento.resumen)}</div>`);
+            if (ctxLineas.length > 0) {
+                const ctxHtml = `<div class="evento-contexto-acuerdo" style="background:#f0f9ff;border-left:3px solid #3788d8;padding:0.6rem 0.8rem;margin-bottom:0.75rem;border-radius:4px;font-size:0.85rem;">
+                    <div style="font-weight:600;margin-bottom:0.3rem;">🤖 Contexto del acuerdo (análisis IA)</div>
+                    ${ctxLineas.join('')}
+                </div>`;
+                formBody.insertAdjacentHTML('afterbegin', ctxHtml);
+            }
+        }
+
+        // Botón "Ver expediente" cuando el evento está vinculado a uno real.
+        // Permite saltar desde el calendario al detalle del expediente sin
+        // tener que navegar manualmente.
+        const verExpBtn = evento.expedienteId
+            ? `<button class="btn btn-info" onclick="verExpedienteDesdeEvento(${evento.expedienteId})" title="Abrir el expediente relacionado">📂 Ver expediente</button>`
+            : '';
+
         document.getElementById('modal-footer').innerHTML = `
             <button class="btn btn-danger" onclick="confirmarEliminarEvento(${id})">🗑️ Eliminar</button>
+            ${verExpBtn}
             <button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>
             <button class="btn btn-primary" onclick="document.getElementById('evento-form').requestSubmit()">💾 Guardar</button>
         `;
     }, 100);
 }
 
+// Navegar al expediente relacionado desde el modal de evento.
+// Detecta si es PJF para mostrar la sección PJF correcta, y abre el modo
+// edición para que el usuario vea todos los datos del expediente.
+async function verExpedienteDesdeEvento(expedienteId) {
+    try {
+        const exp = await obtenerExpediente(expedienteId);
+        if (!exp) {
+            mostrarToast('El expediente vinculado ya no existe', 'warning');
+            return;
+        }
+        cerrarModal();
+        if (exp.institucion === 'PJF' && typeof editarExpedientePJF === 'function') {
+            await editarExpedientePJF(expedienteId);
+        } else {
+            navegarA('expedientes');
+            setTimeout(() => editarExpediente(expedienteId), 150);
+        }
+    } catch (e) {
+        Logger.error('No se pudo abrir el expediente vinculado:', e);
+        mostrarToast('No se pudo abrir el expediente vinculado', 'error');
+    }
+}
+
 function confirmarEliminarEvento(id) {
     if (confirm('¿Eliminar este evento?')) {
-        eliminarEvento(id).then(() => {
+        eliminarEvento(id).then(async () => {
             cerrarModal();
-            cargarEventos();
-            cargarEstadisticas();
+            await cargarEventos();
+            await cargarEstadisticas();
             renderizarCalendario();
             mostrarToast('Evento eliminado', 'success');
+            // Propagar el borrado: eliminarEvento ya registró la tombstone,
+            // así que la próxima sync evita que el evento resucite en otros
+            // dispositivos.
+            if (typeof marcarYSincronizar === 'function') await marcarYSincronizar();
         });
     }
 }
@@ -3800,6 +3883,124 @@ function eliminarImagenAcuerdo() {
 
 // ==================== ANÁLISIS CON IA ====================
 
+// Construye un objeto evento a partir de una fecha detectada por IA, ya con
+// la hora normalizada, título que muestra la hora cuando existe, y todo el
+// contexto del acuerdo (tipo, resumen, órgano) para que abrir el evento desde
+// el calendario te diga exactamente de qué acuerdo viene y a qué expediente
+// está vinculado.
+function construirEventoIA(fecha, contexto) {
+    const {
+        expedienteId,
+        expedienteTexto,
+        expedienteLabel,
+        institucion,
+        juzgadoOrigen,
+        tipoAcuerdo,
+        resumen
+    } = contexto;
+
+    const horaNormalizada = parsearHoraIA(fecha.hora);
+    const tieneHora = !!horaNormalizada;
+
+    // Si el LLM dio un día sin hora válida, programamos a las 09:00 local
+    // pero marcamos todoElDia=true para que la UI muestre "Todo el día".
+    const dateTimeStr = `${fecha.fecha}T${tieneHora ? horaNormalizada : '09:00'}`;
+    const fechaInicio = new Date(dateTimeStr);
+    if (isNaN(fechaInicio.getTime())) {
+        throw new Error(`Fecha inválida del análisis IA: ${fecha.fecha} ${fecha.hora || ''}`);
+    }
+
+    const tipoEvento = fecha.tipo === 'audiencia' ? 'audiencia'
+        : fecha.tipo === 'vencimiento' ? 'vencimiento'
+        : 'recordatorio';
+
+    const instLabel = institucion === 'PJF' ? 'PJF Federal'
+        : institucion === 'TSJ' ? 'TSJ Quintana Roo'
+        : institucion || '';
+
+    // El título lleva la hora al inicio cuando se detectó, para que en la
+    // lista del calendario veas la hora sin tener que abrir el evento.
+    const prefijoHora = tieneHora ? `${horaNormalizada} — ` : '';
+    const expedienteInfo = expedienteLabel
+        ? ` [${institucion === 'PJF' ? 'PJF ' : ''}Exp. ${expedienteLabel}]`
+        : (institucion === 'PJF' ? ' [PJF]' : '');
+    const titulo = `${prefijoHora}${fecha.descripcion || tipoEvento}${expedienteInfo}`;
+
+    // Descripcion estructurada para el detalle del evento. Incluye todo el
+    // contexto del acuerdo, no sólo el expediente, así desde el calendario se
+    // puede leer el resumen sin volver a la pantalla de análisis.
+    const descripcionLineas = [];
+    descripcionLineas.push(`📋 Expediente: ${expedienteLabel || 'N/A'}`);
+    if (juzgadoOrigen) descripcionLineas.push(`🏛️ Órgano: ${juzgadoOrigen}`);
+    if (instLabel) descripcionLineas.push(`📌 Institución: ${instLabel}`);
+    if (tipoAcuerdo) descripcionLineas.push(`📝 Tipo de acuerdo: ${tipoAcuerdo}`);
+    if (tieneHora) descripcionLineas.push(`🕒 Hora: ${horaNormalizada}`);
+    if (resumen) {
+        descripcionLineas.push('');
+        descripcionLineas.push(`📄 Resumen: ${resumen}`);
+    }
+    descripcionLineas.push('');
+    descripcionLineas.push('— Extraído automáticamente del análisis IA');
+
+    return {
+        titulo,
+        tipo: tipoEvento,
+        fechaInicio: fechaInicio.toISOString(),
+        todoElDia: !tieneHora,
+        expedienteId: expedienteId || null,
+        expedienteTexto: expedienteTexto || null,
+        numeroExpediente: expedienteLabel,
+        institucion: institucion,
+        // Contexto del acuerdo persistido en el evento para mostrarlo al abrirlo
+        tipoAcuerdo: tipoAcuerdo || null,
+        resumen: resumen || null,
+        juzgadoOrigen: juzgadoOrigen || null,
+        origenIA: true,
+        descripcion: descripcionLineas.join('\n'),
+        alerta: true,
+        color: tipoEvento === 'audiencia' ? '#3788d8'
+             : tipoEvento === 'vencimiento' ? '#dc3545'
+             : '#ffc107'
+    };
+}
+
+// Normaliza la hora que devuelve el LLM a formato 24h "HH:MM".
+// Acepta variaciones comunes ("10:30", "10:30 AM", "10:30:00", "10", "10:30hrs",
+// "14h00") y descarta basura. Devuelve null si no hay hora válida — eso permite
+// caer al comportamiento "todo el día" sin meter una hora inventada.
+function parsearHoraIA(horaInput) {
+    if (horaInput === null || horaInput === undefined) return null;
+    let s = String(horaInput).trim();
+    if (!s) return null;
+
+    // "null" / "n/a" literales que a veces devuelve el LLM
+    const sLower = s.toLowerCase();
+    if (sLower === 'null' || sLower === 'n/a' || sLower === 'na' || sLower === 'no especifica' || sLower === 'no aplica') return null;
+
+    // Detectar AM/PM
+    let pm = false, am = false;
+    if (/\bp\.?\s*m\.?\b/i.test(s)) pm = true;
+    if (/\ba\.?\s*m\.?\b/i.test(s)) am = true;
+    s = s.replace(/\b[ap]\.?\s*m\.?\b/ig, '').trim();
+    s = s.replace(/h(rs?|oras)?$/i, '').trim();
+
+    // Reemplazar separadores tipo "14h00" → "14:00"
+    s = s.replace(/[h\.]/g, ':');
+
+    const match = s.match(/^(\d{1,2})(?::(\d{1,2}))?(?::\d{1,2})?$/);
+    if (!match) return null;
+
+    let h = parseInt(match[1], 10);
+    let m = match[2] !== undefined ? parseInt(match[2], 10) : 0;
+    if (isNaN(h) || isNaN(m)) return null;
+
+    if (pm && h < 12) h += 12;
+    if (am && h === 12) h = 0;
+
+    if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 async function analizarAcuerdoConIA() {
     const texto = document.getElementById('ia-texto-acuerdo').value.trim();
     const expedienteSelect = document.getElementById('ia-expediente').value;
@@ -4072,35 +4273,29 @@ async function guardarResultadosIA() {
         expedienteLabel = numExpExtraido;
     }
 
-    // Guardar eventos/fechas seleccionados
+    // Guardar eventos/fechas seleccionados con hora normalizada y todo el
+    // contexto del acuerdo (tipo, resumen, órgano) — así al abrir el evento
+    // desde el calendario se ve de qué expediente y acuerdo proviene.
     if (resultado.fechas) {
         for (let i = 0; i < resultado.fechas.length; i++) {
             const checkbox = document.getElementById(`ia-fecha-${i}`);
             if (checkbox && checkbox.checked) {
                 const fecha = resultado.fechas[i];
-                const expedienteInfo = expedienteLabel ? ` [Exp. ${expedienteLabel}]` : '';
-
-                const evento = {
-                    titulo: `${fecha.descripcion}${expedienteInfo}`,
-                    tipo: fecha.tipo === 'audiencia' ? 'audiencia' :
-                          fecha.tipo === 'vencimiento' ? 'vencimiento' : 'recordatorio',
-                    fechaInicio: new Date(fecha.fecha + (fecha.hora ? `T${fecha.hora}` : 'T09:00')).toISOString(),
-                    todoElDia: !fecha.hora,
-                    expedienteId: resultado.expedienteId,
-                    expedienteTexto: resultado.expedienteTexto || numExpExtraido,
-                    numeroExpediente: expedienteLabel,
-                    institucion: institucionExtraida,
-                    descripcion: `Expediente: ${expedienteLabel || 'N/A'}${juzgadoExtraido ? '\nÓrgano: ' + juzgadoExtraido : ''}${institucionExtraida ? '\nInstitución: ' + institucionExtraida : ''}\nExtraído automáticamente por IA`,
-                    alerta: true,
-                    color: fecha.tipo === 'audiencia' ? '#3788d8' :
-                           fecha.tipo === 'vencimiento' ? '#dc3545' : '#ffc107'
-                };
-
                 try {
+                    const evento = construirEventoIA(fecha, {
+                        expedienteId: resultado.expedienteId,
+                        expedienteTexto: resultado.expedienteTexto || numExpExtraido,
+                        expedienteLabel,
+                        institucion: institucionExtraida,
+                        juzgadoOrigen: juzgadoExtraido,
+                        tipoAcuerdo: resultado.tipo_acuerdo,
+                        resumen: resultado.resumen
+                    });
                     await agregarEvento(evento);
                     guardados++;
                 } catch (e) {
                     Logger.error('Error al guardar evento:', e);
+                    mostrarToast('Una fecha del acuerdo no se pudo guardar (fecha inválida)', 'warning');
                 }
             }
         }
@@ -6251,12 +6446,20 @@ async function cargarEventosPJF() {
         const fechaTexto = fecha.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
         const horaTexto = e.todoElDia ? 'Todo el día' :
             fecha.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+        const iaBadge = e.origenIA
+            ? '<span style="font-size:0.6rem; margin-left:0.3rem; background:#e0e7ff; color:#3730a3; padding:1px 6px; border-radius:8px;" title="Creado desde análisis IA">🤖 IA</span>'
+            : '';
+        const expLabel = e.numeroExpediente || e.expedienteTexto || (e.expedienteId ? `#${e.expedienteId}` : '');
+        const expLinea = expLabel
+            ? `<span style="font-size:0.72rem; color:#555; display:block; margin-top:2px;">📂 Exp. ${escapeText(expLabel)}</span>`
+            : '';
 
         return `
             <div class="evento-item" onclick="editarEvento(${e.id})" style="border-left: 3px solid ${escapeText(e.color || '#3788d8')}">
                 <div class="evento-info">
-                    <span class="evento-titulo">${escapeText(e.titulo)}</span>
+                    <span class="evento-titulo">${escapeText(e.titulo)}${iaBadge}</span>
                     <span class="evento-hora">${fechaTexto} - ${horaTexto}</span>
+                    ${expLinea}
                 </div>
                 <span class="institucion-badge pjf" style="font-size: 0.65rem;">🏛️ PJF</span>
             </div>
@@ -6552,35 +6755,27 @@ async function guardarResultadosIAPJF() {
         expedienteLabel = numExpExtraido;
     }
 
-    // Save events
+    // Save events con hora normalizada y contexto completo del acuerdo PJF
     if (resultado.fechas) {
         for (let i = 0; i < resultado.fechas.length; i++) {
             const checkbox = document.getElementById(`ia-pjf-fecha-${i}`);
             if (checkbox && checkbox.checked) {
                 const fecha = resultado.fechas[i];
-                const expedienteInfo = expedienteLabel ? ` [PJF Exp. ${expedienteLabel}]` : ' [PJF]';
-
-                const evento = {
-                    titulo: `${fecha.descripcion}${expedienteInfo}`,
-                    tipo: fecha.tipo === 'audiencia' ? 'audiencia' :
-                          fecha.tipo === 'vencimiento' ? 'vencimiento' : 'recordatorio',
-                    fechaInicio: new Date(fecha.fecha + (fecha.hora ? `T${fecha.hora}` : 'T09:00')).toISOString(),
-                    todoElDia: !fecha.hora,
-                    expedienteId: resultado.expedienteId,
-                    expedienteTexto: resultado.expedienteTexto || numExpExtraido,
-                    numeroExpediente: expedienteLabel,
-                    institucion: 'PJF',
-                    descripcion: `Expediente PJF: ${expedienteLabel || 'N/A'}${juzgadoExtraido ? '\nÓrgano: ' + juzgadoExtraido : ''}\nExtraído automáticamente por IA`,
-                    alerta: true,
-                    color: fecha.tipo === 'audiencia' ? '#3788d8' :
-                           fecha.tipo === 'vencimiento' ? '#dc3545' : '#ffc107'
-                };
-
                 try {
+                    const evento = construirEventoIA(fecha, {
+                        expedienteId: resultado.expedienteId,
+                        expedienteTexto: resultado.expedienteTexto || numExpExtraido,
+                        expedienteLabel,
+                        institucion: 'PJF',
+                        juzgadoOrigen: juzgadoExtraido,
+                        tipoAcuerdo: resultado.tipo_acuerdo,
+                        resumen: resultado.resumen
+                    });
                     await agregarEvento(evento);
                     guardados++;
                 } catch (e) {
                     Logger.error('Error al guardar evento PJF:', e);
+                    mostrarToast('Una fecha del acuerdo PJF no se pudo guardar (fecha inválida)', 'warning');
                 }
             }
         }
