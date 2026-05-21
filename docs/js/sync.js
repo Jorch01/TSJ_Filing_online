@@ -348,12 +348,20 @@ async function sincronizarDatos() {
 // orden de keys coincide.
 function huellaContenido(datos) {
     if (!datos) return '';
+    // Normalizar historial igual que obtenerTodosLosDatos: solo los campos
+    // ligeros y los 200 más recientes. Esto hace que la huella del blob que
+    // acabamos de descargar sea comparable con la huella de lo que subiríamos.
+    const histNorm = (datos.historial || [])
+        .sort((a, b) => (b.fecha || '') > (a.fecha || '') ? 1 : -1)
+        .slice(0, MAX_HISTORIAL_SYNC)
+        .map(({ id, expedienteId, tipo, descripcion, fecha }) =>
+            ({ id, expedienteId, tipo, descripcion, fecha }));
     const copia = {
         expedientes: datos.expedientes || [],
         notas: datos.notas || [],
         eventos: datos.eventos || [],
         eliminados: datos.eliminados || [],
-        historial: datos.historial || [],
+        historial: histNorm,
         sigaGuardadas: datos.sigaGuardadas || []
     };
     try {
@@ -535,6 +543,9 @@ function fusionarDatos(local, remoto) {
 // Une listas de historial deduplicando por id+fecha+expedienteId (los IDs
 // autoincrementales pueden chocar entre dispositivos, pero la combinación
 // con fecha+expedienteId es prácticamente única).
+// Tras la unión se limita a los MAX_HISTORIAL_SYNC más recientes para que
+// el blob no supere el límite de la celda de Google Sheets.
+const MAX_HISTORIAL_SYNC = 200;
 function fusionarHistorial(locales, remotos) {
     const mapa = new Map();
     const todos = [...remotos, ...locales];
@@ -542,7 +553,9 @@ function fusionarHistorial(locales, remotos) {
         const clave = `${h.expedienteId || '0'}|${h.fecha || ''}|${h.tipo || ''}|${(h.descripcion || '').substring(0, 80)}`;
         if (!mapa.has(clave)) mapa.set(clave, h);
     }
-    return Array.from(mapa.values());
+    return Array.from(mapa.values())
+        .sort((a, b) => (b.fecha || '') > (a.fecha || '') ? 1 : -1)
+        .slice(0, MAX_HISTORIAL_SYNC);
 }
 
 // Une búsquedas SIGA guardadas deduplicando por query (no por id).
@@ -1068,8 +1081,19 @@ async function obtenerTodosLosDatos() {
     const eliminados = await obtenerEliminados();
 
     // historial y sigaGuardadas son opcionales (DB antigua puede no tenerlos)
-    const historial = typeof obtenerTodoHistorial === 'function'
+    const historialCompleto = typeof obtenerTodoHistorial === 'function'
         ? await obtenerTodoHistorial().catch(() => []) : [];
+
+    // Sólo sincronizar los 200 registros más recientes y sin los diffs completos
+    // (cambiosAnteriores / cambiosNuevos pueden ser objetos expediente completos
+    // de varios KB cada uno; incluirlos explota el blob más allá del límite de 50k
+    // chars de la celda de Google Sheets y provoca un error 200-sin-CORS al POST).
+    const historial = historialCompleto
+        .sort((a, b) => (b.fecha || '') > (a.fecha || '') ? 1 : -1)
+        .slice(0, MAX_HISTORIAL_SYNC)
+        .map(({ id, expedienteId, tipo, descripcion, fecha }) =>
+            ({ id, expedienteId, tipo, descripcion, fecha }));
+
     const sigaGuardadas = typeof obtenerBusquedasSIGA === 'function'
         ? await obtenerBusquedasSIGA().catch(() => []) : [];
 
