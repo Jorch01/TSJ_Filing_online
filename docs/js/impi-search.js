@@ -693,6 +693,8 @@ function guardarBusqueda(tool, searchData) {
         newFichas: []
     }, searchData);
 
+    saved.fechaCreacion = saved.fechaCreacion || new Date().toISOString();
+    saved.fechaActualizacion = new Date().toISOString();
     var store = sigaDB('readwrite');
     var req = store.add(saved);
     req.onsuccess = function() {
@@ -701,6 +703,9 @@ function guardarBusqueda(tool, searchData) {
         if (tool === 'siga') sigaState.savedSearches.push(saved);
         renderizarBusquedasGuardadas();
         mostrarToast('Búsqueda guardada.', 'success');
+        if (typeof marcarYSincronizar === 'function') {
+            marcarYSincronizar().catch(function() {});
+        }
     };
 }
 
@@ -735,6 +740,8 @@ function guardarBusquedaSIGA() {
         newFichas: []
     };
 
+    saved.fechaCreacion = saved.fechaGuardado;
+    saved.fechaActualizacion = saved.fechaGuardado;
     var store = sigaDB('readwrite');
     var req = store.add(saved);
     req.onsuccess = function() {
@@ -743,6 +750,9 @@ function guardarBusquedaSIGA() {
         savedSearchesState.searches.push(saved);
         renderizarBusquedasGuardadas();
         mostrarToast('Búsqueda guardada. Se verificará automáticamente.', 'success');
+        if (typeof marcarYSincronizar === 'function') {
+            marcarYSincronizar().catch(function() {});
+        }
     };
 }
 
@@ -792,10 +802,15 @@ function guardarBusquedaMarcanet() {
 function eliminarBusquedaGuardada(id) {
     if (!db) return;
     var store = sigaDB('readwrite');
-    store.delete(id);
+    var req = store.delete(id);
     sigaState.savedSearches = sigaState.savedSearches.filter(function(s) { return s.id !== id; });
     savedSearchesState.searches = savedSearchesState.searches.filter(function(s) { return s.id !== id; });
     renderizarBusquedasGuardadas();
+    req.onsuccess = function() {
+        if (typeof marcarYSincronizar === 'function') {
+            marcarYSincronizar().catch(function() {});
+        }
+    };
 }
 
 function renderizarBusquedasGuardadas() {
@@ -976,8 +991,18 @@ async function verificarBusquedaGuardada(id) {
 
 function actualizarBusquedaEnDB(saved) {
     if (!db) return;
+    saved.fechaActualizacion = new Date().toISOString();
     var store = sigaDB('readwrite');
-    store.put(saved);
+    var req = store.put(saved);
+    req.onsuccess = function() {
+        // Propagar a otros dispositivos: las novedades detectadas por el
+        // auto-monitor (newCount, newFichas, lastFichaIds) no son útiles si
+        // se quedan locales. marcarYSincronizar marca pendiente y dispara
+        // sync en background si hay premium.
+        if (typeof marcarYSincronizar === 'function') {
+            marcarYSincronizar().catch(function() { /* sync se reintenta solo */ });
+        }
+    };
 }
 
 // Auto-check: verificar todas las búsquedas guardadas (máximo 1 vez al día)
