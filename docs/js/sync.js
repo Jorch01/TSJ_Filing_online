@@ -575,14 +575,31 @@ function fusionarDatos(local, remoto) {
     // Crear set de claves eliminadas para filtrar
     const clavesEliminadas = new Set(eliminadosFusionados.map(e => e.clave));
 
+    // Carpetas: fusión por nombre (dedup) + remap de carpetaId en expedientes
+    // si dos dispositivos crearon carpetas con el mismo nombre con distinto id.
+    const { carpetas: carpetasFusionadas, mapaRemap: mapaRemapCarpetas } =
+        fusionarCarpetas(local.carpetas || [], remoto.carpetas || [], clavesEliminadas);
+
+    const expedientesFusionados = fusionarExpedientes(
+        local.expedientes || [],
+        remoto.expedientes || [],
+        clavesEliminadas
+    );
+
+    // Aplicar remap de carpetaId en los expedientes ya fusionados
+    if (mapaRemapCarpetas.size > 0) {
+        for (const exp of expedientesFusionados) {
+            if (exp.carpetaId !== undefined && mapaRemapCarpetas.has(exp.carpetaId)) {
+                exp.carpetaId = mapaRemapCarpetas.get(exp.carpetaId);
+            }
+        }
+    }
+
     const resultado = {
-        expedientes: fusionarExpedientes(
-            local.expedientes || [],
-            remoto.expedientes || [],
-            clavesEliminadas
-        ),
+        expedientes: expedientesFusionados,
         notas: fusionarNotas(local.notas || [], remoto.notas || [], clavesEliminadas),
         eventos: fusionarEventos(local.eventos || [], remoto.eventos || [], clavesEliminadas),
+        carpetas: carpetasFusionadas,
         // historial y sigaGuardadas son append-only / por-ID: no requieren merge
         // sofisticado, basta con la unión sin duplicados.
         historial: fusionarHistorial(local.historial || [], remoto.historial || []),
@@ -591,6 +608,99 @@ function fusionarDatos(local, remoto) {
         metadata: local.metadata
     };
     return resultado;
+}
+
+// Normalizar nombre de carpeta para dedup (case-insensitive, sin acentos,
+// solo alfanumérico).
+function _claveCarpeta(carpeta) {
+    if (!carpeta || !carpeta.nombre) return '';
+    return String(carpeta.nombre).trim().toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/\s+/g, ' ');
+}
+
+// Fusiona carpetas locales y remotas. Dedup por nombre normalizado. Devuelve:
+//   { carpetas: [...], mapaRemap: Map(idOriginal → idCanonico) }
+// El mapaRemap se aplica luego sobre exp.carpetaId para que dos dispositivos
+// que crearon la misma carpeta independientemente queden apuntando a una sola.
+function fusionarCarpetas(locales, remotas, clavesEliminadas = new Set()) {
+    // Las eliminaciones de carpetas se registran por nombre normalizado
+    // (ver registrarEliminacion en database.js, caso 'carpeta'), igual que
+    // el dedup. Así, eliminar una carpeta en un dispositivo la elimina en
+    // todos los demás aunque tengan distinto id local.
+    const keyEliminacion = c => 'carpeta|' + _claveCarpeta(c);
+    const localesFiltradas = locales.filter(c => !clavesEliminadas.has(keyEliminacion(c)));
+    const remotasFiltradas = remotas.filter(c => !clavesEliminadas.has(keyEliminacion(c)));
+
+    const mapaPorClave = new Map(); // claveNombre → carpeta canónica
+    const mapaRemap = new Map();    // idOriginal → idCanonico
+
+    // Primero locales (su id es la versión canónica para este dispositivo)
+    for (const c of localesFiltradas) {
+        const clave = _claveCarpeta(c);
+        if (!clave) continue;
+        mapaPorClave.set(clave, { ...c });
+    }
+
+    // Luego remotas: si ya existe por nombre, fusionar campo-a-campo; si no, agregar
+    for (const c of remotasFiltradas) {
+        const clave = _claveCarpeta(c);
+        if (!clave) continue;
+        const existente = mapaPorClave.get(clave);
+        if (existente) {
+            // Fusionar campos por timestamp
+            const fusionada = _fusionarCarpetaCampoACampo(existente, c);
+            mapaPorClave.set(clave, fusionada);
+            // Si el id de la remota es distinto, lo remapeamos al id canónico (el local)
+            if (c.id !== undefined && c.id !== existente.id) {
+                mapaRemap.set(c.id, existente.id);
+            }
+        } else {
+            mapaPorClave.set(clave, { ...c });
+        }
+    }
+
+    return { carpetas: Array.from(mapaPorClave.values()), mapaRemap };
+}
+
+function _fusionarCarpetaCampoACampo(c1, c2) {
+    const fusionada = { ...c1 };
+    const ftsFusionados = { ...(c1._fieldTimestamps || {}) };
+
+    const campos = ['nombre', 'comentario', 'color', 'orden',
+                    'archivada', 'motivoArchivo', 'etiquetaArchivo', 'fechaArchivo'];
+
+    for (const campo of campos) {
+        const v1 = c1[campo];
+        const v2 = c2[campo];
+        const t1 = (c1._fieldTimestamps && c1._fieldTimestamps[campo]) || c1.fechaActualizacion || c1.fechaCreacion || '';
+        const t2 = (c2._fieldTimestamps && c2._fieldTimestamps[campo]) || c2.fechaActualizacion || c2.fechaCreacion || '';
+
+        if (t2 > t1) {
+            if (v2 === undefined || v2 === null || v2 === '') {
+                delete fusionada[campo];
+            } else {
+                fusionada[campo] = v2;
+            }
+            ftsFusionados[campo] = t2;
+        } else if (t1 > t2) {
+            ftsFusionados[campo] = t1;
+        } else if ((v1 === undefined || v1 === null || v1 === '') && v2 !== undefined && v2 !== null && v2 !== '') {
+            fusionada[campo] = v2;
+            ftsFusionados[campo] = t2 || t1;
+        }
+    }
+
+    // Fecha de creación: la más antigua. Fecha actualización: la más reciente.
+    if (c1.fechaCreacion && c2.fechaCreacion) {
+        fusionada.fechaCreacion = c1.fechaCreacion < c2.fechaCreacion ? c1.fechaCreacion : c2.fechaCreacion;
+    }
+    if (c1.fechaActualizacion && c2.fechaActualizacion) {
+        fusionada.fechaActualizacion = c1.fechaActualizacion > c2.fechaActualizacion ? c1.fechaActualizacion : c2.fechaActualizacion;
+    }
+
+    fusionada._fieldTimestamps = ftsFusionados;
+    return fusionada;
 }
 
 // Une listas de historial deduplicando por id+fecha+expedienteId (los IDs
@@ -1150,13 +1260,18 @@ async function obtenerTodosLosDatos() {
     const sigaGuardadas = typeof obtenerBusquedasSIGA === 'function'
         ? await obtenerBusquedasSIGA().catch(() => []) : [];
 
+    // Carpetas: opcional (DB v4 o anterior puede no tener el store)
+    const carpetas = typeof obtenerCarpetas === 'function'
+        ? await obtenerCarpetas().catch(() => []) : [];
+
     return {
         expedientes: [...expedientes, ...archivados],
         notas,
         eventos,
         eliminados,
         historial,
-        sigaGuardadas
+        sigaGuardadas,
+        carpetas
     };
 }
 
@@ -1176,20 +1291,28 @@ async function aplicarDatosLocalmente(datos) {
         request.onerror = () => reject(request.error);
     });
 
-    const tx = db.transaction(['expedientes', 'notas', 'eventos', 'eliminados'], 'readwrite');
+    // Incluir 'carpetas' en la tx solo si el store existe (compat con DB v4)
+    const stores = ['expedientes', 'notas', 'eventos', 'eliminados'];
+    if (db.objectStoreNames.contains('carpetas')) stores.push('carpetas');
+    const tx = db.transaction(stores, 'readwrite');
 
     // Limpiar y repoblar
     const storeExp = tx.objectStore('expedientes');
     const storeNotas = tx.objectStore('notas');
     const storeEventos = tx.objectStore('eventos');
     const storeEliminados = tx.objectStore('eliminados');
+    const storeCarpetas = stores.includes('carpetas') ? tx.objectStore('carpetas') : null;
 
-    await Promise.all([
+    const clears = [
         new Promise(r => { storeExp.clear().onsuccess = r; }),
         new Promise(r => { storeNotas.clear().onsuccess = r; }),
         new Promise(r => { storeEventos.clear().onsuccess = r; }),
         new Promise(r => { storeEliminados.clear().onsuccess = r; })
-    ]);
+    ];
+    if (storeCarpetas) {
+        clears.push(new Promise(r => { storeCarpetas.clear().onsuccess = r; }));
+    }
+    await Promise.all(clears);
 
     for (const exp of datos.expedientes || []) {
         storeExp.put(exp);
@@ -1202,6 +1325,11 @@ async function aplicarDatosLocalmente(datos) {
     }
     for (const eliminado of datos.eliminados || []) {
         storeEliminados.put(eliminado);
+    }
+    if (storeCarpetas) {
+        for (const carpeta of datos.carpetas || []) {
+            storeCarpetas.put(carpeta);
+        }
     }
 
     await new Promise((resolve, reject) => {
@@ -1223,6 +1351,7 @@ async function aplicarDatosLocalmente(datos) {
     if (typeof invalidarIndiceBusqueda === 'function') invalidarIndiceBusqueda();
 
     // Recargar UI
+    if (typeof cargarCarpetasUI === 'function') await cargarCarpetasUI();
     await cargarExpedientes();
     await cargarNotas();
     await cargarEventos();

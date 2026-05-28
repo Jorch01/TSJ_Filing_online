@@ -176,6 +176,11 @@ async function inicializarApp() {
     });
 
     // Cargar datos
+    // Carpetas primero: el render de las tarjetas necesita el caché poblado
+    // para mostrar los badges, y los selects de filtro/formulario también.
+    if (typeof cargarCarpetasUI === 'function') {
+        try { await cargarCarpetasUI(); } catch (e) { console.warn('No se cargaron carpetas:', e); }
+    }
     await cargarEstadisticas();
     await cargarExpedientes();
     await cargarNotas();
@@ -573,11 +578,288 @@ function actualizarSelectExpedientes() {
     });
 }
 
+// ==================== CARPETAS (AGRUPACIÓN DE CASOS) ====================
+// Una carpeta agrupa expedientes del mismo caso (principal + amparo + recursos).
+// Relación 1:N — un expediente pertenece a una sola carpeta (o ninguna).
+// Una carpeta puede mezclar instituciones (TSJ + PJF + OTRO).
+
+let _carpetasCache = null;
+
+async function refrescarCarpetasCache() {
+    _carpetasCache = await obtenerCarpetas();
+    return _carpetasCache;
+}
+
+function obtenerCarpetasDeCache() {
+    return _carpetasCache || [];
+}
+
+function colorCarpeta(carpeta) {
+    return carpeta && carpeta.color ? carpeta.color : '#6c757d';
+}
+
+// Refrescar todos los selects/filtros/forms que muestran carpetas. Llamar tras
+// crear, editar o eliminar carpetas.
+async function cargarCarpetasUI() {
+    await refrescarCarpetasCache();
+    const activas = obtenerCarpetasDeCache().filter(c => !c.archivada)
+        .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+
+    // Filtro carpetas en TSJ y PJF
+    const optsHTML = '<option value="">Todas las carpetas</option>' +
+        '<option value="__sin__">📂 Sin carpeta</option>' +
+        activas.map(c =>
+            `<option value="${c.id}">📁 ${escapeText(c.nombre)}</option>`
+        ).join('');
+
+    const ftTSJ = document.getElementById('filtro-carpeta');
+    if (ftTSJ) {
+        const prev = ftTSJ.value;
+        ftTSJ.innerHTML = optsHTML;
+        if (prev) ftTSJ.value = prev;
+    }
+    const ftPJF = document.getElementById('filtro-carpeta-pjf');
+    if (ftPJF) {
+        const prev = ftPJF.value;
+        ftPJF.innerHTML = optsHTML;
+        if (prev) ftPJF.value = prev;
+    }
+
+    // Select en el formulario de crear/editar expediente
+    const formSelect = document.getElementById('expediente-carpeta');
+    if (formSelect) {
+        const prev = formSelect.value;
+        formSelect.innerHTML = '<option value="">— Sin carpeta —</option>' +
+            activas.map(c =>
+                `<option value="${c.id}">📁 ${escapeText(c.nombre)}</option>`
+            ).join('');
+        if (prev) formSelect.value = prev;
+    }
+}
+
+// ==================== MODAL DE GESTIÓN DE CARPETAS ====================
+
+async function abrirGestionCarpetas() {
+    await refrescarCarpetasCache();
+    const carpetas = obtenerCarpetasDeCache()
+        .sort((a, b) => {
+            // Archivadas al final
+            if (!!a.archivada !== !!b.archivada) return a.archivada ? 1 : -1;
+            return (a.nombre || '').localeCompare(b.nombre || '');
+        });
+
+    // Para cada carpeta, contar cuántos expedientes tiene asignados (activos)
+    const todosExpedientes = await obtenerExpedientes();
+    const archivados = typeof obtenerExpedientesArchivados === 'function' ? await obtenerExpedientesArchivados() : [];
+    const todos = [...todosExpedientes, ...archivados];
+    const conteoPorCarpeta = new Map();
+    for (const exp of todos) {
+        if (exp.carpetaId !== undefined && exp.carpetaId !== null) {
+            conteoPorCarpeta.set(exp.carpetaId, (conteoPorCarpeta.get(exp.carpetaId) || 0) + 1);
+        }
+    }
+
+    document.getElementById('modal-titulo').textContent = '📁 Gestión de carpetas';
+
+    let html = `
+        <div style="padding: 10px 0;">
+            <p style="margin-bottom: 1rem; color:#555;">Agrupa expedientes que pertenecen al mismo caso (principal + amparo + recursos, etc.).</p>
+
+            <div style="border:1px solid #ddd; border-radius:6px; padding:0.75rem; margin-bottom:1rem; background:#fafafa;">
+                <h4 style="margin:0 0 0.5rem; font-size:0.95rem;">Crear nueva carpeta</h4>
+                <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end;">
+                    <div style="flex:1; min-width:180px;">
+                        <label for="nueva-carpeta-nombre" style="display:block; font-size:0.85rem; color:#555;">Nombre</label>
+                        <input type="text" id="nueva-carpeta-nombre" class="form-control" placeholder="Ej. Caso Pérez vs IMSS">
+                    </div>
+                    <div>
+                        <label for="nueva-carpeta-color" style="display:block; font-size:0.85rem; color:#555;">Color</label>
+                        <input type="color" id="nueva-carpeta-color" value="#3b82f6" style="width:48px; height:38px; border:1px solid #ccc; border-radius:4px; padding:2px; cursor:pointer;">
+                    </div>
+                    <button class="btn btn-primary" onclick="crearCarpetaDesdeModal()">➕ Crear</button>
+                </div>
+            </div>
+    `;
+
+    if (carpetas.length === 0) {
+        html += '<p style="text-align:center; color:#888; padding:1rem;">No hay carpetas todavía. Crea la primera arriba.</p>';
+    } else {
+        html += '<div style="display:flex; flex-direction:column; gap:0.5rem;">';
+        for (const c of carpetas) {
+            const cnt = conteoPorCarpeta.get(c.id) || 0;
+            const archivedStyle = c.archivada ? 'opacity:0.6;' : '';
+            html += `
+                <div style="border:1px solid #ddd; border-radius:6px; padding:0.6rem; display:flex; gap:0.5rem; align-items:center; ${archivedStyle}">
+                    <div style="width:18px; height:36px; border-radius:3px; background:${escapeText(colorCarpeta(c))}; flex-shrink:0;" title="Color"></div>
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-weight:600;">${escapeText(c.nombre || 'Sin nombre')} ${c.archivada ? '<span style="font-size:0.75rem; color:#888;">(archivada)</span>' : ''}</div>
+                        <div style="font-size:0.8rem; color:#666;">${cnt} expediente${cnt !== 1 ? 's' : ''} ${c.comentario ? '· ' + escapeText(c.comentario) : ''}</div>
+                    </div>
+                    <div style="display:flex; gap:0.25rem; flex-shrink:0;">
+                        <button class="btn btn-sm btn-secondary" onclick="editarCarpetaDesdeModal(${c.id})" title="Editar">✏️</button>
+                        ${c.archivada
+                            ? `<button class="btn btn-sm btn-info" onclick="desarchivarCarpetaDesdeModal(${c.id})" title="Restaurar">♻️</button>`
+                            : `<button class="btn btn-sm btn-warning" onclick="archivarCarpetaDesdeModal(${c.id})" title="Archivar carpeta y sus expedientes">📦</button>`
+                        }
+                        <button class="btn btn-sm btn-danger" onclick="eliminarCarpetaDesdeModal(${c.id}, ${cnt})" title="Eliminar carpeta">🗑️</button>
+                    </div>
+                </div>
+            `;
+        }
+        html += '</div>';
+    }
+
+    html += '</div>';
+    document.getElementById('modal-body').innerHTML = html;
+    document.getElementById('modal-footer').innerHTML = '<button class="btn btn-secondary" onclick="cerrarModal()">Cerrar</button>';
+    abrirModal();
+
+    setTimeout(() => {
+        const input = document.getElementById('nueva-carpeta-nombre');
+        if (input) input.focus();
+    }, 100);
+}
+
+async function crearCarpetaDesdeModal() {
+    const nombre = document.getElementById('nueva-carpeta-nombre')?.value?.trim();
+    const color = document.getElementById('nueva-carpeta-color')?.value || '#3b82f6';
+    if (!nombre) {
+        mostrarToast('El nombre es obligatorio', 'warning');
+        return;
+    }
+    try {
+        await agregarCarpeta({ nombre, color, comentario: '' });
+        mostrarToast('Carpeta creada', 'success');
+        await cargarCarpetasUI();
+        await abrirGestionCarpetas();
+        if (typeof marcarYSincronizar === 'function') marcarYSincronizar();
+    } catch (e) {
+        mostrarToast('Error al crear carpeta: ' + e.message, 'error');
+    }
+}
+
+async function editarCarpetaDesdeModal(id) {
+    const carpeta = await obtenerCarpeta(id);
+    if (!carpeta) return;
+
+    document.getElementById('modal-titulo').textContent = '✏️ Editar carpeta';
+    document.getElementById('modal-body').innerHTML = `
+        <div style="padding:10px 0; display:flex; flex-direction:column; gap:0.75rem;">
+            <div class="form-group">
+                <label for="edit-carpeta-nombre">Nombre</label>
+                <input type="text" id="edit-carpeta-nombre" class="form-control" value="${escapeText(carpeta.nombre || '')}">
+            </div>
+            <div class="form-group">
+                <label for="edit-carpeta-comentario">Comentario / descripción del caso (opcional)</label>
+                <textarea id="edit-carpeta-comentario" class="form-control" rows="3">${escapeText(carpeta.comentario || '')}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="edit-carpeta-color">Color</label>
+                <input type="color" id="edit-carpeta-color" value="${escapeText(colorCarpeta(carpeta))}" style="width:60px; height:38px; border:1px solid #ccc; border-radius:4px; padding:2px; cursor:pointer;">
+            </div>
+        </div>
+    `;
+    document.getElementById('modal-footer').innerHTML = `
+        <button class="btn btn-secondary" onclick="abrirGestionCarpetas()">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarCarpetaDesdeModal(${id})">💾 Guardar</button>
+    `;
+}
+
+async function guardarCarpetaDesdeModal(id) {
+    const nombre = document.getElementById('edit-carpeta-nombre')?.value?.trim();
+    const comentario = document.getElementById('edit-carpeta-comentario')?.value?.trim() || '';
+    const color = document.getElementById('edit-carpeta-color')?.value || '#3b82f6';
+    if (!nombre) {
+        mostrarToast('El nombre es obligatorio', 'warning');
+        return;
+    }
+    try {
+        await actualizarCarpeta(id, { nombre, comentario, color });
+        mostrarToast('Carpeta actualizada', 'success');
+        await cargarCarpetasUI();
+        await cargarExpedientes();
+        if (typeof cargarExpedientesPJF === 'function') await cargarExpedientesPJF();
+        await abrirGestionCarpetas();
+        if (typeof marcarYSincronizar === 'function') marcarYSincronizar();
+    } catch (e) {
+        mostrarToast('Error al guardar: ' + e.message, 'error');
+    }
+}
+
+async function archivarCarpetaDesdeModal(id) {
+    const motivo = prompt('Motivo del archivo (concluido / abandonado / otro):', 'concluido');
+    if (!motivo) return;
+    const etiqueta = motivo === 'otro' ? (prompt('Describe el motivo:') || 'Sin especificar') : '';
+    try {
+        await archivarCarpeta(id, motivo, etiqueta);
+        mostrarToast('Carpeta archivada con sus expedientes', 'success');
+        await cargarCarpetasUI();
+        await cargarExpedientes();
+        if (typeof cargarExpedientesPJF === 'function') await cargarExpedientesPJF();
+        if (typeof actualizarBadgeArchivo === 'function') actualizarBadgeArchivo();
+        if (typeof actualizarBadgeArchivoPJF === 'function') actualizarBadgeArchivoPJF();
+        await abrirGestionCarpetas();
+        if (typeof marcarYSincronizar === 'function') marcarYSincronizar();
+    } catch (e) {
+        mostrarToast('Error al archivar: ' + e.message, 'error');
+    }
+}
+
+async function desarchivarCarpetaDesdeModal(id) {
+    try {
+        await desarchivarCarpeta(id);
+        mostrarToast('Carpeta restaurada', 'success');
+        await cargarCarpetasUI();
+        await abrirGestionCarpetas();
+        if (typeof marcarYSincronizar === 'function') marcarYSincronizar();
+    } catch (e) {
+        mostrarToast('Error al restaurar: ' + e.message, 'error');
+    }
+}
+
+async function eliminarCarpetaDesdeModal(id, conteo) {
+    let conExpedientes = false;
+    if (conteo > 0) {
+        const opcion = confirm(
+            `La carpeta tiene ${conteo} expediente${conteo !== 1 ? 's' : ''} asignado${conteo !== 1 ? 's' : ''}.\n\n` +
+            'Aceptar: eliminar la carpeta Y sus expedientes (irreversible).\n' +
+            'Cancelar: eliminar SOLO la carpeta, los expedientes quedan sueltos.'
+        );
+        conExpedientes = opcion;
+    } else {
+        if (!confirm('¿Eliminar la carpeta?')) return;
+    }
+
+    try {
+        await eliminarCarpeta(id, conExpedientes);
+        mostrarToast(conExpedientes ? 'Carpeta y expedientes eliminados' : 'Carpeta eliminada', 'success');
+        await cargarCarpetasUI();
+        await cargarExpedientes();
+        if (typeof cargarExpedientesPJF === 'function') await cargarExpedientesPJF();
+        await abrirGestionCarpetas();
+        if (typeof marcarYSincronizar === 'function') marcarYSincronizar();
+    } catch (e) {
+        mostrarToast('Error al eliminar: ' + e.message, 'error');
+    }
+}
+
+window.abrirGestionCarpetas = abrirGestionCarpetas;
+window.crearCarpetaDesdeModal = crearCarpetaDesdeModal;
+window.editarCarpetaDesdeModal = editarCarpetaDesdeModal;
+window.guardarCarpetaDesdeModal = guardarCarpetaDesdeModal;
+window.archivarCarpetaDesdeModal = archivarCarpetaDesdeModal;
+window.desarchivarCarpetaDesdeModal = desarchivarCarpetaDesdeModal;
+window.eliminarCarpetaDesdeModal = eliminarCarpetaDesdeModal;
+window.cargarCarpetasUI = cargarCarpetasUI;
+
 function mostrarFormularioExpediente() {
     document.getElementById('form-expediente').style.display = 'block';
     document.getElementById('form-expediente-titulo').textContent = 'Agregar Nuevo Expediente';
     document.getElementById('expediente-id').value = '';
     document.getElementById('expediente-form').reset();
+    // Repoblar select de carpetas (form.reset() lo deja con sus options actuales,
+    // pero queremos asegurar que estén al día por si se acabaron de crear nuevas).
+    if (typeof cargarCarpetasUI === 'function') cargarCarpetasUI();
 }
 
 function cerrarFormularioExpediente() {
@@ -624,6 +906,10 @@ async function editarExpediente(id, event) {
         document.getElementById('expediente-id').value = id;
         document.getElementById('expediente-valor').value = exp.numero || exp.nombre;
         document.getElementById('expediente-comentario').value = exp.comentario || '';
+        // Refrescar el select de carpetas y seleccionar la del expediente
+        if (typeof cargarCarpetasUI === 'function') await cargarCarpetasUI();
+        const selCarpeta = document.getElementById('expediente-carpeta');
+        if (selCarpeta) selCarpeta.value = exp.carpetaId !== undefined && exp.carpetaId !== null ? String(exp.carpetaId) : '';
 
         // Set institution
         const institucion = exp.institucion || 'TSJ';
@@ -672,6 +958,8 @@ async function guardarExpediente(event) {
         const tipoBusqueda = document.querySelector('input[name="tipo-busqueda"]:checked').value;
         const valor = document.getElementById('expediente-valor').value.trim();
         const comentario = document.getElementById('expediente-comentario').value.trim();
+        const carpetaSel = document.getElementById('expediente-carpeta')?.value || '';
+        const carpetaId = carpetaSel ? parseInt(carpetaSel, 10) : undefined;
         const institucion = document.querySelector('input[name="expediente-institucion"]:checked')?.value || 'TSJ';
 
         let juzgado = '';
@@ -705,7 +993,8 @@ async function guardarExpediente(event) {
                      : institucion === 'OTRO' ? 'Otros/Varios'
                      : obtenerCategoriaJuzgado(juzgado),
             institucion: institucion,
-            comentario: comentario || undefined
+            comentario: comentario || undefined,
+            carpetaId: carpetaId
         };
 
         if (institucion === 'PJF') {
@@ -967,6 +1256,17 @@ function _labelInstitucionCorto(institucion) {
     return '⚖️ TSJ';
 }
 
+// Badge de carpeta para mostrar en la tarjeta / fila si el expediente
+// pertenece a una. Usa el caché de carpetas para no leer la DB en cada render.
+function _badgeCarpetaHTML(carpetaId) {
+    if (carpetaId === undefined || carpetaId === null) return '';
+    const carpetas = obtenerCarpetasDeCache();
+    const carpeta = carpetas.find(c => c.id === carpetaId);
+    if (!carpeta) return '';
+    const color = carpeta.color || '#6c757d';
+    return `<span class="carpeta-badge" style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:10px; background:${color}22; border:1px solid ${color}; color:${color}; font-size:0.75rem; font-weight:500;" title="Carpeta: ${escapeText(carpeta.nombre || '')}">📁 ${escapeText(carpeta.nombre || '')}</span>`;
+}
+
 // Render de una tarjeta de expediente activo.
 // opciones:
 //   institucion: 'TSJ' | 'PJF' | 'OTRO' (default: exp.institucion || 'TSJ')
@@ -1023,6 +1323,7 @@ function renderTarjetaExpedienteHTML(exp, opciones = {}) {
             <div class="expediente-header">
                 <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
                 ${_badgeInstitucionHTML(institucion)}
+                ${_badgeCarpetaHTML(exp.carpetaId)}
                 <span class="expediente-categoria">${escapeText(exp.categoria || categoriaDefault)}</span>
             </div>
             <div class="expediente-body">
@@ -1064,10 +1365,11 @@ function renderFilaExpedienteHTML(exp, opciones = {}) {
     actionsHTML += `<button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>`;
     actionsHTML += `<button class="btn btn-sm btn-danger" onclick="${eliminarFn}(${exp.id}, event)">🗑️</button>`;
 
+    const carpetaBadge = _badgeCarpetaHTML(exp.carpetaId);
     return `
         <tr data-id="${exp.id}">
             <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
-            <td><strong>${escapeText(exp.numero || exp.nombre)}</strong></td>
+            <td><strong>${escapeText(exp.numero || exp.nombre)}</strong>${carpetaBadge ? ' ' + carpetaBadge : ''}</td>
             <td>${escapeText(exp.juzgado)}</td>
             <td><span class="categoria-badge">${escapeText(exp.categoria || categoriaDefault)}</span></td>
             ${instCell}
@@ -1206,8 +1508,16 @@ window.filtrarExpedientesPJFDebounced = filtrarExpedientesPJFDebounced;
 async function filtrarExpedientes() {
     const busqueda = document.getElementById('buscar-expediente').value.toLowerCase();
     const categoria = document.getElementById('filtro-categoria').value;
+    const carpetaFiltro = document.getElementById('filtro-carpeta')?.value || '';
 
     let expedientes = await obtenerExpedientes();
+
+    if (carpetaFiltro === '__sin__') {
+        expedientes = expedientes.filter(e => e.carpetaId === undefined || e.carpetaId === null);
+    } else if (carpetaFiltro) {
+        const cid = parseInt(carpetaFiltro, 10);
+        expedientes = expedientes.filter(e => e.carpetaId === cid);
+    }
 
     if (busqueda) {
         const { notasPorExp, historialPorExp } = await obtenerIndiceBusqueda();
@@ -6176,8 +6486,16 @@ function aplicarVistaExpedientesPJF() {
 // PJF search/filter
 async function filtrarExpedientesPJF() {
     const busqueda = (document.getElementById('buscar-expediente-pjf')?.value || '').toLowerCase();
+    const carpetaFiltro = document.getElementById('filtro-carpeta-pjf')?.value || '';
     const expedientes = await obtenerExpedientes();
     let pjfExps = expedientes.filter(e => e.institucion === 'PJF');
+
+    if (carpetaFiltro === '__sin__') {
+        pjfExps = pjfExps.filter(e => e.carpetaId === undefined || e.carpetaId === null);
+    } else if (carpetaFiltro) {
+        const cid = parseInt(carpetaFiltro, 10);
+        pjfExps = pjfExps.filter(e => e.carpetaId === cid);
+    }
 
     if (busqueda) {
         const { notasPorExp, historialPorExp } = await obtenerIndiceBusqueda();
