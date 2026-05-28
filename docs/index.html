@@ -468,6 +468,16 @@
                             </div>
                         </div>
 
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="expediente-carpeta">Carpeta / Caso (opcional)</label>
+                                <select id="expediente-carpeta">
+                                    <option value="">— Sin carpeta —</option>
+                                </select>
+                                <small style="color:#6c757d; font-size:0.8rem;">Agrupa expedientes del mismo caso (ej. principal + amparo). Crea carpetas con "📁 Carpetas".</small>
+                            </div>
+                        </div>
+
                         <div class="form-actions">
                             <button type="button" class="btn btn-secondary" onclick="cerrarFormularioExpediente()">Cancelar</button>
                             <button type="submit" class="btn btn-success">💾 Guardar</button>
@@ -485,6 +495,10 @@
                 <select id="filtro-categoria" onchange="filtrarExpedientes()">
                     <option value="">Todas las categorías</option>
                 </select>
+                <select id="filtro-carpeta" onchange="filtrarExpedientes()" title="Filtrar por carpeta">
+                    <option value="">Todas las carpetas</option>
+                </select>
+                <button class="btn btn-sm btn-secondary" onclick="abrirGestionCarpetas()" title="Crear, editar o eliminar carpetas">📁 Carpetas</button>
                 <div class="view-toggle">
                     <button class="view-btn active" data-view="cards" onclick="cambiarVistaExpedientes('cards')" title="Vista tarjetas">
                         <span>▦</span>
@@ -1087,6 +1101,10 @@
                                 <span class="search-icon">🔍</span>
                                 <input type="text" id="buscar-expediente-pjf" placeholder="Buscar expedientes PJF..." oninput="filtrarExpedientesPJFDebounced()">
                             </div>
+                            <select id="filtro-carpeta-pjf" onchange="filtrarExpedientesPJF()" title="Filtrar por carpeta">
+                                <option value="">Todas las carpetas</option>
+                            </select>
+                            <button class="btn btn-sm btn-secondary" onclick="abrirGestionCarpetas()" title="Crear, editar o eliminar carpetas">📁 Carpetas</button>
                             <div class="view-toggle">
                                 <button class="view-btn pjf-view-btn active" data-view="cards" onclick="cambiarVistaExpedientesPJF('cards')" title="Vista tarjetas">
                                     <span>▦</span>

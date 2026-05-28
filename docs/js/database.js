@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = 'TSJFilingDB';
-const DB_VERSION = 4; // Incrementado para agregar store de búsquedas guardadas SIGA
+const DB_VERSION = 5; // v5: agrega store de carpetas (agrupación de expedientes por caso)
 
 let db = null;
 
@@ -76,6 +76,13 @@ function initDB() {
             if (!database.objectStoreNames.contains('sigaGuardadas')) {
                 const sigaStore = database.createObjectStore('sigaGuardadas', { keyPath: 'id', autoIncrement: true });
                 sigaStore.createIndex('query', 'query', { unique: false });
+            }
+
+            // Store: Carpetas (agrupación de expedientes que pertenecen al mismo caso)
+            if (!database.objectStoreNames.contains('carpetas')) {
+                const carpetasStore = database.createObjectStore('carpetas', { keyPath: 'id', autoIncrement: true });
+                carpetasStore.createIndex('nombre', 'nombre', { unique: false });
+                carpetasStore.createIndex('archivada', 'archivada', { unique: false });
             }
 
             console.log('Stores de IndexedDB creados');
@@ -301,6 +308,14 @@ async function registrarEliminacion(tipo, registro) {
             const expedienteId = registro.expedienteId || 'sin-exp';
             clave = `evento|${titulo}|${fechaInicio}|${expedienteId}`;
             datos = { titulo: registro.titulo, fechaInicio: registro.fechaInicio, expedienteId: registro.expedienteId };
+        } else if (tipo === 'carpeta') {
+            // Identidad por nombre normalizado (debe coincidir con _claveCarpeta
+            // en sync.js: lowercase, sin acentos, espacios colapsados).
+            const nombre = (registro.nombre || '').trim().toLowerCase()
+                .normalize('NFD').replace(/[̀-ͯ]/g, '')
+                .replace(/\s+/g, ' ');
+            clave = `carpeta|${nombre}`;
+            datos = { nombre: registro.nombre };
         }
 
         const eliminado = {
@@ -484,6 +499,174 @@ async function eliminarExpedientesDuplicados() {
     }
 
     return duplicadosAEliminar.length;
+}
+
+// ==================== CARPETAS ====================
+// Una carpeta agrupa múltiples expedientes que pertenecen al mismo caso (por
+// ejemplo: principal + amparo + recursos). El expediente.carpetaId apunta a
+// carpeta.id (relación 1:N — un expediente en una sola carpeta).
+
+async function agregarCarpeta(carpeta) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['carpetas'], 'readwrite');
+        const store = transaction.objectStore('carpetas');
+
+        const ahora = new Date().toISOString();
+        carpeta.fechaCreacion = ahora;
+        carpeta.fechaActualizacion = ahora;
+        carpeta.archivada = !!carpeta.archivada;
+
+        // Timestamps por campo para merge granular en sync.
+        carpeta._fieldTimestamps = carpeta._fieldTimestamps || {};
+        for (const key of Object.keys(carpeta)) {
+            if (key === '_fieldTimestamps' || key === 'id') continue;
+            carpeta._fieldTimestamps[key] = ahora;
+        }
+
+        const request = store.add(carpeta);
+
+        request.onsuccess = () => {
+            if (typeof invalidarIndiceBusqueda === 'function') invalidarIndiceBusqueda();
+            resolve(request.result);
+        };
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function obtenerCarpetas() {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['carpetas'], 'readonly');
+        const store = transaction.objectStore('carpetas');
+        const request = store.getAll();
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function obtenerCarpetasActivas() {
+    const todas = await obtenerCarpetas();
+    return todas.filter(c => !c.archivada);
+}
+
+async function obtenerCarpetasArchivadas() {
+    const todas = await obtenerCarpetas();
+    return todas.filter(c => !!c.archivada);
+}
+
+async function obtenerCarpeta(id) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['carpetas'], 'readonly');
+        const store = transaction.objectStore('carpetas');
+        const request = store.get(id);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function actualizarCarpeta(id, cambios) {
+    return new Promise(async (resolve, reject) => {
+        const carpeta = await obtenerCarpeta(id);
+        if (!carpeta) { reject(new Error('Carpeta no encontrada')); return; }
+
+        const camposModificados = {};
+        for (const [key, value] of Object.entries(cambios)) {
+            if (carpeta[key] !== value && key !== 'fechaActualizacion' && key !== '_fieldTimestamps') {
+                camposModificados[key] = value;
+            }
+        }
+
+        const ahora = new Date().toISOString();
+        const fieldTimestamps = { ...(carpeta._fieldTimestamps || {}) };
+        for (const key of Object.keys(camposModificados)) {
+            fieldTimestamps[key] = ahora;
+        }
+
+        const actualizada = { ...carpeta, ...cambios, fechaActualizacion: ahora, _fieldTimestamps: fieldTimestamps };
+
+        const transaction = db.transaction(['carpetas'], 'readwrite');
+        const store = transaction.objectStore('carpetas');
+        const request = store.put(actualizada);
+        request.onsuccess = () => {
+            if (typeof invalidarIndiceBusqueda === 'function') invalidarIndiceBusqueda();
+            resolve(request.result);
+        };
+        request.onerror = () => reject(request.error);
+    });
+}
+
+// Eliminar carpeta. Si conExpedientes=true, también elimina (soft-delete) los
+// expedientes asignados. Si false, los expedientes quedan sin carpeta (carpetaId
+// borrado).
+async function eliminarCarpeta(id, conExpedientes = false) {
+    const carpeta = await obtenerCarpeta(id);
+    if (!carpeta) return;
+
+    // Buscar expedientes de esta carpeta (TSJ + PJF + OTROS + archivados)
+    const todosExpedientes = await new Promise((resolve, reject) => {
+        const tx = db.transaction(['expedientes'], 'readonly');
+        const req = tx.objectStore('expedientes').getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+    });
+    const expedientesEnCarpeta = todosExpedientes.filter(e => e.carpetaId === id);
+
+    if (conExpedientes) {
+        // Eliminar cada expediente (registra eliminación para sync)
+        for (const exp of expedientesEnCarpeta) {
+            await eliminarExpediente(exp.id, true);
+        }
+    } else {
+        // Solo quitar la referencia a la carpeta
+        for (const exp of expedientesEnCarpeta) {
+            await actualizarExpediente(exp.id, { carpetaId: undefined });
+        }
+    }
+
+    // Registrar eliminación de la carpeta para sync
+    await registrarEliminacion('carpeta', carpeta);
+
+    // Borrar la carpeta
+    await new Promise((resolve, reject) => {
+        const tx = db.transaction(['carpetas'], 'readwrite');
+        const req = tx.objectStore('carpetas').delete(id);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+    });
+
+    if (typeof invalidarIndiceBusqueda === 'function') invalidarIndiceBusqueda();
+}
+
+// Archivar carpeta = marcar carpeta archivada Y archivar todos sus expedientes
+// con el mismo motivo.
+async function archivarCarpeta(id, motivo, etiqueta) {
+    const ahora = new Date().toISOString();
+    await actualizarCarpeta(id, {
+        archivada: true,
+        motivoArchivo: motivo,
+        etiquetaArchivo: etiqueta || '',
+        fechaArchivo: ahora
+    });
+
+    const todosExpedientes = await new Promise((resolve, reject) => {
+        const tx = db.transaction(['expedientes'], 'readonly');
+        const req = tx.objectStore('expedientes').getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+    });
+    const expedientesEnCarpeta = todosExpedientes.filter(e => e.carpetaId === id && !e.archivado);
+
+    for (const exp of expedientesEnCarpeta) {
+        await archivarExpedienteDB(exp.id, true, motivo, etiqueta);
+    }
+}
+
+async function desarchivarCarpeta(id) {
+    await actualizarCarpeta(id, {
+        archivada: false,
+        motivoArchivo: undefined,
+        etiquetaArchivo: undefined,
+        fechaArchivo: undefined
+    });
 }
 
 // ==================== NOTAS ====================
