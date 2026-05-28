@@ -697,8 +697,8 @@ function _fusionarCarpetaCampoACampo(c1, c2) {
     for (const campo of campos) {
         const v1 = c1[campo];
         const v2 = c2[campo];
-        const t1 = (c1._fieldTimestamps && c1._fieldTimestamps[campo]) || c1.fechaActualizacion || c1.fechaCreacion || '';
-        const t2 = (c2._fieldTimestamps && c2._fieldTimestamps[campo]) || c2.fechaActualizacion || c2.fechaCreacion || '';
+        const t1 = (c1._fieldTimestamps && c1._fieldTimestamps[campo]) || c1.fechaCreacion || c1.fechaActualizacion || '';
+        const t2 = (c2._fieldTimestamps && c2._fieldTimestamps[campo]) || c2.fechaCreacion || c2.fechaActualizacion || '';
 
         if (t2 > t1) {
             if (v2 === undefined || v2 === null || v2 === '') {
@@ -890,7 +890,13 @@ function obtenerTimestampCampo(exp, campo) {
     if (exp._fieldTimestamps && exp._fieldTimestamps[campo]) {
         return exp._fieldTimestamps[campo];
     }
-    return exp.fechaActualizacion || exp.fechaCreacion || '';
+    // Sin timestamp explícito → el campo no se ha modificado desde la creación.
+    // Usamos fechaCreacion (NO fechaActualizacion) a propósito: fechaActualizacion
+    // refleja el último cambio a CUALQUIER campo del expediente, así que un campo
+    // que nunca se tocó heredaría una recencia falsa y podría pisar por error la
+    // edición explícita del mismo campo hecha en otro dispositivo (p.ej. perder un
+    // comentario o un "archivado" porque el otro device editó otra cosa después).
+    return exp.fechaCreacion || exp.fechaActualizacion || '';
 }
 
 // Fusionar dos expedientes conservando la información más completa.

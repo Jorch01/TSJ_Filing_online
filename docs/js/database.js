@@ -168,18 +168,26 @@ async function archivarExpedienteDB(id, archivado, motivoArchivo, etiquetaArchiv
                 return;
             }
 
+            const ahora = new Date().toISOString();
             if (archivado) {
                 expediente.archivado = true;
                 expediente.motivoArchivo = motivoArchivo || 'concluido';
                 expediente.etiquetaArchivo = etiquetaArchivo || '';
-                expediente.fechaArchivo = new Date().toISOString();
+                expediente.fechaArchivo = ahora;
             } else {
                 expediente.archivado = false;
                 delete expediente.motivoArchivo;
                 delete expediente.etiquetaArchivo;
                 delete expediente.fechaArchivo;
             }
-            expediente.fechaActualizacion = new Date().toISOString();
+            expediente.fechaActualizacion = ahora;
+            // Timestamps por campo para que el merge resuelva el estado de archivo
+            // por campo y no por la fecha de actualización global del expediente.
+            expediente._fieldTimestamps = expediente._fieldTimestamps || {};
+            expediente._fieldTimestamps.archivado = ahora;
+            expediente._fieldTimestamps.motivoArchivo = ahora;
+            expediente._fieldTimestamps.etiquetaArchivo = ahora;
+            expediente._fieldTimestamps.fechaArchivo = ahora;
 
             store.put(expediente);
         };
