@@ -637,7 +637,9 @@ async function eliminarCarpeta(id, conExpedientes = false) {
 }
 
 // Archivar carpeta = marcar carpeta archivada Y archivar todos sus expedientes
-// con el mismo motivo.
+// con el mismo motivo. Cada expediente afectado queda marcado con
+// _archivadoPorCarpeta=<id de la carpeta> para poder distinguirlos al desarchivar
+// y no resucitar expedientes que el usuario ya había archivado por su cuenta.
 async function archivarCarpeta(id, motivo, etiqueta) {
     const ahora = new Date().toISOString();
     await actualizarCarpeta(id, {
@@ -656,10 +658,16 @@ async function archivarCarpeta(id, motivo, etiqueta) {
     const expedientesEnCarpeta = todosExpedientes.filter(e => e.carpetaId === id && !e.archivado);
 
     for (const exp of expedientesEnCarpeta) {
+        // Marcar primero el flag para que el desarchivado de carpeta sepa cuáles
+        // restaurar (vs. los que estaban archivados manualmente desde antes).
+        await actualizarExpediente(exp.id, { _archivadoPorCarpeta: id });
         await archivarExpedienteDB(exp.id, true, motivo, etiqueta);
     }
 }
 
+// Desarchiva la carpeta Y los expedientes que se archivaron por ella (los que
+// tienen _archivadoPorCarpeta === id). Los que el usuario archivó manualmente
+// antes/independientemente del archivo de carpeta quedan archivados.
 async function desarchivarCarpeta(id) {
     await actualizarCarpeta(id, {
         archivada: false,
@@ -667,6 +675,22 @@ async function desarchivarCarpeta(id) {
         etiquetaArchivo: undefined,
         fechaArchivo: undefined
     });
+
+    const todosExpedientes = await new Promise((resolve, reject) => {
+        const tx = db.transaction(['expedientes'], 'readonly');
+        const req = tx.objectStore('expedientes').getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+    });
+    const afectados = todosExpedientes.filter(e =>
+        e.carpetaId === id && e.archivado && e._archivadoPorCarpeta === id
+    );
+
+    for (const exp of afectados) {
+        await archivarExpedienteDB(exp.id, false);
+        // Limpiar la marca
+        await actualizarExpediente(exp.id, { _archivadoPorCarpeta: undefined });
+    }
 }
 
 // ==================== NOTAS ====================
