@@ -575,25 +575,25 @@ function fusionarDatos(local, remoto) {
     // Crear set de claves eliminadas para filtrar
     const clavesEliminadas = new Set(eliminadosFusionados.map(e => e.clave));
 
-    // Carpetas: fusión por nombre (dedup) + remap de carpetaId en expedientes
-    // si dos dispositivos crearon carpetas con el mismo nombre con distinto id.
+    // Carpetas: fusión por nombre (dedup) + remap de carpetaId solo en expedientes
+    // REMOTOS, antes de fusionarlos. Aplicar el remap post-fusión sería incorrecto
+    // porque podría reescribir locales cuyo carpetaId coincide numéricamente con
+    // un id remoto reasignado pero apunta a otra carpeta local.
     const { carpetas: carpetasFusionadas, mapaRemap: mapaRemapCarpetas } =
         fusionarCarpetas(local.carpetas || [], remoto.carpetas || [], clavesEliminadas);
 
+    const remotosConCarpetaRemapeada = (remoto.expedientes || []).map(exp => {
+        if (exp.carpetaId !== undefined && exp.carpetaId !== null && mapaRemapCarpetas.has(exp.carpetaId)) {
+            return { ...exp, carpetaId: mapaRemapCarpetas.get(exp.carpetaId) };
+        }
+        return exp;
+    });
+
     const expedientesFusionados = fusionarExpedientes(
         local.expedientes || [],
-        remoto.expedientes || [],
+        remotosConCarpetaRemapeada,
         clavesEliminadas
     );
-
-    // Aplicar remap de carpetaId en los expedientes ya fusionados
-    if (mapaRemapCarpetas.size > 0) {
-        for (const exp of expedientesFusionados) {
-            if (exp.carpetaId !== undefined && mapaRemapCarpetas.has(exp.carpetaId)) {
-                exp.carpetaId = mapaRemapCarpetas.get(exp.carpetaId);
-            }
-        }
-    }
 
     const resultado = {
         expedientes: expedientesFusionados,
@@ -623,6 +623,9 @@ function _claveCarpeta(carpeta) {
 //   { carpetas: [...], mapaRemap: Map(idOriginal → idCanonico) }
 // El mapaRemap se aplica luego sobre exp.carpetaId para que dos dispositivos
 // que crearon la misma carpeta independientemente queden apuntando a una sola.
+// Devuelve { carpetas, mapaRemap } donde mapaRemap es Map<idRemotoOriginal, idCanónico>.
+// IMPORTANTE: el mapaRemap aplica solo a los carpetaId de expedientes REMOTOS, nunca
+// a los locales. Los expedientes locales ya apuntan a ids locales canónicos.
 function fusionarCarpetas(locales, remotas, clavesEliminadas = new Set()) {
     // Las eliminaciones de carpetas se registran por nombre normalizado
     // (ver registrarEliminacion en database.js, caso 'carpeta'), igual que
@@ -633,30 +636,51 @@ function fusionarCarpetas(locales, remotas, clavesEliminadas = new Set()) {
     const remotasFiltradas = remotas.filter(c => !clavesEliminadas.has(keyEliminacion(c)));
 
     const mapaPorClave = new Map(); // claveNombre → carpeta canónica
-    const mapaRemap = new Map();    // idOriginal → idCanonico
+    const mapaRemap = new Map();    // idRemotoOriginal → idCanónico
+    const idsTomados = new Set();   // ids ya en uso en el resultado
+    let maxId = 0;
 
-    // Primero locales (su id es la versión canónica para este dispositivo)
+    // 1) Locales primero: sus ids son canónicos para este dispositivo.
+    //    Los expedientes locales YA referencian estos ids; nunca los cambiamos.
     for (const c of localesFiltradas) {
         const clave = _claveCarpeta(c);
         if (!clave) continue;
         mapaPorClave.set(clave, { ...c });
+        if (typeof c.id === 'number' && Number.isFinite(c.id)) {
+            idsTomados.add(c.id);
+            maxId = Math.max(maxId, c.id);
+        }
     }
 
-    // Luego remotas: si ya existe por nombre, fusionar campo-a-campo; si no, agregar
+    // 2) Remotas: si coincide nombre, fusionar campo a campo (mantener id local
+    //    y mapear idRemoto → idLocal). Si es nombre nuevo, agregar; si su id
+    //    colisiona con un id local de otra carpeta, reasignar a maxId+1.
     for (const c of remotasFiltradas) {
         const clave = _claveCarpeta(c);
         if (!clave) continue;
         const existente = mapaPorClave.get(clave);
         if (existente) {
-            // Fusionar campos por timestamp
             const fusionada = _fusionarCarpetaCampoACampo(existente, c);
+            // El id canónico es el del existente (local); el del remoto se mapea.
+            fusionada.id = existente.id;
             mapaPorClave.set(clave, fusionada);
-            // Si el id de la remota es distinto, lo remapeamos al id canónico (el local)
-            if (c.id !== undefined && c.id !== existente.id) {
+            if (c.id !== undefined && c.id !== null && c.id !== existente.id) {
                 mapaRemap.set(c.id, existente.id);
             }
         } else {
-            mapaPorClave.set(clave, { ...c });
+            const copia = { ...c };
+            // ¿Colisión de id con una carpeta local de nombre distinto?
+            if (copia.id !== undefined && copia.id !== null && idsTomados.has(copia.id)) {
+                const idRemotoOriginal = copia.id;
+                maxId++;
+                copia.id = maxId;
+                mapaRemap.set(idRemotoOriginal, maxId);
+            }
+            if (typeof copia.id === 'number' && Number.isFinite(copia.id)) {
+                idsTomados.add(copia.id);
+                maxId = Math.max(maxId, copia.id);
+            }
+            mapaPorClave.set(clave, copia);
         }
     }
 
@@ -884,7 +908,8 @@ function fusionarExpedientesInteligente(exp1, exp2) {
                     'materia', 'estado', 'abogado', 'observaciones',
                     'comentario', 'categoria', 'color',
                     'institucion', 'pjfOrgId', 'pjfTipoAsunto', 'pjfTipoProcedimiento',
-                    'archivado', 'motivoArchivo', 'etiquetaArchivo', 'fechaArchivo'];
+                    'archivado', 'motivoArchivo', 'etiquetaArchivo', 'fechaArchivo',
+                    'carpetaId', '_archivadoPorCarpeta'];
 
     camposPorCampo.forEach(campo => {
         const val1 = exp1[campo];

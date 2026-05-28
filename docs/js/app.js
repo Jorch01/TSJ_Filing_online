@@ -594,8 +594,22 @@ function obtenerCarpetasDeCache() {
     return _carpetasCache || [];
 }
 
+// Devuelve un color válido (#RRGGBB) o el default. Sanitiza el valor para evitar
+// inyección CSS/HTML cuando el color viene de sync remoto (un blob manipulado
+// podría intentar romper la cadena de estilo inline).
+// Normaliza un nombre de carpeta para comparación (debe coincidir con
+// _claveCarpeta de sync.js: trim, lowercase, sin acentos, espacios colapsados).
+function _claveNombreCarpetaLocal(nombre) {
+    if (!nombre) return '';
+    return String(nombre).trim().toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/\s+/g, ' ');
+}
+
 function colorCarpeta(carpeta) {
-    return carpeta && carpeta.color ? carpeta.color : '#6c757d';
+    const c = carpeta && carpeta.color;
+    if (typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c)) return c;
+    return '#6c757d';
 }
 
 // Refrescar todos los selects/filtros/forms que muestran carpetas. Llamar tras
@@ -690,7 +704,7 @@ async function abrirGestionCarpetas() {
             const archivedStyle = c.archivada ? 'opacity:0.6;' : '';
             html += `
                 <div style="border:1px solid #ddd; border-radius:6px; padding:0.6rem; display:flex; gap:0.5rem; align-items:center; ${archivedStyle}">
-                    <div style="width:18px; height:36px; border-radius:3px; background:${escapeText(colorCarpeta(c))}; flex-shrink:0;" title="Color"></div>
+                    <div style="width:18px; height:36px; border-radius:3px; background:${colorCarpeta(c)}; flex-shrink:0;" title="Color"></div>
                     <div style="flex:1; min-width:0;">
                         <div style="font-weight:600;">${escapeText(c.nombre || 'Sin nombre')} ${c.archivada ? '<span style="font-size:0.75rem; color:#888;">(archivada)</span>' : ''}</div>
                         <div style="font-size:0.8rem; color:#666;">${cnt} expediente${cnt !== 1 ? 's' : ''} ${c.comentario ? '· ' + escapeText(c.comentario) : ''}</div>
@@ -725,6 +739,14 @@ async function crearCarpetaDesdeModal() {
     const color = document.getElementById('nueva-carpeta-color')?.value || '#3b82f6';
     if (!nombre) {
         mostrarToast('El nombre es obligatorio', 'warning');
+        return;
+    }
+    // Validar duplicado por nombre normalizado para evitar que el sync luego
+    // las "fusione" en una sola (perdiendo color/comentario de la duplicada).
+    const claveNueva = _claveNombreCarpetaLocal(nombre);
+    const existente = obtenerCarpetasDeCache().find(c => _claveNombreCarpetaLocal(c.nombre) === claveNueva);
+    if (existente) {
+        mostrarToast(`Ya existe una carpeta llamada "${existente.nombre}"`, 'warning');
         return;
     }
     try {
@@ -771,6 +793,15 @@ async function guardarCarpetaDesdeModal(id) {
     const color = document.getElementById('edit-carpeta-color')?.value || '#3b82f6';
     if (!nombre) {
         mostrarToast('El nombre es obligatorio', 'warning');
+        return;
+    }
+    // Si el nombre cambió, verificar que no choque con otra carpeta existente.
+    const claveNueva = _claveNombreCarpetaLocal(nombre);
+    const choque = obtenerCarpetasDeCache().find(c =>
+        c.id !== id && _claveNombreCarpetaLocal(c.nombre) === claveNueva
+    );
+    if (choque) {
+        mostrarToast(`Ya existe otra carpeta llamada "${choque.nombre}"`, 'warning');
         return;
     }
     try {
@@ -820,12 +851,17 @@ async function desarchivarCarpetaDesdeModal(id) {
 async function eliminarCarpetaDesdeModal(id, conteo) {
     let conExpedientes = false;
     if (conteo > 0) {
-        const opcion = confirm(
+        // Dos preguntas en serie para que "Cancelar" siempre aborte y "Aceptar"
+        // pida confirmación explícita de si los expedientes deben borrarse también.
+        if (!confirm(
             `La carpeta tiene ${conteo} expediente${conteo !== 1 ? 's' : ''} asignado${conteo !== 1 ? 's' : ''}.\n\n` +
-            'Aceptar: eliminar la carpeta Y sus expedientes (irreversible).\n' +
-            'Cancelar: eliminar SOLO la carpeta, los expedientes quedan sueltos.'
+            '¿Eliminar la carpeta? (esta acción no se puede deshacer)'
+        )) return;
+        conExpedientes = confirm(
+            '¿Borrar también los expedientes asignados a la carpeta?\n\n' +
+            'Aceptar: borra carpeta + expedientes.\n' +
+            'Cancelar: borra solo la carpeta, los expedientes quedan sueltos.'
         );
-        conExpedientes = opcion;
     } else {
         if (!confirm('¿Eliminar la carpeta?')) return;
     }
@@ -1219,6 +1255,7 @@ function renderCardArchivado(exp) {
         <div class="expediente-header">
             <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
             ${instBadge}
+            ${_badgeCarpetaHTML(exp.carpetaId)}
             <span class="archivo-motivo-badge ${motivoClass}">${motivoLabel}</span>
         </div>
         <div class="expediente-body">
@@ -1263,7 +1300,7 @@ function _badgeCarpetaHTML(carpetaId) {
     const carpetas = obtenerCarpetasDeCache();
     const carpeta = carpetas.find(c => c.id === carpetaId);
     if (!carpeta) return '';
-    const color = carpeta.color || '#6c757d';
+    const color = colorCarpeta(carpeta); // sanitizado: #RRGGBB válido o default
     return `<span class="carpeta-badge" style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:10px; background:${color}22; border:1px solid ${color}; color:${color}; font-size:0.75rem; font-weight:500;" title="Carpeta: ${escapeText(carpeta.nombre || '')}">📁 ${escapeText(carpeta.nombre || '')}</span>`;
 }
 
