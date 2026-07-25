@@ -3800,3 +3800,225 @@ textarea:focus {
 .gcal-ok   { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
 .gcal-warn { background: #fefce8; color: #854d0e; border: 1px solid #fcd34d; }
 .gcal-off  { background: var(--bg-secondary,#f3f4f6); color: var(--text-secondary,#6b7280); border: 1px solid var(--border-color,#e5e7eb); }
+
+/* ============================================================
+   ASISTENTE DE VOZ (botón flotante + panel)
+   ============================================================ */
+#voz-fab {
+    position: fixed;
+    right: 1.25rem;
+    bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: none;
+    background: var(--primary);
+    color: #fff;
+    font-size: 1.5rem;
+    cursor: pointer;
+    z-index: 1150;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    transition: transform 0.15s ease, background 0.15s ease;
+}
+#voz-fab:hover { transform: scale(1.07); background: var(--primary-dark); }
+#voz-fab.escuchando { background: var(--danger); animation: voz-pulso 1.2s infinite; }
+
+@keyframes voz-pulso {
+    0%   { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.5); }
+    70%  { box-shadow: 0 0 0 16px rgba(220, 53, 69, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+}
+
+#voz-panel {
+    position: fixed;
+    right: 1.25rem;
+    bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
+    width: 400px;
+    max-width: calc(100vw - 2rem);
+    max-height: min(70vh, 560px);
+    display: none;
+    flex-direction: column;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+    z-index: 1150;
+    overflow: hidden;
+}
+#voz-panel.activo { display: flex; }
+
+.voz-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 0.9rem;
+    background: var(--primary);
+    color: #fff;
+}
+.voz-titulo { font-weight: 600; font-size: 0.95rem; }
+.voz-header-btns { display: flex; gap: 0.35rem; }
+.voz-header-btns button {
+    background: rgba(255, 255, 255, 0.15);
+    border: none;
+    color: #fff;
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+.voz-header-btns button:hover { background: rgba(255, 255, 255, 0.3); }
+
+#voz-chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-height: 140px;
+}
+.voz-msg {
+    max-width: 88%;
+    padding: 0.5rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.88rem;
+    line-height: 1.45;
+    word-wrap: break-word;
+}
+.voz-msg-usuario {
+    align-self: flex-end;
+    background: var(--primary);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+}
+.voz-msg-asistente {
+    align-self: flex-start;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-bottom-left-radius: 4px;
+}
+.voz-lista { margin: 0.4rem 0 0 1.1rem; padding: 0; }
+.voz-lista li { margin-bottom: 0.25rem; }
+
+.voz-ejemplos { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
+.voz-chip {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 999px;
+    padding: 0.25rem 0.65rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+    text-align: left;
+}
+.voz-chip:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+.voz-resultado {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    border-top: 1px solid var(--border-color);
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+}
+.voz-resultado-info { flex: 1; min-width: 0; }
+.voz-resultado-btns { display: flex; flex-direction: column; gap: 0.3rem; flex-shrink: 0; }
+.voz-tag {
+    background: var(--warning);
+    color: #212529;
+    font-size: 0.65rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 999px;
+    vertical-align: middle;
+}
+
+#voz-confirmacion {
+    padding: 0.6rem 0.9rem;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    font-size: 0.88rem;
+}
+.voz-hint { font-size: 0.75rem; color: var(--text-secondary); }
+.voz-confirmacion-btns {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+#voz-status {
+    min-height: 1.1rem;
+    padding: 0.2rem 0.9rem;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+.voz-footer {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.55rem 0.7rem;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-primary);
+}
+#voz-mic {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: none;
+    background: var(--primary);
+    color: #fff;
+    font-size: 1.15rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s ease;
+}
+#voz-mic:hover { background: var(--primary-dark); }
+#voz-mic.escuchando { background: var(--danger); animation: voz-pulso 1.2s infinite; }
+#voz-input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.88rem;
+    outline: none;
+}
+#voz-input:focus { border-color: var(--primary); }
+#voz-enviar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: none;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 0.95rem;
+    flex-shrink: 0;
+}
+#voz-enviar:hover { background: var(--primary); color: #fff; }
+
+.voz-btn-config { margin-top: 0.5rem; }
+
+@media (max-width: 600px) {
+    #voz-panel {
+        right: 0.5rem;
+        left: 0.5rem;
+        width: auto;
+        max-width: none;
+        bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+        max-height: 65vh;
+    }
+    #voz-fab {
+        right: 1rem;
+        bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+    }
+}
