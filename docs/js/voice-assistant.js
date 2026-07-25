@@ -55,6 +55,65 @@
         'Cambia el comentario del expediente 78/2025 a "pendiente de sentencia"'
     ];
 
+    // Guía de referencia mostrada por el botón 💡 "Tips y comandos"
+    const GUIA_COMANDOS = [
+        {
+            titulo: '📅 Calendario',
+            items: [
+                'Agenda audiencia del expediente 123/2025 el jueves a las 10',
+                'Agenda un vencimiento el 15 de agosto: contestar demanda',
+                'Cambia la audiencia del jueves para el viernes a las 12',
+                'Elimina el recordatorio del lunes',
+                '¿Qué audiencias tengo esta semana?'
+            ]
+        },
+        {
+            titulo: '📁 Expedientes',
+            items: [
+                'Crea el expediente 456/2025 en el Juzgado Primero Civil de Cancún',
+                'Cambia el comentario del 123/2025 a "pendiente de sentencia"',
+                'Cambia el juzgado del 88/2024 al Segundo Mercantil de Cancún',
+                'Archiva el expediente 88/2024 como concluido'
+            ]
+        },
+        {
+            titulo: '📝 Notas',
+            items: [
+                'Agrega nota al 123/2025: llamar al perito el lunes',
+                'Crea una nota: preparar alegatos del caso García'
+            ]
+        },
+        {
+            titulo: '🔍 Búsquedas',
+            items: [
+                'Busca mis expedientes de divorcio',
+                '¿Tengo algo de Juan Pérez en mi catálogo?',
+                'Busca el 456/2024 en estrados del TSJ',
+                'Busca 789/2025 en todas las salas de segunda instancia',
+                'Busca a María López por nombre en todos los juzgados',
+                'Consulta el amparo 55/2025 en el PJF'
+            ]
+        },
+        {
+            titulo: '🧭 Navegación',
+            items: [
+                'Llévame al calendario',
+                'Abre la búsqueda del PJF',
+                'Ve a configuración'
+            ]
+        }
+    ];
+
+    const TIPS = [
+        'Dicta los números de expediente como "123 diagonal 2025".',
+        'Toda acción que modifica datos te pedirá confirmación: responde "sí" o "no" por voz, o usa los botones.',
+        'Si propongo algo con un error, dime la corrección directamente: "mejor a las 11".',
+        'Si falta un dato (hora, juzgado…), te lo preguntaré; puedes responder por voz o escribiendo.',
+        'Si mencionas un expediente de tu catálogo, uso su juzgado guardado automáticamente en las búsquedas.',
+        'Con 🔊/🔇 activas o silencias mis respuestas habladas.',
+        'También puedes escribir la instrucción en el campo de texto de abajo.'
+    ];
+
     // ==================== ESTADO ====================
 
     const Estado = {
@@ -138,10 +197,12 @@
             '<div class="voz-header">' +
                 '<span class="voz-titulo">🎤 Asistente de voz</span>' +
                 '<div class="voz-header-btns">' +
+                    '<button type="button" id="voz-ayuda-toggle" title="Tips y comandos" aria-label="Tips y comandos">💡</button>' +
                     '<button type="button" id="voz-tts-toggle" title="Respuestas habladas"></button>' +
                     '<button type="button" id="voz-cerrar" title="Cerrar" aria-label="Cerrar">✕</button>' +
                 '</div>' +
             '</div>' +
+            '<div id="voz-ayuda" style="display:none;"></div>' +
             '<div id="voz-chat" aria-live="polite"></div>' +
             '<div id="voz-confirmacion" style="display:none;">' +
                 '<div id="voz-confirmacion-texto"></div>' +
@@ -159,6 +220,7 @@
         document.body.appendChild(panel);
 
         document.getElementById('voz-cerrar').addEventListener('click', cerrarPanel);
+        document.getElementById('voz-ayuda-toggle').addEventListener('click', alternarAyuda);
         document.getElementById('voz-mic').addEventListener('click', alternarMicrofono);
         document.getElementById('voz-enviar').addEventListener('click', enviarTexto);
         document.getElementById('voz-input').addEventListener('keydown', (e) => {
@@ -190,6 +252,79 @@
     function panelAbierto() {
         const p = document.getElementById('voz-panel');
         return !!p && p.classList.contains('activo');
+    }
+
+    // ==================== AYUDA: TIPS Y COMANDOS ====================
+
+    function ayudaAbierta() {
+        const a = document.getElementById('voz-ayuda');
+        return !!a && a.style.display !== 'none';
+    }
+
+    function construirAyuda() {
+        const cont = document.getElementById('voz-ayuda');
+        if (!cont || cont.childElementCount) return;
+
+        const intro = document.createElement('div');
+        intro.className = 'voz-ayuda-intro';
+        intro.textContent = 'Esto es lo que puedo hacer. Toca un ejemplo para usarlo:';
+        cont.appendChild(intro);
+
+        GUIA_COMANDOS.forEach(seccion => {
+            const h = document.createElement('div');
+            h.className = 'voz-ayuda-titulo';
+            h.textContent = seccion.titulo;
+            cont.appendChild(h);
+            seccion.items.forEach(texto => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'voz-ayuda-item';
+                b.textContent = '“' + texto + '”';
+                b.addEventListener('click', () => {
+                    cerrarAyuda();
+                    const input = document.getElementById('voz-input');
+                    if (input) { input.value = texto; input.focus(); }
+                });
+                cont.appendChild(b);
+            });
+        });
+
+        const ht = document.createElement('div');
+        ht.className = 'voz-ayuda-titulo';
+        ht.textContent = '💡 Tips';
+        cont.appendChild(ht);
+        const ul = document.createElement('ul');
+        ul.className = 'voz-ayuda-tips';
+        TIPS.forEach(tip => {
+            const li = document.createElement('li');
+            li.textContent = tip;
+            ul.appendChild(li);
+        });
+        cont.appendChild(ul);
+    }
+
+    function abrirAyuda() {
+        construirAyuda();
+        const ayuda = document.getElementById('voz-ayuda');
+        const chat = document.getElementById('voz-chat');
+        const btn = document.getElementById('voz-ayuda-toggle');
+        if (ayuda) ayuda.style.display = 'block';
+        if (chat) chat.style.display = 'none';
+        if (btn) btn.classList.add('activo');
+    }
+
+    function cerrarAyuda() {
+        const ayuda = document.getElementById('voz-ayuda');
+        const chat = document.getElementById('voz-chat');
+        const btn = document.getElementById('voz-ayuda-toggle');
+        if (ayuda) ayuda.style.display = 'none';
+        if (chat) chat.style.display = 'flex';
+        if (btn) btn.classList.remove('activo');
+    }
+
+    function alternarAyuda() {
+        if (ayudaAbierta()) cerrarAyuda();
+        else abrirAyuda();
     }
 
     function alternarPanel() {
@@ -244,6 +379,12 @@
             });
             ej.appendChild(chip);
         });
+        const chipAyuda = document.createElement('button');
+        chipAyuda.type = 'button';
+        chipAyuda.className = 'voz-chip voz-chip-ayuda';
+        chipAyuda.textContent = '💡 Ver todos los tips y comandos';
+        chipAyuda.addEventListener('click', abrirAyuda);
+        ej.appendChild(chipAyuda);
         chat.scrollTop = chat.scrollHeight;
     }
 
@@ -496,6 +637,7 @@
     // ==================== FLUJO PRINCIPAL ====================
 
     async function procesarEntradaUsuario(texto) {
+        cerrarAyuda();
         agregarMensaje('usuario', esc(texto));
 
         // Respondiendo a una confirmación pendiente. Nota: se detecta por

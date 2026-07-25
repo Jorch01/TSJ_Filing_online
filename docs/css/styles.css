@@ -4022,3 +4022,54 @@ textarea:focus {
         bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
     }
 }
+
+/* Asistente de voz: vista de tips y comandos */
+#voz-ayuda {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.75rem;
+    min-height: 140px;
+}
+.voz-ayuda-intro {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+.voz-ayuda-titulo {
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    margin: 0.75rem 0 0.35rem;
+    padding-bottom: 0.2rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.voz-ayuda-titulo:first-of-type { margin-top: 0.25rem; }
+.voz-ayuda-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 8px;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.8rem;
+    line-height: 1.35;
+    cursor: pointer;
+    margin-bottom: 0.3rem;
+    font-style: italic;
+}
+.voz-ayuda-item:hover {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+}
+.voz-ayuda-tips {
+    margin: 0.25rem 0 0.5rem 1.1rem;
+    padding: 0;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+.voz-ayuda-tips li { margin-bottom: 0.35rem; line-height: 1.4; }
+.voz-header-btns button.activo { background: rgba(255, 255, 255, 0.4); }
+.voz-chip-ayuda { font-weight: 600; }
