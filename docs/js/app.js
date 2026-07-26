@@ -313,6 +313,36 @@ function navegarA(pagina) {
     }
 }
 
+/**
+ * Deep-link a un expediente: navega a la página de expedientes, hace
+ * scroll a la tarjeta/fila y la resalta. Actualiza el hash de la URL
+ * (#expedientes/<id>) para poder compartir/recargar el enlace.
+ */
+async function mostrarExpediente(id) {
+    navegarA('expedientes');
+    try { history.replaceState(null, '', '#expedientes/' + id); } catch (e) { /* file:// */ }
+
+    // Dar tiempo a que la lista esté renderizada
+    let el = null;
+    for (let intento = 0; intento < 10 && !el; intento++) {
+        el = document.querySelector(`#page-expedientes [data-id="${id}"]`);
+        if (!el) await new Promise(r => setTimeout(r, 200));
+    }
+    if (!el) {
+        mostrarToast('El expediente no está visible en la lista actual (¿archivado o en otra vista?)', 'warning');
+        return;
+    }
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('expediente-destacado');
+    setTimeout(() => el.classList.remove('expediente-destacado'), 2800);
+}
+
+// Al cargar con #expedientes/<id> en la URL, abrir ese expediente
+window.addEventListener('load', () => {
+    const m = (location.hash || '').match(/^#expedientes\/(\d+)$/);
+    if (m) setTimeout(() => mostrarExpediente(parseInt(m[1])), 900);
+});
+
 // ==================== ESTADÍSTICAS ====================
 
 async function cargarEstadisticas() {
@@ -1023,11 +1053,9 @@ async function guardarExpediente(event) {
             if (!permitido) return;
         }
 
+        // La categoría la calcula el núcleo de acciones (regla única)
         const expediente = {
             juzgado,
-            categoria: institucion === 'PJF' ? 'PJF Federal'
-                     : institucion === 'OTRO' ? 'Otros/Varios'
-                     : obtenerCategoriaJuzgado(juzgado),
             institucion: institucion,
             comentario: comentario || undefined,
             carpetaId: carpetaId
@@ -1052,21 +1080,17 @@ async function guardarExpediente(event) {
             expediente.nombre = valor;
         }
 
+        // Guardado, refresco y sync centralizados en el núcleo de acciones
+        // (mismo camino que el asistente de voz).
         if (id) {
-            await actualizarExpediente(parseInt(id), expediente);
+            await actualizarExpedienteCore(parseInt(id), expediente);
             mostrarToast('Expediente actualizado', 'success');
         } else {
-            await agregarExpediente(expediente);
+            await crearExpedienteCore(expediente);
             mostrarToast('Expediente agregado', 'success');
         }
 
         cerrarFormularioExpediente();
-        await cargarExpedientes();
-        await cargarEstadisticas();
-        // Sincronizar con otros dispositivos (await: bloquea brevemente con
-        // indicador "Sincronizando…" para garantizar que el cambio sí subió,
-        // especialmente en iOS Safari que aborta fetch al backgroundear).
-        if (typeof marcarYSincronizar === 'function') await marcarYSincronizar();
     } catch (error) {
         mostrarToast('Error al guardar: ' + error.message, 'error');
     } finally {
@@ -1897,19 +1921,16 @@ async function guardarNota(event) {
     };
 
     try {
+        // Guardado, refresco y sync centralizados en el núcleo de acciones
+        // (mismo camino que el asistente de voz).
         if (id) {
-            await actualizarNota(parseInt(id), nota);
+            await actualizarNotaCore(parseInt(id), nota);
             mostrarToast('Nota actualizada', 'success');
         } else {
-            await agregarNota(nota);
+            await crearNotaCore(nota);
             mostrarToast('Nota creada', 'success');
         }
-
         cerrarModal();
-        await cargarNotas();
-        await cargarEstadisticas();
-        // Propagar a otros dispositivos vinculados
-        if (typeof marcarYSincronizar === 'function') await marcarYSincronizar();
     } catch (error) {
         mostrarToast('Error: ' + error.message, 'error');
     }
@@ -2525,12 +2546,8 @@ function toggleExpedienteCustom(prefix) {
     }
 }
 
-const COLORES_EVENTOS = {
-    audiencia: '#3788d8',
-    vencimiento: '#dc3545',
-    recordatorio: '#ffc107',
-    otro: '#6c757d'
-};
+// Fuente única de colores por tipo de evento: acciones-core.js
+const COLORES_EVENTOS = CORE_COLORES_EVENTOS;
 
 async function guardarEvento(event) {
     event.preventDefault();
@@ -2573,26 +2590,16 @@ async function guardarEvento(event) {
     };
 
     try {
+        // Guardado, refresco, sync y Google Calendar van por el núcleo de
+        // acciones (acciones-core.js), el mismo camino que el asistente de voz.
         if (id) {
-            await actualizarEvento(parseInt(id), evento);
+            await actualizarEventoCore(parseInt(id), evento);
             mostrarToast('Evento actualizado', 'success');
         } else {
-            await agregarEvento(evento);
+            await crearEventoCore(evento);
             mostrarToast('Evento creado', 'success');
         }
-
         cerrarModal();
-        await cargarEventos();
-        await cargarEstadisticas();
-        renderizarCalendario();
-        // Propagar el cambio a otros dispositivos.
-        if (typeof marcarYSincronizar === 'function') await marcarYSincronizar();
-        // Sincronizar con Google Calendar si está configurado (no bloquea si falla)
-        if (typeof GCAL !== 'undefined' && GCAL.estaConectado()) {
-            const eventosActuales = await obtenerEventos();
-            const eventoGuardado = eventosActuales.find(e => e.titulo === evento.titulo && e.fechaInicio === evento.fechaInicio);
-            if (eventoGuardado) GCAL.hookGuardarEvento(eventoGuardado);
-        }
     } catch (error) {
         mostrarToast('Error: ' + error.message, 'error');
     }
