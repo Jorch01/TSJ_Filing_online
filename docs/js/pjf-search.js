@@ -398,3 +398,85 @@ function limpiarFormularioPJF() {
 
     ocultarTipoProcedimiento();
 }
+
+// ==================== BÚSQUEDA DE ORGANISMOS POR NOMBRE ====================
+// Permite resolver "Juzgado Segundo de Distrito de Cancún" → orgId sin pasar
+// por la cascada de selects. Lo usa el Asistente de Voz para abrir consultas
+// federales dictadas desde cero.
+
+/** Carga los catálogos PJF si aún no están en memoria. */
+async function asegurarCatalogosPJF() {
+    if (!pjfDatosCargados) await cargarCatalogosPJF();
+    return pjfDatosCargados;
+}
+
+function normalizarTextoPJF(s) {
+    return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+var PJF_STOPWORDS = { de: 1, del: 1, la: 1, las: 1, el: 1, los: 1, en: 1, y: 1, con: 1, para: 1 };
+
+function tokensPJF(texto) {
+    return normalizarTextoPJF(texto).split(/[^a-z0-9]+/)
+        .filter(function (t) { return t && !PJF_STOPWORDS[t]; });
+}
+
+/**
+ * Busca un organismo del PJF por nombre aproximado (incluye ciudad/estado).
+ * Devuelve el órgano con más tokens coincidentes; exige que TODOS los
+ * tokens de la consulta aparezcan (precisión sobre cobertura). Si hay
+ * empate devuelve el de nombre más corto (el más específico).
+ * Retorna el objeto órgano o null.
+ */
+function buscarOrganismoPJF(texto) {
+    var tokens = tokensPJF(texto);
+    if (!tokens.length || !pjfOrganismos.length) return null;
+
+    var candidatos = [];
+    for (var i = 0; i < pjfOrganismos.length; i++) {
+        var o = pjfOrganismos[i];
+        var blob = normalizarTextoPJF(o.nombre + ' ' + o.ciudad + ' ' + o.estado + ' ' + o.circuito);
+        var ok = true;
+        for (var j = 0; j < tokens.length; j++) {
+            if (blob.indexOf(tokens[j]) === -1) { ok = false; break; }
+        }
+        if (ok) candidatos.push(o);
+    }
+    if (!candidatos.length) return null;
+    candidatos.sort(function (a, b) { return a.nombre.length - b.nombre.length; });
+    return candidatos[0];
+}
+
+/**
+ * Busca el tipo de asunto por nombre aproximado dentro de los válidos para
+ * el tipo de órgano dado. Retorna {id, nombre} o null.
+ */
+function buscarTipoAsuntoPJF(organo, texto) {
+    if (!organo || !texto) return null;
+    var info = pjfTiposOrgano[organo.tipoOrganismoId];
+    var lista = (info && info.tiposAsuntoArr) ? info.tiposAsuntoArr : [];
+    var tokens = tokensPJF(texto);
+    if (!tokens.length || !lista.length) return null;
+
+    var mejor = null;
+    var mejorScore = 0;
+    for (var i = 0; i < lista.length; i++) {
+        var nombre = normalizarTextoPJF(lista[i].nombre);
+        var score = 0;
+        for (var j = 0; j < tokens.length; j++) {
+            if (nombre.indexOf(tokens[j]) !== -1) score++;
+        }
+        // Debe coincidir al menos la mayoría de los tokens dictados
+        if (score > mejorScore && score >= Math.ceil(tokens.length / 2)) {
+            mejorScore = score;
+            mejor = lista[i];
+        }
+    }
+    return mejor;
+}
+
+/** Lista los tipos de asunto válidos para un órgano (para mostrarlos al usuario). */
+function tiposAsuntoDeOrgano(organo) {
+    var info = organo ? pjfTiposOrgano[organo.tipoOrganismoId] : null;
+    return (info && info.tiposAsuntoArr) ? info.tiposAsuntoArr : [];
+}

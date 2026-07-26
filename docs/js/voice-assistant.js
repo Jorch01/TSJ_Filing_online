@@ -31,21 +31,23 @@
     // ==================== CONSTANTES ====================
 
     const TTS_KEY = 'voz_tts_activado';          // localStorage: respuestas habladas
+    const RATE_KEY = 'voz_tts_velocidad';        // localStorage: velocidad de la voz
+    const AUTO_KEY = 'voz_auto_escucha';         // localStorage: escuchar al abrir el panel
     const MODELO_DEFAULT = 'llama-3.3-70b-versatile';
     const WHISPER_MODEL = 'whisper-large-v3-turbo';
     const MAX_TURNOS = 16;                        // tope de la conversación de slot-filling
 
-    // Acciones que modifican datos → siempre piden confirmación
+    // Acciones que modifican datos → siempre piden confirmación.
+    // "deshacer" es la excepción deliberada: se ejecuta directo porque es la
+    // válvula de seguridad para revertir rápido una confirmación equivocada.
     const ACCIONES_MUTANTES = new Set([
         'crear_evento', 'editar_evento', 'eliminar_evento',
         'crear_expediente', 'editar_expediente', 'archivar_expediente',
-        'crear_nota'
+        'crear_nota', 'mover_a_carpeta'
     ]);
 
     const RE_SI = /^\s*(s[ií]|confirmo|confirmar|confirmado|dale|adelante|correcto|as[ií] es|ok|okey|hazlo|procede|por favor)\b/i;
     const RE_NO = /^\s*(no|cancela|cancelar|cancelado|det[eé]n|olv[ií]dalo|mejor no|espera)\b/i;
-
-    const COLORES_EVT = { audiencia: '#3788d8', vencimiento: '#dc3545', recordatorio: '#ffc107', otro: '#6c757d' };
 
     const EJEMPLOS = [
         'Agenda audiencia del expediente 123/2025 el jueves a las 10',
@@ -71,9 +73,12 @@
             titulo: '📁 Expedientes',
             items: [
                 'Crea el expediente 456/2025 en el Juzgado Primero Civil de Cancún',
+                'Abre el expediente 123/2025',
                 'Cambia el comentario del 123/2025 a "pendiente de sentencia"',
                 'Cambia el juzgado del 88/2024 al Segundo Mercantil de Cancún',
-                'Archiva el expediente 88/2024 como concluido'
+                'Mueve el 123/2025 a la carpeta del caso García',
+                'Archiva el expediente 88/2024 como concluido',
+                'Deshaz lo último'
             ]
         },
         {
@@ -91,7 +96,7 @@
                 'Busca el 456/2024 en estrados del TSJ',
                 'Busca 789/2025 en todas las salas de segunda instancia',
                 'Busca a María López por nombre en todos los juzgados',
-                'Consulta el amparo 55/2025 en el PJF'
+                'Consulta el amparo indirecto 55/2025 en el Juzgado Segundo de Distrito de Cancún'
             ]
         },
         {
@@ -110,7 +115,8 @@
         'Si propongo algo con un error, dime la corrección directamente: "mejor a las 11".',
         'Si falta un dato (hora, juzgado…), te lo preguntaré; puedes responder por voz o escribiendo.',
         'Si mencionas un expediente de tu catálogo, uso su juzgado guardado automáticamente en las búsquedas.',
-        'Con 🔊/🔇 activas o silencias mis respuestas habladas.',
+        'Di "deshaz lo último" para revertir la acción más reciente hecha por el asistente.',
+        'Con 🔊/🔇 activas o silencias mis respuestas habladas; en Configuración puedes ajustar la velocidad de la voz y la escucha automática.',
         'También puedes escribir la instrucción en el campo de texto de abajo.'
     ];
 
@@ -132,6 +138,7 @@
     let mediaRecorder = null;
     let chunksAudio = [];
     let ttsActivo = localStorage.getItem(TTS_KEY) !== '0';
+    let pilaDeshacer = [];        // últimas acciones del asistente, para "deshaz lo último"
 
     // ==================== HELPERS ====================
 
@@ -155,24 +162,31 @@
         if (typeof mostrarToast === 'function') mostrarToast(msg, tipo || 'info');
     }
 
-    async function refrescarUI() {
-        try {
-            if (typeof cargarExpedientes === 'function') await cargarExpedientes();
-            if (typeof cargarEventos === 'function') await cargarEventos();
-            if (typeof cargarNotas === 'function') await cargarNotas();
-            if (typeof cargarEstadisticas === 'function') await cargarEstadisticas();
-            if (typeof renderizarCalendario === 'function') renderizarCalendario();
-        } catch (e) {
-            console.error('[VOZ] Error refrescando UI:', e);
-        }
+    // ==================== DESHACER ====================
+    // Pila en memoria de las acciones ejecutadas por el asistente en esta
+    // sesión. "Deshaz lo último" revierte la más reciente usando el núcleo
+    // de acciones, así el revert también refresca UI y sincroniza.
+
+    function registrarDeshacer(entrada) {
+        pilaDeshacer.push(entrada);
+        if (pilaDeshacer.length > 10) pilaDeshacer.shift();
     }
 
-    async function sincronizar() {
-        try {
-            if (typeof marcarYSincronizar === 'function') await marcarYSincronizar();
-        } catch (e) {
-            console.error('[VOZ] Error al sincronizar:', e);
+    async function accDeshacer() {
+        const u = pilaDeshacer.pop();
+        if (!u) throw new Error('No hay ninguna acción reciente del asistente que deshacer');
+        switch (u.tipo) {
+            case 'evento_creado':        await eliminarEventoCore(u.id); break;
+            case 'evento_editado':       await actualizarEventoCore(u.id, u.antes); break;
+            case 'evento_eliminado':     await crearEventoCore(u.evento); break;
+            case 'expediente_creado':    await eliminarExpedienteCore(u.id, true); break;
+            case 'expediente_editado':   await actualizarExpedienteCore(u.id, u.antes); break;
+            case 'expediente_archivado': await archivarExpedienteCore(u.id, false); break;
+            case 'nota_creada':          await eliminarNotaCore(u.id); break;
+            default: throw new Error('No sé cómo deshacer esa acción');
         }
+        toast('Acción deshecha', 'success');
+        return `Deshecho: ${u.etiqueta}.`;
     }
 
     // ==================== UI: FAB + PANEL ====================
@@ -246,6 +260,47 @@
         if (btn) {
             btn.textContent = ttsActivo ? '🔊' : '🔇';
             btn.title = ttsActivo ? 'Respuestas habladas: activadas' : 'Respuestas habladas: desactivadas';
+        }
+        // Mantener en sync el checkbox de la página de Configuración
+        const cfg = document.getElementById('voz-cfg-tts');
+        if (cfg) cfg.checked = ttsActivo;
+    }
+
+    // Conecta la tarjeta "Asistente de Voz" de la página de Configuración
+    // (si existe) con los ajustes guardados en localStorage.
+    function configurarAjustesUI() {
+        const cfgTts = document.getElementById('voz-cfg-tts');
+        const cfgAuto = document.getElementById('voz-cfg-auto');
+        const cfgRate = document.getElementById('voz-cfg-rate');
+        const cfgRateVal = document.getElementById('voz-cfg-rate-valor');
+        if (!cfgTts && !cfgAuto && !cfgRate) return;
+
+        const pintarRate = () => {
+            if (cfgRate && cfgRateVal) cfgRateVal.textContent = parseFloat(cfgRate.value).toFixed(2) + 'x';
+        };
+
+        if (cfgTts) {
+            cfgTts.checked = ttsActivo;
+            cfgTts.addEventListener('change', () => {
+                ttsActivo = cfgTts.checked;
+                localStorage.setItem(TTS_KEY, ttsActivo ? '1' : '0');
+                if (!ttsActivo && 'speechSynthesis' in window) speechSynthesis.cancel();
+                pintarTTSToggle();
+            });
+        }
+        if (cfgAuto) {
+            cfgAuto.checked = localStorage.getItem(AUTO_KEY) !== '0';
+            cfgAuto.addEventListener('change', () => {
+                localStorage.setItem(AUTO_KEY, cfgAuto.checked ? '1' : '0');
+            });
+        }
+        if (cfgRate) {
+            cfgRate.value = parseFloat(localStorage.getItem(RATE_KEY)) || 1.05;
+            pintarRate();
+            cfgRate.addEventListener('input', () => {
+                localStorage.setItem(RATE_KEY, cfgRate.value);
+                pintarRate();
+            });
         }
     }
 
@@ -348,8 +403,8 @@
         if (!chat.childElementCount) {
             mostrarBienvenida();
         }
-        // Arrancar escucha de inmediato: ese es el punto del botón
-        iniciarEscucha();
+        // Arrancar escucha de inmediato (configurable en Configuración)
+        if (localStorage.getItem(AUTO_KEY) !== '0') iniciarEscucha();
     }
 
     function cerrarPanel() {
@@ -439,7 +494,7 @@
         speechSynthesis.cancel();
         const u = new SpeechSynthesisUtterance(texto);
         u.lang = 'es-MX';
-        u.rate = 1.05;
+        u.rate = parseFloat(localStorage.getItem(RATE_KEY)) || 1.05;
         if (alTerminar) {
             u.onend = alTerminar;
             u.onerror = alTerminar;
@@ -759,6 +814,9 @@
                 case 'editar_expediente':   mensajeFinal = await accEditarExpediente(p); break;
                 case 'archivar_expediente': mensajeFinal = await accArchivarExpediente(p); break;
                 case 'crear_nota':          mensajeFinal = await accCrearNota(p); break;
+                case 'mover_a_carpeta':     mensajeFinal = await accMoverACarpeta(p); break;
+                case 'abrir_expediente':    mensajeFinal = await accAbrirExpediente(p); break;
+                case 'deshacer':            mensajeFinal = await accDeshacer(); break;
                 case 'buscar_local':        mensajeFinal = await accBuscarLocal(p); break;
                 case 'buscar_tsj':          mensajeFinal = await accBuscarTSJ(p); break;
                 case 'buscar_pjf':          mensajeFinal = await accBuscarPJF(p); break;
@@ -793,24 +851,16 @@
         const fechaInicio = new Date(p.fecha + 'T' + (p.hora || '09:00'));
         if (isNaN(fechaInicio.getTime())) throw new Error('Fecha inválida: ' + p.fecha);
 
-        const evento = {
+        const nuevoId = await crearEventoCore({
             titulo: p.titulo,
             tipo,
             fechaInicio: fechaInicio.toISOString(),
             todoElDia,
             expedienteId: p.expedienteId != null ? parseInt(p.expedienteId) : null,
             expedienteTexto: p.expedienteTexto || null,
-            descripcion: p.descripcion || '',
-            alerta: true,
-            color: COLORES_EVT[tipo]
-        };
-        const nuevoId = await agregarEvento(evento);
-        await refrescarUI();
-        await sincronizar();
-        if (typeof GCAL !== 'undefined' && GCAL.estaConectado && GCAL.estaConectado()) {
-            const guardado = (await obtenerEventos()).find(e => e.id === nuevoId);
-            if (guardado) GCAL.hookGuardarEvento(guardado);
-        }
+            descripcion: p.descripcion || ''
+        });
+        registrarDeshacer({ tipo: 'evento_creado', id: nuevoId, etiqueta: `evento "${p.titulo}"` });
         toast('Evento creado', 'success');
         const cuando = fechaInicio.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) +
             (p.hora ? ' a las ' + p.hora : '');
@@ -827,7 +877,7 @@
         const cambios = {};
         if (c.titulo) cambios.titulo = c.titulo;
         if (c.descripcion != null) cambios.descripcion = c.descripcion;
-        if (c.tipo && COLORES_EVT[c.tipo]) { cambios.tipo = c.tipo; cambios.color = COLORES_EVT[c.tipo]; }
+        if (c.tipo && CORE_COLORES_EVENTOS[c.tipo]) cambios.tipo = c.tipo; // el color lo ajusta el núcleo
         if (c.fecha || c.hora) {
             const base = new Date(evento.fechaInicio);
             const fecha = c.fecha || fechaLocalISO(base);
@@ -840,13 +890,12 @@
         if (typeof c.todoElDia === 'boolean') cambios.todoElDia = c.todoElDia;
         if (!Object.keys(cambios).length) throw new Error('No hay cambios que aplicar');
 
-        await actualizarEvento(id, cambios);
-        await refrescarUI();
-        await sincronizar();
-        if (typeof GCAL !== 'undefined' && GCAL.estaConectado && GCAL.estaConectado()) {
-            const actualizado = (await obtenerEventos()).find(e => e.id === id);
-            if (actualizado) GCAL.hookGuardarEvento(actualizado);
-        }
+        // Valores previos de los campos que cambian, para poder deshacer
+        const antes = {};
+        for (const k of Object.keys(cambios)) antes[k] = evento[k];
+
+        await actualizarEventoCore(id, cambios);
+        registrarDeshacer({ tipo: 'evento_editado', id, antes, etiqueta: `edición del evento "${evento.titulo}"` });
         toast('Evento actualizado', 'success');
         return `Evento "${evento.titulo}" actualizado.`;
     }
@@ -854,17 +903,13 @@
     async function accEliminarEvento(p) {
         const id = parseInt(p.eventoId);
         if (!id) throw new Error('No identifiqué qué evento eliminar');
-        const evento = (await obtenerEventos()).find(e => e.id === id);
-        if (!evento) throw new Error('Evento no encontrado');
-        await eliminarEvento(id);
-        if (typeof GCAL !== 'undefined' && GCAL.estaConectado && GCAL.estaConectado() &&
-            evento.googleCalEventId && GCAL.hookEliminarEvento) {
-            GCAL.hookEliminarEvento(evento.googleCalEventId);
-        }
-        await refrescarUI();
-        await sincronizar();
+        const eliminado = await eliminarEventoCore(id);
+        const copia = { ...eliminado };
+        delete copia.id;
+        delete copia.googleCalEventId;
+        registrarDeshacer({ tipo: 'evento_eliminado', evento: copia, etiqueta: `eliminación del evento "${eliminado.titulo}"` });
         toast('Evento eliminado', 'success');
-        return `Evento "${evento.titulo}" eliminado.`;
+        return `Evento "${eliminado.titulo}" eliminado.`;
     }
 
     async function accConsultarAgenda(p) {
@@ -933,20 +978,13 @@
             if (!permitido) throw new Error('Alcanzaste el límite de expedientes de tu plan');
         }
 
-        const expediente = {
-            juzgado,
-            categoria: institucion === 'PJF' ? 'PJF Federal'
-                     : institucion === 'OTRO' ? 'Otros/Varios'
-                     : (typeof obtenerCategoriaJuzgado === 'function' ? obtenerCategoriaJuzgado(juzgado) : 'OTROS'),
-            institucion,
-            comentario: p.comentario || undefined
-        };
+        const expediente = { juzgado, institucion, comentario: p.comentario || undefined };
+        if (p.carpetaId != null) expediente.carpetaId = parseInt(p.carpetaId);
         if (p.tipoRegistro === 'nombre') expediente.nombre = p.valor;
         else expediente.numero = p.valor;
 
-        await agregarExpediente(expediente);
-        await refrescarUI();
-        await sincronizar();
+        const nuevoId = await crearExpedienteCore(expediente);
+        registrarDeshacer({ tipo: 'expediente_creado', id: nuevoId, etiqueta: `expediente ${p.valor}` });
         toast('Expediente agregado', 'success');
         return `Expediente ${p.valor} (${institucion}) agregado en ${juzgado}.`;
     }
@@ -976,9 +1014,12 @@
         }
         if (!Object.keys(cambios).length) throw new Error('No hay cambios que aplicar');
 
-        await actualizarExpediente(id, cambios);
-        await refrescarUI();
-        await sincronizar();
+        // Valores previos de los campos que cambian, para poder deshacer
+        const antes = {};
+        for (const k of Object.keys(cambios)) antes[k] = exp[k];
+
+        await actualizarExpedienteCore(id, cambios);
+        registrarDeshacer({ tipo: 'expediente_editado', id, antes, etiqueta: `edición del expediente ${exp.numero || exp.nombre}` });
         toast('Expediente actualizado', 'success');
         return `Expediente ${exp.numero || exp.nombre} actualizado.`;
     }
@@ -988,28 +1029,52 @@
         if (!id) throw new Error('No identifiqué qué expediente archivar');
         const exp = await obtenerExpediente(id);
         if (!exp) throw new Error('Expediente no encontrado');
-        await archivarExpedienteDB(id, true, p.motivo || 'concluido', '');
-        await refrescarUI();
-        await sincronizar();
+        await archivarExpedienteCore(id, true, p.motivo || 'concluido', '');
+        registrarDeshacer({ tipo: 'expediente_archivado', id, etiqueta: `archivo del expediente ${exp.numero || exp.nombre}` });
         toast('Expediente archivado', 'success');
         return `Expediente ${exp.numero || exp.nombre} archivado (${p.motivo || 'concluido'}).`;
     }
 
+    async function accMoverACarpeta(p) {
+        const id = parseInt(p.expedienteId);
+        const carpetaId = p.carpetaId != null ? parseInt(p.carpetaId) : null;
+        if (!id) throw new Error('No identifiqué qué expediente mover');
+        const exp = await obtenerExpediente(id);
+        if (!exp) throw new Error('Expediente no encontrado');
+        let nombreCarpeta = 'sin carpeta';
+        if (carpetaId != null) {
+            const carpeta = await obtenerCarpeta(carpetaId).catch(() => null);
+            if (!carpeta) throw new Error('No encontré esa carpeta');
+            nombreCarpeta = 'la carpeta "' + (carpeta.nombre || carpetaId) + '"';
+        }
+        const antes = { carpetaId: exp.carpetaId !== undefined ? exp.carpetaId : null };
+        await actualizarExpedienteCore(id, { carpetaId });
+        registrarDeshacer({ tipo: 'expediente_editado', id, antes, etiqueta: `mover ${exp.numero || exp.nombre} de carpeta` });
+        toast('Expediente movido', 'success');
+        return `Expediente ${exp.numero || exp.nombre} movido a ${nombreCarpeta}.`;
+    }
+
     async function accCrearNota(p) {
         if (!p.titulo) throw new Error('Falta el título de la nota');
-        const nota = {
+        const nuevoId = await crearNotaCore({
             expedienteId: p.expedienteId != null ? parseInt(p.expedienteId) : null,
             expedienteTexto: p.expedienteTexto || null,
             titulo: p.titulo,
-            contenido: p.contenido || '',
-            color: '#fff3cd',
-            recordatorio: null
-        };
-        await agregarNota(nota);
-        await refrescarUI();
-        await sincronizar();
+            contenido: p.contenido || ''
+        });
+        registrarDeshacer({ tipo: 'nota_creada', id: nuevoId, etiqueta: `nota "${p.titulo}"` });
         toast('Nota creada', 'success');
         return `Nota "${p.titulo}" creada.`;
+    }
+
+    async function accAbrirExpediente(p) {
+        const id = parseInt(p.expedienteId);
+        if (!id) throw new Error('No identifiqué qué expediente abrir');
+        const exp = await obtenerExpediente(id);
+        if (!exp) throw new Error('Expediente no encontrado');
+        if (typeof mostrarExpediente === 'function') await mostrarExpediente(id);
+        else if (typeof navegarA === 'function') navegarA('expedientes');
+        return `Abrí el expediente ${exp.numero || exp.nombre}.`;
     }
 
     async function accBuscarLocal(p) {
@@ -1073,9 +1138,10 @@
             const bVer = document.createElement('button');
             bVer.type = 'button';
             bVer.className = 'voz-chip';
-            bVer.textContent = '📁 Ver lista';
+            bVer.textContent = '📂 Abrir';
             bVer.addEventListener('click', () => {
-                if (typeof navegarA === 'function') navegarA('expedientes');
+                if (typeof mostrarExpediente === 'function') mostrarExpediente(exp.id);
+                else if (typeof navegarA === 'function') navegarA('expedientes');
             });
             btns.appendChild(bVer);
             fila.appendChild(btns);
@@ -1137,7 +1203,27 @@
             return `Abrí la consulta del expediente ${numero} en el portal del PJF.`;
         }
 
-        // Sin organismo guardado: llevar a la página PJF con el número precargado
+        // Organismo dictado por nombre → resolver contra el catálogo PJF
+        if (p.organismo && typeof buscarOrganismoPJF === 'function' && typeof construirURLPJF === 'function') {
+            if (typeof asegurarCatalogosPJF === 'function') await asegurarCatalogosPJF();
+            const org = buscarOrganismoPJF(p.organismo);
+            if (org) {
+                if (!numero) throw new Error('Falta el número de expediente para consultar en el PJF');
+                const ta = p.tipoAsunto ? buscarTipoAsuntoPJF(org, p.tipoAsunto) : null;
+                if (ta) {
+                    const url = construirURLPJF(org.id, ta.id, numero, 0);
+                    window.open(url, 'pjf_expediente', 'width=1024,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no');
+                    return `Abrí la consulta del ${numero} (${ta.nombre}) en ${org.nombre}.`;
+                }
+                const tipos = (typeof tiposAsuntoDeOrgano === 'function' ? tiposAsuntoDeOrgano(org) : [])
+                    .map(t => t.nombre).slice(0, 12).join(', ');
+                throw new Error(`Identifiqué el órgano "${org.nombre}" pero no el tipo de asunto. ` +
+                    (tipos ? `Los válidos son: ${tipos}. ` : '') + 'Repite indicando el tipo de asunto.');
+            }
+            // Si el órgano no se resolvió, caer al plan B de abajo
+        }
+
+        // Sin organismo resuelto: llevar a la página PJF con el número precargado
         if (typeof navegarA === 'function') navegarA('pjf');
         if (numero) {
             setTimeout(() => {
@@ -1183,9 +1269,18 @@
                 nombre: e.nombre || null,
                 institucion: e.institucion || 'TSJ',
                 juzgado: e.juzgado || '',
+                carpetaId: e.carpetaId != null ? e.carpetaId : null,
                 tienePJF: !!(e.pjfOrgId && e.pjfTipoAsunto),
                 comentario: (e.comentario || '').slice(0, 60) || undefined
             }));
+        } catch (e) { /* base aún no lista */ }
+
+        // Carpetas (agrupación de expedientes por caso)
+        let carpetas = [];
+        try {
+            if (typeof obtenerCarpetasActivas === 'function') {
+                carpetas = (await obtenerCarpetasActivas()).map(c => ({ id: c.id, nombre: c.nombre }));
+            }
         } catch (e) { /* base aún no lista */ }
 
         // Eventos cercanos (para editar/eliminar/consultar)
@@ -1211,8 +1306,11 @@
 
 FECHA Y HORA ACTUAL: ${fechaLegible}, ${horaLegible} (zona horaria de Cancún). Resuelve fechas relativas ("mañana", "el jueves", "en 15 días") contra esta fecha. Si el usuario dice un día de la semana sin fecha, usa el PRÓXIMO día con ese nombre.
 
-CATÁLOGO DE EXPEDIENTES DEL USUARIO (id, número/nombre, institución, juzgado):
+CATÁLOGO DE EXPEDIENTES DEL USUARIO (id, número/nombre, institución, juzgado, carpetaId):
 ${JSON.stringify(catalogo)}
+
+CARPETAS DEL USUARIO (agrupan expedientes por caso):
+${JSON.stringify(carpetas)}
 
 EVENTOS DEL CALENDARIO (recientes y próximos):
 ${JSON.stringify(agenda)}
@@ -1239,18 +1337,23 @@ ACCIONES DISPONIBLES y sus parámetros:
    - Resuelve el evento contra la lista de EVENTOS. Si hay varios candidatos, pregunta cuál.
 3. "eliminar_evento": {eventoId:número}
 4. "consultar_agenda": {fechaInicio:"YYYY-MM-DD", fechaFin:"YYYY-MM-DD"} — para "¿qué tengo esta semana?", "audiencias de mañana", etc.
-5. "crear_expediente": {tipoRegistro:"numero"|"nombre", valor, institucion:"TSJ"|"PJF"|"OTRO", juzgado, comentario}
+5. "crear_expediente": {tipoRegistro:"numero"|"nombre", valor, institucion:"TSJ"|"PJF"|"OTRO", juzgado, comentario, carpetaId:número o null}
    - Para TSJ el juzgado es OBLIGATORIO y debe ser un nombre EXACTO de la lista de juzgados. Si el usuario no lo dice o no coincide, pregunta.
 6. "editar_expediente": {expedienteId:número, cambios:{numero?, nombre?, juzgado?, comentario?, institucion?}}
    - Resuelve el expediente contra el catálogo (por número tipo 123/2025 o por nombre de las partes). Si hay ambigüedad, pregunta.
 7. "archivar_expediente": {expedienteId:número, motivo:"concluido"|"suspendido"|"otro"}
 8. "crear_nota": {titulo, contenido, expedienteId:número o null, expedienteTexto o null}
-9. "buscar_local": {consulta} — buscar en el catálogo local del usuario ("busca mis expedientes de divorcio", "¿tengo algo de Juan Pérez?").
-10. "buscar_tsj": {valor, tipoBusqueda:"numero"|"nombre", juzgado:nombre exacto de la lista o null, ambito:"todos"|"primera"|"segunda" o null}
+9. "mover_a_carpeta": {expedienteId:número, carpetaId:número o null} — asigna un expediente a una carpeta de la lista CARPETAS (null = quitarlo de su carpeta). Si la carpeta mencionada no existe, pregunta.
+10. "abrir_expediente": {expedienteId:número} — navega hasta el expediente y lo resalta ("abre el expediente 123/2025", "muéstrame el caso de Juan Pérez").
+11. "deshacer": {} — revierte la última acción hecha por el asistente ("deshaz lo último", "revierte eso").
+12. "buscar_local": {consulta} — buscar en el catálogo local del usuario ("busca mis expedientes de divorcio", "¿tengo algo de Juan Pérez?").
+13. "buscar_tsj": {valor, tipoBusqueda:"numero"|"nombre", juzgado:nombre exacto de la lista o null, ambito:"todos"|"primera"|"segunda" o null}
     - Busca en los estrados en línea del TSJ Quintana Roo. Si el usuario menciona un expediente de su catálogo, usa el juzgado guardado de ese expediente. Si no especifica juzgado, deja juzgado=null y usa ambito (default "todos"; abre muchas ventanas).
-11. "buscar_pjf": {expedienteId:número o null, numero:texto o null} — consulta en el portal del Poder Judicial de la Federación. Si el expediente está en el catálogo con tienePJF=true, usa su id.
-12. "navegar": {pagina:"inicio"|"expedientes"|"calendario"|"notas"|"busqueda"|"pjf"|"impi"|"config"}
-13. "responder": para preguntas generales, saludos o cuando ninguna acción aplica. Usa el campo "respuesta".
+14. "buscar_pjf": {expedienteId:número o null, numero:texto o null, organismo:texto o null, tipoAsunto:texto o null}
+    - Consulta en el portal del Poder Judicial de la Federación. Si el expediente está en el catálogo con tienePJF=true, usa su id.
+    - Si el usuario dicta el órgano federal ("Juzgado Segundo de Distrito de Cancún", "Tribunal Colegiado del Vigésimo Séptimo Circuito"), pásalo TAL CUAL en "organismo" y el tipo de asunto tal como lo diga ("amparo indirecto", "juicio de amparo") en "tipoAsunto"; la app los resuelve contra el catálogo oficial.
+15. "navegar": {pagina:"inicio"|"expedientes"|"calendario"|"notas"|"busqueda"|"pjf"|"impi"|"config"}
+16. "responder": para preguntas generales, saludos o cuando ninguna acción aplica. Usa el campo "respuesta".
 
 REGLAS:
 - Si falta un dato OBLIGATORIO para la acción: faltan_datos=true y "pregunta" con UNA pregunta corta y específica. Conserva en "parametros" todo lo que ya sepas.
@@ -1295,6 +1398,7 @@ REGLAS:
 
     function init() {
         crearUI();
+        configurarAjustesUI();
     }
 
     if (document.readyState === 'loading') {
