@@ -46,8 +46,13 @@
         'crear_nota', 'mover_a_carpeta'
     ]);
 
-    const RE_SI = /^\s*(s[ií]|confirmo|confirmar|confirmado|dale|adelante|correcto|as[ií] es|ok|okey|hazlo|procede|por favor)\b/i;
-    const RE_NO = /^\s*(no|cancela|cancelar|cancelado|det[eé]n|olv[ií]dalo|mejor no|espera)\b/i;
+    // La negación se evalúa SIEMPRE antes que la afirmación: cancelar por
+    // error es inofensivo, confirmar por error es destructivo.
+    // Se evalúan sobre el texto SIN acentos (normalizar()): \b de JavaScript
+    // no reconoce vocales acentuadas como letras, por lo que /sí\b/ jamás
+    // haría match con el "sí" que transcribe el reconocimiento de voz.
+    const RE_SI = /^\s*(si|confirmo|confirmar|confirmado|dale|adelante|correcto|asi es|ok|okey|hazlo|procede)\b/;
+    const RE_NO = /^\s*(no|cancela|cancelar|cancelado|deten|olvidalo|mejor no|espera|por favor no|por favor cancela)\b/;
 
     const EJEMPLOS = [
         'Agenda audiencia del expediente 123/2025 el jueves a las 10',
@@ -135,6 +140,8 @@
     let conversacion = [];        // turnos user/assistant para el LLM (sin system)
     let accionPendiente = null;   // acción interpretada esperando confirmación
     let recognition = null;
+    let descartarTranscript = false;  // true = el stop fue intencional (texto enviado,
+                                      // panel cerrado, confirmación): ignorar el transcript
     let mediaRecorder = null;
     let chunksAudio = [];
     let ttsActivo = localStorage.getItem(TTS_KEY) !== '0';
@@ -153,6 +160,16 @@
     }
 
     function pad(n) { return String(n).padStart(2, '0'); }
+
+    // "10" → "10:00", "9:5" → "09:05". null si no parece una hora.
+    function normalizarHora(h) {
+        if (!h) return null;
+        const m = String(h).trim().match(/^(\d{1,2})(?::(\d{1,2}))?$/);
+        if (!m) return null;
+        const hh = parseInt(m[1]), mm = parseInt(m[2] || '0');
+        if (hh > 23 || mm > 59) return null;
+        return pad(hh) + ':' + pad(mm);
+    }
 
     function fechaLocalISO(d) {
         return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -509,7 +526,9 @@
     }
 
     function alternarMicrofono() {
-        if (estado === Estado.ESCUCHANDO) { detenerEscucha(); return; }
+        // Tocar el micrófono mientras escucha = "ya terminé de hablar":
+        // se detiene PROCESANDO lo dicho hasta ahora.
+        if (estado === Estado.ESCUCHANDO) { detenerEscucha(true); return; }
         if (estado === Estado.GRABANDO) { detenerGrabacion(); return; }
         if (estado === Estado.PROCESANDO) return;
         iniciarEscucha();
@@ -565,6 +584,12 @@
         recognition.onend = () => {
             recognition = null;
             if (estado === Estado.ESCUCHANDO) estado = Estado.INACTIVO;
+            if (descartarTranscript) {
+                // Detención intencional (texto enviado, panel cerrado, confirmación):
+                // no procesar el transcript parcial ni mostrar avisos.
+                descartarTranscript = false;
+                return;
+            }
             const texto = transcriptFinal.trim();
             if (texto) {
                 setStatus('', false);
@@ -575,6 +600,7 @@
         };
 
         try {
+            descartarTranscript = false;
             recognition.start();
         } catch (e) {
             recognition = null;
@@ -583,8 +609,15 @@
         }
     }
 
-    function detenerEscucha() {
+    /**
+     * Detiene la escucha. Por defecto DESCARTA el transcript acumulado
+     * (detenciones programáticas: texto enviado, panel cerrado, confirmación).
+     * Con procesarPendiente=true lo procesa (el usuario tocó el micrófono
+     * para indicar que terminó de hablar).
+     */
+    function detenerEscucha(procesarPendiente) {
         if (recognition) {
+            descartarTranscript = !procesarPendiente;
             try { recognition.stop(); } catch (e) { /* ignorar */ }
         }
         if (estado === Estado.GRABANDO) {
@@ -657,6 +690,21 @@
         }
     }
 
+    // fetch con timeout: sin esto, una red colgada dejaría el asistente
+    // atascado en "Procesando…" indefinidamente.
+    async function fetchConTimeout(url, opciones, ms) {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), ms || 45000);
+        try {
+            return await fetch(url, { ...opciones, signal: ctrl.signal });
+        } catch (e) {
+            if (e.name === 'AbortError') throw new Error('La petición tardó demasiado. Revisa tu conexión e intenta de nuevo.');
+            throw e;
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
     async function transcribirConGroq(blob) {
         const apiKey = await obtenerApiKey();
         if (!apiKey) throw new Error('Configura tu API Key de Groq');
@@ -665,7 +713,7 @@
         fd.append('file', blob, 'audio.' + ext);
         fd.append('model', WHISPER_MODEL);
         fd.append('language', 'es');
-        const resp = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+        const resp = await fetchConTimeout('https://api.groq.com/openai/v1/audio/transcriptions', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + apiKey },
             body: fd
@@ -699,8 +747,9 @@
         // accionPendiente (no por `estado`) porque el estado del micrófono
         // puede cambiar (reintentos, errores) sin que la confirmación caduque.
         if (accionPendiente) {
-            if (RE_SI.test(texto)) { confirmarAccion(); return; }
-            if (RE_NO.test(texto)) { cancelarAccion(); return; }
+            const t = normalizar(texto);
+            if (RE_NO.test(t)) { cancelarAccion(); return; }
+            if (RE_SI.test(t)) { confirmarAccion(); return; }
             // Cualquier otra cosa se trata como corrección a la acción propuesta
             ocultarConfirmacion();
             accionPendiente = null;
@@ -847,8 +896,9 @@
     async function accCrearEvento(p) {
         if (!p.titulo || !p.fecha) throw new Error('Faltan título o fecha del evento');
         const tipo = ['audiencia', 'vencimiento', 'recordatorio', 'otro'].includes(p.tipo) ? p.tipo : 'otro';
-        const todoElDia = p.hora ? false : (p.todoElDia !== false);
-        const fechaInicio = new Date(p.fecha + 'T' + (p.hora || '09:00'));
+        const hora = normalizarHora(p.hora);
+        const todoElDia = hora ? false : (p.todoElDia !== false);
+        const fechaInicio = new Date(p.fecha + 'T' + (hora || '09:00'));
         if (isNaN(fechaInicio.getTime())) throw new Error('Fecha inválida: ' + p.fecha);
 
         const nuevoId = await crearEventoCore({
@@ -863,7 +913,7 @@
         registrarDeshacer({ tipo: 'evento_creado', id: nuevoId, etiqueta: `evento "${p.titulo}"` });
         toast('Evento creado', 'success');
         const cuando = fechaInicio.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) +
-            (p.hora ? ' a las ' + p.hora : '');
+            (hora ? ' a las ' + hora : '');
         return `Evento "${p.titulo}" agendado para el ${cuando}.`;
     }
 
@@ -881,11 +931,12 @@
         if (c.fecha || c.hora) {
             const base = new Date(evento.fechaInicio);
             const fecha = c.fecha || fechaLocalISO(base);
-            const hora = c.hora || (pad(base.getHours()) + ':' + pad(base.getMinutes()));
+            const horaNueva = normalizarHora(c.hora);
+            const hora = horaNueva || (pad(base.getHours()) + ':' + pad(base.getMinutes()));
             const nueva = new Date(fecha + 'T' + hora);
             if (isNaN(nueva.getTime())) throw new Error('Fecha u hora inválida');
             cambios.fechaInicio = nueva.toISOString();
-            if (c.hora) cambios.todoElDia = false;
+            if (horaNueva) cambios.todoElDia = false;
         }
         if (typeof c.todoElDia === 'boolean') cambios.todoElDia = c.todoElDia;
         if (!Object.keys(cambios).length) throw new Error('No hay cambios que aplicar');
@@ -1197,7 +1248,7 @@
         if (p.expedienteId != null) exp = await obtenerExpediente(parseInt(p.expedienteId));
         const numero = (exp && exp.numero) || p.numero || '';
 
-        if (exp && exp.pjfOrgId && exp.pjfTipoAsunto && typeof construirURLPJF === 'function') {
+        if (exp && exp.pjfOrgId && exp.pjfTipoAsunto && numero && typeof construirURLPJF === 'function') {
             const url = construirURLPJF(exp.pjfOrgId, exp.pjfTipoAsunto, numero, 0);
             window.open(url, 'pjf_expediente', 'width=1024,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no');
             return `Abrí la consulta del expediente ${numero} en el portal del PJF.`;
@@ -1368,7 +1419,7 @@ REGLAS:
         const apiKey = await obtenerApiKey();
         const modelo = (await obtenerConfig('groq_model').catch(() => null)) || MODELO_DEFAULT;
 
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        const response = await fetchConTimeout('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
