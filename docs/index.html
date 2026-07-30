@@ -1614,7 +1614,10 @@
                     <div class="card">
                         <div class="card-header">
                             <h3>📄 Detalle de Marca</h3>
-                            <button class="btn btn-sm btn-outline" onclick="cerrarDetalleMARCia()">← Volver a resultados</button>
+                            <div class="header-buttons">
+                                <button class="btn btn-sm btn-outline" id="marcia-watch-btn" onclick="vigilarMarcaActual()" style="display: none;">👁️ Vigilar esta marca</button>
+                                <button class="btn btn-sm btn-outline" onclick="cerrarDetalleMARCia()">← Volver a resultados</button>
+                            </div>
                         </div>
                         <div class="card-body" id="marcia-detail-content"></div>
                     </div>
