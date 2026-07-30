@@ -1428,12 +1428,15 @@
                             </div>
                             <div class="form-row">
                                 <div class="form-group">
-                                    <label for="marcia-adv-owner">Titular</label>
-                                    <input type="text" id="marcia-adv-owner" placeholder="Nombre del titular">
+                                    <label for="marcia-adv-name">Titular o apoderado</label>
+                                    <input type="text" id="marcia-adv-name" placeholder="Ej: Nike Inc, Coca Cola Company...">
                                 </div>
                                 <div class="form-group">
-                                    <label for="marcia-adv-agent">Apoderado</label>
-                                    <input type="text" id="marcia-adv-agent" placeholder="Nombre del apoderado">
+                                    <label for="marcia-adv-name-type">Buscar ese nombre como</label>
+                                    <select id="marcia-adv-name-type">
+                                        <option value="OWNER">Titular</option>
+                                        <option value="AGENT">Apoderado</option>
+                                    </select>
                                 </div>
                             </div>
                             <div class="form-row">
@@ -1578,13 +1581,20 @@
                         <div class="card-body">
                             <!-- Filtros facetados -->
                             <div class="impi-filters" id="marcia-filters" style="display: none;">
-                                <div class="impi-filter-group">
+                                <div class="impi-filter-group" id="marcia-filter-group-status">
                                     <label>Estatus:</label>
                                     <div id="marcia-filter-status" class="impi-filter-chips"></div>
                                 </div>
-                                <div class="impi-filter-group">
+                                <div class="impi-filter-group" id="marcia-filter-group-classes">
                                     <label>Clases Niza:</label>
                                     <div id="marcia-filter-classes" class="impi-filter-chips"></div>
+                                </div>
+                                <div class="impi-filter-group" id="marcia-filter-group-vienna">
+                                    <label>Códigos de Viena:</label>
+                                    <div id="marcia-filter-vienna" class="impi-filter-chips"></div>
+                                </div>
+                                <div class="impi-filter-group" id="marcia-filter-group-reset" style="display: none;">
+                                    <button class="btn btn-sm btn-outline" onclick="limpiarFiltrosMARCia()">✕ Limpiar filtros</button>
                                 </div>
                             </div>
                             <!-- Lista de resultados -->
