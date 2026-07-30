@@ -92,15 +92,51 @@ function cambiarTabIMPI(tab) {
 
 // ==================== PROXY HELPERS ====================
 
+// Sesión de MARCia (token CSRF + cookies) tal como la devuelve el proxy. La
+// conserva el cliente y la reenvía en cada petición: el worker ya no depende
+// de mantenerla en memoria, que es lo que hacía fallar la paginación y los
+// detalles cuando Cloudflare reciclaba el isolate.
+var impiSessionToken = null;
+
+// Id estable de este navegador. El proxy separa sesiones por este id; antes
+// las agrupaba por IP, así que dos personas en la misma red compartían la
+// sesión del IMPI y se pisaban entre sí.
+var impiClientId = null;
+
+function obtenerClientId() {
+    if (impiClientId) return impiClientId;
+    try {
+        impiClientId = localStorage.getItem('impi_client_id');
+    } catch (e) { /* modo privado o storage bloqueado */ }
+    if (!impiClientId) {
+        impiClientId = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+        try { localStorage.setItem('impi_client_id', impiClientId); } catch (e) { /* se queda en memoria */ }
+    }
+    return impiClientId;
+}
+
 async function proxyFetch(path, options) {
     var proxy = getProxyUrl();
     if (!proxy) {
         throw new Error('PROXY_NOT_CONFIGURED');
     }
-    var url = proxy + path;
-    var resp = await fetch(url, Object.assign({
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }
-    }, options));
+
+    var headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-IMPI-Client': obtenerClientId()
+    };
+    if (impiSessionToken) headers['X-IMPI-Session'] = impiSessionToken;
+
+    var init = Object.assign({}, options);
+    init.headers = Object.assign(headers, (options && options.headers) || {});
+
+    var resp = await fetch(proxy + path, init);
+
+    // El proxy devuelve la sesión con las cookies que haya rotado el IMPI.
+    var sesionActualizada = resp.headers.get('X-IMPI-Session');
+    if (sesionActualizada) impiSessionToken = sesionActualizada;
+
     if (!resp.ok) {
         var errData;
         try { errData = await resp.json(); } catch (e) { errData = { error: 'HTTP ' + resp.status }; }
