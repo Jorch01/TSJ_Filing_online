@@ -25,6 +25,10 @@
 // Objects, así que el plan gratuito basta.
 // ============================================================
 
+// Sirve para confirmar, desde /health, que el worker publicado es el esperado.
+// Actualízala cuando el cambio valga la pena verificar tras desplegar.
+const WORKER_VERSION = '2026-07-30-sesion-cliente';
+
 const ALLOWED_ORIGINS = [
     'https://jorch01.github.io',
     'https://tsjia.empirica.mx'
@@ -208,6 +212,7 @@ export default {
             else if (path === '/health') {
                 response = new Response(JSON.stringify({
                     status: 'ok',
+                    version: WORKER_VERSION,
                     services: ['marcia', 'siga', 'marcanet'],
                     timestamp: new Date().toISOString()
                 }), { headers: { 'Content-Type': 'application/json' } });
