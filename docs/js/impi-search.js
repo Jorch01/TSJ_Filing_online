@@ -18,6 +18,10 @@ var IMPI_PROXY_URL = 'https://throbbing-scene-1c2b.enlilh.workers.dev/';
 
 var marciaState = {
     searchId: null,
+    // Payload de la última búsqueda enviada a /marcia/record. Se conserva para
+    // poder re-registrar la búsqueda si la sesión del proxy se pierde.
+    lastPayload: null,
+    lastError: null,
     results: [],
     totalResults: 0,
     pageNumber: 0,
@@ -31,6 +35,7 @@ var marciaState = {
 var sigaState = {
     results: [],
     searching: false,
+    lastError: null,
     currentQuery: null, // { Busqueda, IdArea, FechaDesde, FechaHasta }
     savedSearches: [],
     lastAutoCheck: null
@@ -40,11 +45,32 @@ var marcanetState = {
     searchMode: 'fonetica', // 'fonetica', 'expediente', 'registro', 'titular'
     results: [],
     searching: false,
+    lastError: null,
     detail: null
 };
 
 function getProxyUrl() {
     return IMPI_PROXY_URL.replace(/\/+$/, '');
+}
+
+// ==================== SPINNER COMPARTIDO ====================
+// El spinner #impi-loading lo comparten las tres herramientas. Con búsquedas
+// simultáneas (buscarEnLas3) un contador evita que la primera en terminar lo
+// apague mientras las otras siguen corriendo.
+
+var impiLoadingCount = 0;
+
+function mostrarCargandoIMPI() {
+    impiLoadingCount++;
+    var el = document.getElementById('impi-loading');
+    if (el) el.style.display = 'flex';
+}
+
+function ocultarCargandoIMPI() {
+    impiLoadingCount = Math.max(0, impiLoadingCount - 1);
+    if (impiLoadingCount > 0) return;
+    var el = document.getElementById('impi-loading');
+    if (el) el.style.display = 'none';
 }
 
 
@@ -85,6 +111,43 @@ function mostrarErrorProxy() {
     mostrarToast('El servicio de búsqueda IMPI no está disponible en este momento.', 'warning');
 }
 
+// ==================== MARCia: SESIÓN Y REINTENTOS ====================
+// El proxy guarda la sesión CSRF de MARCia en memoria del worker, así que puede
+// desaparecer entre peticiones (reciclado del isolate, timeout de 30 min). Sin
+// reintento, paginar o abrir un detalle falla con "No active session".
+
+function esErrorDeSesionMARCia(e) {
+    var msg = (e && e.message) || '';
+    return /no active session|HTTP 401/i.test(msg);
+}
+
+// Restablece la sesión CSRF. Si recrearBusqueda es true, vuelve a registrar la
+// última búsqueda: el searchId anterior pertenece a la sesión perdida y ya no
+// resuelve, así que hay que obtener uno nuevo antes de pedir resultados.
+async function restablecerSesionMARCia(recrearBusqueda) {
+    await proxyFetch('/marcia/csrf');
+    if (!recrearBusqueda || !marciaState.lastPayload) return;
+    var record = await proxyFetch('/marcia/search', {
+        method: 'POST',
+        body: JSON.stringify(marciaState.lastPayload)
+    });
+    marciaState.searchId = record.id;
+    if (typeof record.count === 'number') marciaState.totalResults = record.count;
+}
+
+// Ejecuta fn(); si falla por sesión perdida, la restablece y reintenta una vez.
+// fn debe leer marciaState.searchId en el momento de la llamada para que el
+// reintento use el searchId nuevo.
+async function conReintentoDeSesion(fn, recrearBusqueda) {
+    try {
+        return await fn();
+    } catch (e) {
+        if (!esErrorDeSesionMARCia(e)) throw e;
+        await restablecerSesionMARCia(recrearBusqueda);
+        return await fn();
+    }
+}
+
 // ==================== MARCia: TOGGLE ====================
 
 function toggleMarciaSearchMode(mode) {
@@ -97,58 +160,78 @@ function toggleMarciaSearchMode(mode) {
 
 // ==================== MARCia: BÚSQUEDA ====================
 
-async function buscarMARCia() {
-    if (marciaState.searching) return;
+// opts.silencioso: no emite toasts propios (lo usa buscarEnLas3, que resume).
+// opts.payload: reutiliza un payload ya construido (búsquedas guardadas).
+// Devuelve true si la búsqueda se completó, false si falló.
+async function buscarMARCia(opts) {
+    opts = opts || {};
+    if (marciaState.searching) return false;
 
-    var payload;
-    if (marciaState.searchMode === 'rapida') {
-        var query = (document.getElementById('marcia-query').value || '').trim();
-        if (!query) { mostrarToast('Ingresa un término de búsqueda', 'warning'); return; }
-        payload = { _type: 'Search$Quick', query: query, images: [] };
-    } else {
-        payload = construirPayloadAvanzadoMARCia();
-        if (!payload) return;
+    var payload = opts.payload || null;
+    if (!payload) {
+        if (marciaState.searchMode === 'rapida') {
+            var query = (document.getElementById('marcia-query').value || '').trim();
+            if (!query) {
+                if (!opts.silencioso) mostrarToast('Ingresa un término de búsqueda', 'warning');
+                return false;
+            }
+            payload = { _type: 'Search$Quick', query: query, images: [] };
+        } else {
+            payload = construirPayloadAvanzadoMARCia(opts.silencioso);
+            if (!payload) return false;
+        }
     }
 
     marciaState.searching = true;
+    marciaState.lastError = null;
+    marciaState.lastPayload = payload;
     marciaState.pageNumber = 0;
     marciaState.filters = { status: [], niceClass: [], viennaCode: [] };
-    var loading = document.getElementById('impi-loading');
-    if (loading) loading.style.display = 'flex';
+    mostrarCargandoIMPI();
 
     try {
         // 1. Obtener sesión CSRF
         await proxyFetch('/marcia/csrf');
 
-        // 2. Crear búsqueda
-        var recordData = await proxyFetch('/marcia/search', {
-            method: 'POST',
-            body: JSON.stringify(payload)
-        });
+        // 2. Crear búsqueda (reintenta si el worker perdió la sesión recién creada)
+        var recordData = await conReintentoDeSesion(function() {
+            return proxyFetch('/marcia/search', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+        }, false);
         marciaState.searchId = recordData.id;
         marciaState.totalResults = recordData.count || 0;
 
         // 3. Obtener resultados
-        await obtenerResultadosMARCia();
+        var ok = await obtenerResultadosMARCia({ silencioso: opts.silencioso });
+        if (!ok) return false;
+        return true;
 
     } catch (e) {
-        if (e.message === 'PROXY_NOT_CONFIGURED') {
-            mostrarErrorProxy();
-        } else {
-            console.error('Error MARCia:', e);
-            mostrarToast('Error al buscar en MARCia: ' + e.message, 'error');
+        marciaState.lastError = e.message;
+        if (!opts.silencioso) {
+            if (e.message === 'PROXY_NOT_CONFIGURED') {
+                mostrarErrorProxy();
+            } else {
+                console.error('Error MARCia:', e);
+                mostrarToast('Error al buscar en MARCia: ' + e.message, 'error');
+            }
         }
+        return false;
     } finally {
         marciaState.searching = false;
-        if (loading) loading.style.display = 'none';
+        ocultarCargandoIMPI();
     }
 }
 
-function construirPayloadAvanzadoMARCia() {
+function construirPayloadAvanzadoMARCia(silencioso) {
     var title = (document.getElementById('marcia-adv-title').value || '').trim();
     var titleOption = document.getElementById('marcia-adv-title-option').value;
-    var owner = (document.getElementById('marcia-adv-owner').value || '').trim();
-    var agent = (document.getElementById('marcia-adv-agent').value || '').trim();
+    // MARCia acepta un solo nombre por búsqueda, con un tipo (titular o
+    // apoderado); por eso es un campo con selector y no dos campos.
+    var nombre = (document.getElementById('marcia-adv-name').value || '').trim();
+    var nombreTipo = document.getElementById('marcia-adv-name-type').value || 'OWNER';
     var number = (document.getElementById('marcia-adv-number').value || '').trim();
     var numberType = document.getElementById('marcia-adv-number-type').value;
     var niceClass = document.getElementById('marcia-adv-class').value;
@@ -159,8 +242,8 @@ function construirPayloadAvanzadoMARCia() {
     var dateTo = document.getElementById('marcia-adv-date-to').value;
     var dateType = document.getElementById('marcia-adv-date-type').value;
 
-    if (!title && !owner && !agent && !number && !goods) {
-        mostrarToast('Ingresa al menos un criterio de búsqueda', 'warning');
+    if (!title && !nombre && !number && !goods) {
+        if (!silencioso) mostrarToast('Ingresa al menos un criterio de búsqueda', 'warning');
         return null;
     }
 
@@ -180,8 +263,7 @@ function construirPayloadAvanzadoMARCia() {
         wordSet: { l: null, op: 'AND', r: null }
     };
 
-    if (owner) query.name = { name: owner, types: ['OWNER'] };
-    else if (agent) query.name = { name: agent, types: ['AGENT'] };
+    if (nombre) query.name = { name: nombre, types: [nombreTipo] };
     if (number) query.number = { name: number, types: [numberType] };
     if (dateFrom || dateTo) {
         query.date = { date: { from: dateFrom || '', to: dateTo || '' }, types: [dateType] };
@@ -190,23 +272,29 @@ function construirPayloadAvanzadoMARCia() {
     return { _type: 'Search$Structured', images: [], query: query };
 }
 
-async function obtenerResultadosMARCia() {
-    if (!marciaState.searchId) return;
-    var loading = document.getElementById('impi-loading');
-    if (loading) loading.style.display = 'flex';
+function construirBodyResultadosMARCia(pageNumber, pageSize) {
+    return {
+        searchId: marciaState.searchId,
+        pageSize: pageSize || marciaState.pageSize,
+        pageNumber: typeof pageNumber === 'number' ? pageNumber : marciaState.pageNumber,
+        statusFilter: marciaState.filters.status,
+        viennaCodeFilter: marciaState.filters.viennaCode,
+        niceClassFilter: marciaState.filters.niceClass
+    };
+}
+
+async function obtenerResultadosMARCia(opts) {
+    opts = opts || {};
+    if (!marciaState.searchId) return false;
+    mostrarCargandoIMPI();
 
     try {
-        var data = await proxyFetch('/marcia/results', {
-            method: 'POST',
-            body: JSON.stringify({
-                searchId: marciaState.searchId,
-                pageSize: marciaState.pageSize,
-                pageNumber: marciaState.pageNumber,
-                statusFilter: marciaState.filters.status,
-                viennaCodeFilter: marciaState.filters.viennaCode,
-                niceClassFilter: marciaState.filters.niceClass
-            })
-        });
+        var data = await conReintentoDeSesion(function() {
+            return proxyFetch('/marcia/results', {
+                method: 'POST',
+                body: JSON.stringify(construirBodyResultadosMARCia())
+            });
+        }, true);
 
         marciaState.results = data.resultPage || [];
         marciaState.totalResults = data.totalResults || 0;
@@ -216,10 +304,13 @@ async function obtenerResultadosMARCia() {
         renderizarFiltrosMARCia();
         renderizarPaginacionMARCia();
         actualizarBotonesGuardar();
+        return true;
     } catch (e) {
-        mostrarToast('Error obteniendo resultados: ' + e.message, 'error');
+        marciaState.lastError = e.message;
+        if (!opts.silencioso) mostrarToast('Error obteniendo resultados: ' + e.message, 'error');
+        return false;
     } finally {
-        if (loading) loading.style.display = 'none';
+        ocultarCargandoIMPI();
     }
 }
 
@@ -227,6 +318,26 @@ async function obtenerResultadosMARCia() {
 
 function san(str) {
     return typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(str || '') : (str || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// san() sanitiza HTML, no escapa comillas: sirve para texto entre etiquetas,
+// pero dentro de un atributo (src="...", alt="...") un valor con comillas
+// rompe el markup. attr() escapa todo lo que puede cerrar un atributo.
+function attr(value) {
+    return String(value === null || value === undefined ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// Solo se aceptan URLs de imagen http(s) o data:image para no inyectar
+// esquemas raros en src.
+function urlImagenSegura(url) {
+    var u = String(url || '').trim();
+    if (/^https?:\/\//i.test(u) || /^data:image\//i.test(u)) return u;
+    return '';
 }
 
 function renderizarResultadosMARCia() {
@@ -248,15 +359,16 @@ function renderizarResultadosMARCia() {
     var html = '';
     marciaState.results.forEach(function(r, idx) {
         var sc = r.status === 'REGISTRADO' ? 'impi-status-registered' : r.status === 'EN TRÁMITE' ? 'impi-status-pending' : 'impi-status-cancelled';
-        var imgHtml = r.images
-            ? '<img src="' + san(r.images) + '" alt="' + san(r.title) + '" class="impi-mark-image" onerror="this.style.display=\'none\'">'
+        var imgUrl = urlImagenSegura(r.images);
+        var imgHtml = imgUrl
+            ? '<img src="' + attr(imgUrl) + '" alt="' + attr(r.title) + '" class="impi-mark-image" onerror="this.style.display=\'none\'">'
             : '<div class="impi-mark-placeholder">🔰</div>';
         var owners = (Array.isArray(r.owners) ? r.owners : (r.owners ? [r.owners] : [])).map(san).join(', ');
         var classes = (Array.isArray(r.classes) ? r.classes : (r.classes ? [r.classes] : [])).join(', ');
         var appDate = r.dates && r.dates.application ? r.dates.application : '';
         var gi = marciaState.pageNumber * marciaState.pageSize + idx + 1;
 
-        html += '<div class="impi-result-card" onclick="verDetalleMARCia(\'' + san(r.id || '') + '\')">' +
+        html += '<div class="impi-result-card" data-mark-id="' + attr(r.id || '') + '">' +
             '<div class="impi-result-number">#' + gi + '</div>' +
             '<div class="impi-result-image">' + imgHtml + '</div>' +
             '<div class="impi-result-info">' +
@@ -275,28 +387,125 @@ function renderizarResultadosMARCia() {
     list.innerHTML = html;
 }
 
+// Categorías de primer nivel de la Clasificación de Viena (OMPI). Los códigos
+// vienen como "27.05.13"; los dos primeros dígitos dan la categoría, que es lo
+// que hace legible el filtro.
+var VIENNA_CATEGORIAS = {
+    '01': 'Cuerpos celestes y fenómenos naturales',
+    '02': 'Seres humanos',
+    '03': 'Animales',
+    '04': 'Seres sobrenaturales o fantásticos',
+    '05': 'Plantas',
+    '06': 'Paisajes',
+    '07': 'Construcciones y estructuras',
+    '08': 'Productos alimenticios',
+    '09': 'Textiles, vestimenta y calzado',
+    '10': 'Tabaco, artículos de viaje y tocador',
+    '11': 'Objetos domésticos',
+    '12': 'Mobiliario e instalaciones sanitarias',
+    '13': 'Iluminación, cocción y refrigeración',
+    '14': 'Ferretería, herramientas y escaleras',
+    '15': 'Maquinaria y motores',
+    '16': 'Telecomunicaciones, cómputo y fotografía',
+    '17': 'Relojería, joyería, pesas y medidas',
+    '18': 'Transporte y equipos para animales',
+    '19': 'Recipientes y embalajes',
+    '20': 'Artículos de escritura y papelería',
+    '21': 'Juegos, juguetes y artículos deportivos',
+    '22': 'Instrumentos musicales, cuadros y esculturas',
+    '23': 'Armas, municiones y armaduras',
+    '24': 'Heráldica, monedas, emblemas y símbolos',
+    '25': 'Motivos ornamentales y fondos',
+    '26': 'Figuras y sólidos geométricos',
+    '27': 'Formas de escritura y números',
+    '28': 'Inscripciones en caracteres diversos',
+    '29': 'Colores'
+};
+
+function descripcionViena(codigo) {
+    var cat = String(codigo || '').split('.')[0];
+    if (cat.length === 1) cat = '0' + cat;
+    return VIENNA_CATEGORIAS[cat] || '';
+}
+
+// Cuántos chips se muestran por grupo antes de plegar el resto.
+var MARCIA_CHIPS_VISIBLES = 12;
+var marciaFiltrosExpandidos = { niceClass: false, viennaCode: false };
+
+// Construye el HTML de un grupo de chips. Los valores vienen del API, así que
+// van en data-* (escapados) y no interpolados en un onclick.
+function chipsFiltroMARCia(tipo, agregado, etiquetar, titulo) {
+    var seleccionados = marciaState.filters[tipo];
+    var expandido = marciaFiltrosExpandidos[tipo];
+    var visibles = expandido ? agregado : agregado.slice(0, MARCIA_CHIPS_VISIBLES);
+    var ocultos = agregado.length - visibles.length;
+
+    var html = visibles.map(function(item) {
+        var active = seleccionados.indexOf(item.key) >= 0;
+        var tip = titulo ? titulo(item.key) : '';
+        return '<button class="impi-filter-chip' + (active ? ' active' : '') + '"' +
+            ' data-filtro-tipo="' + attr(tipo) + '" data-filtro-valor="' + attr(item.key) + '"' +
+            (tip ? ' title="' + attr(tip) + '"' : '') + '>' +
+            san(etiquetar(item.key)) + ' (' + (item.docCount || 0) + ')</button>';
+    }).join('');
+
+    if (ocultos > 0) {
+        html += '<button class="impi-filter-chip" data-filtro-expandir="' + attr(tipo) + '">+' + ocultos + ' más</button>';
+    } else if (expandido && agregado.length > MARCIA_CHIPS_VISIBLES) {
+        html += '<button class="impi-filter-chip" data-filtro-expandir="' + attr(tipo) + '">Ver menos</button>';
+    }
+    return html;
+}
+
 function renderizarFiltrosMARCia() {
     var el = document.getElementById('marcia-filters');
     if (!marciaState.aggregates) { el.style.display = 'none'; return; }
-    el.style.display = '';
 
     var statusAgg = marciaState.aggregates.STATUS || [];
-    document.getElementById('marcia-filter-status').innerHTML = statusAgg.map(function(s) {
-        var active = marciaState.filters.status.indexOf(s.key) >= 0;
-        return '<button class="impi-filter-chip' + (active ? ' active' : '') + '" onclick="toggleFiltroMARCia(\'status\',\'' + san(s.key) + '\')">' + san(s.key) + ' (' + s.docCount + ')</button>';
-    }).join('');
-
     var classAgg = marciaState.aggregates.NICE_CLASSES || [];
-    document.getElementById('marcia-filter-classes').innerHTML = classAgg.slice(0, 12).map(function(c) {
-        var active = marciaState.filters.niceClass.indexOf(c.key) >= 0;
-        return '<button class="impi-filter-chip' + (active ? ' active' : '') + '" onclick="toggleFiltroMARCia(\'niceClass\',\'' + san(c.key) + '\')">Clase ' + san(c.key) + ' (' + c.docCount + ')</button>';
-    }).join('');
+    var viennaAgg = marciaState.aggregates.VIENNA_CODES || [];
+
+    if (statusAgg.length === 0 && classAgg.length === 0 && viennaAgg.length === 0) {
+        el.style.display = 'none';
+        return;
+    }
+    el.style.display = '';
+
+    document.getElementById('marcia-filter-status').innerHTML =
+        chipsFiltroMARCia('status', statusAgg, function(k) { return k; });
+    document.getElementById('marcia-filter-classes').innerHTML =
+        chipsFiltroMARCia('niceClass', classAgg, function(k) { return 'Clase ' + k; });
+    document.getElementById('marcia-filter-vienna').innerHTML =
+        chipsFiltroMARCia('viennaCode', viennaAgg, function(k) { return k; }, descripcionViena);
+
+    mostrarGrupoFiltro('marcia-filter-group-status', statusAgg.length > 0);
+    mostrarGrupoFiltro('marcia-filter-group-classes', classAgg.length > 0);
+    mostrarGrupoFiltro('marcia-filter-group-vienna', viennaAgg.length > 0);
+    mostrarGrupoFiltro('marcia-filter-group-reset', hayFiltrosActivosMARCia());
+}
+
+function mostrarGrupoFiltro(id, visible) {
+    var g = document.getElementById(id);
+    if (g) g.style.display = visible ? '' : 'none';
+}
+
+function hayFiltrosActivosMARCia() {
+    var f = marciaState.filters;
+    return f.status.length > 0 || f.niceClass.length > 0 || f.viennaCode.length > 0;
 }
 
 function toggleFiltroMARCia(tipo, valor) {
     var arr = marciaState.filters[tipo];
+    if (!arr) return;
     var idx = arr.indexOf(valor);
     if (idx >= 0) arr.splice(idx, 1); else arr.push(valor);
+    marciaState.pageNumber = 0;
+    obtenerResultadosMARCia();
+}
+
+function limpiarFiltrosMARCia() {
+    if (!hayFiltrosActivosMARCia()) return;
+    marciaState.filters = { status: [], niceClass: [], viennaCode: [] };
     marciaState.pageNumber = 0;
     obtenerResultadosMARCia();
 }
@@ -323,18 +532,18 @@ function marciaPaginaSiguiente() {
 
 async function verDetalleMARCia(markId) {
     if (!markId) return;
-    var loading = document.getElementById('impi-loading');
-    if (loading) loading.style.display = 'flex';
+    mostrarCargandoIMPI();
 
     try {
-        var data = await proxyFetch('/marcia/view/' + encodeURIComponent(markId));
-        console.log('MARCia detail response:', JSON.stringify(data).substring(0, 2000));
+        var data = await conReintentoDeSesion(function() {
+            return proxyFetch('/marcia/view/' + encodeURIComponent(markId));
+        }, false);
         renderizarDetalleMARCia(data);
     } catch (e) {
         console.error('MARCia detail error:', e);
         mostrarToast('Error al obtener detalle: ' + e.message, 'error');
     } finally {
-        if (loading) loading.style.display = 'none';
+        ocultarCargandoIMPI();
     }
 }
 
@@ -359,7 +568,8 @@ function renderizarDetalleMARCia(data) {
     if (tm.image) imgUrl = tm.image;
     else if (data.result && data.result.images) imgUrl = typeof data.result.images === 'string' ? data.result.images : '';
     else if (data.images) imgUrl = typeof data.images === 'string' ? data.images : '';
-    var imgHtml = imgUrl ? '<img src="' + san(imgUrl) + '" class="impi-detail-image" onerror="this.style.display=\'none\'">' : '';
+    imgUrl = urlImagenSegura(imgUrl);
+    var imgHtml = imgUrl ? '<img src="' + attr(imgUrl) + '" class="impi-detail-image" onerror="this.style.display=\'none\'">' : '';
 
     var ownersHtml = '';
     var ownersList = asArr(oi.owners || oi.owner || d.owners);
@@ -433,59 +643,137 @@ function cerrarDetalleMARCia() {
 
 function limpiarFormularioMARCia() {
     document.getElementById('marcia-query').value = '';
-    ['marcia-adv-title','marcia-adv-owner','marcia-adv-agent','marcia-adv-number','marcia-adv-goods','marcia-adv-date-from','marcia-adv-date-to'].forEach(function(id) {
+    ['marcia-adv-title','marcia-adv-name','marcia-adv-number','marcia-adv-goods','marcia-adv-date-from','marcia-adv-date-to'].forEach(function(id) {
         var el = document.getElementById(id); if (el) el.value = '';
     });
-    ['marcia-adv-title-option','marcia-adv-number-type','marcia-adv-class','marcia-adv-status','marcia-adv-apptype','marcia-adv-date-type'].forEach(function(id) {
+    ['marcia-adv-title-option','marcia-adv-name-type','marcia-adv-number-type','marcia-adv-class','marcia-adv-status','marcia-adv-apptype','marcia-adv-date-type'].forEach(function(id) {
         var el = document.getElementById(id); if (el) el.selectedIndex = 0;
     });
     document.getElementById('marcia-results-section').style.display = 'none';
     document.getElementById('marcia-detail-section').style.display = 'none';
     marciaState.results = []; marciaState.searchId = null; marciaState.totalResults = 0; marciaState.pageNumber = 0;
+    marciaState.lastPayload = null; marciaState.lastError = null; marciaState.aggregates = null;
     marciaState.filters = { status: [], niceClass: [], viennaCode: [] };
+    marciaFiltrosExpandidos = { niceClass: false, viennaCode: false };
 }
 
 function abrirMARCiaExterno() {
     window.open('https://marcia.impi.gob.mx/marcas/search/quick', '_blank');
 }
 
-function exportarResultadosMARCia() {
+// Tope de filas por exportación: evita cientos de peticiones al IMPI en
+// búsquedas muy amplias.
+var MARCIA_EXPORT_MAX = 2000;
+var MARCIA_EXPORT_PAGE_SIZE = 100;
+
+// Una celda que empieza con = + - @ la interpreta Excel/Sheets como fórmula.
+// Se prefija con apóstrofo para que se lea como texto.
+function csvCelda(valor) {
+    if (valor === null || valor === undefined) valor = '';
+    if (Array.isArray(valor)) valor = valor.join('; ');
+    else if (typeof valor === 'object') valor = valor.name || valor.title || '';
+    var texto = String(valor);
+    if (/^[=+\-@\t\r]/.test(texto)) texto = "'" + texto;
+    return '"' + texto.replace(/"/g, '""') + '"';
+}
+
+function filaCSVMarca(r) {
+    return [
+        r.title,
+        r.applicationNumber,
+        r.registrationNumber,
+        r.status,
+        r.appType,
+        r.owners,
+        r.classes,
+        r.dates && r.dates.application ? r.dates.application : ''
+    ].map(csvCelda).join(',') + '\n';
+}
+
+// Trae todas las páginas de la búsqueda actual respetando los filtros activos.
+// No toca marciaState.pageNumber para no alterar lo que ve el usuario.
+async function obtenerTodasLasPaginasMARCia(limite) {
+    var todas = [];
+    var pagina = 0;
+    while (todas.length < limite) {
+        var paginaActual = pagina;
+        var data = await conReintentoDeSesion(function() {
+            return proxyFetch('/marcia/results', {
+                method: 'POST',
+                body: JSON.stringify(construirBodyResultadosMARCia(paginaActual, MARCIA_EXPORT_PAGE_SIZE))
+            });
+        }, true);
+
+        var lote = data.resultPage || [];
+        if (lote.length === 0) break;
+        todas = todas.concat(lote);
+        if (lote.length < MARCIA_EXPORT_PAGE_SIZE) break;
+        pagina++;
+    }
+    return todas.slice(0, limite);
+}
+
+async function exportarResultadosMARCia() {
     if (marciaState.results.length === 0) return;
+
+    var total = marciaState.totalResults || marciaState.results.length;
+    var aExportar = Math.min(total, MARCIA_EXPORT_MAX);
+    var registros = marciaState.results;
+
+    // La página visible es solo una parte: si hay más, se descargan todas.
+    if (total > marciaState.results.length) {
+        var mensaje = 'Se exportarán ' + aExportar + ' de ' + total + ' resultados';
+        if (total > MARCIA_EXPORT_MAX) mensaje += ' (máximo ' + MARCIA_EXPORT_MAX + ' por exportación)';
+        mensaje += '.\n\nRequiere consultar varias páginas del IMPI y puede tardar unos segundos. ¿Continuar?';
+        if (!confirm(mensaje)) return;
+
+        mostrarCargandoIMPI();
+        try {
+            registros = await obtenerTodasLasPaginasMARCia(aExportar);
+        } catch (e) {
+            mostrarToast('Error al descargar todos los resultados: ' + e.message, 'error');
+            return;
+        } finally {
+            ocultarCargandoIMPI();
+        }
+    }
+
+    if (registros.length === 0) { mostrarToast('No hay resultados para exportar', 'warning'); return; }
+
     var csv = 'Denominación,Expediente,Registro,Estatus,Tipo,Titular,Clases,Fecha Presentación\n';
-    marciaState.results.forEach(function(r) {
-        csv += '"' + (r.title || '').replace(/"/g, '""') + '",' +
-            '"' + (r.applicationNumber || '') + '",' +
-            '"' + (r.registrationNumber || '') + '",' +
-            '"' + (r.status || '') + '",' +
-            '"' + (r.appType || '') + '",' +
-            '"' + (r.owners || []).join('; ').replace(/"/g, '""') + '",' +
-            '"' + (r.classes || []).join('; ') + '",' +
-            '"' + (r.dates && r.dates.application ? r.dates.application : '') + '"\n';
-    });
+    registros.forEach(function(r) { csv += filaCSVMarca(r); });
+
     var blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'marcas_impi_' + new Date().toISOString().slice(0, 10) + '.csv';
     a.click();
     URL.revokeObjectURL(a.href);
-    mostrarToast('CSV exportado con ' + marciaState.results.length + ' resultados', 'success');
+
+    var aviso = 'CSV exportado con ' + registros.length + ' resultado' + (registros.length !== 1 ? 's' : '');
+    if (total > registros.length) aviso += ' de ' + total;
+    mostrarToast(aviso, 'success');
 }
 
 // ==================== SIGA: BÚSQUEDA ====================
 
-async function buscarSIGA() {
-    if (sigaState.searching) return;
+async function buscarSIGA(opts) {
+    opts = opts || {};
+    if (sigaState.searching) return false;
     var query = (document.getElementById('siga-query').value || '').trim();
-    if (!query) { mostrarToast('Ingresa un término de búsqueda', 'warning'); return; }
+    if (!query) {
+        if (!opts.silencioso) mostrarToast('Ingresa un término de búsqueda', 'warning');
+        return false;
+    }
 
     var area = document.getElementById('siga-area').value;
     var fechaDesde = document.getElementById('siga-fecha-desde').value || '';
     var fechaHasta = document.getElementById('siga-fecha-hasta').value || '';
 
     sigaState.searching = true;
+    sigaState.lastError = null;
     sigaState.currentQuery = { Busqueda: query, IdArea: area, FechaDesde: fechaDesde, FechaHasta: fechaHasta };
-    var loading = document.getElementById('impi-loading');
-    if (loading) loading.style.display = 'flex';
+    mostrarCargandoIMPI();
 
     try {
         var data = await proxyFetch('/siga/search', {
@@ -506,17 +794,22 @@ async function buscarSIGA() {
         sigaState.results = data.data || [];
         renderizarResultadosSIGA();
         actualizarBotonesGuardar();
+        return true;
 
     } catch (e) {
-        if (e.message === 'PROXY_NOT_CONFIGURED') {
-            mostrarErrorProxy();
-        } else {
-            console.error('Error SIGA:', e);
-            mostrarToast('Error al buscar en SIGA: ' + e.message, 'error');
+        sigaState.lastError = e.message;
+        if (!opts.silencioso) {
+            if (e.message === 'PROXY_NOT_CONFIGURED') {
+                mostrarErrorProxy();
+            } else {
+                console.error('Error SIGA:', e);
+                mostrarToast('Error al buscar en SIGA: ' + e.message, 'error');
+            }
         }
+        return false;
     } finally {
         sigaState.searching = false;
-        if (loading) loading.style.display = 'none';
+        ocultarCargandoIMPI();
     }
 }
 
@@ -707,6 +1000,10 @@ function guardarBusqueda(tool, searchData) {
             marcarYSincronizar().catch(function() {});
         }
     };
+    req.onerror = function() {
+        console.error('Error guardando búsqueda:', req.error);
+        mostrarToast('No se pudo guardar la búsqueda: ' + ((req.error && req.error.message) || 'error de almacenamiento'), 'error');
+    };
 }
 
 function guardarBusquedaSIGA() {
@@ -754,6 +1051,10 @@ function guardarBusquedaSIGA() {
             marcarYSincronizar().catch(function() {});
         }
     };
+    req.onerror = function() {
+        console.error('Error guardando búsqueda SIGA:', req.error);
+        mostrarToast('No se pudo guardar la búsqueda: ' + ((req.error && req.error.message) || 'error de almacenamiento'), 'error');
+    };
 }
 
 // Guardar búsqueda MARCia
@@ -764,7 +1065,7 @@ function guardarBusquedaMARCia() {
         query = (document.getElementById('marcia-query').value || '').trim();
     } else {
         query = (document.getElementById('marcia-adv-title').value || '').trim() ||
-                (document.getElementById('marcia-adv-owner').value || '').trim() ||
+                (document.getElementById('marcia-adv-name').value || '').trim() ||
                 (document.getElementById('marcia-adv-number').value || '').trim();
     }
     if (!query) { mostrarToast('No se pudo determinar el término de búsqueda', 'warning'); return; }
@@ -772,6 +1073,9 @@ function guardarBusquedaMARCia() {
     guardarBusqueda('marcia', {
         query: query,
         subtype: marciaState.searchMode,
+        // Una búsqueda avanzada no se puede reconstruir desde un solo término,
+        // así que se guarda el payload completo para poder reejecutarla.
+        payload: marciaState.lastPayload || null,
         label: query + ' (MARCia)',
         lastResultCount: marciaState.totalResults || marciaState.results.length,
         lastResultIds: marciaState.results.slice(0, 100).map(function(r) { return r.applicationNumber || r.id || ''; }).sort()
@@ -810,6 +1114,10 @@ function eliminarBusquedaGuardada(id) {
         if (typeof marcarYSincronizar === 'function') {
             marcarYSincronizar().catch(function() {});
         }
+    };
+    req.onerror = function() {
+        console.error('Error eliminando búsqueda guardada:', req.error);
+        mostrarToast('No se pudo eliminar la búsqueda guardada', 'error');
     };
 }
 
@@ -923,11 +1231,19 @@ function ejecutarBusquedaGuardada(id) {
         cambiarTabIMPI('marcia');
         if (saved.subtype === 'avanzada') {
             toggleMarciaSearchMode('avanzada');
+            // El formulario avanzado puede estar vacío o con otros criterios:
+            // se reejecuta con el payload guardado, no con lo que esté en pantalla.
+            if (saved.payload) {
+                buscarMARCia({ payload: saved.payload });
+            } else {
+                // Búsquedas guardadas antes de que se almacenara el payload.
+                mostrarToast('Esta búsqueda avanzada se guardó sin sus criterios. Vuelve a capturarlos y guárdala de nuevo.', 'warning');
+            }
         } else {
             toggleMarciaSearchMode('rapida');
             document.getElementById('marcia-query').value = saved.query;
+            buscarMARCia();
         }
-        buscarMARCia();
     } else if (tool === 'marcanet') {
         cambiarTabIMPI('marcanet');
         var mode = saved.subtype || 'fonetica';
@@ -1049,8 +1365,9 @@ async function buscarEnLas3() {
     var query = queryInput ? queryInput.value.trim() : '';
     if (!query) { mostrarToast('Ingresa un término de búsqueda', 'warning'); return; }
 
-    var loading = document.getElementById('impi-loading');
-    if (loading) loading.style.display = 'flex';
+    // El spinner se mantiene tomado durante toda la operación: cada búsqueda
+    // lo suelta al terminar, pero este contador evita que se apague antes.
+    mostrarCargandoIMPI();
 
     // Llenar los 3 formularios con el mismo término
     var marciaQ = document.getElementById('marcia-query');
@@ -1064,35 +1381,55 @@ async function buscarEnLas3() {
     var sigaQ = document.getElementById('siga-query');
     if (sigaQ) sigaQ.value = query;
 
-    // Lanzar las 3 búsquedas en paralelo
-    var results = { marcia: null, marcanet: null, siga: null };
-    var errors = [];
+    // Lanzar las 3 búsquedas en paralelo. Cada una reporta su propio resultado
+    // en silencio; aquí se emite un solo resumen.
+    var acuerdos;
+    try {
+        acuerdos = await Promise.allSettled([
+            buscarMARCia({ silencioso: true }),
+            buscarMarcanet({ silencioso: true }),
+            buscarSIGA({ silencioso: true })
+        ]);
+    } finally {
+        ocultarCargandoIMPI();
+    }
+    var resultados = acuerdos.map(function(a) { return a.status === 'fulfilled' && a.value === true; });
 
-    await Promise.allSettled([
-        buscarMARCia().then(function() { results.marcia = true; }).catch(function(e) { errors.push('MARCia: ' + e.message); }),
-        buscarMarcanet().then(function() { results.marcanet = true; }).catch(function(e) { errors.push('Marcanet: ' + e.message); }),
-        buscarSIGA().then(function() { results.siga = true; }).catch(function(e) { errors.push('SIGA: ' + e.message); })
-    ]);
+    var estado = [
+        { tab: 'marcia',   nombre: 'MARCia',   ok: resultados[0], count: marciaState.totalResults || marciaState.results.length, error: marciaState.lastError },
+        { tab: 'marcanet', nombre: 'Marcanet', ok: resultados[1], count: marcanetState.results.length, error: marcanetState.lastError },
+        { tab: 'siga',     nombre: 'SIGA',     ok: resultados[2], count: sigaState.results.length,     error: sigaState.lastError }
+    ];
 
-    if (loading) loading.style.display = 'none';
-
-    // Mostrar resumen
     var resumen = [];
-    if (results.marcia) resumen.push('MARCia: ' + (marciaState.totalResults || marciaState.results.length) + ' resultados');
-    if (results.marcanet) resumen.push('Marcanet: ' + marcanetState.results.length + ' resultados');
-    if (results.siga) resumen.push('SIGA: ' + sigaState.results.length + ' resultados');
-    if (errors.length > 0) resumen.push('Errores: ' + errors.join(', '));
+    var errores = [];
+    estado.forEach(function(s) {
+        if (s.ok) {
+            resumen.push(s.nombre + ': ' + s.count + ' resultado' + (s.count !== 1 ? 's' : ''));
+        } else {
+            errores.push(s.nombre + (s.error ? ': ' + s.error : ''));
+        }
+    });
+    if (errores.length > 0) resumen.push('Sin respuesta de ' + errores.join(' | '));
 
-    mostrarToast(resumen.join(' | '), errors.length > 0 ? 'warning' : 'success');
+    mostrarToast(resumen.join(' · '), errores.length > 0 ? 'warning' : 'success');
 
     // Mostrar el tab con más resultados
-    var counts = [
-        { tab: 'marcia', count: marciaState.totalResults || marciaState.results.length },
-        { tab: 'marcanet', count: marcanetState.results.length },
-        { tab: 'siga', count: sigaState.results.length }
-    ];
-    counts.sort(function(a, b) { return b.count - a.count; });
-    if (counts[0].count > 0) cambiarTabIMPI(counts[0].tab);
+    var conResultados = estado.filter(function(s) { return s.ok && s.count > 0; });
+    conResultados.sort(function(a, b) { return b.count - a.count; });
+    if (conResultados.length > 0) cambiarTabIMPI(conResultados[0].tab);
+}
+
+// El término con el que se identifica la búsqueda MARCia actual. En modo
+// avanzado el campo #marcia-query está vacío, así que hay que mirar el
+// formulario avanzado (igual que guardarBusquedaMARCia).
+function terminoActualMARCia() {
+    if (marciaState.searchMode === 'rapida') {
+        return ((document.getElementById('marcia-query') || {}).value || '').trim();
+    }
+    return (((document.getElementById('marcia-adv-title') || {}).value || '').trim() ||
+            ((document.getElementById('marcia-adv-name') || {}).value || '').trim() ||
+            ((document.getElementById('marcia-adv-number') || {}).value || '').trim());
 }
 
 // Actualizar visibilidad de botones de guardar
@@ -1100,11 +1437,11 @@ function actualizarBotonesGuardar() {
     // MARCia save button
     var marciaSaveBtn = document.getElementById('marcia-save-search-btn');
     if (marciaSaveBtn) {
-        var marciaQuery = (document.getElementById('marcia-query') || {}).value || '';
+        var marciaQuery = terminoActualMARCia();
         var yaGuardadaMarcia = savedSearchesState.searches.some(function(s) {
-            return s.tool === 'marcia' && s.query === marciaQuery.trim();
+            return s.tool === 'marcia' && s.query === marciaQuery && (s.subtype || '') === marciaState.searchMode;
         });
-        marciaSaveBtn.style.display = (marciaState.results.length > 0 && !yaGuardadaMarcia) ? '' : 'none';
+        marciaSaveBtn.style.display = (marciaState.results.length > 0 && marciaQuery && !yaGuardadaMarcia) ? '' : 'none';
     }
 
     // Marcanet save button
@@ -1145,12 +1482,13 @@ function toggleMarcanetMode(mode) {
 
 // ==================== Marcanet: BÚSQUEDA ====================
 
-async function buscarMarcanet() {
-    if (marcanetState.searching) return;
+async function buscarMarcanet(opts) {
+    opts = opts || {};
+    if (marcanetState.searching) return false;
     marcanetState.searching = true;
+    marcanetState.lastError = null;
 
-    var loading = document.getElementById('impi-loading');
-    if (loading) loading.style.display = 'flex';
+    mostrarCargandoIMPI();
 
     try {
         var mode = marcanetState.searchMode;
@@ -1159,80 +1497,96 @@ async function buscarMarcanet() {
         if (mode === 'fonetica') {
             var denominacion = (document.getElementById('mcn-denominacion') || {}).value || '';
             var clase = (document.getElementById('mcn-clase') || {}).value || '';
-            if (!denominacion.trim()) { mostrarToast('Ingresa una denominación para buscar.', 'warning'); return; }
+            if (!denominacion.trim()) {
+                if (!opts.silencioso) mostrarToast('Ingresa una denominación para buscar.', 'warning');
+                return false;
+            }
             data = await proxyFetch('/marcanet/fonetica', {
                 method: 'POST',
                 body: JSON.stringify({ denominacion: denominacion.trim(), clase: clase })
             });
-            console.log('Marcanet fonetica response:', data);
-            if (data.debug) console.log('Marcanet fonetica debug:', data.debug);
-            if (data.results && data.results.length > 0) console.log('Marcanet first result keys/values:', JSON.stringify(data.results[0]));
             if (data.isFormPage) {
-                mostrarToast('Marcanet devolvió la página del formulario. Es posible que el servidor no esté procesando búsquedas. Intenta directamente en Marcanet.', 'warning');
+                marcanetState.lastError = 'Marcanet devolvió la página del formulario';
+                if (!opts.silencioso) mostrarToast('Marcanet devolvió la página del formulario. Es posible que el servidor no esté procesando búsquedas. Intenta directamente en Marcanet.', 'warning');
                 marcanetState.results = [];
             } else {
                 marcanetState.results = data.results || [];
             }
             renderizarResultadosMarcanet();
             actualizarBotonesGuardar();
+            return true;
 
         } else if (mode === 'expediente') {
             var expediente = (document.getElementById('mcn-num-expediente') || {}).value || '';
-            if (!expediente.trim()) { mostrarToast('Ingresa un número de expediente.', 'warning'); return; }
+            if (!expediente.trim()) {
+                if (!opts.silencioso) mostrarToast('Ingresa un número de expediente.', 'warning');
+                return false;
+            }
             data = await proxyFetch('/marcanet/expediente', {
                 method: 'POST',
                 body: JSON.stringify({ expediente: expediente.trim() })
             });
-            console.log('Marcanet expediente response:', data);
             // Búsqueda por expediente devuelve detalle directo
             if (data.detail && Object.keys(data.detail).length > 0) {
                 marcanetState.detail = data.detail;
                 renderizarDetalleMarcanet(data.detail);
-            } else {
-                mostrarToast('No se encontraron datos para el expediente ' + san(expediente), 'warning');
+                return true;
             }
-            return;
+            marcanetState.lastError = 'Sin datos para el expediente ' + expediente.trim();
+            if (!opts.silencioso) mostrarToast('No se encontraron datos para el expediente ' + san(expediente), 'warning');
+            return false;
 
         } else if (mode === 'registro') {
             var registro = (document.getElementById('mcn-num-registro') || {}).value || '';
-            if (!registro.trim()) { mostrarToast('Ingresa un número de registro.', 'warning'); return; }
+            if (!registro.trim()) {
+                if (!opts.silencioso) mostrarToast('Ingresa un número de registro.', 'warning');
+                return false;
+            }
             data = await proxyFetch('/marcanet/registro', {
                 method: 'POST',
                 body: JSON.stringify({ registro: registro.trim() })
             });
-            console.log('Marcanet registro response:', data);
             if (data.detail && Object.keys(data.detail).length > 0) {
                 marcanetState.detail = data.detail;
                 renderizarDetalleMarcanet(data.detail);
-            } else {
-                mostrarToast('No se encontraron datos para el registro ' + san(registro), 'warning');
+                return true;
             }
-            return;
+            marcanetState.lastError = 'Sin datos para el registro ' + registro.trim();
+            if (!opts.silencioso) mostrarToast('No se encontraron datos para el registro ' + san(registro), 'warning');
+            return false;
 
         } else if (mode === 'titular') {
             var titular = (document.getElementById('mcn-titular') || {}).value || '';
-            if (!titular.trim()) { mostrarToast('Ingresa un nombre de titular.', 'warning'); return; }
+            if (!titular.trim()) {
+                if (!opts.silencioso) mostrarToast('Ingresa un nombre de titular.', 'warning');
+                return false;
+            }
             data = await proxyFetch('/marcanet/titular', {
                 method: 'POST',
                 body: JSON.stringify({ titular: titular.trim() })
             });
-            console.log('Marcanet titular response:', data);
             if (data.isFormPage) {
-                mostrarToast('Marcanet devolvió la página del formulario. Intenta directamente en Marcanet.', 'warning');
+                marcanetState.lastError = 'Marcanet devolvió la página del formulario';
+                if (!opts.silencioso) mostrarToast('Marcanet devolvió la página del formulario. Intenta directamente en Marcanet.', 'warning');
                 marcanetState.results = [];
             } else {
                 marcanetState.results = data.results || [];
             }
             renderizarResultadosMarcanet();
             actualizarBotonesGuardar();
+            return true;
         }
 
+        return false;
+
     } catch (e) {
+        marcanetState.lastError = e.message;
         console.error('Marcanet error:', e);
-        mostrarToast('Error en Marcanet: ' + e.message, 'error');
+        if (!opts.silencioso) mostrarToast('Error en Marcanet: ' + e.message, 'error');
+        return false;
     } finally {
         marcanetState.searching = false;
-        if (loading) loading.style.display = 'none';
+        ocultarCargandoIMPI();
     }
 }
 
@@ -1360,8 +1714,7 @@ async function verDetalleMarcanetDesdeResultado(idx) {
         }
     }
 
-    var loading = document.getElementById('impi-loading');
-    if (loading) loading.style.display = 'flex';
+    mostrarCargandoIMPI();
 
     try {
         // Usar el endpoint full-detail que combina Marcanet + MARCia
@@ -1399,7 +1752,7 @@ async function verDetalleMarcanetDesdeResultado(idx) {
         // Último fallback: mostrar datos del resultado
         renderizarDetalleMarcanetCompleto({ detail: r, sources: ['resultado-local'] }, r);
     } finally {
-        if (loading) loading.style.display = 'none';
+        ocultarCargandoIMPI();
     }
 }
 
@@ -1429,7 +1782,7 @@ function renderizarDetalleMarcanetCompleto(data, resultadoOriginal) {
         // Imagen de MARCia (TrademarkVision)
         if (tm.image || result.image) {
             html += '<div style="text-align: center; margin-bottom: 16px;">' +
-                '<img src="' + san(tm.image || result.image) + '" style="max-width: 250px; max-height: 250px; border-radius: 8px; border: 2px solid var(--primary-color); padding: 4px; background: white;" onerror="this.style.display=\'none\'">' +
+                '<img src="' + attr(urlImagenSegura(tm.image || result.image)) + '" style="max-width: 250px; max-height: 250px; border-radius: 8px; border: 2px solid var(--primary-color); padding: 4px; background: white;" onerror="this.style.display=\'none\'">' +
                 '</div>';
         }
 
@@ -1554,7 +1907,7 @@ function renderizarDetalleMarcanetCompleto(data, resultadoOriginal) {
             // Imagen
             if (detail._imagen) {
                 html += '<div style="text-align: center; margin-bottom: 16px;">' +
-                    '<img src="' + san(detail._imagen) + '" style="max-width: 250px; max-height: 250px; border-radius: 8px; border: 2px solid var(--primary-color); padding: 4px; background: white;" onerror="this.style.display=\'none\'">' +
+                    '<img src="' + attr(urlImagenSegura(detail._imagen)) + '" style="max-width: 250px; max-height: 250px; border-radius: 8px; border: 2px solid var(--primary-color); padding: 4px; background: white;" onerror="this.style.display=\'none\'">' +
                     '</div>';
             }
             if (detail._titulo) {
@@ -1635,7 +1988,7 @@ function renderizarDetalleMarcanetCompleto(data, resultadoOriginal) {
     if (expNum) {
         var expClean = expNum.replace(/\D/g, '');
         var infoB64 = btoa('1|1|1985|' + expClean);
-        html += '<a href="' + san('https://acervomarcas.impi.gob.mx:8181/marcanet/UCMServlet?info=' + encodeURIComponent(infoB64)) + '" ' +
+        html += '<a href="' + attr('https://acervomarcas.impi.gob.mx:8181/marcanet/UCMServlet?info=' + encodeURIComponent(infoB64)) + '" ' +
             'target="_blank" rel="noopener" class="btn btn-sm btn-outline">↗️ Ver expediente en Marcanet</a>';
     }
     html += '</div>';
@@ -1663,7 +2016,36 @@ function cerrarDetalleMarcanet() {
 
 // ==================== DOMContentLoaded ====================
 
+// Los ids de marca y los códigos de filtro vienen del IMPI, así que viajan en
+// data-* y se leen aquí en vez de interpolarse dentro de un onclick.
+function inicializarDelegacionMARCia() {
+    var lista = document.getElementById('marcia-results-list');
+    if (lista) {
+        lista.addEventListener('click', function(e) {
+            var card = e.target.closest('.impi-result-card[data-mark-id]');
+            if (card) verDetalleMARCia(card.dataset.markId);
+        });
+    }
+
+    var filtros = document.getElementById('marcia-filters');
+    if (filtros) {
+        filtros.addEventListener('click', function(e) {
+            var chip = e.target.closest('.impi-filter-chip');
+            if (!chip) return;
+            if (chip.dataset.filtroExpandir) {
+                var tipo = chip.dataset.filtroExpandir;
+                marciaFiltrosExpandidos[tipo] = !marciaFiltrosExpandidos[tipo];
+                renderizarFiltrosMARCia();
+            } else if (chip.dataset.filtroTipo) {
+                toggleFiltroMARCia(chip.dataset.filtroTipo, chip.dataset.filtroValor);
+            }
+        });
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+    inicializarDelegacionMARCia();
+
     // Enter key para búsqueda unificada
     var unifiedInput = document.getElementById('impi-unified-query');
     if (unifiedInput) {
