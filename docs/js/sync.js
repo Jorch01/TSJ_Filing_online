@@ -603,7 +603,7 @@ function fusionarDatos(local, remoto) {
         // historial y sigaGuardadas son append-only / por-ID: no requieren merge
         // sofisticado, basta con la unión sin duplicados.
         historial: fusionarHistorial(local.historial || [], remoto.historial || []),
-        sigaGuardadas: fusionarSIGA(local.sigaGuardadas || [], remoto.sigaGuardadas || []),
+        sigaGuardadas: fusionarBusquedasGuardadas(local.sigaGuardadas || [], remoto.sigaGuardadas || []),
         eliminados: eliminadosFusionados,
         metadata: local.metadata
     };
@@ -745,12 +745,30 @@ function fusionarHistorial(locales, remotos) {
         .slice(0, MAX_HISTORIAL_SYNC);
 }
 
-// Une búsquedas SIGA guardadas deduplicando por query (no por id).
-function fusionarSIGA(locales, remotos) {
+// Identidad de una búsqueda guardada. El store sigaGuardadas ya no es solo de
+// SIGA: guarda también MARCia y Marcanet, así que el término por sí solo no
+// identifica nada. "nike" en MARCia, "nike" en Marcanet y "nike" en SIGA son
+// tres búsquedas distintas, igual que el mismo término en Marcas y en Patentes.
+// Debe coincidir con la detección de duplicados de impi-search.js
+// (guardarBusqueda y guardarBusquedaSIGA).
+function _claveBusquedaGuardada(s) {
+    const herramienta = s.tool || 'siga';
+    const subtipo = s.subtype || '';
+    const area = herramienta === 'siga' ? (s.area || '') : '';
+    const termino = (s.query || '').toLowerCase().trim();
+    // Sin término no hay identidad estable: se cae al objeto completo para no
+    // colapsar registros que no tienen nada que ver entre sí.
+    if (!termino) return `${herramienta}|${subtipo}|${area}|${JSON.stringify(s)}`;
+    return `${herramienta}|${subtipo}|${area}|${termino}`;
+}
+
+// Une búsquedas guardadas (SIGA, MARCia y Marcanet) deduplicando por
+// herramienta + modo + área + término, no por id.
+function fusionarBusquedasGuardadas(locales, remotos) {
     const mapa = new Map();
     const todos = [...remotos, ...locales];
     for (const s of todos) {
-        const clave = (s.query || JSON.stringify(s)).toLowerCase().trim();
+        const clave = _claveBusquedaGuardada(s);
         const existente = mapa.get(clave);
         if (!existente) {
             mapa.set(clave, s);
