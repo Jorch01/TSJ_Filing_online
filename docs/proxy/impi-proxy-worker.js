@@ -16,22 +16,133 @@
 // 7. Commit, push, y listo. Todos los usuarios tendrán búsqueda IMPI.
 //
 // NOTA: Los usuarios finales NO necesitan configurar nada.
+//
+// AL ACTUALIZAR: publica el worker y el sitio juntos. El cliente y el proxy se
+// entienden por las cabeceras X-IMPI-Client y X-IMPI-Session; un cliente viejo
+// contra este worker sigue funcionando (cae al Map en memoria, como antes),
+// pero no gana la recuperación de sesión hasta que se publique el sitio.
+// No hace falta ningún recurso extra de Cloudflare: no se usa KV ni Durable
+// Objects, así que el plan gratuito basta.
 // ============================================================
 
 const ALLOWED_ORIGINS = [
     'https://jorch01.github.io',
-    'https://tsjia.empirica.mx',
-    'http://localhost',
-    'http://127.0.0.1'
+    'https://tsjia.empirica.mx'
 ];
+
+// Desarrollo local, en cualquier puerto.
+const LOCAL_ORIGIN_RE = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
 const MARCIA_BASE = 'https://marcia.impi.gob.mx';
 const SIGA_BASE = 'https://siga.impi.gob.mx:5007';
 const MARCANET_BASE = 'https://acervomarcas.impi.gob.mx:8181';
 
-// Almacén de sesiones MARCia (CSRF token + cookies) por IP/origen
-// En producción considerar KV o Durable Objects para persistencia
+// Almacén de sesiones en memoria del isolate. SIGA y Marcanet lo usan como
+// caché: si la entrada no está, ensureSigaSession/ensureMarcanetSession la
+// vuelven a crear solas, así que perderla no rompe nada.
+//
+// MARCia no puede depender de esto: su sesión la crea el cliente con una
+// llamada explícita a /marcia/csrf y la usa en llamadas posteriores. Como
+// Cloudflare recicla los isolates y reparte las peticiones entre colos, la
+// sesión podía no existir ya al paginar o al abrir un detalle, y la respuesta
+// era "No active session". Por eso la sesión de MARCia viaja ahora con el
+// cliente (ver más abajo) y el Map solo queda como respaldo para clientes que
+// todavía no reenvían el token.
 const sessions = new Map();
+
+// ==================== SESIÓN MARCia SIN ESTADO EN EL SERVIDOR ====================
+// El cliente conserva el token CSRF y las cookies de MARCia y los reenvía en
+// cada petición. No es información privilegiada: cualquiera obtiene lo mismo
+// visitando marcia.impi.gob.mx. La ventaja es que no hay estado que perder ni
+// que compartir entre usuarios distintos.
+
+const SESSION_HEADER = 'X-IMPI-Session';
+const CLIENT_HEADER = 'X-IMPI-Client';
+const SESSION_TTL_MS = 30 * 60 * 1000;
+
+// El token vuelve del cliente, así que se valida antes de reenviarlo al IMPI:
+// nada de saltos de línea (inyección de cabeceras) ni tamaños desmedidos.
+const CSRF_RE = /^[A-Za-z0-9._~+/=-]{1,256}$/;
+const COOKIE_RE = /^[ -~]{0,4096}$/;   // ASCII imprimible: excluye CR y LF
+
+// Las cookies se normalizan al extraerlas para que siempre sean serializables.
+function sanearCookies(str) {
+    return String(str || '').replace(/[^ -~]/g, '').slice(0, 4096);
+}
+
+function serializarSesion(session) {
+    try {
+        return btoa(JSON.stringify({
+            c: session.csrf,
+            k: sanearCookies(session.cookies),
+            t: session.timestamp || Date.now()
+        }));
+    } catch (e) {
+        return '';
+    }
+}
+
+function deserializarSesion(token) {
+    if (!token) return null;
+    let raw;
+    try { raw = JSON.parse(atob(token)); } catch (e) { return null; }
+    if (!raw || typeof raw !== 'object') return null;
+
+    const csrf = String(raw.c || '');
+    const cookies = String(raw.k || '');
+    const timestamp = Number(raw.t) || 0;
+
+    if (!CSRF_RE.test(csrf)) return null;
+    if (!COOKIE_RE.test(cookies)) return null;
+    if (!timestamp || Date.now() - timestamp > SESSION_TTL_MS) return null;
+
+    return { csrf, cookies, timestamp };
+}
+
+// La sesión que trae el cliente manda; si no trae (cliente viejo), se cae al
+// Map en memoria.
+function obtenerSesionMARCia(request) {
+    const delCliente = deserializarSesion(request.headers.get(SESSION_HEADER));
+    if (delCliente) return delCliente;
+    return sessions.get(getSessionKey(request)) || null;
+}
+
+function respuestaSinSesionMARCia() {
+    // El texto importa: el cliente lo reconoce para rehacer la sesión y
+    // reintentar una vez.
+    return new Response(JSON.stringify({ error: 'No active session. Call /marcia/csrf first.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+    });
+}
+
+// Devuelve una sesión nueva con las cookies que haya rotado el IMPI, sin mutar
+// la recibida.
+function conCookiesActualizadas(session, response) {
+    const nuevas = extractCookies(response);
+    if (!nuevas) return session;
+    const mezcla = Object.assign(parseCookies(session.cookies), parseCookies(nuevas));
+    return {
+        csrf: session.csrf,
+        cookies: sanearCookies(Object.entries(mezcla).map(([k, v]) => k + '=' + v).join('; ')),
+        timestamp: Date.now()
+    };
+}
+
+// Responde adjuntando la sesión actualizada para que el cliente la guarde.
+function respuestaConSesion(data, status, session, request) {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = serializarSesion(session);
+    if (token) headers[SESSION_HEADER] = token;
+
+    // Mantener al día también la copia en memoria, que es lo único que tienen
+    // los clientes que aún no reenvían el token.
+    if (request) {
+        const key = getSessionKey(request);
+        if (sessions.has(key)) sessions.set(key, session);
+    }
+    return new Response(JSON.stringify(data), { status, headers });
+}
 
 export default {
     async fetch(request, env) {
@@ -146,35 +257,23 @@ async function handleMarciaCsrf(request) {
         });
     }
 
-    // Extraer cookies de la respuesta
-    const cookies = resp.headers.getAll ? resp.headers.getAll('set-cookie') : [];
-    const cookieHeader = extractCookies(resp);
-
-    // Guardar sesión
-    sessions.set(sessionKey, {
+    const session = {
         csrf: csrfMatch[1],
-        cookies: cookieHeader,
+        cookies: sanearCookies(extractCookies(resp)),
         timestamp: Date.now()
-    });
+    };
 
-    return new Response(JSON.stringify({
-        csrf: csrfMatch[1],
-        sessionActive: true
-    }), {
-        headers: { 'Content-Type': 'application/json' }
-    });
+    // Se guarda también en memoria para los clientes que todavía no reenvían
+    // el token de sesión.
+    sessions.set(sessionKey, session);
+
+    // La sesión viaja en la cabecera; el cuerpo se mantiene igual que antes.
+    return respuestaConSesion({ csrf: session.csrf, sessionActive: true }, 200, session, null);
 }
 
 async function handleMarciaSearch(request) {
-    const sessionKey = getSessionKey(request);
-    const session = sessions.get(sessionKey);
-
-    if (!session) {
-        return new Response(JSON.stringify({ error: 'No active session. Call /marcia/csrf first.' }), {
-            status: 401,
-            headers: { 'Content-Type': 'application/json' }
-        });
-    }
+    const session = obtenerSesionMARCia(request);
+    if (!session) return respuestaSinSesionMARCia();
 
     const body = await request.json();
 
@@ -192,26 +291,13 @@ async function handleMarciaSearch(request) {
         body: JSON.stringify(body)
     });
 
-    // Actualizar cookies si cambiaron
-    updateSessionCookies(sessionKey, resp);
-
     const data = await resp.json();
-    return new Response(JSON.stringify(data), {
-        status: resp.status,
-        headers: { 'Content-Type': 'application/json' }
-    });
+    return respuestaConSesion(data, resp.status, conCookiesActualizadas(session, resp), request);
 }
 
 async function handleMarciaResults(request) {
-    const sessionKey = getSessionKey(request);
-    const session = sessions.get(sessionKey);
-
-    if (!session) {
-        return new Response(JSON.stringify({ error: 'No active session' }), {
-            status: 401,
-            headers: { 'Content-Type': 'application/json' }
-        });
-    }
+    const session = obtenerSesionMARCia(request);
+    if (!session) return respuestaSinSesionMARCia();
 
     const body = await request.json();
 
@@ -229,25 +315,13 @@ async function handleMarciaResults(request) {
         body: JSON.stringify(body)
     });
 
-    updateSessionCookies(sessionKey, resp);
-
     const data = await resp.json();
-    return new Response(JSON.stringify(data), {
-        status: resp.status,
-        headers: { 'Content-Type': 'application/json' }
-    });
+    return respuestaConSesion(data, resp.status, conCookiesActualizadas(session, resp), request);
 }
 
 async function handleMarciaView(request, markId) {
-    const sessionKey = getSessionKey(request);
-    const session = sessions.get(sessionKey);
-
-    if (!session) {
-        return new Response(JSON.stringify({ error: 'No active session' }), {
-            status: 401,
-            headers: { 'Content-Type': 'application/json' }
-        });
-    }
+    const session = obtenerSesionMARCia(request);
+    if (!session) return respuestaSinSesionMARCia();
 
     const resp = await fetch(MARCIA_BASE + '/marcas/search/internal/view/' + encodeURIComponent(markId), {
         headers: {
@@ -260,13 +334,8 @@ async function handleMarciaView(request, markId) {
         }
     });
 
-    updateSessionCookies(sessionKey, resp);
-
     const data = await resp.json();
-    return new Response(JSON.stringify(data), {
-        status: resp.status,
-        headers: { 'Content-Type': 'application/json' }
-    });
+    return respuestaConSesion(data, resp.status, conCookiesActualizadas(session, resp), request);
 }
 
 // ==================== SIGA HANDLERS ====================
@@ -1598,12 +1667,27 @@ async function handleMarcanetFullDetail(request) {
 // ==================== HELPERS ====================
 
 function isOriginAllowed(origin) {
-    if (!origin) return true; // Allow non-browser requests (testing)
-    return ALLOWED_ORIGINS.some(allowed => origin.startsWith(allowed));
+    if (!origin) return true; // Peticiones no-navegador (pruebas con curl)
+    if (LOCAL_ORIGIN_RE.test(origin)) return true;
+    // Comparación exacta: con startsWith, un origen como
+    // "http://localhost.dominio-ajeno.com" pasaba el filtro.
+    return ALLOWED_ORIGINS.includes(origin);
 }
 
+// Solo se acepta un id de cliente con forma conocida, porque se usa para
+// componer la clave del Map de sesiones.
+const CLIENT_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
+
 function getSessionKey(request) {
-    // Usar IP del cliente como clave de sesión
+    // El id que manda el navegador separa a cada usuario. Antes la clave era
+    // la IP, así que dos personas detrás de la misma salida a internet
+    // compartían la sesión de MARCia, Marcanet y SIGA, y se pisaban las
+    // cookies y el searchId entre sí.
+    const clientId = request.headers.get(CLIENT_HEADER) || '';
+    if (CLIENT_ID_RE.test(clientId)) return 'c:' + clientId;
+
+    // Clientes viejos que aún no mandan el id: se conserva el comportamiento
+    // anterior para no romperlos.
     const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
     const origin = request.headers.get('Origin') || 'direct';
     return ip + ':' + origin;
@@ -1682,7 +1766,7 @@ function handleCORS(request) {
         headers: {
             'Access-Control-Allow-Origin': isOriginAllowed(origin) ? origin : '',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Accept',
+            'Access-Control-Allow-Headers': 'Content-Type, Accept, ' + SESSION_HEADER + ', ' + CLIENT_HEADER,
             'Access-Control-Max-Age': '86400'
         }
     });
@@ -1692,7 +1776,9 @@ function addCORSHeaders(response, origin) {
     const newHeaders = new Headers(response.headers);
     newHeaders.set('Access-Control-Allow-Origin', origin || '*');
     newHeaders.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    newHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Accept');
+    newHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Accept, ' + SESSION_HEADER + ', ' + CLIENT_HEADER);
+    // Sin esto el navegador no deja al cliente leer la sesión actualizada.
+    newHeaders.set('Access-Control-Expose-Headers', SESSION_HEADER);
 
     return new Response(response.body, {
         status: response.status,

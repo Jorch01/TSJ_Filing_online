@@ -1332,7 +1332,7 @@
             </div>
 
             <div class="impi-local-notice">
-                <span>💾</span> Los datos de búsquedas guardadas se almacenan localmente en tu navegador y <strong>no se sincronizan entre dispositivos</strong>. Usa <a href="#" onclick="navegarA('config'); return false;">Configuración > Datos</a> para exportar/importar. Esta herramienta no está afiliada al IMPI.
+                <span>💾</span> Las búsquedas guardadas se almacenan en tu navegador. Con la <a href="#" onclick="navegarA('config'); return false;">Sincronización Multi-Dispositivo</a> activa viajan entre tus dispositivos; si no, <strong>solo existen en este navegador</strong> y conviene exportarlas desde Configuración > Datos. Esta herramienta no está afiliada al IMPI.
             </div>
 
             <!-- Búsqueda unificada: buscar en las 3 herramientas a la vez -->
@@ -1614,7 +1614,10 @@
                     <div class="card">
                         <div class="card-header">
                             <h3>📄 Detalle de Marca</h3>
-                            <button class="btn btn-sm btn-outline" onclick="cerrarDetalleMARCia()">← Volver a resultados</button>
+                            <div class="header-buttons">
+                                <button class="btn btn-sm btn-outline" id="marcia-watch-btn" onclick="vigilarMarcaActual()" style="display: none;">👁️ Vigilar esta marca</button>
+                                <button class="btn btn-sm btn-outline" onclick="cerrarDetalleMARCia()">← Volver a resultados</button>
+                            </div>
                         </div>
                         <div class="card-body" id="marcia-detail-content"></div>
                     </div>
@@ -1796,7 +1799,7 @@
                                         <li>Los resultados incluyen fichas con resoluciones, registros, clases y más</li>
                                         <li>Puedes guardar búsquedas para monitoreo automático diario</li>
                                     </ul>
-                                    <p><strong>Búsquedas guardadas:</strong> Se almacenan en tu navegador local (no se sincronizan entre dispositivos). Exporta tus datos desde Configuración para migrarlos.</p>
+                                    <p><strong>Búsquedas guardadas:</strong> Se almacenan en tu navegador. Con la Sincronización Multi-Dispositivo activa viajan entre tus dispositivos; si no, expórtalas desde Configuración para migrarlas.</p>
                                     <p><strong>Aviso:</strong> Los resultados son informativos y no constituyen asesoría legal. Esta herramienta no está afiliada al IMPI.</p>
                                 </div>
                             </div>
@@ -1914,9 +1917,9 @@
                                 <li>Tus datos solo existen en este navegador (IndexedDB)</li>
                                 <li>Limpiar caché/cookies borra todo</li>
                                 <li>Cambiar de computadora requiere migrar datos</li>
-                                <li><strong>No hay sincronización</strong> entre dispositivos</li>
+                                <li><strong>Sin sincronización</strong> entre dispositivos, salvo que actives la Sincronización Multi-Dispositivo</li>
                             </ul>
-                            <p><strong>¿Qué se exporta?</strong> Expedientes, notas, eventos, configuración y búsquedas guardadas de IMPI (SIGA).</p>
+                            <p><strong>¿Qué se exporta?</strong> Expedientes, notas, eventos, configuración y búsquedas guardadas de IMPI (SIGA, MARCia y Marcanet).</p>
                             <p><strong>Recomendación:</strong> Exporta tus datos semanalmente y guarda el archivo JSON en un lugar seguro.</p>
                         </div>
                     </div>

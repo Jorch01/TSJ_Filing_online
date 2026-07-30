@@ -29,7 +29,9 @@ var marciaState = {
     aggregates: null,
     filters: { status: [], niceClass: [], viennaCode: [] },
     searchMode: 'rapida',
-    searching: false
+    searching: false,
+    // Marca abierta en el detalle, para el botón de vigilancia.
+    detalleActual: null
 };
 
 var sigaState = {
@@ -90,15 +92,51 @@ function cambiarTabIMPI(tab) {
 
 // ==================== PROXY HELPERS ====================
 
+// Sesión de MARCia (token CSRF + cookies) tal como la devuelve el proxy. La
+// conserva el cliente y la reenvía en cada petición: el worker ya no depende
+// de mantenerla en memoria, que es lo que hacía fallar la paginación y los
+// detalles cuando Cloudflare reciclaba el isolate.
+var impiSessionToken = null;
+
+// Id estable de este navegador. El proxy separa sesiones por este id; antes
+// las agrupaba por IP, así que dos personas en la misma red compartían la
+// sesión del IMPI y se pisaban entre sí.
+var impiClientId = null;
+
+function obtenerClientId() {
+    if (impiClientId) return impiClientId;
+    try {
+        impiClientId = localStorage.getItem('impi_client_id');
+    } catch (e) { /* modo privado o storage bloqueado */ }
+    if (!impiClientId) {
+        impiClientId = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+        try { localStorage.setItem('impi_client_id', impiClientId); } catch (e) { /* se queda en memoria */ }
+    }
+    return impiClientId;
+}
+
 async function proxyFetch(path, options) {
     var proxy = getProxyUrl();
     if (!proxy) {
         throw new Error('PROXY_NOT_CONFIGURED');
     }
-    var url = proxy + path;
-    var resp = await fetch(url, Object.assign({
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }
-    }, options));
+
+    var headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-IMPI-Client': obtenerClientId()
+    };
+    if (impiSessionToken) headers['X-IMPI-Session'] = impiSessionToken;
+
+    var init = Object.assign({}, options);
+    init.headers = Object.assign(headers, (options && options.headers) || {});
+
+    var resp = await fetch(proxy + path, init);
+
+    // El proxy devuelve la sesión con las cookies que haya rotado el IMPI.
+    var sesionActualizada = resp.headers.get('X-IMPI-Session');
+    if (sesionActualizada) impiSessionToken = sesionActualizada;
+
     if (!resp.ok) {
         var errData;
         try { errData = await resp.json(); } catch (e) { errData = { error: 'HTTP ' + resp.status }; }
@@ -538,7 +576,7 @@ async function verDetalleMARCia(markId) {
         var data = await conReintentoDeSesion(function() {
             return proxyFetch('/marcia/view/' + encodeURIComponent(markId));
         }, false);
-        renderizarDetalleMARCia(data);
+        renderizarDetalleMARCia(data, markId);
     } catch (e) {
         console.error('MARCia detail error:', e);
         mostrarToast('Error al obtener detalle: ' + e.message, 'error');
@@ -547,10 +585,21 @@ async function verDetalleMARCia(markId) {
     }
 }
 
-function renderizarDetalleMARCia(data) {
+function renderizarDetalleMARCia(data, markId) {
     var section = document.getElementById('marcia-detail-section');
     var content = document.getElementById('marcia-detail-content');
     document.getElementById('marcia-results-section').style.display = 'none';
+
+    // Datos que necesita el botón "Vigilar" de la cabecera del detalle.
+    var info = extraerEstadoMarca(data);
+    marciaState.detalleActual = markId ? {
+        markId: markId,
+        title: info.title,
+        status: info.status,
+        expiry: info.expiry,
+        applicationNumber: info.applicationNumber,
+        registrationNumber: info.registrationNumber
+    } : null;
 
     // Helper: asegurar que un valor sea array
     function asArr(v) { return Array.isArray(v) ? v : (v && typeof v === 'object' && !Array.isArray(v) ? [v] : []); }
@@ -627,6 +676,54 @@ function renderizarDetalleMARCia(data) {
         '</div>' + ownersHtml + productsHtml + histHtml;
 
     section.style.display = '';
+    actualizarBotonVigilar();
+}
+
+// ==================== VIGILAR UNA MARCA ====================
+
+function marcaYaVigilada(markId) {
+    return savedSearchesState.searches.some(function(s) {
+        return (s.tool || '') === 'marcia' && s.subtype === 'marca' && s.markId === markId;
+    });
+}
+
+function actualizarBotonVigilar() {
+    var btn = document.getElementById('marcia-watch-btn');
+    if (!btn) return;
+    var actual = marciaState.detalleActual;
+    if (!actual || !actual.markId) { btn.style.display = 'none'; return; }
+
+    var vigilada = marcaYaVigilada(actual.markId);
+    btn.style.display = '';
+    btn.disabled = vigilada;
+    btn.textContent = vigilada ? '👁️ Ya la vigilas' : '👁️ Vigilar esta marca';
+    btn.title = vigilada
+        ? 'Esta marca ya está en tus búsquedas guardadas'
+        : 'Avisa cuando cambie su estatus o se acerque su vencimiento';
+}
+
+// Guarda la marca abierta como vigilancia: se revisa su estatus y su vigencia
+// en el auto-check diario, igual que las búsquedas guardadas.
+function vigilarMarcaActual() {
+    var actual = marciaState.detalleActual;
+    if (!actual || !actual.markId) return;
+    if (marcaYaVigilada(actual.markId)) {
+        mostrarToast('Esta marca ya está en tus búsquedas guardadas', 'warning');
+        return;
+    }
+
+    var identificador = actual.applicationNumber || actual.registrationNumber || actual.markId;
+    guardarBusqueda('marcia', {
+        query: identificador,
+        subtype: 'marca',
+        markId: actual.markId,
+        label: actual.title || identificador,
+        lastStatus: actual.status || '',
+        expiryDate: actual.expiry || '',
+        lastResultCount: 1
+    });
+    // El botón se refresca desde renderizarBusquedasGuardadas cuando el
+    // guardado en IndexedDB confirma.
 }
 
 function campo(label, value) {
@@ -1129,6 +1226,8 @@ function renderizarBusquedasGuardadas() {
     var allSearches = savedSearchesState.searches;
     if (allSearches.length === 0) {
         section.style.display = 'none';
+        actualizarBotonesGuardar();
+        actualizarBotonVigilar();
         return;
     }
 
@@ -1148,35 +1247,57 @@ function renderizarBusquedasGuardadas() {
             var subtypeLabels = { fonetica: 'Fonética', expediente: 'Expediente', registro: 'Registro', titular: 'Titular' };
             toolLabel = 'MARCANET · ' + (subtypeLabels[s.subtype] || s.subtype);
         } else if (tool === 'marcia') {
-            toolLabel = 'MARCia';
+            toolLabel = s.subtype === 'marca' ? 'MARCia · Marca vigilada' : 'MARCia';
         }
 
         var fechaCheck = s.lastChecked ? new Date(s.lastChecked).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Nunca';
         var hasNew = s.newCount > 0;
+        var cambio = s.statusChange || null;
+        var vence = avisoVencimiento(s);
+        var destacar = hasNew || cambio || (vence && vence.urgente);
 
-        html += '<div class="siga-saved-item' + (hasNew ? ' siga-saved-has-new' : '') + '">' +
+        // Una marca vigilada muestra su denominación y su estatus, no un
+        // conteo de resultados que siempre sería 1.
+        var esVigilancia = s.subtype === 'marca' || s.subtype === 'expediente' || s.subtype === 'registro';
+        // En una marca vigilada el label es la denominación, que dice más que
+        // el número. En Marcanet el label solo repite lo que ya dice la etiqueta.
+        var titulo = (s.subtype === 'marca' && s.label) ? s.label : s.query;
+        var detalle = esVigilancia
+            ? (s.lastStatus ? san(s.lastStatus) : 'Sin estatus aún')
+            : (s.lastResultCount || 0) + ' resultado' + ((s.lastResultCount || 0) !== 1 ? 's' : '');
+
+        html += '<div class="siga-saved-item' + (destacar ? ' siga-saved-has-new' : '') + '">' +
             '<div class="siga-saved-info">' +
                 '<div class="siga-saved-query">' +
-                    (toolIcons[tool] || '') + ' ' + san(s.query) +
+                    (esVigilancia ? '👁️' : (toolIcons[tool] || '')) + ' ' + san(titulo) +
                     (hasNew ? ' <span class="siga-new-badge">' + s.newCount + ' nueva' + (s.newCount > 1 ? 's' : '') + '</span>' : '') +
+                    (cambio ? ' <span class="siga-status-badge" title="' + attr(cambio.de + ' → ' + cambio.a) + '">Cambió de estatus</span>' : '') +
+                    (vence ? ' <span class="siga-expiry-badge' + (vence.urgente ? ' urgente' : '') + '">' + san(vence.texto) + '</span>' : '') +
                 '</div>' +
                 '<div class="siga-saved-meta">' +
                     '<span class="siga-badge-gaceta" style="background:' + (toolColors[tool] || '#888') + ';color:#fff">' + san(toolLabel) + '</span>' +
-                    '<span>' + (s.lastResultCount || 0) + ' resultado' + ((s.lastResultCount || 0) !== 1 ? 's' : '') + '</span>' +
-                    '<span>Guardado: ' + fechaCheck + '</span>' +
+                    '<span>' + detalle + '</span>' +
+                    '<span>Revisado: ' + fechaCheck + '</span>' +
                 '</div>' +
             '</div>' +
             '<div class="siga-saved-actions">' +
-                '<button class="btn btn-sm btn-primary" onclick="ejecutarBusquedaGuardada(' + s.id + ')" title="Buscar ahora">🔍</button>' +
-                (tool === 'siga' ? '<button class="btn btn-sm btn-secondary" onclick="verificarBusquedaGuardada(' + s.id + ')" title="Verificar actualizaciones">🔄</button>' : '') +
+                '<button class="btn btn-sm btn-primary" onclick="ejecutarBusquedaGuardada(' + s.id + ')" title="' + (esVigilancia ? 'Ver expediente' : 'Buscar ahora') + '">🔍</button>' +
+                '<button class="btn btn-sm btn-secondary" onclick="verificarBusquedaGuardadaManual(' + s.id + ')" title="Verificar actualizaciones">🔄</button>' +
                 '<button class="btn btn-sm btn-danger" onclick="eliminarBusquedaGuardada(' + s.id + ')" title="Eliminar">✕</button>' +
             '</div>' +
         '</div>';
     });
     list.innerHTML = html;
 
-    // Actualizar badge global (solo SIGA tiene auto-check)
-    var totalNew = sigaState.savedSearches.reduce(function(sum, s) { return sum + (s.newCount || 0); }, 0);
+    // Badge global: novedades de las tres herramientas, más los cambios de
+    // estatus y las vigencias urgentes de lo que se está vigilando.
+    var totalNew = allSearches.reduce(function(sum, s) {
+        var n = s.newCount || 0;
+        if (s.statusChange) n += 1;
+        var v = avisoVencimiento(s);
+        if (v && v.urgente) n += 1;
+        return sum + n;
+    }, 0);
     var badge = document.getElementById('siga-updates-badge');
     if (badge) {
         badge.style.display = totalNew > 0 ? '' : 'none';
@@ -1186,8 +1307,9 @@ function renderizarBusquedasGuardadas() {
     // Actualizar badge en el tab de SIGA
     actualizarTabBadge(totalNew);
 
-    // Mostrar/ocultar botones de guardar según estado actual
+    // Mostrar/ocultar botones de guardar y vigilar según estado actual
     actualizarBotonesGuardar();
+    actualizarBotonVigilar();
 }
 
 function actualizarTabBadge(count) {
@@ -1212,12 +1334,25 @@ function ejecutarBusquedaGuardada(id) {
 
     var tool = saved.tool || 'siga';
 
-    // Limpiar el conteo de novedades
-    if (saved.newCount > 0) {
+    // Limpiar las novedades ya vistas
+    if (saved.newCount > 0 || saved.statusChange) {
         saved.newCount = 0;
         saved.newFichas = [];
+        saved.newResultIds = [];
+        delete saved.statusChange;
         actualizarBusquedaEnDB(saved);
         renderizarBusquedasGuardadas();
+    }
+
+    // Una marca vigilada abre su expediente, no una búsqueda.
+    if (tool === 'marcia' && saved.subtype === 'marca') {
+        cambiarTabIMPI('marcia');
+        if (saved.markId) {
+            verDetalleMARCia(saved.markId);
+        } else {
+            mostrarToast('Esta marca vigilada no tiene identificador. Elimínala y vuelve a vigilarla desde su detalle.', 'warning');
+        }
+        return;
     }
 
     if (tool === 'siga') {
@@ -1259,49 +1394,304 @@ function ejecutarBusquedaGuardada(id) {
     }
 }
 
-async function verificarBusquedaGuardada(id) {
-    var saved = sigaState.savedSearches.find(function(s) { return s.id === id; });
-    if (!saved) return;
+// ==================== VIGILANCIA: HELPERS ====================
 
+// El IMPI entrega las fechas como DD/MM/YYYY, a veces sin cero a la izquierda.
+function parsearFechaIMPI(txt) {
+    var m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(txt || '').trim());
+    if (!m) return null;
+    var d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+    if (isNaN(d.getTime()) || d.getDate() !== Number(m[1])) return null;
+    return d;
+}
+
+function diasHasta(fecha) {
+    if (!fecha) return null;
+    var hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    var f = new Date(fecha.getTime()); f.setHours(0, 0, 0, 0);
+    return Math.round((f - hoy) / 86400000);
+}
+
+// Nombre para mostrar en avisos. El mismo término puede estar guardado en
+// varias herramientas, y el label ya trae la que corresponde.
+function nombreBusqueda(saved) {
+    return saved.label || saved.query || 'búsqueda sin nombre';
+}
+
+// Ventana de aviso para la vigencia de una marca vigilada.
+var DIAS_AVISO_VENCIMIENTO = 180;
+var DIAS_VENCIMIENTO_URGENTE = 30;
+
+// Devuelve el aviso de vigencia de una marca vigilada, o null si no aplica.
+function avisoVencimiento(saved) {
+    var fecha = parsearFechaIMPI(saved.expiryDate);
+    if (!fecha) return null;
+    var dias = diasHasta(fecha);
+    if (dias === null) return null;
+    if (dias < 0) return { texto: 'Vencida', urgente: true, dias: dias };
+    if (dias > DIAS_AVISO_VENCIMIENTO) return null;
+    return {
+        texto: dias === 0 ? 'Vence hoy' : 'Vence en ' + dias + ' día' + (dias !== 1 ? 's' : ''),
+        urgente: dias <= DIAS_VENCIMIENTO_URGENTE,
+        dias: dias
+    };
+}
+
+// Ejecuta una búsqueda MARCia sin tocar el estado visible (marciaState), para
+// que el monitoreo no pise lo que el usuario tiene en pantalla. Arranca con un
+// CSRF nuevo, así que reintentar la función completa es la recuperación válida
+// si el worker pierde la sesión a media secuencia.
+async function buscarMARCiaEnSegundoPlano(payload) {
+    await proxyFetch('/marcia/csrf');
+    var record = await proxyFetch('/marcia/search', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+    });
+    var data = await proxyFetch('/marcia/results', {
+        method: 'POST',
+        body: JSON.stringify({
+            searchId: record.id,
+            pageSize: MARCIA_EXPORT_PAGE_SIZE,
+            pageNumber: 0,
+            statusFilter: [], viennaCodeFilter: [], niceClassFilter: []
+        })
+    });
+    return { total: data.totalResults || 0, resultados: data.resultPage || [] };
+}
+
+async function obtenerMarcaEnSegundoPlano(markId) {
+    await proxyFetch('/marcia/csrf');
+    return proxyFetch('/marcia/view/' + encodeURIComponent(markId));
+}
+
+async function conUnReintentoDeSesion(fn) {
     try {
-        var data = await proxyFetch('/siga/search', {
-            method: 'POST',
-            body: JSON.stringify({
-                Busqueda: saved.query,
-                IdArea: saved.area,
-                IdGaceta: [],
-                FechaDesde: saved.fechaDesde || '',
-                FechaHasta: saved.fechaHasta || ''
-            })
+        return await fn();
+    } catch (e) {
+        if (!esErrorDeSesionMARCia(e)) throw e;
+        return await fn();
+    }
+}
+
+// El detalle de MARCia llega en varias formas; result tiene el mismo formato
+// que una fila de resultados y es la fuente más limpia.
+function extraerEstadoMarca(data) {
+    var d = (data && typeof data === 'object') ? data : {};
+    var res = (d.result && typeof d.result === 'object') ? d.result : {};
+    var det = (d.details && typeof d.details === 'object') ? d.details : {};
+    var gi = (det.generalInformation && typeof det.generalInformation === 'object') ? det.generalInformation : {};
+    return {
+        title: res.title || gi.title || '',
+        status: res.status || gi.status || '',
+        expiry: (res.dates && res.dates.expiry) || gi.expiryDate || '',
+        applicationNumber: res.applicationNumber || gi.applicationNumber || '',
+        registrationNumber: res.registrationNumber || gi.registrationNumber || ''
+    };
+}
+
+// Estatus tal como lo etiqueta Marcanet, que usa nombres de columna distintos.
+function extraerEstatusMarcanet(detail) {
+    var d = detail || {};
+    return d['Situación'] || d['Situacion'] || d['situacion'] ||
+           d['Status'] || d['Estado'] || d['estado'] || '';
+}
+
+// Compara el conjunto de ids actual contra el guardado y registra las
+// novedades. baseComparable indica si los ids guardados se capturaron de la
+// misma forma que los recién traídos; si no, esta pasada solo re-toma la línea
+// base (comparar una página de 50 contra una de 100 daría falsos positivos).
+function compararIdsGuardados(saved, idsActuales, baseComparable) {
+    var previos = {};
+    (saved.lastResultIds || []).forEach(function(i) { previos[i] = true; });
+    var nuevas = baseComparable
+        ? idsActuales.filter(function(i) { return !previos[i]; })
+        : [];
+
+    saved.lastResultIds = idsActuales.slice(0, 200);
+    saved.idsBase = 'monitor';
+
+    if (nuevas.length > 0) {
+        saved.newCount = nuevas.length;
+        saved.newResultIds = nuevas;
+    }
+    return nuevas.length;
+}
+
+// Registra un cambio de estatus sobre una marca o expediente vigilado.
+function registrarCambioEstatus(saved, estatusNuevo, vencimiento) {
+    if (vencimiento) saved.expiryDate = vencimiento;
+    var previo = saved.lastStatus || '';
+    saved.lastStatus = estatusNuevo || previo;
+    if (!previo || !estatusNuevo || previo === estatusNuevo) return false;
+    saved.statusChange = { de: previo, a: estatusNuevo, fecha: new Date().toISOString() };
+    return true;
+}
+
+// ==================== VIGILANCIA: VERIFICADORES POR HERRAMIENTA ====================
+
+async function verificarGuardadaSIGA(saved) {
+    var data = await proxyFetch('/siga/search', {
+        method: 'POST',
+        body: JSON.stringify({
+            Busqueda: saved.query,
+            IdArea: saved.area,
+            IdGaceta: [],
+            FechaDesde: saved.fechaDesde || '',
+            FechaHasta: saved.fechaHasta || ''
+        })
+    });
+    if (!data.successed) return null;
+
+    var fichas = data.data || [];
+    var currentIds = fichas.map(function(f) { return f.fichaId; }).sort();
+    var previos = {};
+    (saved.lastFichaIds || []).forEach(function(i) { previos[i] = true; });
+    var nuevas = currentIds.filter(function(i) { return !previos[i]; });
+
+    saved.lastResultCount = fichas.length;
+    saved.lastFichaIds = currentIds;
+    if (nuevas.length > 0) {
+        saved.newCount = nuevas.length;
+        saved.newFichas = nuevas;
+    }
+    return { total: fichas.length, nuevas: nuevas.length, cambioEstatus: false };
+}
+
+function payloadDeBusquedaGuardada(saved) {
+    if (saved.payload) return saved.payload;
+    if (!saved.query) return null;
+    return { _type: 'Search$Quick', query: saved.query, images: [] };
+}
+
+async function verificarGuardadaMARCia(saved) {
+    var payload = payloadDeBusquedaGuardada(saved);
+    if (!payload) return null;
+
+    var r = await conUnReintentoDeSesion(function() {
+        return buscarMARCiaEnSegundoPlano(payload);
+    });
+    var ids = r.resultados
+        .map(function(x) { return x.applicationNumber || x.id || ''; })
+        .filter(Boolean).sort();
+
+    var nuevas = compararIdsGuardados(saved, ids, saved.idsBase === 'monitor');
+    saved.lastResultCount = r.total;
+    return { total: r.total, nuevas: nuevas, cambioEstatus: false };
+}
+
+// Vigilancia de una marca concreta: interesa el cambio de estatus y la
+// vigencia, no la aparición de resultados nuevos.
+async function verificarMarcaVigilada(saved) {
+    if (!saved.markId) return null;
+    var data = await conUnReintentoDeSesion(function() {
+        return obtenerMarcaEnSegundoPlano(saved.markId);
+    });
+    var info = extraerEstadoMarca(data);
+    if (!info.status && !info.expiry) return null;
+
+    var cambio = registrarCambioEstatus(saved, info.status, info.expiry);
+    if (info.title) saved.label = info.title;
+    saved.lastResultCount = 1;
+    return { total: 1, nuevas: 0, cambioEstatus: cambio };
+}
+
+async function verificarGuardadaMarcanet(saved) {
+    var mode = saved.subtype || 'fonetica';
+
+    // Expediente y registro devuelven una ficha, no una lista: se vigila su
+    // estatus igual que una marca de MARCia.
+    if (mode === 'expediente' || mode === 'registro') {
+        var endpoint = mode === 'registro' ? '/marcanet/registro' : '/marcanet/expediente';
+        var body = mode === 'registro' ? { registro: saved.query } : { expediente: saved.query };
+        var ficha = await proxyFetch(endpoint, { method: 'POST', body: JSON.stringify(body) });
+        var detail = ficha.detail || {};
+        if (Object.keys(detail).length === 0) return null;
+        var cambio = registrarCambioEstatus(saved, extraerEstatusMarcanet(detail), '');
+        saved.lastResultCount = 1;
+        return { total: 1, nuevas: 0, cambioEstatus: cambio };
+    }
+
+    var data;
+    if (mode === 'titular') {
+        data = await proxyFetch('/marcanet/titular', {
+            method: 'POST', body: JSON.stringify({ titular: saved.query })
         });
+    } else {
+        data = await proxyFetch('/marcanet/fonetica', {
+            method: 'POST',
+            body: JSON.stringify({ denominacion: saved.query, clase: saved.clase || '' })
+        });
+    }
+    if (data.isFormPage) return null;
 
-        if (!data.successed) return;
+    var resultados = data.results || [];
+    var ids = resultados
+        .map(function(r) { return r['Expediente'] || r['Registro'] || r['expediente'] || ''; })
+        .filter(Boolean).sort();
 
-        var fichas = data.data || [];
-        var currentIds = fichas.map(function(f) { return f.fichaId; }).sort();
-        var prevIds = (saved.lastFichaIds || []);
+    // Marcanet devuelve la lista completa de una vez, así que los ids guardados
+    // al crear la búsqueda ya son comparables con estos.
+    var nuevas = compararIdsGuardados(saved, ids, true);
+    saved.lastResultCount = resultados.length;
+    return { total: resultados.length, nuevas: nuevas, cambioEstatus: false };
+}
 
-        // Detectar fichas nuevas
-        var prevSet = {};
-        prevIds.forEach(function(id) { prevSet[id] = true; });
-        var nuevas = currentIds.filter(function(id) { return !prevSet[id]; });
+// Verifica una búsqueda guardada de cualquier herramienta.
+// Devuelve { total, nuevas, cambioEstatus } o null si no se pudo verificar.
+async function verificarBusquedaGuardada(id) {
+    var saved = savedSearchesState.searches.find(function(s) { return s.id === id; });
+    if (!saved) return null;
+
+    var tool = saved.tool || 'siga';
+    try {
+        var resultado;
+        if (tool === 'siga') {
+            resultado = await verificarGuardadaSIGA(saved);
+        } else if (tool === 'marcia') {
+            resultado = saved.subtype === 'marca'
+                ? await verificarMarcaVigilada(saved)
+                : await verificarGuardadaMARCia(saved);
+        } else if (tool === 'marcanet') {
+            resultado = await verificarGuardadaMarcanet(saved);
+        } else {
+            return null;
+        }
+        if (!resultado) return null;
 
         saved.lastChecked = new Date().toISOString();
-        saved.lastResultCount = fichas.length;
-        saved.lastFichaIds = currentIds;
-
-        if (nuevas.length > 0) {
-            saved.newCount = nuevas.length;
-            saved.newFichas = nuevas;
-        }
-
         actualizarBusquedaEnDB(saved);
         renderizarBusquedasGuardadas();
-
-        return { total: fichas.length, nuevas: nuevas.length };
+        return resultado;
     } catch (e) {
         console.error('Error verificando búsqueda guardada:', e);
         return null;
+    }
+}
+
+// Verificación manual desde el botón 🔄: además de actualizar, avisa el
+// resultado, porque sin feedback parece que no hizo nada.
+async function verificarBusquedaGuardadaManual(id) {
+    var saved = savedSearchesState.searches.find(function(s) { return s.id === id; });
+    if (!saved) return;
+
+    mostrarCargandoIMPI();
+    var resultado;
+    try {
+        resultado = await verificarBusquedaGuardada(id);
+    } finally {
+        ocultarCargandoIMPI();
+    }
+
+    if (!resultado) {
+        mostrarToast('No se pudo verificar "' + nombreBusqueda(saved) + '" en este momento', 'warning');
+    } else if (resultado.cambioEstatus) {
+        mostrarToast('Cambio de estatus en "' + nombreBusqueda(saved) + '": ' +
+            saved.statusChange.de + ' → ' + saved.statusChange.a, 'info');
+    } else if (resultado.nuevas > 0) {
+        mostrarToast(resultado.nuevas + ' resultado' + (resultado.nuevas > 1 ? 's nuevos' : ' nuevo') +
+            ' en "' + nombreBusqueda(saved) + '"', 'info');
+    } else {
+        mostrarToast('Sin novedades en "' + nombreBusqueda(saved) + '"', 'success');
     }
 }
 
@@ -1321,9 +1711,10 @@ function actualizarBusquedaEnDB(saved) {
     };
 }
 
-// Auto-check: verificar todas las búsquedas guardadas (máximo 1 vez al día)
+// Auto-check: verificar todas las búsquedas guardadas (máximo 1 vez al día).
+// Cubre SIGA, MARCia y Marcanet, incluidas las marcas y expedientes vigilados.
 async function autoCheckBusquedasGuardadas() {
-    if (!db || sigaState.savedSearches.length === 0) return;
+    if (!db || savedSearchesState.searches.length === 0) return;
     if (!getProxyUrl()) return;
 
     // Revisar si ya se verificó hoy
@@ -1333,29 +1724,46 @@ async function autoCheckBusquedasGuardadas() {
 
     localStorage.setItem('siga_last_auto_check', today);
 
+    // Copia: verificarBusquedaGuardada re-renderiza y puede reordenar la lista.
+    var pendientes = savedSearchesState.searches.slice();
     var totalNuevas = 0;
-    var busquedasConNovedades = [];
+    var conNovedades = [];
+    var conCambioEstatus = [];
 
-    for (var i = 0; i < sigaState.savedSearches.length; i++) {
-        var result = await verificarBusquedaGuardada(sigaState.savedSearches[i].id);
-        if (result && result.nuevas > 0) {
-            totalNuevas += result.nuevas;
-            busquedasConNovedades.push(sigaState.savedSearches[i].query);
+    for (var i = 0; i < pendientes.length; i++) {
+        var result = await verificarBusquedaGuardada(pendientes[i].id);
+        if (result) {
+            if (result.nuevas > 0) {
+                totalNuevas += result.nuevas;
+                conNovedades.push(nombreBusqueda(pendientes[i]));
+            }
+            if (result.cambioEstatus) conCambioEstatus.push(nombreBusqueda(pendientes[i]));
         }
         // Pequeña pausa entre requests para no saturar
-        if (i < sigaState.savedSearches.length - 1) {
+        if (i < pendientes.length - 1) {
             await new Promise(function(r) { setTimeout(r, 500); });
         }
     }
 
+    var avisos = [];
     if (totalNuevas > 0) {
-        mostrarToast(
-            totalNuevas + ' publicación' + (totalNuevas > 1 ? 'es' : '') +
-            ' nueva' + (totalNuevas > 1 ? 's' : '') +
-            ' en gacetas: ' + busquedasConNovedades.join(', '),
-            'info'
-        );
+        avisos.push(totalNuevas + ' resultado' + (totalNuevas > 1 ? 's nuevos' : ' nuevo') +
+            ' en: ' + conNovedades.join(', '));
     }
+    if (conCambioEstatus.length > 0) {
+        avisos.push('Cambio de estatus en: ' + conCambioEstatus.join(', '));
+    }
+
+    // Vigencias próximas de las marcas vigiladas.
+    var porVencer = savedSearchesState.searches
+        .map(function(s) {
+            var aviso = avisoVencimiento(s);
+            return aviso ? nombreBusqueda(s) + ' (' + aviso.texto.toLowerCase() + ')' : null;
+        })
+        .filter(Boolean);
+    if (porVencer.length > 0) avisos.push('Vigencia: ' + porVencer.join(', '));
+
+    if (avisos.length > 0) mostrarToast(avisos.join(' · '), 'info');
 }
 
 // ==================== BUSCAR EN LAS 3 HERRAMIENTAS ====================
