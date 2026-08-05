@@ -1139,31 +1139,54 @@ async function importarTodosDatos(datos, sobrescribir = false) {
         if (db.objectStoreNames.contains('pendientes')) await limpiarStore('pendientes');
     }
 
+    // Al importar, cada expediente recibe un id nuevo: se descarta el del
+    // respaldo y autoIncrement sigue su cuenta (clear() no la reinicia). Las
+    // notas, eventos y pendientes guardan expedienteId, así que sin traducir
+    // esas referencias quedan colgando del expediente equivocado o de
+    // ninguno. Este mapa lleva id original → id nuevo.
+    const mapaExpedientes = new Map();
+
+    // Importar expedientes primero, para poder traducir lo que los referencia.
+    for (const exp of datos.expedientes || []) {
+        const idOriginal = exp.id;
+        delete exp.id;
+        const nuevoId = await agregarExpediente(exp);
+        if (idOriginal !== undefined && idOriginal !== null) {
+            mapaExpedientes.set(idOriginal, nuevoId);
+        }
+    }
+
+    // Traduce expedienteId. Si el expediente no venía en el respaldo, el
+    // registro queda como general en vez de apuntar a uno ajeno.
+    const remapearExpediente = (registro) => {
+        if (registro.expedienteId === undefined || registro.expedienteId === null) return registro;
+        registro.expedienteId = mapaExpedientes.has(registro.expedienteId)
+            ? mapaExpedientes.get(registro.expedienteId)
+            : null;
+        return registro;
+    };
+
+    // Importar notas
+    for (const nota of datos.notas || []) {
+        delete nota.id;
+        await agregarNota(remapearExpediente(nota));
+    }
+
+    // Importar eventos
+    for (const evento of datos.eventos || []) {
+        delete evento.id;
+        // El vínculo con un pendiente se rehace más abajo, con ids nuevos.
+        delete evento.pendienteId;
+        await agregarEvento(remapearExpediente(evento));
+    }
+
     // Importar pendientes. El vínculo con el calendario (eventoId) apunta a
     // ids del origen que aquí ya no existen, así que se descarta: el pendiente
     // conserva su fecha límite y se puede volver a vincular al editarlo.
     for (const pendiente of datos.pendientes || []) {
         delete pendiente.id;
         delete pendiente.eventoId;
-        await agregarPendiente(pendiente);
-    }
-
-    // Importar expedientes
-    for (const exp of datos.expedientes || []) {
-        delete exp.id;
-        await agregarExpediente(exp);
-    }
-
-    // Importar notas
-    for (const nota of datos.notas || []) {
-        delete nota.id;
-        await agregarNota(nota);
-    }
-
-    // Importar eventos
-    for (const evento of datos.eventos || []) {
-        delete evento.id;
-        await agregarEvento(evento);
+        await agregarPendiente(remapearExpediente(pendiente));
     }
 
     // Importar búsquedas guardadas SIGA

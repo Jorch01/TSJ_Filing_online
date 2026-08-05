@@ -26,12 +26,31 @@ const CORE_COLORES_EVENTOS = {
 
 // ==================== HELPERS INTERNOS ====================
 
-async function _coreRefrescarUI() {
+// Una operación puede componer varias (un pendiente con fecha crea además su
+// evento). Mientras dure el lote, el refresco de UI y la sincronización se
+// omiten para hacerlos una sola vez al final: si no, cada paso intermedio
+// dispara su propia subida a la nube y su propio repintado.
+let _coreEnLote = 0;
+
+async function _coreEnLoteEjecutar(fn) {
+    _coreEnLote++;
     try {
+        return await fn();
+    } finally {
+        _coreEnLote--;
+    }
+}
+
+async function _coreRefrescarUI() {
+    if (_coreEnLote > 0) return;
+    try {
+        // Los pendientes van primero: la tarjeta del expediente muestra
+        // cuántos tiene por hacer, así que su caché debe estar al día antes
+        // de repintar los expedientes.
+        if (typeof cargarPendientes === 'function') await cargarPendientes();
         if (typeof cargarExpedientes === 'function') await cargarExpedientes();
         if (typeof cargarEventos === 'function') await cargarEventos();
         if (typeof cargarNotas === 'function') await cargarNotas();
-        if (typeof cargarPendientes === 'function') await cargarPendientes();
         if (typeof cargarEstadisticas === 'function') await cargarEstadisticas();
         if (typeof renderizarCalendario === 'function') renderizarCalendario();
     } catch (e) {
@@ -40,6 +59,7 @@ async function _coreRefrescarUI() {
 }
 
 async function _coreSincronizar() {
+    if (_coreEnLote > 0) return;
     try {
         if (typeof marcarYSincronizar === 'function') await marcarYSincronizar();
     } catch (e) {
@@ -295,13 +315,15 @@ async function crearPendienteCore(datos) {
         eventoId: null
     };
 
-    const nuevoId = await agregarPendiente(pendiente);
-
-    const eventoId = await _corePendienteSincronizarEvento(pendiente, null);
-    if (eventoId) {
-        await actualizarPendiente(nuevoId, { eventoId });
-        await actualizarEvento(eventoId, { pendienteId: nuevoId }).catch(() => {});
-    }
+    const nuevoId = await _coreEnLoteEjecutar(async () => {
+        const id = await agregarPendiente(pendiente);
+        const eventoId = await _corePendienteSincronizarEvento(pendiente, null);
+        if (eventoId) {
+            await actualizarPendiente(id, { eventoId });
+            await actualizarEvento(eventoId, { pendienteId: id }).catch(() => {});
+        }
+        return id;
+    });
 
     await _coreRefrescarUI();
     await _coreSincronizar();
@@ -320,13 +342,14 @@ async function actualizarPendienteCore(id, cambios) {
             ? parseInt(aplicar.expedienteId) : null;
     }
 
-    const actualizado = await actualizarPendiente(id, aplicar);
-
-    const eventoId = await _corePendienteSincronizarEvento(actualizado, actual.eventoId || null);
-    if (eventoId !== (actual.eventoId || null)) {
-        await actualizarPendiente(id, { eventoId });
-        if (eventoId) await actualizarEvento(eventoId, { pendienteId: id }).catch(() => {});
-    }
+    await _coreEnLoteEjecutar(async () => {
+        const actualizado = await actualizarPendiente(id, aplicar);
+        const eventoId = await _corePendienteSincronizarEvento(actualizado, actual.eventoId || null);
+        if (eventoId !== (actual.eventoId || null)) {
+            await actualizarPendiente(id, { eventoId });
+            if (eventoId) await actualizarEvento(eventoId, { pendienteId: id }).catch(() => {});
+        }
+    });
 
     await _coreRefrescarUI();
     await _coreSincronizar();
@@ -340,14 +363,17 @@ async function completarPendienteCore(id, completado = true) {
     const actual = await obtenerPendiente(id);
     if (!actual) throw new Error('Pendiente no encontrado');
 
-    const actualizado = await actualizarPendiente(id, {
-        completado: !!completado,
-        fechaCompletado: completado ? new Date().toISOString() : null
+    await _coreEnLoteEjecutar(async () => {
+        const actualizado = await actualizarPendiente(id, {
+            completado: !!completado,
+            fechaCompletado: completado ? new Date().toISOString() : null
+        });
+        const eventoId = await _corePendienteSincronizarEvento(actualizado, actual.eventoId || null);
+        if (eventoId !== (actual.eventoId || null)) {
+            await actualizarPendiente(id, { eventoId });
+            if (eventoId) await actualizarEvento(eventoId, { pendienteId: id }).catch(() => {});
+        }
     });
-
-    const eventoId = await _corePendienteSincronizarEvento(actualizado, actual.eventoId || null);
-    await actualizarPendiente(id, { eventoId });
-    if (eventoId) await actualizarEvento(eventoId, { pendienteId: id }).catch(() => {});
 
     await _coreRefrescarUI();
     await _coreSincronizar();
@@ -358,8 +384,10 @@ async function eliminarPendienteCore(id) {
     const actual = await obtenerPendiente(id);
     if (!actual) throw new Error('Pendiente no encontrado');
 
-    if (actual.eventoId) await eliminarEventoCore(actual.eventoId).catch(() => {});
-    await eliminarPendiente(id);
+    await _coreEnLoteEjecutar(async () => {
+        if (actual.eventoId) await eliminarEventoCore(actual.eventoId).catch(() => {});
+        await eliminarPendiente(id);
+    });
 
     await _coreRefrescarUI();
     await _coreSincronizar();
