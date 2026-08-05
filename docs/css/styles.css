@@ -4125,3 +4125,159 @@ textarea:focus {
     0%, 55% { box-shadow: 0 0 0 8px rgba(54, 96, 146, 0.28); }
     100%    { box-shadow: 0 0 0 0 rgba(54, 96, 146, 0); }
 }
+
+/* ==================== PENDIENTES ==================== */
+
+.pendientes-lista {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.pendiente-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--primary);
+    border-radius: var(--radius);
+    background: var(--bg-primary);
+    transition: all 0.15s ease;
+}
+
+.pendiente-item:hover {
+    box-shadow: var(--shadow);
+}
+
+/* Vencido: el borde izquierdo es la señal, sin depender solo del color del texto */
+.pendiente-item.vencido {
+    border-left-color: #dc3545;
+}
+
+.pendiente-item.completado {
+    opacity: 0.6;
+    border-left-color: #28a745;
+}
+
+.pendiente-item.completado .pendiente-titulo {
+    text-decoration: line-through;
+}
+
+.pendiente-check {
+    display: flex;
+    align-items: center;
+    padding-top: 0.15rem;
+    cursor: pointer;
+}
+
+.pendiente-check input {
+    width: 1.25rem;
+    height: 1.25rem;
+    cursor: pointer;
+    accent-color: var(--primary);
+}
+
+.pendiente-cuerpo {
+    flex: 1;
+    min-width: 0;
+}
+
+.pendiente-titulo {
+    font-weight: 600;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.pendiente-descripcion {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-top: 0.2rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.pendiente-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+.pendiente-fecha.vencido {
+    color: #dc3545;
+    font-weight: 600;
+}
+
+.pendiente-fecha.proximo {
+    color: #e65100;
+    font-weight: 600;
+}
+
+[data-theme="dark"] .pendiente-fecha.vencido { color: #ff6b6b; }
+[data-theme="dark"] .pendiente-fecha.proximo { color: #ffb74d; }
+
+.pendiente-acciones {
+    display: flex;
+    gap: 0.3rem;
+    flex-shrink: 0;
+}
+
+/* Distintivo de pendientes abiertos en la tarjeta del expediente */
+.expediente-pendientes-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    background: #e65100;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.1rem 0.45rem;
+    border-radius: 10px;
+    cursor: pointer;
+}
+
+[data-theme="dark"] .expediente-pendientes-badge {
+    background: #ff9800;
+    color: #1a1a2e;
+}
+
+/* Contador en el botón de navegación */
+.nav-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #e65100;
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    min-width: 1.15rem;
+    height: 1.15rem;
+    padding: 0 0.25rem;
+    border-radius: 10px;
+    margin-left: 0.3rem;
+}
+
+[data-theme="dark"] .nav-badge {
+    background: #ff9800;
+    color: #1a1a2e;
+}
+
+.form-hint {
+    display: block;
+    margin-top: 0.3rem;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+@media (max-width: 600px) {
+    .pendiente-item {
+        flex-wrap: wrap;
+    }
+    .pendiente-acciones {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}

@@ -31,6 +31,7 @@ async function _coreRefrescarUI() {
         if (typeof cargarExpedientes === 'function') await cargarExpedientes();
         if (typeof cargarEventos === 'function') await cargarEventos();
         if (typeof cargarNotas === 'function') await cargarNotas();
+        if (typeof cargarPendientes === 'function') await cargarPendientes();
         if (typeof cargarEstadisticas === 'function') await cargarEstadisticas();
         if (typeof renderizarCalendario === 'function') renderizarCalendario();
     } catch (e) {
@@ -213,4 +214,154 @@ async function eliminarNotaCore(id) {
     await eliminarNota(id);
     await _coreRefrescarUI();
     await _coreSincronizar();
+}
+
+// ==================== PENDIENTES ====================
+// Un pendiente es una tarea de un expediente. La fecha límite es opcional;
+// cuando existe, se mantiene un evento de calendario vinculado para que el
+// pendiente aparezca en el calendario, dispare alerta y viaje a Google
+// Calendar sin duplicar esa maquinaria. El vínculo va en pendiente.eventoId,
+// y el evento lleva pendienteId de vuelta.
+
+/** Tipo de evento con el que se refleja un pendiente en el calendario. */
+const CORE_TIPO_EVENTO_PENDIENTE = 'recordatorio';
+
+function _corePendienteDescripcionEvento(datos) {
+    const base = 'Pendiente del expediente.';
+    return datos.descripcion ? base + '\n\n' + datos.descripcion : base;
+}
+
+/**
+ * Crea, actualiza o elimina el evento de calendario que refleja un pendiente,
+ * según tenga o no fecha límite. Devuelve el eventoId resultante (o null).
+ * Nunca propaga errores: que falle el calendario no debe impedir guardar el
+ * pendiente, que es lo que el usuario pidió.
+ */
+async function _corePendienteSincronizarEvento(pendiente, eventoIdActual) {
+    const debeExistir = !!pendiente.fechaLimite && !pendiente.completado;
+
+    try {
+        if (!debeExistir) {
+            if (eventoIdActual) await eliminarEventoCore(eventoIdActual).catch(() => {});
+            return null;
+        }
+
+        const datosEvento = {
+            titulo: pendiente.titulo,
+            tipo: CORE_TIPO_EVENTO_PENDIENTE,
+            fechaInicio: pendiente.fechaLimite,
+            todoElDia: !!pendiente.todoElDia,
+            expedienteId: pendiente.expedienteId != null ? pendiente.expedienteId : null,
+            expedienteTexto: pendiente.expedienteTexto || null,
+            descripcion: _corePendienteDescripcionEvento(pendiente),
+            alerta: true
+        };
+
+        if (eventoIdActual) {
+            // El evento pudo haberse borrado desde el calendario: si ya no
+            // está, se crea uno nuevo en vez de fallar.
+            const existe = (await obtenerEventos()).some(e => e.id === eventoIdActual);
+            if (existe) {
+                await actualizarEventoCore(eventoIdActual, datosEvento);
+                return eventoIdActual;
+            }
+        }
+
+        return await crearEventoCore(datosEvento);
+    } catch (e) {
+        console.error('[CORE] Error sincronizando el evento del pendiente:', e);
+        return eventoIdActual || null;
+    }
+}
+
+/**
+ * Crea un pendiente. Espera: { titulo, descripcion?, expedienteId?,
+ * expedienteTexto?, fechaLimite?(ISO), todoElDia? }. Devuelve el id nuevo.
+ */
+async function crearPendienteCore(datos) {
+    if (!datos || !datos.titulo || !datos.titulo.trim()) {
+        throw new Error('El pendiente requiere un título');
+    }
+
+    const pendiente = {
+        titulo: datos.titulo.trim(),
+        descripcion: datos.descripcion || '',
+        expedienteId: datos.expedienteId != null && datos.expedienteId !== '' ? parseInt(datos.expedienteId) : null,
+        expedienteTexto: datos.expedienteTexto || null,
+        fechaLimite: datos.fechaLimite || null,
+        todoElDia: datos.todoElDia !== false,
+        completado: false,
+        fechaCompletado: null,
+        eventoId: null
+    };
+
+    const nuevoId = await agregarPendiente(pendiente);
+
+    const eventoId = await _corePendienteSincronizarEvento(pendiente, null);
+    if (eventoId) {
+        await actualizarPendiente(nuevoId, { eventoId });
+        await actualizarEvento(eventoId, { pendienteId: nuevoId }).catch(() => {});
+    }
+
+    await _coreRefrescarUI();
+    await _coreSincronizar();
+    return nuevoId;
+}
+
+/** Actualiza un pendiente y reajusta su evento de calendario. */
+async function actualizarPendienteCore(id, cambios) {
+    const actual = await obtenerPendiente(id);
+    if (!actual) throw new Error('Pendiente no encontrado');
+
+    const aplicar = { ...cambios };
+    if (aplicar.titulo !== undefined) aplicar.titulo = String(aplicar.titulo).trim();
+    if (aplicar.expedienteId !== undefined) {
+        aplicar.expedienteId = aplicar.expedienteId != null && aplicar.expedienteId !== ''
+            ? parseInt(aplicar.expedienteId) : null;
+    }
+
+    const actualizado = await actualizarPendiente(id, aplicar);
+
+    const eventoId = await _corePendienteSincronizarEvento(actualizado, actual.eventoId || null);
+    if (eventoId !== (actual.eventoId || null)) {
+        await actualizarPendiente(id, { eventoId });
+        if (eventoId) await actualizarEvento(eventoId, { pendienteId: id }).catch(() => {});
+    }
+
+    await _coreRefrescarUI();
+    await _coreSincronizar();
+}
+
+/**
+ * Marca un pendiente como terminado (o lo reabre). Al terminarlo se retira su
+ * evento del calendario; al reabrirlo se vuelve a crear si conserva fecha.
+ */
+async function completarPendienteCore(id, completado = true) {
+    const actual = await obtenerPendiente(id);
+    if (!actual) throw new Error('Pendiente no encontrado');
+
+    const actualizado = await actualizarPendiente(id, {
+        completado: !!completado,
+        fechaCompletado: completado ? new Date().toISOString() : null
+    });
+
+    const eventoId = await _corePendienteSincronizarEvento(actualizado, actual.eventoId || null);
+    await actualizarPendiente(id, { eventoId });
+    if (eventoId) await actualizarEvento(eventoId, { pendienteId: id }).catch(() => {});
+
+    await _coreRefrescarUI();
+    await _coreSincronizar();
+}
+
+/** Elimina un pendiente y, con él, su evento de calendario. */
+async function eliminarPendienteCore(id) {
+    const actual = await obtenerPendiente(id);
+    if (!actual) throw new Error('Pendiente no encontrado');
+
+    if (actual.eventoId) await eliminarEventoCore(actual.eventoId).catch(() => {});
+    await eliminarPendiente(id);
+
+    await _coreRefrescarUI();
+    await _coreSincronizar();
+    return actual;
 }

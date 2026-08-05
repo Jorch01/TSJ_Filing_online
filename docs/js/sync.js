@@ -409,10 +409,14 @@ function huellaContenido(datos) {
         .slice(0, MAX_HISTORIAL_SYNC)
         .map(({ id, expedienteId, tipo, descripcion, fecha }) =>
             ({ id, expedienteId, tipo, descripcion, fecha }));
+    // Todo lo que se sube debe entrar en la huella: si un store queda fuera,
+    // un cambio que solo lo afecte a él parece "sin novedades" y no se sube.
     const copia = {
         expedientes: datos.expedientes || [],
         notas: datos.notas || [],
         eventos: datos.eventos || [],
+        pendientes: datos.pendientes || [],
+        carpetas: datos.carpetas || [],
         eliminados: datos.eliminados || [],
         historial: histNorm,
         sigaGuardadas: datos.sigaGuardadas || []
@@ -599,6 +603,7 @@ function fusionarDatos(local, remoto) {
         expedientes: expedientesFusionados,
         notas: fusionarNotas(local.notas || [], remoto.notas || [], clavesEliminadas),
         eventos: fusionarEventos(local.eventos || [], remoto.eventos || [], clavesEliminadas),
+        pendientes: fusionarPendientes(local.pendientes || [], remoto.pendientes || [], clavesEliminadas),
         carpetas: carpetasFusionadas,
         // historial y sigaGuardadas son append-only / por-ID: no requieren merge
         // sofisticado, basta con la unión sin duplicados.
@@ -760,6 +765,43 @@ function _claveBusquedaGuardada(s) {
     // colapsar registros que no tienen nada que ver entre sí.
     if (!termino) return `${herramienta}|${subtipo}|${area}|${JSON.stringify(s)}`;
     return `${herramienta}|${subtipo}|${area}|${termino}`;
+}
+
+// Identidad de un pendiente: expediente + título + día de creación. Debe
+// coincidir con registrarEliminacion('pendiente', ...) en database.js para que
+// las tombstones encuentren el registro correcto.
+function _clavePendiente(p) {
+    const titulo = (p.titulo || '').trim().toLowerCase();
+    const expedienteId = p.expedienteId || 'sin-exp';
+    const fecha = (p.fechaCreacion || '').substring(0, 10);
+    return `pendiente|${expedienteId}|${titulo}|${fecha}`;
+}
+
+// Une pendientes locales y remotos. Gana el más reciente por campo, igual que
+// notas y eventos, para que marcar terminado en un dispositivo y editar el
+// texto en otro no se pisen.
+function fusionarPendientes(locales, remotos, clavesEliminadas = new Set()) {
+    const mapa = new Map();
+
+    // Locales primero como base, igual que en notas: una edición local
+    // reciente gana sobre una versión remota más vieja del mismo campo.
+    for (const p of [...locales, ...remotos]) {
+        const clave = _clavePendiente(p);
+        if (clavesEliminadas.has(clave)) continue;
+
+        const existente = mapa.get(clave);
+        if (!existente) {
+            mapa.set(clave, p);
+            continue;
+        }
+        // eventoId apunta a ids locales de cada dispositivo, así que no debe
+        // viajar en la fusión: se conserva el del registro base.
+        const fusionado = fusionarRegistroPorCampo(existente, p,
+            new Set(['id', '_fieldTimestamps', 'eventoId']));
+        mapa.set(clave, fusionado);
+    }
+
+    return Array.from(mapa.values());
 }
 
 // Une búsquedas guardadas (SIGA, MARCia y Marcanet) deduplicando por
@@ -1313,10 +1355,15 @@ async function obtenerTodosLosDatos() {
     const carpetas = typeof obtenerCarpetas === 'function'
         ? await obtenerCarpetas().catch(() => []) : [];
 
+    // Pendientes: opcional (DB v5 o anterior no tiene el store)
+    const pendientes = typeof obtenerPendientes === 'function'
+        ? await obtenerPendientes().catch(() => []) : [];
+
     return {
         expedientes: [...expedientes, ...archivados],
         notas,
         eventos,
+        pendientes,
         eliminados,
         historial,
         sigaGuardadas,
@@ -1393,6 +1440,9 @@ async function aplicarDatosLocalmente(datos) {
     }
     if (typeof reemplazarBusquedasSIGA === 'function' && datos.sigaGuardadas) {
         try { await reemplazarBusquedasSIGA(datos.sigaGuardadas); } catch (e) { console.warn('No se pudieron aplicar búsquedas SIGA sincronizadas:', e); }
+    }
+    if (typeof reemplazarPendientes === 'function' && datos.pendientes) {
+        try { await reemplazarPendientes(datos.pendientes); } catch (e) { console.warn('No se pudieron aplicar pendientes sincronizados:', e); }
     }
 
     // El blob remoto trae nuevas notas e historial: invalidar el caché de
