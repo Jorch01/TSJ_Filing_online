@@ -491,6 +491,81 @@ async function aplicarEliminacionesRemotas(eliminadosRemotos) {
 
 // ==================== DETECCIÓN Y ELIMINACIÓN DE DUPLICADOS ====================
 
+// Borra lo que cuelga de un expediente: pendientes, eventos y notas. Sin esto
+// quedan apuntando a un expediente inexistente —invisibles en la app pero
+// vivos en la base y, los eventos, también en Google Calendar.
+// Vive en esta capa porque la usan dos caminos: borrar un expediente y borrar
+// una carpeta junto con sus expedientes.
+async function eliminarDependenciasDeExpediente(expedienteId) {
+    const [notas, eventos, pendientes] = await Promise.all([
+        obtenerNotas().catch(() => []),
+        obtenerEventos().catch(() => []),
+        obtenerPendientes().catch(() => [])
+    ]);
+
+    // Los pendientes primero, anotando sus eventos vinculados. Normalmente el
+    // evento ya lleva el mismo expedienteId, pero si el pendiente cambió de
+    // expediente y su evento no alcanzó a actualizarse, sin esta anotación el
+    // recordatorio sobreviviría al borrado.
+    const eventosDePendientes = new Set();
+    for (const p of pendientes.filter(x => x.expedienteId === expedienteId)) {
+        if (p.eventoId) eventosDePendientes.add(p.eventoId);
+        await eliminarPendiente(p.id).catch(() => {});
+    }
+
+    for (const e of eventos.filter(x => x.expedienteId === expedienteId || eventosDePendientes.has(x.id))) {
+        await eliminarEvento(e.id).catch(() => {});
+        // La copia en Google Calendar no se va sola.
+        try {
+            if (typeof GCAL !== 'undefined' && GCAL.estaConectado && GCAL.estaConectado() &&
+                e.googleCalEventId && GCAL.hookEliminarEvento) {
+                GCAL.hookEliminarEvento(e.googleCalEventId);
+            }
+        } catch (err) { /* que falle el calendario no debe frenar el borrado */ }
+    }
+
+    for (const n of notas.filter(x => x.expedienteId === expedienteId)) {
+        await eliminarNota(n.id).catch(() => {});
+    }
+}
+
+// Cuántos registros dependen de un expediente. Sirve para avisar al usuario
+// antes de borrarlo: nada debe desaparecer en silencio.
+async function contarRegistrosDeExpediente(id) {
+    const [notas, eventos, pendientes] = await Promise.all([
+        obtenerNotas().catch(() => []),
+        obtenerEventos().catch(() => []),
+        obtenerPendientes().catch(() => [])
+    ]);
+    return {
+        notas: notas.filter(n => n.expedienteId === id).length,
+        eventos: eventos.filter(e => e.expedienteId === id).length,
+        pendientes: pendientes.filter(p => p.expedienteId === id).length
+    };
+}
+
+// Traslada notas, eventos y pendientes de un expediente a otro. Lo usa la
+// deduplicación automática: al fusionar dos expedientes iguales, lo que colgaba
+// del descartado debe pasar al que sobrevive, no quedarse apuntando a un id
+// que ya no existe.
+async function reasignarRegistrosDeExpediente(idOrigen, idDestino) {
+    const [notas, eventos, pendientes] = await Promise.all([
+        obtenerNotas().catch(() => []),
+        obtenerEventos().catch(() => []),
+        obtenerPendientes().catch(() => [])
+    ]);
+
+    for (const n of notas.filter(x => x.expedienteId === idOrigen)) {
+        await actualizarNota(n.id, { expedienteId: idDestino }).catch(() => {});
+    }
+    for (const e of eventos.filter(x => x.expedienteId === idOrigen)) {
+        await actualizarEvento(e.id, { expedienteId: idDestino }).catch(() => {});
+    }
+    for (const p of pendientes.filter(x => x.expedienteId === idOrigen)) {
+        await actualizarPendiente(p.id, { expedienteId: idDestino }).catch(() => {});
+    }
+}
+
 async function eliminarExpedientesDuplicados() {
     const expedientes = await obtenerExpedientes();
     const duplicadosAEliminar = [];
@@ -535,13 +610,16 @@ async function eliminarExpedientesDuplicados() {
 
             // El primero se mantiene, los demás son duplicados
             for (let i = 1; i < grupo.length; i++) {
-                duplicadosAEliminar.push(grupo[i].id);
+                duplicadosAEliminar.push({ id: grupo[i].id, sobreviviente: grupo[0].id });
             }
         }
     }
 
-    // Eliminar duplicados
-    for (const id of duplicadosAEliminar) {
+    // Eliminar duplicados. Antes se traslada al superviviente lo que colgaba
+    // del duplicado: si no, sus notas, eventos y pendientes quedan apuntando a
+    // un expediente que ya no existe.
+    for (const { id, sobreviviente } of duplicadosAEliminar) {
+        await reasignarRegistrosDeExpediente(id, sobreviviente);
         await eliminarExpediente(id, true);
     }
 
@@ -658,8 +736,10 @@ async function eliminarCarpeta(id, conExpedientes = false) {
     const expedientesEnCarpeta = todosExpedientes.filter(e => e.carpetaId === id);
 
     if (conExpedientes) {
-        // Eliminar cada expediente (registra eliminación para sync)
+        // Eliminar cada expediente (registra eliminación para sync) junto con
+        // sus pendientes, notas y eventos; si no, quedan huérfanos.
         for (const exp of expedientesEnCarpeta) {
+            await eliminarDependenciasDeExpediente(exp.id);
             await eliminarExpediente(exp.id, true);
         }
     } else {
@@ -880,7 +960,10 @@ async function agregarPendiente(pendiente) {
         }
 
         const request = store.add(pendiente);
-        request.onsuccess = () => resolve(request.result);
+        request.onsuccess = () => {
+            if (typeof invalidarIndiceBusqueda === 'function') invalidarIndiceBusqueda();
+            resolve(request.result);
+        };
         request.onerror = () => reject(request.error);
     });
 }
@@ -935,7 +1018,10 @@ async function actualizarPendiente(id, cambios) {
 
             const actualizado = { ...pendiente, ...cambios, fechaActualizacion: ahora, _fieldTimestamps: fieldTimestamps };
             const putRequest = store.put(actualizado);
-            putRequest.onsuccess = () => resolve(actualizado);
+            putRequest.onsuccess = () => {
+                if (typeof invalidarIndiceBusqueda === 'function') invalidarIndiceBusqueda();
+                resolve(actualizado);
+            };
             putRequest.onerror = () => reject(putRequest.error);
         };
         getRequest.onerror = () => reject(getRequest.error);
@@ -953,7 +1039,10 @@ async function eliminarPendiente(id) {
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(['pendientes'], 'readwrite');
         const request = transaction.objectStore('pendientes').delete(id);
-        request.onsuccess = () => resolve(pendiente);
+        request.onsuccess = () => {
+            if (typeof invalidarIndiceBusqueda === 'function') invalidarIndiceBusqueda();
+            resolve(pendiente);
+        };
         request.onerror = () => reject(request.error);
     });
 }
@@ -1104,6 +1193,10 @@ async function exportarTodosDatos() {
     const notas = await obtenerNotas();
     const eventos = await obtenerEventos();
     const pendientes = await obtenerPendientes().catch(() => []);
+    // Sin las carpetas, un respaldo pierde la agrupación por caso y los
+    // carpetaId de los expedientes quedan apuntando a nada.
+    const carpetas = typeof obtenerCarpetas === 'function'
+        ? await obtenerCarpetas().catch(() => []) : [];
 
     // Exportar búsquedas guardadas SIGA si el store existe
     let sigaGuardadas = [];
@@ -1123,6 +1216,7 @@ async function exportarTodosDatos() {
         version: 1,
         fechaExportacion: new Date().toISOString(),
         expedientes,
+        carpetas,
         notas,
         eventos,
         pendientes,
@@ -1137,6 +1231,24 @@ async function importarTodosDatos(datos, sobrescribir = false) {
         await limpiarStore('notas');
         await limpiarStore('eventos');
         if (db.objectStoreNames.contains('pendientes')) await limpiarStore('pendientes');
+        if (db.objectStoreNames.contains('carpetas')) await limpiarStore('carpetas');
+    }
+
+    // Las carpetas van primero: los expedientes guardan carpetaId y hay que
+    // poder traducirlo al id nuevo, igual que con expedienteId más abajo.
+    const mapaCarpetas = new Map();
+    const traeCarpetas = Array.isArray(datos.carpetas);
+    if (traeCarpetas && typeof agregarCarpeta === 'function' && db.objectStoreNames.contains('carpetas')) {
+        for (const carpeta of datos.carpetas || []) {
+            const idOriginal = carpeta.id;
+            delete carpeta.id;
+            try {
+                const nuevoId = await agregarCarpeta(carpeta);
+                if (idOriginal !== undefined && idOriginal !== null) {
+                    mapaCarpetas.set(idOriginal, nuevoId);
+                }
+            } catch (e) { /* una carpeta que falle no debe abortar el respaldo */ }
+        }
     }
 
     // Al importar, cada expediente recibe un id nuevo: se descarta el del
@@ -1150,6 +1262,12 @@ async function importarTodosDatos(datos, sobrescribir = false) {
     for (const exp of datos.expedientes || []) {
         const idOriginal = exp.id;
         delete exp.id;
+        // Solo se traduce si el respaldo traía carpetas. Un respaldo viejo no
+        // las incluye: ahí no hay nada que traducir y anular el carpetaId
+        // borraría una agrupación que puede seguir siendo válida.
+        if (traeCarpetas && exp.carpetaId !== undefined && exp.carpetaId !== null) {
+            exp.carpetaId = mapaCarpetas.has(exp.carpetaId) ? mapaCarpetas.get(exp.carpetaId) : null;
+        }
         const nuevoId = await agregarExpediente(exp);
         if (idOriginal !== undefined && idOriginal !== null) {
             mapaExpedientes.set(idOriginal, nuevoId);

@@ -19,7 +19,7 @@
   }
 
   // ── State ──────────────────────────────────────────────────────────────────
-  let datosCache      = null;   // { expedientes, notas, eventos }
+  let datosCache      = null;   // { expedientes, notas, eventos, pendientes }
   let resultadosActuales = [];  // array of result objects shown right now
   let seleccionIdx    = -1;     // keyboard-selected index (-1 = none)
 
@@ -44,7 +44,7 @@
           '<span class="cmd-search-icon" aria-hidden="true">⌕</span>' +
           '<input id="cmd-input" type="text" autocomplete="off" autocorrect="off"' +
           ' autocapitalize="off" spellcheck="false"' +
-          ' placeholder="Buscar expedientes, notas, eventos…" aria-label="Buscar">' +
+          ' placeholder="Buscar expedientes, pendientes, notas, eventos…" aria-label="Buscar">' +
           '<kbd title="Cerrar">Esc</kbd>' +
         '</div>' +
         '<div id="cmd-results" role="listbox" aria-label="Resultados"></div>' +
@@ -88,14 +88,18 @@
 
     // Load data fresh
     try {
-      const [expedientes, notas, eventos] = await Promise.all([
+      const [expedientes, notas, eventos, pendientes] = await Promise.all([
         (typeof obtenerExpedientes === 'function') ? obtenerExpedientes() : Promise.resolve([]),
         (typeof obtenerNotas       === 'function') ? obtenerNotas()       : Promise.resolve([]),
         (typeof obtenerEventos     === 'function') ? obtenerEventos()     : Promise.resolve([]),
+        (typeof obtenerPendientes  === 'function') ? obtenerPendientes()  : Promise.resolve([]),
       ]);
-      datosCache = { expedientes: expedientes || [], notas: notas || [], eventos: eventos || [] };
+      datosCache = {
+        expedientes: expedientes || [], notas: notas || [],
+        eventos: eventos || [], pendientes: pendientes || []
+      };
     } catch (err) {
-      datosCache = { expedientes: [], notas: [], eventos: [] };
+      datosCache = { expedientes: [], notas: [], eventos: [], pendientes: [] };
       console.warn('[CmdPalette] Error cargando datos', err);
     }
 
@@ -173,6 +177,34 @@
             : '',
           id:       nota.id,
           accion:   'nota',
+        });
+      }
+    }
+
+    // ── Pendientes ──
+    // Los que están por hacer van antes que los terminados: buscar un
+    // pendiente casi siempre es buscar algo que falta.
+    const pendientesOrdenados = (datosCache.pendientes || []).slice().sort(function (a, b) {
+      return (a.completado ? 1 : 0) - (b.completado ? 1 : 0);
+    });
+    for (const p of pendientesOrdenados) {
+      if (resultados.length >= MAX_RESULTS) break;
+      if (
+        !q ||
+        matches(p.titulo,          q) ||
+        matches(p.descripcion,     q) ||
+        matches(p.expedienteTexto, q)
+      ) {
+        resultados.push({
+          tipo:     'pendiente',
+          icono:    p.completado ? '☑️' : '✅',
+          tipoLabel: p.completado ? 'Pendiente terminado' : 'Pendiente',
+          titulo:   p.titulo || '(sin título)',
+          subtitulo: p.descripcion
+            ? String(p.descripcion).slice(0, 80)
+            : (p.expedienteTexto || ''),
+          id:       p.id,
+          accion:   'pendiente',
         });
       }
     }
@@ -317,6 +349,13 @@
           if (typeof navegarA === 'function') navegarA('notas');
           setTimeout(function () {
             if (typeof editarNota === 'function') editarNota(item.id);
+          }, 150);
+          break;
+
+        case 'pendiente':
+          if (typeof navegarA === 'function') navegarA('pendientes');
+          setTimeout(function () {
+            if (typeof mostrarFormularioPendiente === 'function') mostrarFormularioPendiente(item.id);
           }, 150);
           break;
 

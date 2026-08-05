@@ -1108,29 +1108,39 @@ async function guardarExpediente(event) {
     }
 }
 
-function confirmarEliminarExpediente(id, event) {
+// Texto que enumera lo que se irá junto con el expediente. Borrar en silencio
+// las notas y pendientes de un caso sería una sorpresa desagradable.
+async function _avisoDependientesExpediente(id) {
+    if (typeof contarRegistrosDeExpediente !== 'function') return '';
+    const c = await contarRegistrosDeExpediente(id).catch(() => null);
+    if (!c) return '';
+    const partes = [];
+    if (c.pendientes) partes.push(`${c.pendientes} pendiente${c.pendientes !== 1 ? 's' : ''}`);
+    if (c.notas) partes.push(`${c.notas} nota${c.notas !== 1 ? 's' : ''}`);
+    if (c.eventos) partes.push(`${c.eventos} evento${c.eventos !== 1 ? 's' : ''} de calendario`);
+    if (partes.length === 0) return '';
+    return `\n\nTambién se eliminará: ${partes.join(', ')}.`;
+}
+
+async function confirmarEliminarExpediente(id, event) {
     // Prevenir propagación del evento
     if (event) {
         event.stopPropagation();
         event.preventDefault();
     }
 
-    if (confirm('¿Estás seguro de eliminar este expediente?')) {
-        eliminarExpediente(id, true)
-            .then(() => {
-                mostrarToast('Expediente eliminado', 'success');
-                const archivoVisible = document.getElementById('archivo-section')?.style.display === 'block';
-                const tareas = [cargarExpedientes(), cargarEstadisticas()];
-                if (archivoVisible) tareas.push(cargarArchivo());
-                return Promise.all(tareas);
-            })
-            .then(() => {
-                if (typeof marcarYSincronizar === 'function') return marcarYSincronizar();
-            })
-            .catch(err => {
-                Logger.error('Error al eliminar expediente:', err);
-                mostrarToast('Error al eliminar: ' + (err.message || 'Error desconocido'), 'error');
-            });
+    const aviso = await _avisoDependientesExpediente(id);
+    if (!confirm('¿Estás seguro de eliminar este expediente?' + aviso)) return;
+
+    try {
+        // Por el núcleo, que arrastra notas, eventos y pendientes en cascada.
+        await eliminarExpedienteCore(id, true);
+        mostrarToast('Expediente eliminado', 'success');
+        const archivoVisible = document.getElementById('archivo-section')?.style.display === 'block';
+        if (archivoVisible) await cargarArchivo();
+    } catch (err) {
+        Logger.error('Error al eliminar expediente:', err);
+        mostrarToast('Error al eliminar: ' + (err.message || 'Error desconocido'), 'error');
     }
 }
 
@@ -1546,9 +1556,10 @@ async function obtenerIndiceBusqueda() {
     if (_searchIndexCache && _searchIndexVersion === _dataMutationCounter) {
         return _searchIndexCache;
     }
-    const [notas, historial] = await Promise.all([
+    const [notas, historial, pendientes] = await Promise.all([
         obtenerNotas(),
-        obtenerTodoHistorial()
+        obtenerTodoHistorial(),
+        typeof obtenerPendientes === 'function' ? obtenerPendientes().catch(() => []) : Promise.resolve([])
     ]);
     const notasPorExp = new Map();
     for (const n of notas) {
@@ -1562,7 +1573,13 @@ async function obtenerIndiceBusqueda() {
         if (lst) lst.push(h);
         else historialPorExp.set(h.expedienteId, [h]);
     }
-    _searchIndexCache = { notasPorExp, historialPorExp };
+    const pendientesPorExp = new Map();
+    for (const p of pendientes) {
+        const lst = pendientesPorExp.get(p.expedienteId);
+        if (lst) lst.push(p);
+        else pendientesPorExp.set(p.expedienteId, [p]);
+    }
+    _searchIndexCache = { notasPorExp, historialPorExp, pendientesPorExp };
     _searchIndexVersion = _dataMutationCounter;
     return _searchIndexCache;
 }
@@ -1596,7 +1613,7 @@ async function filtrarExpedientes() {
     }
 
     if (busqueda) {
-        const { notasPorExp, historialPorExp } = await obtenerIndiceBusqueda();
+        const { notasPorExp, historialPorExp, pendientesPorExp } = await obtenerIndiceBusqueda();
 
         expedientes = expedientes.filter(e => {
             // Búsqueda en campos directos del expediente
@@ -1613,6 +1630,16 @@ async function filtrarExpedientes() {
                 for (const n of notas) {
                     if ((n.titulo && n.titulo.toLowerCase().includes(busqueda)) ||
                         (n.contenido && n.contenido.toLowerCase().includes(busqueda))) {
+                        return true;
+                    }
+                }
+            }
+            // Búsqueda en pendientes del expediente
+            const pendientes = pendientesPorExp.get(e.id);
+            if (pendientes) {
+                for (const p of pendientes) {
+                    if ((p.titulo && p.titulo.toLowerCase().includes(busqueda)) ||
+                        (p.descripcion && p.descripcion.toLowerCase().includes(busqueda))) {
                         return true;
                     }
                 }
@@ -6603,22 +6630,19 @@ async function editarExpedientePJF(id, event) {
 }
 
 // Delete PJF expediente and refresh PJF view
-function confirmarEliminarExpedientePJF(id, event) {
+async function confirmarEliminarExpedientePJF(id, event) {
     if (event) { event.stopPropagation(); event.preventDefault(); }
 
-    if (confirm('¿Estás seguro de eliminar este expediente federal?')) {
-        eliminarExpediente(id, true)
-            .then(() => {
-                mostrarToast('Expediente PJF eliminado', 'success');
-                return Promise.all([cargarExpedientesPJF(), cargarExpedientes(), cargarEstadisticas()]);
-            })
-            .then(() => {
-                if (typeof marcarYSincronizar === 'function') return marcarYSincronizar();
-            })
-            .catch(err => {
-                Logger.error('Error al eliminar expediente PJF:', err);
-                mostrarToast('Error al eliminar: ' + (err.message || 'Error desconocido'), 'error');
-            });
+    const aviso = await _avisoDependientesExpediente(id);
+    if (!confirm('¿Estás seguro de eliminar este expediente federal?' + aviso)) return;
+
+    try {
+        await eliminarExpedienteCore(id, true);
+        mostrarToast('Expediente PJF eliminado', 'success');
+        await cargarExpedientesPJF();
+    } catch (err) {
+        Logger.error('Error al eliminar expediente PJF:', err);
+        mostrarToast('Error al eliminar: ' + (err.message || 'Error desconocido'), 'error');
     }
 }
 
@@ -6842,7 +6866,7 @@ async function filtrarExpedientesPJF() {
     }
 
     if (busqueda) {
-        const { notasPorExp, historialPorExp } = await obtenerIndiceBusqueda();
+        const { notasPorExp, historialPorExp, pendientesPorExp } = await obtenerIndiceBusqueda();
 
         pjfExps = pjfExps.filter(e => {
             if ((e.numero && e.numero.toLowerCase().includes(busqueda)) ||
@@ -6857,6 +6881,15 @@ async function filtrarExpedientesPJF() {
                 for (const n of notas) {
                     if ((n.titulo && n.titulo.toLowerCase().includes(busqueda)) ||
                         (n.contenido && n.contenido.toLowerCase().includes(busqueda))) {
+                        return true;
+                    }
+                }
+            }
+            const pendientes = pendientesPorExp.get(e.id);
+            if (pendientes) {
+                for (const p of pendientes) {
+                    if ((p.titulo && p.titulo.toLowerCase().includes(busqueda)) ||
+                        (p.descripcion && p.descripcion.toLowerCase().includes(busqueda))) {
                         return true;
                     }
                 }
