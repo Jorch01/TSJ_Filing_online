@@ -43,7 +43,8 @@
     const ACCIONES_MUTANTES = new Set([
         'crear_evento', 'editar_evento', 'eliminar_evento',
         'crear_expediente', 'editar_expediente', 'archivar_expediente',
-        'crear_nota', 'mover_a_carpeta'
+        'crear_nota', 'mover_a_carpeta',
+        'crear_pendiente', 'completar_pendiente'
     ]);
 
     // La negación se evalúa SIEMPRE antes que la afirmación: cancelar por
@@ -200,6 +201,8 @@
             case 'expediente_editado':   await actualizarExpedienteCore(u.id, u.antes); break;
             case 'expediente_archivado': await archivarExpedienteCore(u.id, false); break;
             case 'nota_creada':          await eliminarNotaCore(u.id); break;
+            case 'pendiente_creado':     await eliminarPendienteCore(u.id); break;
+            case 'pendiente_completado': await completarPendienteCore(u.id, false); break;
             default: throw new Error('No sé cómo deshacer esa acción');
         }
         toast('Acción deshecha', 'success');
@@ -863,6 +866,9 @@
                 case 'editar_expediente':   mensajeFinal = await accEditarExpediente(p); break;
                 case 'archivar_expediente': mensajeFinal = await accArchivarExpediente(p); break;
                 case 'crear_nota':          mensajeFinal = await accCrearNota(p); break;
+                case 'crear_pendiente':     mensajeFinal = await accCrearPendiente(p); break;
+                case 'completar_pendiente': mensajeFinal = await accCompletarPendiente(p); break;
+                case 'consultar_pendientes': mensajeFinal = await accConsultarPendientes(p); break;
                 case 'mover_a_carpeta':     mensajeFinal = await accMoverACarpeta(p); break;
                 case 'abrir_expediente':    mensajeFinal = await accAbrirExpediente(p); break;
                 case 'deshacer':            mensajeFinal = await accDeshacer(); break;
@@ -1118,6 +1124,87 @@
         return `Nota "${p.titulo}" creada.`;
     }
 
+    // Un pendiente con fecha queda además agendado: el núcleo mantiene su
+    // evento de calendario.
+    async function accCrearPendiente(p) {
+        if (!p.titulo) throw new Error('Falta qué hay que hacer');
+
+        // La fecha es opcional. Si viene sin hora se asume media mañana, igual
+        // criterio que un evento dictado sin hora.
+        let fechaLimite = null;
+        if (p.fecha) {
+            const hora = normalizarHora(p.hora);
+            const d = new Date(p.fecha + 'T' + (hora || '09:00'));
+            if (isNaN(d.getTime())) throw new Error('Fecha inválida: ' + p.fecha);
+            fechaLimite = d.toISOString();
+        }
+        const nuevoId = await crearPendienteCore({
+            expedienteId: p.expedienteId != null ? parseInt(p.expedienteId) : null,
+            expedienteTexto: p.expedienteTexto || null,
+            titulo: p.titulo,
+            descripcion: p.descripcion || '',
+            fechaLimite
+        });
+        registrarDeshacer({ tipo: 'pendiente_creado', id: nuevoId, etiqueta: `pendiente "${p.titulo}"` });
+        toast('Pendiente creado', 'success');
+        return fechaLimite
+            ? `Pendiente "${p.titulo}" creado y agendado.`
+            : `Pendiente "${p.titulo}" creado.`;
+    }
+
+    async function accCompletarPendiente(p) {
+        const pendiente = await _resolverPendiente(p);
+        if (pendiente.completado) return `El pendiente "${pendiente.titulo}" ya estaba terminado.`;
+        await completarPendienteCore(pendiente.id, true);
+        registrarDeshacer({ tipo: 'pendiente_completado', id: pendiente.id, etiqueta: `pendiente "${pendiente.titulo}"` });
+        toast('Pendiente terminado', 'success');
+        return `Marqué "${pendiente.titulo}" como terminado.`;
+    }
+
+    async function accConsultarPendientes(p) {
+        const todos = await obtenerPendientes().catch(() => []);
+        let abiertos = todos.filter(x => !x.completado);
+        if (p && p.expedienteId != null) {
+            abiertos = abiertos.filter(x => x.expedienteId === parseInt(p.expedienteId));
+        }
+        if (abiertos.length === 0) return 'No tienes pendientes por hacer.';
+
+        // Primero lo que tiene fecha, y de eso lo más cercano.
+        abiertos.sort((a, b) => {
+            const fa = a.fechaLimite ? new Date(a.fechaLimite).getTime() : Infinity;
+            const fb = b.fechaLimite ? new Date(b.fechaLimite).getTime() : Infinity;
+            return fa - fb;
+        });
+        const lista = abiertos.slice(0, 8).map(x => {
+            const dias = typeof diasParaPendiente === 'function' ? diasParaPendiente(x) : null;
+            if (dias === null) return x.titulo;
+            if (dias < 0) return `${x.titulo} (vencido)`;
+            if (dias === 0) return `${x.titulo} (hoy)`;
+            if (dias === 1) return `${x.titulo} (mañana)`;
+            return `${x.titulo} (en ${dias} días)`;
+        }).join('; ');
+        const resto = abiertos.length > 8 ? ` y ${abiertos.length - 8} más` : '';
+        return `Tienes ${abiertos.length} pendiente${abiertos.length !== 1 ? 's' : ''}: ${lista}${resto}.`;
+    }
+
+    // Identifica el pendiente del que habla el usuario: por id, o por título
+    // entre los que están por hacer.
+    async function _resolverPendiente(p) {
+        const todos = await obtenerPendientes().catch(() => []);
+        if (p && p.pendienteId != null) {
+            const porId = todos.find(x => x.id === parseInt(p.pendienteId));
+            if (porId) return porId;
+        }
+        const texto = normalizar(p && p.titulo ? p.titulo : '');
+        if (!texto) throw new Error('¿Cuál pendiente marco como terminado?');
+
+        const abiertos = todos.filter(x => !x.completado);
+        const coincidencias = abiertos.filter(x => normalizar(x.titulo || '').includes(texto));
+        if (coincidencias.length === 1) return coincidencias[0];
+        if (coincidencias.length === 0) throw new Error(`No encontré un pendiente que diga "${p.titulo}"`);
+        throw new Error(`Tengo ${coincidencias.length} pendientes que coinciden: ${coincidencias.slice(0, 4).map(x => x.titulo).join('; ')}. ¿Cuál?`);
+    }
+
     async function accAbrirExpediente(p) {
         const id = parseInt(p.expedienteId);
         if (!id) throw new Error('No identifiqué qué expediente abrir');
@@ -1288,7 +1375,7 @@
     }
 
     function accNavegar(p) {
-        const paginas = ['inicio', 'expedientes', 'calendario', 'notas', 'busqueda', 'pjf', 'impi', 'config'];
+        const paginas = ['inicio', 'expedientes', 'calendario', 'pendientes', 'notas', 'busqueda', 'pjf', 'impi', 'config'];
         const pagina = paginas.includes(p.pagina) ? p.pagina : null;
         if (!pagina) throw new Error('No identifiqué a qué sección navegar');
         if (typeof navegarA === 'function') navegarA(pagina);
@@ -1394,6 +1481,10 @@ ACCIONES DISPONIBLES y sus parámetros:
    - Resuelve el expediente contra el catálogo (por número tipo 123/2025 o por nombre de las partes). Si hay ambigüedad, pregunta.
 7. "archivar_expediente": {expedienteId:número, motivo:"concluido"|"suspendido"|"otro"}
 8. "crear_nota": {titulo, contenido, expedienteId:número o null, expedienteTexto o null}
+8b. "crear_pendiente": {titulo, descripcion o "", expedienteId:número o null, expedienteTexto o null, fecha:"YYYY-MM-DD" o null, hora:"HH:MM" o null}
+    - Una tarea del expediente ("recuérdame contestar la demanda del 123/2025", "apúntame revisar el acuerdo"). La fecha es OPCIONAL: solo ponla si el usuario la dice. Con fecha, además queda agendada.
+8c. "completar_pendiente": {pendienteId:número o null, titulo:texto o null} — marca un pendiente como terminado ("ya contesté la demanda", "marca como hecho lo de la promoción"). Usa el título tal como lo diga el usuario si no hay id.
+8d. "consultar_pendientes": {expedienteId:número o null} — lee los pendientes por hacer ("¿qué tengo pendiente?", "qué me falta del 123/2025").
 9. "mover_a_carpeta": {expedienteId:número, carpetaId:número o null} — asigna un expediente a una carpeta de la lista CARPETAS (null = quitarlo de su carpeta). Si la carpeta mencionada no existe, pregunta.
 10. "abrir_expediente": {expedienteId:número} — navega hasta el expediente y lo resalta ("abre el expediente 123/2025", "muéstrame el caso de Juan Pérez").
 11. "deshacer": {} — revierte la última acción hecha por el asistente ("deshaz lo último", "revierte eso").
@@ -1403,7 +1494,7 @@ ACCIONES DISPONIBLES y sus parámetros:
 14. "buscar_pjf": {expedienteId:número o null, numero:texto o null, organismo:texto o null, tipoAsunto:texto o null}
     - Consulta en el portal del Poder Judicial de la Federación. Si el expediente está en el catálogo con tienePJF=true, usa su id.
     - Si el usuario dicta el órgano federal ("Juzgado Segundo de Distrito de Cancún", "Tribunal Colegiado del Vigésimo Séptimo Circuito"), pásalo TAL CUAL en "organismo" y el tipo de asunto tal como lo diga ("amparo indirecto", "juicio de amparo") en "tipoAsunto"; la app los resuelve contra el catálogo oficial.
-15. "navegar": {pagina:"inicio"|"expedientes"|"calendario"|"notas"|"busqueda"|"pjf"|"impi"|"config"}
+15. "navegar": {pagina:"inicio"|"expedientes"|"calendario"|"pendientes"|"notas"|"busqueda"|"pjf"|"impi"|"config"}
 16. "responder": para preguntas generales, saludos o cuando ninguna acción aplica. Usa el campo "respuesta".
 
 REGLAS:

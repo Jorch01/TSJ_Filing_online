@@ -1711,6 +1711,10 @@ function actualizarBusquedaEnDB(saved) {
     };
 }
 
+// Cuántas búsquedas guardadas se revisan por día. Acota el trabajo contra los
+// servidores del IMPI y el tiempo de arranque de la app.
+var MAX_AUTOCHECK_POR_DIA = 12;
+
 // Auto-check: verificar todas las búsquedas guardadas (máximo 1 vez al día).
 // Cubre SIGA, MARCia y Marcanet, incluidas las marcas y expedientes vigilados.
 async function autoCheckBusquedasGuardadas() {
@@ -1724,8 +1728,21 @@ async function autoCheckBusquedasGuardadas() {
 
     localStorage.setItem('siga_last_auto_check', today);
 
-    // Copia: verificarBusquedaGuardada re-renderiza y puede reordenar la lista.
-    var pendientes = savedSearchesState.searches.slice();
+    // Cada búsqueda de MARCia cuesta tres peticiones al IMPI (sesión, registro
+    // y resultados), así que con muchas guardadas el arranque se volvía pesado.
+    // Se revisa un lote por día, empezando por lo más olvidado: en unos días
+    // todas quedan al corriente y ninguna se queda sin revisar nunca.
+    // Se ordena por el último intento, no por la última revisión exitosa: si
+    // una búsqueda falla siempre, su lastChecked no avanzaría y acapararía el
+    // lote todos los días, dejando a las demás sin revisar nunca.
+    var ultimoIntento = function(s) {
+        var a = s.lastChecked ? new Date(s.lastChecked).getTime() : 0;
+        var b = s.lastCheckAttempt ? new Date(s.lastCheckAttempt).getTime() : 0;
+        return Math.max(a, b);
+    };
+    var pendientes = savedSearchesState.searches.slice()
+        .sort(function(a, b) { return ultimoIntento(a) - ultimoIntento(b); })
+        .slice(0, MAX_AUTOCHECK_POR_DIA);
     var totalNuevas = 0;
     var conNovedades = [];
     var conCambioEstatus = [];
@@ -1738,6 +1755,14 @@ async function autoCheckBusquedasGuardadas() {
                 conNovedades.push(nombreBusqueda(pendientes[i]));
             }
             if (result.cambioEstatus) conCambioEstatus.push(nombreBusqueda(pendientes[i]));
+        } else {
+            // Falló: se anota el intento para que ceda su turno mañana en vez
+            // de acaparar el lote indefinidamente.
+            var fallida = savedSearchesState.searches.find(function(s) { return s.id === pendientes[i].id; });
+            if (fallida) {
+                fallida.lastCheckAttempt = new Date().toISOString();
+                actualizarBusquedaEnDB(fallida);
+            }
         }
         // Pequeña pausa entre requests para no saturar
         if (i < pendientes.length - 1) {

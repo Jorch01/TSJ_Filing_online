@@ -193,9 +193,22 @@ async function archivarExpedienteCore(id, archivado, motivo, etiqueta) {
     await _coreSincronizar();
 }
 
-/** Elimina un expediente (permanente=true borra definitivo y propaga a sync). */
+/**
+ * Elimina un expediente (permanente=true borra definitivo y propaga a sync).
+ * En el borrado permanente arrastra lo que colgaba de él —notas, eventos y
+ * pendientes—, incluidas las copias en Google Calendar. Antes se quedaban
+ * apuntando a un expediente inexistente: invisibles en la app pero vivos en la
+ * base y en el calendario. El borrado suave no toca nada, porque es
+ * reversible.
+ */
 async function eliminarExpedienteCore(id, permanente) {
-    await eliminarExpediente(id, !!permanente);
+    await _coreEnLoteEjecutar(async () => {
+        if (permanente && typeof eliminarDependenciasDeExpediente === 'function') {
+            await eliminarDependenciasDeExpediente(id);
+        }
+        await eliminarExpediente(id, !!permanente);
+    });
+
     await _coreRefrescarUI();
     await _coreSincronizar();
 }
