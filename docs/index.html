@@ -681,6 +681,17 @@
                     <option value="completados">Terminados</option>
                     <option value="todos">Todos</option>
                 </select>
+                <select id="filtro-prioridad-pendiente" onchange="renderizarPendientes()">
+                    <option value="">Cualquier prioridad</option>
+                    <option value="alta">🔴 Alta</option>
+                    <option value="media">🟡 Media</option>
+                    <option value="baja">🔵 Baja</option>
+                    <option value="__sin__">Sin prioridad</option>
+                </select>
+                <label class="filtro-toggle" title="Agrupar los pendientes por expediente">
+                    <input type="checkbox" id="agrupar-pendientes" checked onchange="toggleAgrupacionPendientes()">
+                    <span>Agrupar por expediente</span>
+                </label>
                 <span class="results-count" id="count-pendientes">0 pendientes</span>
             </div>
 

@@ -1143,13 +1143,15 @@
             expedienteTexto: p.expedienteTexto || null,
             titulo: p.titulo,
             descripcion: p.descripcion || '',
+            prioridad: p.prioridad || '',
             fechaLimite
         });
         registrarDeshacer({ tipo: 'pendiente_creado', id: nuevoId, etiqueta: `pendiente "${p.titulo}"` });
         toast('Pendiente creado', 'success');
+        const conPrioridad = p.prioridad ? ` con prioridad ${p.prioridad}` : '';
         return fechaLimite
-            ? `Pendiente "${p.titulo}" creado y agendado.`
-            : `Pendiente "${p.titulo}" creado.`;
+            ? `Pendiente "${p.titulo}" creado${conPrioridad} y agendado.`
+            : `Pendiente "${p.titulo}" creado${conPrioridad}.`;
     }
 
     async function accCompletarPendiente(p) {
@@ -1481,8 +1483,9 @@ ACCIONES DISPONIBLES y sus parámetros:
    - Resuelve el expediente contra el catálogo (por número tipo 123/2025 o por nombre de las partes). Si hay ambigüedad, pregunta.
 7. "archivar_expediente": {expedienteId:número, motivo:"concluido"|"suspendido"|"otro"}
 8. "crear_nota": {titulo, contenido, expedienteId:número o null, expedienteTexto o null}
-8b. "crear_pendiente": {titulo, descripcion o "", expedienteId:número o null, expedienteTexto o null, fecha:"YYYY-MM-DD" o null, hora:"HH:MM" o null}
+8b. "crear_pendiente": {titulo, descripcion o "", expedienteId:número o null, expedienteTexto o null, prioridad:"alta"|"media"|"baja" o "", fecha:"YYYY-MM-DD" o null, hora:"HH:MM" o null}
     - Una tarea del expediente ("recuérdame contestar la demanda del 123/2025", "apúntame revisar el acuerdo"). La fecha es OPCIONAL: solo ponla si el usuario la dice. Con fecha, además queda agendada.
+    - La prioridad también es opcional: ponla solo si el usuario la expresa ("es urgente" → alta, "cuando se pueda" → baja). Si no dice nada, déjala vacía.
 8c. "completar_pendiente": {pendienteId:número o null, titulo:texto o null} — marca un pendiente como terminado ("ya contesté la demanda", "marca como hecho lo de la promoción"). Usa el título tal como lo diga el usuario si no hay id.
 8d. "consultar_pendientes": {expedienteId:número o null} — lee los pendientes por hacer ("¿qué tengo pendiente?", "qué me falta del 123/2025").
 9. "mover_a_carpeta": {expedienteId:número, carpetaId:número o null} — asigna un expediente a una carpeta de la lista CARPETAS (null = quitarlo de su carpeta). Si la carpeta mencionada no existe, pregunta.
