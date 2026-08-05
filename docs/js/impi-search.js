@@ -1496,24 +1496,37 @@ function extraerEstatusMarcanet(detail) {
            d['Status'] || d['Estado'] || d['estado'] || '';
 }
 
+// Acumula las novedades hasta que el usuario abra la búsqueda (ahí se limpian).
+// Si ayer aparecieron 3 resultados nuevos y hoy 2, y no ha visto ninguno, son 5
+// sin ver: pisando el conteo el badge diría 2 y los 3 de ayer se perderían.
+function acumularNovedades(saved, nuevas, campo) {
+    if (nuevas.length === 0) return;
+    var previas = saved[campo] || [];
+    var sumadas = previas.concat(nuevas.filter(function(i) { return previas.indexOf(i) < 0; }));
+    saved[campo] = sumadas;
+    saved.newCount = sumadas.length;
+}
+
 // Compara el conjunto de ids actual contra el guardado y registra las
 // novedades. baseComparable indica si los ids guardados se capturaron de la
 // misma forma que los recién traídos; si no, esta pasada solo re-toma la línea
 // base (comparar una página de 50 contra una de 100 daría falsos positivos).
 function compararIdsGuardados(saved, idsActuales, baseComparable) {
+    // Se compara contra el mismo recorte que se guarda. Si se comparara la
+    // lista completa contra una línea base truncada, todo lo que cayera fuera
+    // del tope aparecería como nuevo en cada revisión, para siempre.
+    var actuales = idsActuales.slice(0, MAX_IDS_VIGILADOS);
+
     var previos = {};
     (saved.lastResultIds || []).forEach(function(i) { previos[i] = true; });
     var nuevas = baseComparable
-        ? idsActuales.filter(function(i) { return !previos[i]; })
+        ? actuales.filter(function(i) { return !previos[i]; })
         : [];
 
-    saved.lastResultIds = idsActuales.slice(0, 200);
+    saved.lastResultIds = actuales;
     saved.idsBase = 'monitor';
 
-    if (nuevas.length > 0) {
-        saved.newCount = nuevas.length;
-        saved.newResultIds = nuevas;
-    }
+    acumularNovedades(saved, nuevas, 'newResultIds');
     return nuevas.length;
 }
 
@@ -1550,10 +1563,7 @@ async function verificarGuardadaSIGA(saved) {
 
     saved.lastResultCount = fichas.length;
     saved.lastFichaIds = currentIds;
-    if (nuevas.length > 0) {
-        saved.newCount = nuevas.length;
-        saved.newFichas = nuevas;
-    }
+    acumularNovedades(saved, nuevas, 'newFichas');
     return { total: fichas.length, nuevas: nuevas.length, cambioEstatus: false };
 }
 
@@ -1714,6 +1724,10 @@ function actualizarBusquedaEnDB(saved) {
 // Cuántas búsquedas guardadas se revisan por día. Acota el trabajo contra los
 // servidores del IMPI y el tiempo de arranque de la app.
 var MAX_AUTOCHECK_POR_DIA = 12;
+
+// Cuántos identificadores de resultados se conservan como línea base para
+// detectar novedades. Debe ser >= a lo que trae una revisión.
+var MAX_IDS_VIGILADOS = 200;
 
 // Auto-check: verificar todas las búsquedas guardadas (máximo 1 vez al día).
 // Cubre SIGA, MARCia y Marcanet, incluidas las marcas y expedientes vigilados.
