@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = 'TSJFilingDB';
-const DB_VERSION = 5; // v5: agrega store de carpetas (agrupación de expedientes por caso)
+const DB_VERSION = 6; // v6: agrega store de pendientes (tareas por expediente)
 
 let db = null;
 
@@ -83,6 +83,15 @@ function initDB() {
                 const carpetasStore = database.createObjectStore('carpetas', { keyPath: 'id', autoIncrement: true });
                 carpetasStore.createIndex('nombre', 'nombre', { unique: false });
                 carpetasStore.createIndex('archivada', 'archivada', { unique: false });
+            }
+
+            // Store: Pendientes (tareas por expediente, con fecha opcional
+            // vinculada al calendario)
+            if (!database.objectStoreNames.contains('pendientes')) {
+                const pendientesStore = database.createObjectStore('pendientes', { keyPath: 'id', autoIncrement: true });
+                pendientesStore.createIndex('expedienteId', 'expedienteId', { unique: false });
+                pendientesStore.createIndex('completado', 'completado', { unique: false });
+                pendientesStore.createIndex('fechaLimite', 'fechaLimite', { unique: false });
             }
 
             console.log('Stores de IndexedDB creados');
@@ -316,6 +325,14 @@ async function registrarEliminacion(tipo, registro) {
             const expedienteId = registro.expedienteId || 'sin-exp';
             clave = `evento|${titulo}|${fechaInicio}|${expedienteId}`;
             datos = { titulo: registro.titulo, fechaInicio: registro.fechaInicio, expedienteId: registro.expedienteId };
+        } else if (tipo === 'pendiente') {
+            // Identidad por expediente + título + fecha de creación, igual
+            // criterio que usa fusionarPendientes en sync.js.
+            const titulo = (registro.titulo || '').trim().toLowerCase();
+            const expedienteId = registro.expedienteId || 'sin-exp';
+            const fecha = (registro.fechaCreacion || '').substring(0, 10);
+            clave = `pendiente|${expedienteId}|${titulo}|${fecha}`;
+            datos = { expedienteId: registro.expedienteId, titulo: registro.titulo };
         } else if (tipo === 'carpeta') {
             // Identidad por nombre normalizado (debe coincidir con _claveCarpeta
             // en sync.js: lowercase, sin acentos, espacios colapsados).
@@ -377,6 +394,7 @@ async function aplicarEliminacionesRemotas(eliminadosRemotos) {
     const clavesExpediente = new Set(eliminadosRemotos.filter(e => e.tipo === 'expediente').map(e => e.clave));
     const clavesNota = new Set(eliminadosRemotos.filter(e => e.tipo === 'nota').map(e => e.clave));
     const clavesEvento = new Set(eliminadosRemotos.filter(e => e.tipo === 'evento').map(e => e.clave));
+    const clavesPendiente = new Set(eliminadosRemotos.filter(e => e.tipo === 'pendiente').map(e => e.clave));
 
     // Expedientes
     if (clavesExpediente.size > 0) {
@@ -436,6 +454,27 @@ async function aplicarEliminacionesRemotas(eliminadosRemotos) {
                     const transaction = db.transaction(['eventos'], 'readwrite');
                     const store = transaction.objectStore('eventos');
                     const request = store.delete(ev.id);
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                });
+                eliminadosCount++;
+            }
+        }
+    }
+
+    // Pendientes
+    if (clavesPendiente.size > 0) {
+        const pendientes = await obtenerPendientes();
+        for (const p of pendientes) {
+            const titulo = (p.titulo || '').trim().toLowerCase();
+            const expedienteId = p.expedienteId || 'sin-exp';
+            const fecha = (p.fechaCreacion || '').substring(0, 10);
+            const clave = `pendiente|${expedienteId}|${titulo}|${fecha}`;
+
+            if (clavesPendiente.has(clave)) {
+                await new Promise((resolve, reject) => {
+                    const transaction = db.transaction(['pendientes'], 'readwrite');
+                    const request = transaction.objectStore('pendientes').delete(p.id);
                     request.onsuccess = () => resolve();
                     request.onerror = () => reject(request.error);
                 });
@@ -818,6 +857,123 @@ async function eliminarNota(id) {
 
 // ==================== EVENTOS ====================
 
+// ==================== PENDIENTES ====================
+// Tareas por expediente. La fecha límite es opcional; cuando existe, el núcleo
+// de acciones mantiene un evento de calendario vinculado (pendiente.eventoId).
+
+async function agregarPendiente(pendiente) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['pendientes'], 'readwrite');
+        const store = transaction.objectStore('pendientes');
+
+        const ahora = new Date().toISOString();
+        pendiente.fechaCreacion = ahora;
+        pendiente.fechaActualizacion = ahora;
+        if (pendiente.completado === undefined) pendiente.completado = false;
+
+        // Timestamps por campo para merge granular en sync, igual que notas y
+        // eventos: dos dispositivos que editan campos distintos no se pisan.
+        pendiente._fieldTimestamps = pendiente._fieldTimestamps || {};
+        for (const key of Object.keys(pendiente)) {
+            if (key === '_fieldTimestamps' || key === 'id') continue;
+            pendiente._fieldTimestamps[key] = ahora;
+        }
+
+        const request = store.add(pendiente);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function obtenerPendientes() {
+    return new Promise((resolve, reject) => {
+        if (!db.objectStoreNames.contains('pendientes')) { resolve([]); return; }
+        const transaction = db.transaction(['pendientes'], 'readonly');
+        const request = transaction.objectStore('pendientes').getAll();
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function obtenerPendientesPorExpediente(expedienteId) {
+    return new Promise((resolve, reject) => {
+        if (!db.objectStoreNames.contains('pendientes')) { resolve([]); return; }
+        const transaction = db.transaction(['pendientes'], 'readonly');
+        const index = transaction.objectStore('pendientes').index('expedienteId');
+        const request = index.getAll(expedienteId);
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function obtenerPendiente(id) {
+    return new Promise((resolve, reject) => {
+        if (!db.objectStoreNames.contains('pendientes')) { resolve(null); return; }
+        const transaction = db.transaction(['pendientes'], 'readonly');
+        const request = transaction.objectStore('pendientes').get(id);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function actualizarPendiente(id, cambios) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['pendientes'], 'readwrite');
+        const store = transaction.objectStore('pendientes');
+        const getRequest = store.get(id);
+
+        getRequest.onsuccess = () => {
+            const pendiente = getRequest.result;
+            if (!pendiente) { reject(new Error('Pendiente no encontrado')); return; }
+
+            const ahora = new Date().toISOString();
+            const fieldTimestamps = { ...(pendiente._fieldTimestamps || {}) };
+            for (const [key, value] of Object.entries(cambios)) {
+                if (key === '_fieldTimestamps' || key === 'id' || key === 'fechaActualizacion') continue;
+                if (pendiente[key] !== value) fieldTimestamps[key] = ahora;
+            }
+
+            const actualizado = { ...pendiente, ...cambios, fechaActualizacion: ahora, _fieldTimestamps: fieldTimestamps };
+            const putRequest = store.put(actualizado);
+            putRequest.onsuccess = () => resolve(actualizado);
+            putRequest.onerror = () => reject(putRequest.error);
+        };
+        getRequest.onerror = () => reject(getRequest.error);
+    });
+}
+
+async function eliminarPendiente(id) {
+    // Se registra la eliminación antes de borrar para que la sincronización la
+    // propague y el pendiente no reviva desde otro dispositivo.
+    const pendiente = await obtenerPendiente(id);
+    if (pendiente) {
+        try { await registrarEliminacion('pendiente', pendiente); }
+        catch (e) { console.error('Error registrando eliminación de pendiente:', e); }
+    }
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['pendientes'], 'readwrite');
+        const request = transaction.objectStore('pendientes').delete(id);
+        request.onsuccess = () => resolve(pendiente);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function reemplazarPendientes(items) {
+    if (!db.objectStoreNames.contains('pendientes')) return;
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['pendientes'], 'readwrite');
+        const store = transaction.objectStore('pendientes');
+        const clear = store.clear();
+        clear.onsuccess = () => {
+            for (const item of items || []) store.put(item);
+        };
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+// ==================== EVENTOS ====================
+
 async function agregarEvento(evento) {
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(['eventos'], 'readwrite');
@@ -947,6 +1103,7 @@ async function exportarTodosDatos() {
     const expedientes = await obtenerExpedientes();
     const notas = await obtenerNotas();
     const eventos = await obtenerEventos();
+    const pendientes = await obtenerPendientes().catch(() => []);
 
     // Exportar búsquedas guardadas SIGA si el store existe
     let sigaGuardadas = [];
@@ -968,6 +1125,7 @@ async function exportarTodosDatos() {
         expedientes,
         notas,
         eventos,
+        pendientes,
         sigaGuardadas
     };
 }
@@ -978,6 +1136,16 @@ async function importarTodosDatos(datos, sobrescribir = false) {
         await limpiarStore('expedientes');
         await limpiarStore('notas');
         await limpiarStore('eventos');
+        if (db.objectStoreNames.contains('pendientes')) await limpiarStore('pendientes');
+    }
+
+    // Importar pendientes. El vínculo con el calendario (eventoId) apunta a
+    // ids del origen que aquí ya no existen, así que se descarta: el pendiente
+    // conserva su fecha límite y se puede volver a vincular al editarlo.
+    for (const pendiente of datos.pendientes || []) {
+        delete pendiente.id;
+        delete pendiente.eventoId;
+        await agregarPendiente(pendiente);
     }
 
     // Importar expedientes

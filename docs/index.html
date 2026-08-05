@@ -164,6 +164,7 @@
             <button class="nav-btn active" data-page="inicio">🏠 Inicio</button>
             <button class="nav-btn" data-page="expedientes">📁 Expedientes</button>
             <button class="nav-btn" data-page="calendario">📅 Calendario</button>
+            <button class="nav-btn" data-page="pendientes">✅ Pendientes<span class="nav-badge" id="nav-badge-pendientes" style="display:none;">0</span></button>
             <button class="nav-btn" data-page="notas">📝 Notas</button>
             <button class="nav-btn" data-page="busqueda">🔍 Búsqueda</button>
             <button class="nav-btn" data-page="pjf">🏛️ PJF Federal</button>
@@ -178,6 +179,7 @@
         <button class="nav-btn active" data-page="inicio">🏠 Inicio</button>
         <button class="nav-btn" data-page="expedientes">📁 Expedientes</button>
         <button class="nav-btn" data-page="calendario">📅 Calendario</button>
+        <button class="nav-btn" data-page="pendientes">✅ Pendientes<span class="nav-badge" id="nav-badge-pendientes-movil" style="display:none;">0</span></button>
         <button class="nav-btn" data-page="notas">📝 Notas</button>
         <button class="nav-btn" data-page="busqueda">🔍 Búsqueda</button>
         <button class="nav-btn" data-page="pjf">🏛️ PJF Federal</button>
@@ -653,6 +655,48 @@
         </section>
 
         <!-- Página Notas -->
+        <!-- Página Pendientes -->
+        <section class="page" id="page-pendientes">
+            <div class="page-header">
+                <div>
+                    <h2>✅ Pendientes</h2>
+                    <p class="subtitle">Tareas por expediente. Ponles fecha para verlas en el calendario.</p>
+                </div>
+                <button class="btn btn-primary" onclick="mostrarFormularioPendiente()">
+                    ➕ Nuevo Pendiente
+                </button>
+            </div>
+
+            <!-- Filtros -->
+            <div class="filters-section">
+                <div class="search-box">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="buscar-pendiente" placeholder="Buscar pendientes..." oninput="renderizarPendientes()">
+                </div>
+                <select id="filtro-expediente-pendiente" onchange="renderizarPendientes()">
+                    <option value="">Todos los expedientes</option>
+                </select>
+                <select id="filtro-estado-pendiente" onchange="renderizarPendientes()">
+                    <option value="abiertos">Por hacer</option>
+                    <option value="completados">Terminados</option>
+                    <option value="todos">Todos</option>
+                </select>
+                <span class="results-count" id="count-pendientes">0 pendientes</span>
+            </div>
+
+            <!-- Lista de Pendientes -->
+            <div class="pendientes-lista" id="lista-pendientes">
+                <div class="empty-state">
+                    <span class="empty-icon">✅</span>
+                    <h3>No hay pendientes</h3>
+                    <p>Comienza creando tu primer pendiente</p>
+                    <button class="btn btn-primary" onclick="mostrarFormularioPendiente()">
+                        ➕ Crear Pendiente
+                    </button>
+                </div>
+            </div>
+        </section>
+
         <section class="page" id="page-notas">
             <div class="page-header">
                 <div>
