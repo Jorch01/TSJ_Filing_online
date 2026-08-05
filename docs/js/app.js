@@ -1863,10 +1863,43 @@ async function cargarNotas() {
 // de acciones mantiene el evento de calendario vinculado (ver acciones-core.js).
 
 let pendientesCache = [];
+// Los expedientes se leen una vez por carga y no en cada tecla del buscador:
+// re-consultar IndexedDB por keystroke se notaba con muchos expedientes.
+let expedientesCachePendientes = [];
+
+// Prioridades de más a menos urgente. Un pendiente sin prioridad es válido y
+// va al final: no todo merece que se decida su urgencia.
+const PRIORIDADES_PENDIENTE = {
+    alta:  { etiqueta: 'Alta',  icono: '🔴', orden: 0 },
+    media: { etiqueta: 'Media', icono: '🟡', orden: 1 },
+    baja:  { etiqueta: 'Baja',  icono: '🔵', orden: 2 }
+};
+const ORDEN_SIN_PRIORIDAD = 3;
+
+function ordenPrioridadPendiente(pendiente) {
+    const info = PRIORIDADES_PENDIENTE[pendiente && pendiente.prioridad];
+    return info ? info.orden : ORDEN_SIN_PRIORIDAD;
+}
+
+// La preferencia de agrupación se restaura una sola vez: después manda la
+// casilla, que es lo que el usuario está viendo.
+let _agrupacionRestaurada = false;
+function restaurarPreferenciaAgrupacion() {
+    if (_agrupacionRestaurada) return;
+    _agrupacionRestaurada = true;
+    const el = document.getElementById('agrupar-pendientes');
+    if (!el) return;
+    try {
+        const guardado = localStorage.getItem('pendientesAgrupados');
+        if (guardado !== null) el.checked = guardado === '1';
+    } catch (e) { /* storage bloqueado: se queda el valor por omisión */ }
+}
 
 async function cargarPendientes() {
     if (typeof obtenerPendientes !== 'function') return;
+    restaurarPreferenciaAgrupacion();
     pendientesCache = await obtenerPendientes().catch(() => []);
+    expedientesCachePendientes = await obtenerExpedientes().catch(() => []);
     actualizarSelectExpedientesPendientes();
     renderizarPendientes();
     actualizarBadgePendientes();
@@ -1893,48 +1926,179 @@ function _etiquetaVencimientoPendiente(pendiente) {
     return { texto: formatearFecha(pendiente.fechaLimite), clase: '' };
 }
 
+function _expedienteDePendiente(pendiente) {
+    if (pendiente.expedienteId == null) return null;
+    return expedientesCachePendientes.find(e => e.id === pendiente.expedienteId) || null;
+}
+
 // Nombre legible del expediente al que pertenece un pendiente.
-function _nombreExpedientePendiente(pendiente, expedientes) {
+function _nombreExpedientePendiente(pendiente) {
     if (pendiente.expedienteTexto) return pendiente.expedienteTexto;
     if (pendiente.expedienteId == null) return 'General';
-    const exp = expedientes.find(e => e.id === pendiente.expedienteId);
+    const exp = _expedienteDePendiente(pendiente);
     return exp ? (exp.numero || exp.nombre || 'Expediente') : 'Expediente eliminado';
 }
 
-async function renderizarPendientes() {
+// Todo el texto por el que se puede encontrar un expediente: número, nombre,
+// juzgado, partes, categoría, comentario y su carpeta.
+function textoBuscableExpediente(exp) {
+    const carpetas = typeof obtenerCarpetasDeCache === 'function' ? obtenerCarpetasDeCache() : [];
+    const carpeta = (carpetas.find(c => c.id === exp.carpetaId) || {}).nombre || '';
+    return [
+        exp.numero, exp.nombre, exp.juzgado, exp.categoria, exp.comentario,
+        exp.actor, exp.demandado, exp.institucion, carpeta
+    ].filter(Boolean).join(' ');
+}
+
+function _normalizarBusqueda(s) {
+    return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+
+// ==================== PENDIENTES: ORDEN Y AGRUPACIÓN ====================
+
+// Orden: primero lo que falta, luego por prioridad (alta → media → baja → sin
+// asignar) y dentro de cada una por cercanía de la fecha límite. Es el orden
+// que el usuario pidió y es predecible: la prioridad manda, la fecha desempata.
+function compararPendientes(a, b) {
+    if (!!a.completado !== !!b.completado) return a.completado ? 1 : -1;
+
+    const pa = ordenPrioridadPendiente(a);
+    const pb = ordenPrioridadPendiente(b);
+    if (pa !== pb) return pa - pb;
+
+    const da = a.fechaLimite ? new Date(a.fechaLimite).getTime() : Infinity;
+    const dbb = b.fechaLimite ? new Date(b.fechaLimite).getTime() : Infinity;
+    if (da !== dbb) return da - dbb;
+
+    return new Date(b.fechaCreacion || 0) - new Date(a.fechaCreacion || 0);
+}
+
+// Agrupa por expediente. Cada grupo se ordena por urgencia, y los grupos entre
+// sí por su pendiente más urgente, para que el caso que más apremia quede
+// arriba. "Sin expediente" siempre al final.
+function agruparPendientesPorExpediente(lista) {
+    const grupos = new Map();
+
+    for (const p of lista) {
+        let clave, titulo, subtitulo, expedienteId = null;
+        if (p.expedienteId != null) {
+            clave = 'exp:' + p.expedienteId;
+            const exp = _expedienteDePendiente(p);
+            titulo = exp ? (exp.numero || exp.nombre || 'Expediente') : 'Expediente eliminado';
+            subtitulo = exp ? (exp.juzgado || '') : 'El expediente ya no existe';
+            expedienteId = p.expedienteId;
+        } else if (p.expedienteTexto) {
+            clave = 'txt:' + p.expedienteTexto.toLowerCase();
+            titulo = p.expedienteTexto;
+            subtitulo = 'Referencia libre';
+        } else {
+            clave = 'zz:general';
+            titulo = 'Sin expediente';
+            subtitulo = '';
+        }
+
+        if (!grupos.has(clave)) {
+            grupos.set(clave, { clave, titulo, subtitulo, expedienteId, items: [] });
+        }
+        grupos.get(clave).items.push(p);
+    }
+
+    const arreglo = Array.from(grupos.values());
+    for (const g of arreglo) {
+        g.items.sort(compararPendientes);
+        g.abiertos = g.items.filter(x => !x.completado).length;
+        // items ya está ordenado por urgencia: el primero es el más apremiante.
+        g.masUrgente = g.items[0] || null;
+    }
+
+    arreglo.sort((a, b) => {
+        // "Sin expediente" siempre al final, sin competir por urgencia.
+        const ga = a.clave === 'zz:general' ? 1 : 0;
+        const gb = b.clave === 'zz:general' ? 1 : 0;
+        if (ga !== gb) return ga - gb;
+        if (!a.masUrgente || !b.masUrgente) return 0;
+        return compararPendientes(a.masUrgente, b.masUrgente);
+    });
+    return arreglo;
+}
+
+// ==================== PENDIENTES: RENDER ====================
+
+function _chipPrioridadHTML(pendiente) {
+    const info = PRIORIDADES_PENDIENTE[pendiente.prioridad];
+    if (!info) return '';
+    return `<span class="pendiente-prioridad prioridad-${pendiente.prioridad}">${info.icono} ${info.etiqueta}</span>`;
+}
+
+function _pendienteItemHTML(p, mostrarExpediente) {
+    const venc = _etiquetaVencimientoPendiente(p);
+    const vencido = venc.clase === 'vencido' && !p.completado;
+    return `
+        <div class="pendiente-item${p.completado ? ' completado' : ''}${vencido ? ' vencido' : ''} prio-${p.prioridad || 'ninguna'}" data-id="${p.id}">
+            <label class="pendiente-check" title="${p.completado ? 'Reabrir' : 'Marcar como terminado'}">
+                <input type="checkbox" ${p.completado ? 'checked' : ''} onchange="togglePendiente(${p.id}, this.checked)">
+            </label>
+            <div class="pendiente-cuerpo">
+                <div class="pendiente-titulo">${escapeText(p.titulo)}</div>
+                ${p.descripcion ? `<div class="pendiente-descripcion">${escapeText(p.descripcion)}</div>` : ''}
+                <div class="pendiente-meta">
+                    ${_chipPrioridadHTML(p)}
+                    ${mostrarExpediente ? `<span class="pendiente-expediente">📁 ${escapeText(_nombreExpedientePendiente(p))}</span>` : ''}
+                    ${venc.texto ? `<span class="pendiente-fecha ${venc.clase}">📅 ${escapeText(venc.texto)}</span>` : ''}
+                    ${p.completado && p.fechaCompletado ? `<span class="pendiente-hecho">✔️ ${formatearFecha(p.fechaCompletado)}</span>` : ''}
+                </div>
+            </div>
+            <div class="pendiente-acciones">
+                <button class="btn btn-sm btn-secondary" onclick="mostrarFormularioPendiente(${p.id})" title="Editar">✏️</button>
+                <button class="btn btn-sm btn-danger" onclick="confirmarEliminarPendiente(${p.id})" title="Eliminar">🗑️</button>
+            </div>
+        </div>`;
+}
+
+function agrupacionActiva() {
+    const el = document.getElementById('agrupar-pendientes');
+    return el ? el.checked : true;
+}
+
+function toggleAgrupacionPendientes() {
+    try { localStorage.setItem('pendientesAgrupados', agrupacionActiva() ? '1' : '0'); } catch (e) {}
+    renderizarPendientes();
+}
+
+function renderizarPendientes() {
     const lista = document.getElementById('lista-pendientes');
     const count = document.getElementById('count-pendientes');
     if (!lista) return;
 
-    const texto = (document.getElementById('buscar-pendiente')?.value || '').trim().toLowerCase();
+    const texto = _normalizarBusqueda(document.getElementById('buscar-pendiente')?.value || '');
     const filtroExp = document.getElementById('filtro-expediente-pendiente')?.value || '';
     const estado = document.getElementById('filtro-estado-pendiente')?.value || 'abiertos';
+    const filtroPrioridad = document.getElementById('filtro-prioridad-pendiente')?.value || '';
 
-    const expedientes = await obtenerExpedientes().catch(() => []);
-
-    let visibles = pendientesCache.filter(p => {
+    const visibles = pendientesCache.filter(p => {
         if (estado === 'abiertos' && p.completado) return false;
         if (estado === 'completados' && !p.completado) return false;
         if (filtroExp && String(p.expedienteId ?? '') !== filtroExp) return false;
+        if (filtroPrioridad === '__sin__') {
+            if (PRIORIDADES_PENDIENTE[p.prioridad]) return false;
+        } else if (filtroPrioridad && p.prioridad !== filtroPrioridad) {
+            return false;
+        }
         if (texto) {
-            const heno = `${p.titulo || ''} ${p.descripcion || ''} ${_nombreExpedientePendiente(p, expedientes)}`.toLowerCase();
+            const exp = _expedienteDePendiente(p);
+            const heno = _normalizarBusqueda(
+                `${p.titulo || ''} ${p.descripcion || ''} ${_nombreExpedientePendiente(p)} ` +
+                (exp ? textoBuscableExpediente(exp) : '')
+            );
             if (!heno.includes(texto)) return false;
         }
         return true;
     });
 
-    // Los que tienen fecha van primero y en orden de urgencia; los que no,
-    // después por fecha de creación. Los terminados, al final.
-    visibles.sort((a, b) => {
-        if (!!a.completado !== !!b.completado) return a.completado ? 1 : -1;
-        const da = a.fechaLimite ? new Date(a.fechaLimite).getTime() : Infinity;
-        const dbb = b.fechaLimite ? new Date(b.fechaLimite).getTime() : Infinity;
-        if (da !== dbb) return da - dbb;
-        return new Date(b.fechaCreacion || 0) - new Date(a.fechaCreacion || 0);
-    });
-
     if (count) {
-        count.textContent = `${visibles.length} pendiente${visibles.length !== 1 ? 's' : ''}`;
+        const vencidos = visibles.filter(p => !p.completado && (diasParaPendiente(p) ?? 1) < 0).length;
+        count.textContent = `${visibles.length} pendiente${visibles.length !== 1 ? 's' : ''}` +
+            (vencidos > 0 ? ` · ${vencidos} vencido${vencidos !== 1 ? 's' : ''}` : '');
     }
 
     if (visibles.length === 0) {
@@ -1949,39 +2113,48 @@ async function renderizarPendientes() {
         return;
     }
 
-    lista.innerHTML = visibles.map(p => {
-        const venc = _etiquetaVencimientoPendiente(p);
-        const expNombre = _nombreExpedientePendiente(p, expedientes);
-        return `
-        <div class="pendiente-item${p.completado ? ' completado' : ''}${venc.clase === 'vencido' && !p.completado ? ' vencido' : ''}" data-id="${p.id}">
-            <label class="pendiente-check" title="${p.completado ? 'Reabrir' : 'Marcar como terminado'}">
-                <input type="checkbox" ${p.completado ? 'checked' : ''} onchange="togglePendiente(${p.id}, this.checked)">
-            </label>
-            <div class="pendiente-cuerpo">
-                <div class="pendiente-titulo">${escapeText(p.titulo)}</div>
-                ${p.descripcion ? `<div class="pendiente-descripcion">${escapeText(p.descripcion)}</div>` : ''}
-                <div class="pendiente-meta">
-                    <span class="pendiente-expediente">📁 ${escapeText(expNombre)}</span>
-                    ${venc.texto ? `<span class="pendiente-fecha ${venc.clase}">📅 ${escapeText(venc.texto)}</span>` : ''}
-                    ${p.completado && p.fechaCompletado ? `<span class="pendiente-hecho">✔️ ${formatearFecha(p.fechaCompletado)}</span>` : ''}
+    // Agrupado por expediente, o lista plana ordenada solo por urgencia cuando
+    // lo que interesa es "qué es lo más apremiante de todo".
+    if (!agrupacionActiva()) {
+        lista.innerHTML = visibles.slice().sort(compararPendientes)
+            .map(p => _pendienteItemHTML(p, true)).join('');
+        return;
+    }
+
+    lista.innerHTML = agruparPendientesPorExpediente(visibles).map(g => `
+        <div class="pendiente-grupo" data-clave="${escapeText(g.clave)}">
+            <div class="pendiente-grupo-header" onclick="togglePendienteGrupo(this)" role="button" tabindex="0">
+                <span class="pendiente-grupo-flecha">▾</span>
+                <div class="pendiente-grupo-titulo">
+                    📁 ${escapeText(g.titulo)}
+                    ${g.subtitulo ? `<small>${escapeText(g.subtitulo)}</small>` : ''}
                 </div>
+                <span class="pendiente-grupo-conteo">${g.abiertos > 0 ? `${g.abiertos} por hacer` : 'al día'}</span>
+                ${g.expedienteId != null ? `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation(); mostrarFormularioPendiente(null, ${g.expedienteId})" title="Agregar pendiente a este expediente">➕</button>` : ''}
             </div>
-            <div class="pendiente-acciones">
-                <button class="btn btn-sm btn-secondary" onclick="mostrarFormularioPendiente(${p.id})" title="Editar">✏️</button>
-                <button class="btn btn-sm btn-danger" onclick="confirmarEliminarPendiente(${p.id})" title="Eliminar">🗑️</button>
+            <div class="pendiente-grupo-items">
+                ${g.items.map(p => _pendienteItemHTML(p, false)).join('')}
             </div>
-        </div>`;
-    }).join('');
+        </div>`).join('');
+}
+
+function togglePendienteGrupo(header) {
+    const grupo = header.closest('.pendiente-grupo');
+    if (grupo) grupo.classList.toggle('plegado');
 }
 
 // Cuenta de pendientes sin terminar, para los badges de navegación.
 function actualizarBadgePendientes() {
     const abiertos = pendientesCache.filter(p => !p.completado).length;
+    const vencidos = pendientesCache.filter(p => !p.completado && (diasParaPendiente(p) ?? 1) < 0).length;
     ['nav-badge-pendientes', 'nav-badge-pendientes-movil'].forEach(id => {
         const badge = document.getElementById(id);
         if (!badge) return;
         badge.style.display = abiertos > 0 ? '' : 'none';
         badge.textContent = abiertos;
+        // Rojo si algo ya venció: no es lo mismo tener tareas que ir tarde.
+        badge.classList.toggle('vencido', vencidos > 0);
+        badge.title = vencidos > 0 ? `${vencidos} pendiente(s) vencido(s)` : `${abiertos} pendiente(s) por hacer`;
     });
 }
 
@@ -1994,23 +2167,131 @@ function actualizarSelectExpedientesPendientes() {
     const select = document.getElementById('filtro-expediente-pendiente');
     if (!select) return;
     const previo = select.value;
-    obtenerExpedientes().then(exps => {
-        select.innerHTML = '<option value="">Todos los expedientes</option>' +
-            exps.map(e => `<option value="${e.id}">${escapeText(e.numero || e.nombre)}</option>`).join('');
-        if (previo) select.value = previo;
-    }).catch(() => {});
+    select.innerHTML = '<option value="">Todos los expedientes</option>' +
+        expedientesCachePendientes.map(e => `<option value="${e.id}">${escapeText(e.numero || e.nombre)}</option>`).join('');
+    if (previo) select.value = previo;
 }
+
+// ==================== PENDIENTES: SELECTOR DE EXPEDIENTE BUSCABLE ====================
+// Un <select> con cientos de expedientes es inservible. Este combo filtra por
+// cualquier dato del expediente: número, nombre, juzgado, partes, categoría,
+// comentario o carpeta.
+
+let comboExpedienteOpciones = [];
+let comboExpedienteIndice = -1;
+
+function _opcionesComboExpediente() {
+    const opciones = [
+        { valor: '', etiqueta: 'General (sin expediente)', detalle: 'El pendiente no se liga a ningún expediente', buscable: 'general sin expediente' }
+    ];
+    for (const e of expedientesCachePendientes) {
+        opciones.push({
+            valor: String(e.id),
+            etiqueta: e.numero || e.nombre || 'Expediente',
+            detalle: [e.nombre && e.numero ? e.nombre : '', e.juzgado, e.categoria].filter(Boolean).join(' · '),
+            buscable: _normalizarBusqueda(textoBuscableExpediente(e))
+        });
+    }
+    opciones.push({ valor: '__custom__', etiqueta: '✏️ Otro (escribir manualmente)', detalle: 'Una referencia libre, sin expediente registrado', buscable: 'otro manual libre' });
+    return opciones;
+}
+
+function filtrarComboExpediente() {
+    const input = document.getElementById('pendiente-exp-buscar');
+    const cont = document.getElementById('pendiente-combo-lista');
+    if (!input || !cont) return;
+
+    const q = _normalizarBusqueda(input.value);
+    // Se muestran todas las opciones cuando no hay texto, para que el combo
+    // también sirva como lista desplegable normal.
+    const coincidencias = q
+        ? comboExpedienteOpciones.filter(o => _normalizarBusqueda(o.etiqueta).includes(q) || o.buscable.includes(q))
+        : comboExpedienteOpciones;
+
+    comboExpedienteIndice = -1;
+    cont.innerHTML = coincidencias.length === 0
+        ? '<div class="combo-vacio">Ningún expediente coincide</div>'
+        : coincidencias.slice(0, 50).map((o, i) => `
+            <div class="combo-opcion" data-valor="${escapeText(o.valor)}" data-indice="${i}"
+                 onmousedown="event.preventDefault(); seleccionarComboExpediente(this.dataset.valor)">
+                <div class="combo-etiqueta">${escapeText(o.etiqueta)}</div>
+                ${o.detalle ? `<div class="combo-detalle">${escapeText(o.detalle)}</div>` : ''}
+            </div>`).join('');
+    cont.style.display = 'block';
+}
+
+function abrirComboExpediente() {
+    filtrarComboExpediente();
+}
+
+function cerrarComboExpediente() {
+    const cont = document.getElementById('pendiente-combo-lista');
+    if (cont) cont.style.display = 'none';
+}
+
+function seleccionarComboExpediente(valor) {
+    const oculto = document.getElementById('pendiente-expediente');
+    const input = document.getElementById('pendiente-exp-buscar');
+    const opcion = comboExpedienteOpciones.find(o => o.valor === valor);
+    if (!oculto || !input || !opcion) return;
+
+    oculto.value = valor;
+    input.value = valor === '' ? '' : opcion.etiqueta;
+    cerrarComboExpediente();
+
+    const grupoLibre = document.getElementById('pendiente-expediente-custom-group');
+    if (grupoLibre) grupoLibre.style.display = valor === '__custom__' ? 'block' : 'none';
+    if (valor === '__custom__') {
+        const libre = document.getElementById('pendiente-expediente-custom');
+        if (libre) libre.focus();
+    }
+}
+
+// Flechas para recorrer, Enter para elegir, Escape para cerrar.
+function navegarComboExpediente(event) {
+    const cont = document.getElementById('pendiente-combo-lista');
+    if (!cont) return;
+    const opciones = Array.from(cont.querySelectorAll('.combo-opcion'));
+
+    if (event.key === 'Escape') { cerrarComboExpediente(); return; }
+    if (event.key === 'Enter') {
+        if (cont.style.display !== 'none' && comboExpedienteIndice >= 0 && opciones[comboExpedienteIndice]) {
+            event.preventDefault();
+            seleccionarComboExpediente(opciones[comboExpedienteIndice].dataset.valor);
+        }
+        return;
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+
+    event.preventDefault();
+    if (cont.style.display === 'none') filtrarComboExpediente();
+    if (opciones.length === 0) return;
+
+    comboExpedienteIndice += event.key === 'ArrowDown' ? 1 : -1;
+    if (comboExpedienteIndice < 0) comboExpedienteIndice = opciones.length - 1;
+    if (comboExpedienteIndice >= opciones.length) comboExpedienteIndice = 0;
+
+    opciones.forEach((o, i) => o.classList.toggle('activa', i === comboExpedienteIndice));
+    opciones[comboExpedienteIndice].scrollIntoView({ block: 'nearest' });
+}
+
+// ==================== PENDIENTES: FORMULARIO ====================
 
 async function mostrarFormularioPendiente(id = null, expedienteIdPrefijado = null) {
     const pendiente = id ? await obtenerPendiente(id) : null;
-    const exps = await obtenerExpedientes().catch(() => []);
+    // Se relee por si la caché quedó atrás respecto a un expediente recién creado.
+    expedientesCachePendientes = await obtenerExpedientes().catch(() => expedientesCachePendientes);
+    comboExpedienteOpciones = _opcionesComboExpediente();
 
-    const expedienteSel = pendiente ? pendiente.expedienteId : expedienteIdPrefijado;
-    const selectHtml = '<option value="">General (sin expediente)</option>' +
-        '<option value="__custom__">✏️ Otro (escribir manualmente)</option>' +
-        exps.map(e =>
-            `<option value="${e.id}"${String(expedienteSel) === String(e.id) ? ' selected' : ''}>${escapeText(e.numero || e.nombre)} - ${escapeText(e.juzgado || '')}</option>`
-        ).join('');
+    const expedienteSel = pendiente
+        ? (pendiente.expedienteTexto ? '__custom__' : (pendiente.expedienteId != null ? String(pendiente.expedienteId) : ''))
+        : (expedienteIdPrefijado != null ? String(expedienteIdPrefijado) : '');
+
+    const opcionSel = comboExpedienteOpciones.find(o => o.valor === expedienteSel);
+    // Si el expediente ya no existe se avisa, en vez de caer en silencio a
+    // "General" y perder la relación al guardar.
+    const expedienteHuerfano = !opcionSel && expedienteSel !== '';
+    const textoCombo = opcionSel && opcionSel.valor !== '' ? opcionSel.etiqueta : '';
 
     // El input datetime-local espera hora local sin zona; el valor guardado es ISO.
     let valorFecha = '';
@@ -2022,35 +2303,57 @@ async function mostrarFormularioPendiente(id = null, expedienteIdPrefijado = nul
         }
     }
 
+    const prioridadSel = (pendiente && pendiente.prioridad) || '';
+    const opcionesPrioridad = ['', 'alta', 'media', 'baja'].map(v => {
+        const info = PRIORIDADES_PENDIENTE[v];
+        const etiqueta = info ? `${info.icono} ${info.etiqueta}` : '— Sin prioridad —';
+        return `<option value="${v}"${prioridadSel === v ? ' selected' : ''}>${etiqueta}</option>`;
+    }).join('');
+
     document.getElementById('modal-titulo').textContent = pendiente ? 'Editar Pendiente' : 'Nuevo Pendiente';
     document.getElementById('modal-body').innerHTML = `
         <form id="pendiente-form" onsubmit="guardarPendiente(event)">
             <input type="hidden" id="pendiente-id" value="${pendiente ? pendiente.id : ''}">
             <div class="form-group">
-                <label>Expediente (opcional)</label>
-                <select id="pendiente-expediente" onchange="toggleExpedienteCustom('pendiente')">
-                    ${selectHtml}
-                </select>
+                <label for="pendiente-exp-buscar">Expediente (opcional)</label>
+                <div class="combo-expediente">
+                    <input type="text" id="pendiente-exp-buscar" autocomplete="off"
+                           placeholder="Busca por número, nombre, juzgado, parte..."
+                           value="${escapeText(textoCombo)}"
+                           oninput="filtrarComboExpediente()"
+                           onfocus="abrirComboExpediente()"
+                           onblur="cerrarComboExpediente()"
+                           onkeydown="navegarComboExpediente(event)">
+                    <input type="hidden" id="pendiente-expediente" value="${escapeText(expedienteHuerfano ? '' : expedienteSel)}">
+                    <div class="combo-lista" id="pendiente-combo-lista" style="display:none;"></div>
+                </div>
+                ${expedienteHuerfano ? '<small class="form-hint aviso">El expediente de este pendiente ya no existe. Elige otro o déjalo como general.</small>' : '<small class="form-hint">Escribe cualquier dato del expediente: número, nombre, juzgado, parte o carpeta.</small>'}
             </div>
-            <div class="form-group" id="pendiente-expediente-custom-group" style="display: ${pendiente && pendiente.expedienteTexto ? '' : 'none'};">
+            <div class="form-group" id="pendiente-expediente-custom-group" style="display: ${pendiente && pendiente.expedienteTexto ? 'block' : 'none'};">
                 <label>Número de expediente o tema</label>
                 <input type="text" id="pendiente-expediente-custom" placeholder="Ej: 123/2025, Reunión cliente, etc."
                        value="${pendiente ? escapeText(pendiente.expedienteTexto || '') : ''}">
             </div>
             <div class="form-group">
-                <label>¿Qué hay que hacer? *</label>
+                <label for="pendiente-titulo">¿Qué hay que hacer? *</label>
                 <input type="text" id="pendiente-titulo" placeholder="Ej: Presentar contestación de demanda" required
                        value="${pendiente ? escapeText(pendiente.titulo || '') : ''}">
             </div>
             <div class="form-group">
-                <label>Detalle (opcional)</label>
+                <label for="pendiente-descripcion">Detalle (opcional)</label>
                 <textarea id="pendiente-descripcion" rows="3" placeholder="Notas sobre este pendiente...">${pendiente ? escapeText(pendiente.descripcion || '') : ''}</textarea>
             </div>
-            <div class="form-group">
-                <label>Fecha límite (opcional)</label>
-                <input type="datetime-local" id="pendiente-fecha" value="${valorFecha}">
-                <small class="form-hint">Si le pones fecha, aparece en el calendario y te avisa. Déjala vacía si no aplica.</small>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="pendiente-prioridad">Prioridad</label>
+                    <select id="pendiente-prioridad">${opcionesPrioridad}</select>
+                </div>
+                <div class="form-group">
+                    <label for="pendiente-fecha">Fecha límite (opcional)</label>
+                    <input type="datetime-local" id="pendiente-fecha" value="${valorFecha}">
+                </div>
             </div>
+            <small class="form-hint">Con fecha, el pendiente aparece en el calendario y te avisa. Sin ella, es solo una tarea del expediente.</small>
         </form>
     `;
     document.getElementById('modal-footer').innerHTML = `
@@ -2058,11 +2361,14 @@ async function mostrarFormularioPendiente(id = null, expedienteIdPrefijado = nul
         <button class="btn btn-primary" onclick="document.getElementById('pendiente-form').requestSubmit()">💾 Guardar</button>
     `;
 
-    if (pendiente && pendiente.expedienteTexto) {
-        document.getElementById('pendiente-expediente').value = '__custom__';
-    }
-
     abrirModal();
+    // Si ya se sabe el expediente (se edita, o se creó desde su grupo), el
+    // cursor va a lo que falta escribir; si no, al buscador de expediente.
+    setTimeout(() => {
+        const yaHayExpediente = !!pendiente || expedienteSel !== '';
+        const foco = document.getElementById(yaHayExpediente ? 'pendiente-titulo' : 'pendiente-exp-buscar');
+        if (foco) foco.focus();
+    }, 60);
 }
 
 async function guardarPendiente(event) {
@@ -2072,6 +2378,7 @@ async function guardarPendiente(event) {
     const titulo = document.getElementById('pendiente-titulo').value.trim();
     const descripcion = document.getElementById('pendiente-descripcion').value.trim();
     const fecha = document.getElementById('pendiente-fecha').value;
+    const prioridad = document.getElementById('pendiente-prioridad').value;
     const expedienteSelect = document.getElementById('pendiente-expediente').value;
     const expedienteCustom = document.getElementById('pendiente-expediente-custom')?.value?.trim() || '';
 
@@ -2079,18 +2386,23 @@ async function guardarPendiente(event) {
         mostrarToast('Escribe qué hay que hacer', 'error');
         return;
     }
+    if (expedienteSelect === '__custom__' && !expedienteCustom) {
+        mostrarToast('Escribe la referencia del expediente o elige uno de la lista', 'error');
+        return;
+    }
 
     let expedienteId = null;
     let expedienteTexto = null;
-    if (expedienteSelect === '__custom__' && expedienteCustom) {
+    if (expedienteSelect === '__custom__') {
         expedienteTexto = expedienteCustom;
-    } else if (expedienteSelect && expedienteSelect !== '__custom__') {
+    } else if (expedienteSelect) {
         expedienteId = parseInt(expedienteSelect);
     }
 
     const datos = {
         titulo,
         descripcion,
+        prioridad,
         expedienteId,
         expedienteTexto,
         fechaLimite: fecha ? new Date(fecha).toISOString() : null

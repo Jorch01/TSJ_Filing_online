@@ -4281,3 +4281,140 @@ textarea:focus {
         justify-content: flex-end;
     }
 }
+
+/* ==================== PENDIENTES: PRIORIDAD Y AGRUPACIÓN ==================== */
+
+/* La prioridad se lee por el borde izquierdo además del chip, para no depender
+   solo del color de una etiqueta pequeña. */
+.pendiente-item.prio-alta  { border-left-color: #d32f2f; }
+.pendiente-item.prio-media { border-left-color: #f9a825; }
+.pendiente-item.prio-baja  { border-left-color: #1976d2; }
+.pendiente-item.vencido    { border-left-color: #dc3545; }
+
+.pendiente-prioridad {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.05rem 0.4rem;
+    border-radius: 10px;
+    border: 1px solid transparent;
+}
+.pendiente-prioridad.prioridad-alta  { background: rgba(211, 47, 47, 0.12);  color: #b71c1c; border-color: rgba(211, 47, 47, 0.3); }
+.pendiente-prioridad.prioridad-media { background: rgba(249, 168, 37, 0.15); color: #8d6e00; border-color: rgba(249, 168, 37, 0.35); }
+.pendiente-prioridad.prioridad-baja  { background: rgba(25, 118, 210, 0.12); color: #0d47a1; border-color: rgba(25, 118, 210, 0.3); }
+
+[data-theme="dark"] .pendiente-prioridad.prioridad-alta  { color: #ff8a80; }
+[data-theme="dark"] .pendiente-prioridad.prioridad-media { color: #ffd54f; }
+[data-theme="dark"] .pendiente-prioridad.prioridad-baja  { color: #90caf9; }
+
+/* Grupos por expediente */
+.pendiente-grupo {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--bg-primary);
+}
+
+.pendiente-grupo-header {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.6rem 0.85rem;
+    background: var(--bg-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.pendiente-grupo-header:hover { filter: brightness(0.97); }
+
+.pendiente-grupo-flecha {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    transition: transform 0.15s ease;
+}
+
+.pendiente-grupo.plegado .pendiente-grupo-flecha { transform: rotate(-90deg); }
+.pendiente-grupo.plegado .pendiente-grupo-items { display: none; }
+
+.pendiente-grupo-titulo {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.pendiente-grupo-titulo small {
+    display: block;
+    font-weight: 400;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.pendiente-grupo-conteo {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.pendiente-grupo-items {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.5rem;
+}
+
+.pendiente-grupo-items .pendiente-item { border-radius: 6px; }
+
+/* Selector de expediente con búsqueda */
+.combo-expediente { position: relative; }
+
+.combo-lista {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    max-height: 260px;
+    overflow-y: auto;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin-top: 2px;
+}
+
+.combo-opcion {
+    padding: 0.45rem 0.7rem;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.combo-opcion:last-child { border-bottom: none; }
+.combo-opcion:hover,
+.combo-opcion.activa { background: var(--bg-secondary); }
+
+.combo-etiqueta { font-size: 0.88rem; font-weight: 600; color: var(--text-primary); }
+.combo-detalle  { font-size: 0.75rem; color: var(--text-secondary); }
+.combo-vacio    { padding: 0.6rem 0.7rem; font-size: 0.82rem; color: var(--text-secondary); }
+
+.form-hint.aviso { color: #e65100; font-weight: 600; }
+[data-theme="dark"] .form-hint.aviso { color: #ffb74d; }
+
+/* Contador de navegación en rojo cuando algo ya venció */
+.nav-badge.vencido { background: #d32f2f; }
+[data-theme="dark"] .nav-badge.vencido { background: #ff6b6b; color: #1a1a2e; }
+
+.filtro-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.filtro-toggle input { width: 1rem; height: 1rem; cursor: pointer; accent-color: var(--primary); }

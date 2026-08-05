@@ -259,6 +259,15 @@ async function eliminarNotaCore(id) {
 /** Tipo de evento con el que se refleja un pendiente en el calendario. */
 const CORE_TIPO_EVENTO_PENDIENTE = 'recordatorio';
 
+// Prioridades válidas, de más a menos urgente. Cualquier otro valor (incluida
+// la cadena vacía) significa "sin asignar", que es un estado legítimo: no todo
+// pendiente merece que se decida su urgencia.
+const CORE_PRIORIDADES_PENDIENTE = ['alta', 'media', 'baja'];
+
+function normalizarPrioridadCore(valor) {
+    return CORE_PRIORIDADES_PENDIENTE.includes(valor) ? valor : '';
+}
+
 function _corePendienteDescripcionEvento(datos) {
     const base = 'Pendiente del expediente.';
     return datos.descripcion ? base + '\n\n' + datos.descripcion : base;
@@ -323,6 +332,7 @@ async function crearPendienteCore(datos) {
         expedienteTexto: datos.expedienteTexto || null,
         fechaLimite: datos.fechaLimite || null,
         todoElDia: datos.todoElDia !== false,
+        prioridad: normalizarPrioridadCore(datos.prioridad),
         completado: false,
         fechaCompletado: null,
         eventoId: null
@@ -350,6 +360,7 @@ async function actualizarPendienteCore(id, cambios) {
 
     const aplicar = { ...cambios };
     if (aplicar.titulo !== undefined) aplicar.titulo = String(aplicar.titulo).trim();
+    if (aplicar.prioridad !== undefined) aplicar.prioridad = normalizarPrioridadCore(aplicar.prioridad);
     if (aplicar.expedienteId !== undefined) {
         aplicar.expedienteId = aplicar.expedienteId != null && aplicar.expedienteId !== ''
             ? parseInt(aplicar.expedienteId) : null;
