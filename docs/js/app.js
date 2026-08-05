@@ -182,9 +182,12 @@ async function inicializarApp() {
         try { await cargarCarpetasUI(); } catch (e) { console.warn('No se cargaron carpetas:', e); }
     }
     await cargarEstadisticas();
+    // Los pendientes van antes que los expedientes: la tarjeta de cada
+    // expediente pinta cuántos tiene por hacer leyendo pendientesCache, así
+    // que si se cargan después, las tarjetas quedan sin distintivo.
+    await cargarPendientes();
     await cargarExpedientes();
     await cargarNotas();
-    await cargarPendientes();
     await cargarEventos();
     renderizarCalendario();
 
