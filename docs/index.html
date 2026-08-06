@@ -671,7 +671,7 @@
             <div class="filters-section">
                 <div class="search-box">
                     <span class="search-icon">🔍</span>
-                    <input type="text" id="buscar-pendiente" placeholder="Buscar pendientes..." oninput="renderizarPendientes()">
+                    <input type="text" id="buscar-pendiente" placeholder="Buscar pendientes..." oninput="renderizarPendientesDebounced()">
                 </div>
                 <select id="filtro-expediente-pendiente" onchange="renderizarPendientes()">
                     <option value="">Todos los expedientes</option>

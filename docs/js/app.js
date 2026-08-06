@@ -2006,7 +2006,12 @@ function agruparPendientesPorExpediente(lista) {
     const arreglo = Array.from(grupos.values());
     for (const g of arreglo) {
         g.items.sort(compararPendientes);
-        g.abiertos = g.items.filter(x => !x.completado).length;
+        // El conteo es de todo el expediente, no de lo que dejó ver el filtro:
+        // "2 por hacer" debe seguir diciendo 2 aunque el filtro muestre uno.
+        g.abiertos = g.expedienteId != null
+            ? pendientesCache.filter(x => !x.completado && x.expedienteId === g.expedienteId).length
+            : g.items.filter(x => !x.completado).length;
+        g.ocultos = g.abiertos - g.items.filter(x => !x.completado).length;
         // items ya está ordenado por urgencia: el primero es el más apremiante.
         g.masUrgente = g.items[0] || null;
     }
@@ -2063,6 +2068,14 @@ function agrupacionActiva() {
 function toggleAgrupacionPendientes() {
     try { localStorage.setItem('pendientesAgrupados', agrupacionActiva() ? '1' : '0'); } catch (e) {}
     renderizarPendientes();
+}
+
+// El buscador repinta y reagrupa toda la lista; con muchos pendientes hacerlo
+// en cada tecla se nota. Mismo criterio que el buscador de expedientes.
+let _filtrarPendientesTimer = null;
+function renderizarPendientesDebounced() {
+    clearTimeout(_filtrarPendientesTimer);
+    _filtrarPendientesTimer = setTimeout(() => renderizarPendientes(), 150);
 }
 
 function renderizarPendientes() {
@@ -2122,14 +2135,16 @@ function renderizarPendientes() {
     }
 
     lista.innerHTML = agruparPendientesPorExpediente(visibles).map(g => `
-        <div class="pendiente-grupo" data-clave="${escapeText(g.clave)}">
-            <div class="pendiente-grupo-header" onclick="togglePendienteGrupo(this)" role="button" tabindex="0">
+        <div class="pendiente-grupo${gruposPlegados.has(g.clave) ? ' plegado' : ''}" data-clave="${escapeText(g.clave)}">
+            <div class="pendiente-grupo-header" onclick="togglePendienteGrupo(this)"
+                 onkeydown="tecladoPendienteGrupo(event, this)"
+                 role="button" tabindex="0" aria-expanded="${gruposPlegados.has(g.clave) ? 'false' : 'true'}">
                 <span class="pendiente-grupo-flecha">▾</span>
                 <div class="pendiente-grupo-titulo">
                     📁 ${escapeText(g.titulo)}
                     ${g.subtitulo ? `<small>${escapeText(g.subtitulo)}</small>` : ''}
                 </div>
-                <span class="pendiente-grupo-conteo">${g.abiertos > 0 ? `${g.abiertos} por hacer` : 'al día'}</span>
+                <span class="pendiente-grupo-conteo">${g.abiertos > 0 ? `${g.abiertos} por hacer` : 'al día'}${g.ocultos > 0 ? ` · ${g.ocultos} fuera del filtro` : ''}</span>
                 ${g.expedienteId != null ? `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation(); mostrarFormularioPendiente(null, ${g.expedienteId})" title="Agregar pendiente a este expediente">➕</button>` : ''}
             </div>
             <div class="pendiente-grupo-items">
@@ -2138,9 +2153,25 @@ function renderizarPendientes() {
         </div>`).join('');
 }
 
+// Qué grupos están plegados. Vive fuera del DOM porque renderizarPendientes
+// reconstruye el HTML: si el estado viviera solo en la clase CSS, buscar algo
+// o terminar un pendiente volvería a desplegarlo todo.
+let gruposPlegados = new Set();
+
 function togglePendienteGrupo(header) {
     const grupo = header.closest('.pendiente-grupo');
-    if (grupo) grupo.classList.toggle('plegado');
+    if (!grupo) return;
+    const clave = grupo.dataset.clave;
+    const plegado = grupo.classList.toggle('plegado');
+    if (plegado) gruposPlegados.add(clave); else gruposPlegados.delete(clave);
+}
+
+// El encabezado es enfocable, así que también debe poder accionarse con el
+// teclado y no solo con el ratón.
+function tecladoPendienteGrupo(event, header) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    togglePendienteGrupo(header);
 }
 
 // Cuenta de pendientes sin terminar, para los badges de navegación.
@@ -2247,6 +2278,40 @@ function seleccionarComboExpediente(valor) {
     }
 }
 
+// Traduce lo que quedó escrito en el combo a una opción concreta. Se llama al
+// guardar: si el usuario escribió el expediente y no llegó a elegirlo de la
+// lista, lo escrito debe valer, no perderse en silencio.
+// Devuelve { ok: true, valor } o { ok: false, mensaje }.
+function resolverComboExpediente() {
+    const input = document.getElementById('pendiente-exp-buscar');
+    const oculto = document.getElementById('pendiente-expediente');
+    if (!input || !oculto) return { ok: true, valor: '' };
+
+    // Referencia libre: manda el campo de abajo, no lo que diga el buscador.
+    if (oculto.value === '__custom__') return { ok: true, valor: '__custom__' };
+
+    const escrito = input.value.trim();
+    if (!escrito) return { ok: true, valor: '' };   // vacío = General
+
+    // Si lo escrito es exactamente la opción ya elegida, no hay nada que hacer.
+    const elegida = comboExpedienteOpciones.find(o => o.valor === oculto.value);
+    if (elegida && elegida.valor !== '' && elegida.etiqueta === escrito) {
+        return { ok: true, valor: oculto.value };
+    }
+
+    const q = _normalizarBusqueda(escrito);
+    const coincidencias = comboExpedienteOpciones.filter(o =>
+        o.valor !== '' && (_normalizarBusqueda(o.etiqueta).includes(q) || o.buscable.includes(q)));
+
+    // Una sola coincidencia: es evidente a qué se refería.
+    if (coincidencias.length === 1) return { ok: true, valor: coincidencias[0].valor };
+
+    if (coincidencias.length === 0) {
+        return { ok: false, mensaje: `No hay ningún expediente que coincida con "${escrito}". Elígelo de la lista, usa "Otro" para una referencia libre, o deja el campo vacío.` };
+    }
+    return { ok: false, mensaje: `"${escrito}" coincide con ${coincidencias.length} expedientes. Elige uno de la lista.` };
+}
+
 // Flechas para recorrer, Enter para elegir, Escape para cerrar.
 function navegarComboExpediente(event) {
     const cont = document.getElementById('pendiente-combo-lista');
@@ -2291,7 +2356,11 @@ async function mostrarFormularioPendiente(id = null, expedienteIdPrefijado = nul
     // Si el expediente ya no existe se avisa, en vez de caer en silencio a
     // "General" y perder la relación al guardar.
     const expedienteHuerfano = !opcionSel && expedienteSel !== '';
-    const textoCombo = opcionSel && opcionSel.valor !== '' ? opcionSel.etiqueta : '';
+    // En una referencia libre se muestra el texto real, no la etiqueta genérica
+    // "Otro", que no le dice nada al usuario sobre qué guardó.
+    const textoCombo = (pendiente && pendiente.expedienteTexto)
+        ? pendiente.expedienteTexto
+        : (opcionSel && opcionSel.valor !== '' ? opcionSel.etiqueta : '');
 
     // El input datetime-local espera hora local sin zona; el valor guardado es ISO.
     let valorFecha = '';
@@ -2379,15 +2448,26 @@ async function guardarPendiente(event) {
     const descripcion = document.getElementById('pendiente-descripcion').value.trim();
     const fecha = document.getElementById('pendiente-fecha').value;
     const prioridad = document.getElementById('pendiente-prioridad').value;
-    const expedienteSelect = document.getElementById('pendiente-expediente').value;
     const expedienteCustom = document.getElementById('pendiente-expediente-custom')?.value?.trim() || '';
 
     if (!titulo) {
         mostrarToast('Escribe qué hay que hacer', 'error');
         return;
     }
+
+    // Lo escrito en el buscador manda: si no se eligió de la lista, se resuelve
+    // aquí en vez de guardar el pendiente como general sin avisar.
+    const resuelto = resolverComboExpediente();
+    if (!resuelto.ok) {
+        mostrarToast(resuelto.mensaje, 'error');
+        document.getElementById('pendiente-exp-buscar')?.focus();
+        return;
+    }
+    const expedienteSelect = resuelto.valor;
+
     if (expedienteSelect === '__custom__' && !expedienteCustom) {
         mostrarToast('Escribe la referencia del expediente o elige uno de la lista', 'error');
+        document.getElementById('pendiente-expediente-custom')?.focus();
         return;
     }
 
