@@ -4418,3 +4418,76 @@ textarea:focus {
 }
 
 .filtro-toggle input { width: 1rem; height: 1rem; cursor: pointer; accent-color: var(--primary); }
+
+/* ==================== PENDIENTES: ACCIONES RÁPIDAS ==================== */
+
+/* El chip de prioridad es accionable, así que se ve y se comporta como botón */
+button.pendiente-prioridad {
+    cursor: pointer;
+    font-family: inherit;
+    line-height: 1.4;
+    transition: filter 0.15s ease;
+}
+
+button.pendiente-prioridad:hover { filter: brightness(0.92); }
+
+button.pendiente-prioridad:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 1px;
+}
+
+/* Sin prioridad: discreto, pero visible como algo sobre lo que se puede actuar */
+.pendiente-prioridad.prioridad-ninguna {
+    background: transparent;
+    color: var(--text-secondary);
+    border-color: var(--border-color);
+    border-style: dashed;
+}
+
+/* Menú flotante de acciones rápidas */
+.menu-pendiente {
+    position: fixed;
+    z-index: 1200;
+    min-width: 170px;
+    padding: 0.25rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+.menu-pendiente-opcion {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.45rem 0.6rem;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.menu-pendiente-opcion:hover,
+.menu-pendiente-opcion:focus-visible {
+    background: var(--bg-secondary);
+    outline: none;
+}
+
+/* La opción vigente se marca, para no tener que recordarla */
+.menu-pendiente-opcion.activa {
+    font-weight: 700;
+}
+
+.menu-pendiente-opcion.activa::after {
+    content: ' ✓';
+    color: var(--primary);
+}
+
+.menu-pendiente-separador {
+    height: 1px;
+    margin: 0.25rem 0.3rem;
+    background: var(--border-color);
+}

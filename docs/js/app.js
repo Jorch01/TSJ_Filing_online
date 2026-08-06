@@ -2029,15 +2029,22 @@ function agruparPendientesPorExpediente(lista) {
 
 // ==================== PENDIENTES: RENDER ====================
 
+// El chip es un botón y siempre está: si solo apareciera cuando ya hay
+// prioridad, no habría dónde hacer clic para ponérsela a los que no la tienen.
 function _chipPrioridadHTML(pendiente) {
     const info = PRIORIDADES_PENDIENTE[pendiente.prioridad];
-    if (!info) return '';
-    return `<span class="pendiente-prioridad prioridad-${pendiente.prioridad}">${info.icono} ${info.etiqueta}</span>`;
+    const clase = info ? `prioridad-${pendiente.prioridad}` : 'prioridad-ninguna';
+    const texto = info ? `${info.icono} ${info.etiqueta}` : '○ Prioridad';
+    return `<button type="button" class="pendiente-prioridad ${clase}"
+                    onclick="menuPrioridadPendiente(this, ${pendiente.id}, event)"
+                    title="Cambiar prioridad">${texto}</button>`;
 }
 
 function _pendienteItemHTML(p, mostrarExpediente) {
     const venc = _etiquetaVencimientoPendiente(p);
     const vencido = venc.clase === 'vencido' && !p.completado;
+    // "Posponer" no describe bien ponerle la primera fecha a algo que no tenía.
+    const tituloPosponer = p.fechaLimite ? 'Posponer' : 'Ponerle fecha';
     return `
         <div class="pendiente-item${p.completado ? ' completado' : ''}${vencido ? ' vencido' : ''} prio-${p.prioridad || 'ninguna'}" data-id="${p.id}">
             <label class="pendiente-check" title="${p.completado ? 'Reabrir' : 'Marcar como terminado'}">
@@ -2054,6 +2061,7 @@ function _pendienteItemHTML(p, mostrarExpediente) {
                 </div>
             </div>
             <div class="pendiente-acciones">
+                ${p.completado ? '' : `<button class="btn btn-sm btn-outline" onclick="menuPosponerPendiente(this, ${p.id}, event)" title="${tituloPosponer}">⏰</button>`}
                 <button class="btn btn-sm btn-secondary" onclick="mostrarFormularioPendiente(${p.id})" title="Editar">✏️</button>
                 <button class="btn btn-sm btn-danger" onclick="confirmarEliminarPendiente(${p.id})" title="Eliminar">🗑️</button>
             </div>
@@ -2082,6 +2090,10 @@ function renderizarPendientes() {
     const lista = document.getElementById('lista-pendientes');
     const count = document.getElementById('count-pendientes');
     if (!lista) return;
+
+    // El menú flotante se ancla a una fila; si la lista se repinta por detrás
+    // (una sincronización, por ejemplo) quedaría flotando sobre nada.
+    cerrarMenuPendiente();
 
     const texto = _normalizarBusqueda(document.getElementById('buscar-pendiente')?.value || '');
     const filtroExp = document.getElementById('filtro-expediente-pendiente')?.value || '';
@@ -2338,6 +2350,153 @@ function navegarComboExpediente(event) {
 
     opciones.forEach((o, i) => o.classList.toggle('activa', i === comboExpedienteIndice));
     opciones[comboExpedienteIndice].scrollIntoView({ block: 'nearest' });
+}
+
+// ==================== PENDIENTES: ACCIONES RÁPIDAS ====================
+// Cambiar prioridad y posponer sin abrir el formulario. Un solo menú flotante
+// anclado al botón que lo abrió: meter un menú por fila haría pesada una lista
+// larga, y un ciclo de clics obligaría a adivinar cuántos faltan.
+
+let _menuPendienteEl = null;
+
+function cerrarMenuPendiente() {
+    if (_menuPendienteEl) { _menuPendienteEl.remove(); _menuPendienteEl = null; }
+    document.removeEventListener('mousedown', _cerrarMenuSiFuera, true);
+    document.removeEventListener('keydown', _cerrarMenuConEscape, true);
+    window.removeEventListener('scroll', cerrarMenuPendiente, true);
+}
+
+function _cerrarMenuSiFuera(e) {
+    if (_menuPendienteEl && !_menuPendienteEl.contains(e.target)) cerrarMenuPendiente();
+}
+
+function _cerrarMenuConEscape(e) {
+    if (e.key === 'Escape') { e.stopPropagation(); cerrarMenuPendiente(); }
+}
+
+// opciones: [{ etiqueta, activa?, alAccionar }]
+function abrirMenuPendiente(boton, opciones) {
+    cerrarMenuPendiente();
+
+    const menu = document.createElement('div');
+    menu.className = 'menu-pendiente';
+    menu.setAttribute('role', 'menu');
+    opciones.forEach((op, i) => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'menu-pendiente-opcion' + (op.activa ? ' activa' : '');
+        item.textContent = op.etiqueta;
+        item.setAttribute('role', 'menuitem');
+        item.onclick = () => { cerrarMenuPendiente(); op.alAccionar(); };
+        menu.appendChild(item);
+        if (op.separadorDespues && i < opciones.length - 1) {
+            menu.appendChild(Object.assign(document.createElement('div'), { className: 'menu-pendiente-separador' }));
+        }
+    });
+
+    document.body.appendChild(menu);
+    _menuPendienteEl = menu;
+
+    // Se ancla al botón y se mantiene dentro de la ventana.
+    const r = boton.getBoundingClientRect();
+    const ancho = menu.offsetWidth;
+    const alto = menu.offsetHeight;
+    let izq = r.right - ancho;
+    let arr = r.bottom + 4;
+    if (izq < 8) izq = 8;
+    if (izq + ancho > window.innerWidth - 8) izq = window.innerWidth - ancho - 8;
+    if (arr + alto > window.innerHeight - 8) arr = Math.max(8, r.top - alto - 4);
+    menu.style.left = izq + 'px';
+    menu.style.top = arr + 'px';
+
+    const primera = menu.querySelector('.menu-pendiente-opcion');
+    if (primera) primera.focus();
+
+    document.addEventListener('mousedown', _cerrarMenuSiFuera, true);
+    document.addEventListener('keydown', _cerrarMenuConEscape, true);
+    window.addEventListener('scroll', cerrarMenuPendiente, true);
+}
+
+function menuPrioridadPendiente(boton, id, event) {
+    if (event) event.stopPropagation();
+    const p = pendientesCache.find(x => x.id === id);
+    if (!p) return;
+
+    const opciones = ['alta', 'media', 'baja'].map(v => ({
+        etiqueta: `${PRIORIDADES_PENDIENTE[v].icono} ${PRIORIDADES_PENDIENTE[v].etiqueta}`,
+        activa: p.prioridad === v,
+        alAccionar: () => cambiarPrioridadPendiente(id, v)
+    }));
+    opciones[opciones.length - 1].separadorDespues = true;
+    opciones.push({
+        etiqueta: 'Sin prioridad',
+        activa: !PRIORIDADES_PENDIENTE[p.prioridad],
+        alAccionar: () => cambiarPrioridadPendiente(id, '')
+    });
+    abrirMenuPendiente(boton, opciones);
+}
+
+async function cambiarPrioridadPendiente(id, prioridad) {
+    try {
+        await actualizarPendienteCore(id, { prioridad });
+        const info = PRIORIDADES_PENDIENTE[prioridad];
+        mostrarToast(info ? `Prioridad ${info.etiqueta.toLowerCase()}` : 'Prioridad quitada', 'success');
+    } catch (e) {
+        mostrarToast('Error: ' + e.message, 'error');
+    }
+}
+
+// Posponer parte de hoy cuando el pendiente ya venció o no tenía fecha; si la
+// fecha aún no llega, se corre desde ella. Aplazar por un día algo vencido
+// hace dos semanas debería dejarlo para mañana, no para hace trece días.
+function calcularNuevaFechaPendiente(pendiente, dias) {
+    const ahora = new Date();
+    let base = pendiente.fechaLimite ? new Date(pendiente.fechaLimite) : null;
+    if (!base || isNaN(base.getTime()) || base.getTime() < ahora.getTime()) {
+        base = new Date(ahora.getTime());
+        // Sin hora previa se usa media mañana, igual criterio que el asistente.
+        if (!pendiente.fechaLimite) base.setHours(9, 0, 0, 0);
+    }
+    base.setDate(base.getDate() + dias);
+    return base.toISOString();
+}
+
+function menuPosponerPendiente(boton, id, event) {
+    if (event) event.stopPropagation();
+    const p = pendientesCache.find(x => x.id === id);
+    if (!p) return;
+
+    const opciones = [
+        { etiqueta: '1 día más', alAccionar: () => posponerPendiente(id, 1) },
+        { etiqueta: '3 días más', alAccionar: () => posponerPendiente(id, 3) },
+        { etiqueta: '1 semana más', alAccionar: () => posponerPendiente(id, 7) },
+        { etiqueta: '1 mes más', alAccionar: () => posponerPendiente(id, 30), separadorDespues: !!p.fechaLimite }
+    ];
+    if (p.fechaLimite) {
+        opciones.push({ etiqueta: 'Quitar la fecha', alAccionar: () => quitarFechaPendiente(id) });
+    }
+    abrirMenuPendiente(boton, opciones);
+}
+
+async function posponerPendiente(id, dias) {
+    const p = pendientesCache.find(x => x.id === id);
+    if (!p) return;
+    try {
+        const nueva = calcularNuevaFechaPendiente(p, dias);
+        await actualizarPendienteCore(id, { fechaLimite: nueva });
+        mostrarToast('Pospuesto para el ' + formatearFecha(nueva), 'success');
+    } catch (e) {
+        mostrarToast('Error: ' + e.message, 'error');
+    }
+}
+
+async function quitarFechaPendiente(id) {
+    try {
+        await actualizarPendienteCore(id, { fechaLimite: null });
+        mostrarToast('Fecha quitada; sale del calendario', 'success');
+    } catch (e) {
+        mostrarToast('Error: ' + e.message, 'error');
+    }
 }
 
 // ==================== PENDIENTES: FORMULARIO ====================
