@@ -23,7 +23,7 @@
  * navegadores sin soporte (Firefox) se graba el audio y se transcribe
  * con Whisper vía Groq.
  *
- * Global expuesto: window.VOZ = { abrir, cerrar }
+ * Global expuesto: window.VOZ = { abrir, cerrar, ejecutar }
  */
 (function () {
     'use strict';
@@ -855,6 +855,20 @@
     async function ejecutarAccion(r) {
         const accion = r.accion || 'responder';
         const p = r.parametros || {};
+        if (accion === 'responder') {
+            const mensajeFinal = r.respuesta || r.resumen || 'Listo.';
+            agregarMensaje('asistente', esc(mensajeFinal));
+            hablar(mensajeFinal);
+            conversacion = [];
+            return;
+        }
+        await ejecutarAccionResuelta(accion, p);
+    }
+
+    // Ejecuta una acción ya identificada. Vive aparte de ejecutarAccion para
+    // poder reanudarla tal cual cuando el usuario elige el expediente entre
+    // varias posibilidades.
+    async function ejecutarAccionResuelta(accion, p) {
         try {
             let mensajeFinal = '';
             switch (accion) {
@@ -876,9 +890,8 @@
                 case 'buscar_tsj':          mensajeFinal = await accBuscarTSJ(p); break;
                 case 'buscar_pjf':          mensajeFinal = await accBuscarPJF(p); break;
                 case 'navegar':             mensajeFinal = accNavegar(p); break;
-                case 'responder':
                 default:
-                    mensajeFinal = r.respuesta || r.resumen || 'Listo.';
+                    mensajeFinal = 'Listo.';
                     agregarMensaje('asistente', esc(mensajeFinal));
                     hablar(mensajeFinal);
                     conversacion = [];
@@ -890,6 +903,19 @@
             }
             conversacion = [];
         } catch (e) {
+            // Pedir que se elija un expediente no es un fallo: las opciones ya
+            // están en pantalla y la acción sigue esperando.
+            if (e._esEleccion) {
+                agregarMensaje('asistente', esc(e.message));
+                hablar(e.message);
+                return;
+            }
+            if (e._esAviso) {
+                agregarMensaje('asistente', esc(e.message));
+                hablar(e.message);
+                conversacion = [];
+                return;
+            }
             console.error('[VOZ] Error ejecutando acción:', e);
             agregarMensaje('asistente', '⚠️ Error: ' + esc(e.message));
             hablar('Ocurrió un error: ' + e.message);
@@ -907,13 +933,14 @@
         const fechaInicio = new Date(p.fecha + 'T' + (hora || '09:00'));
         if (isNaN(fechaInicio.getTime())) throw new Error('Fecha inválida: ' + p.fecha);
 
+        const expEvento = await resolverExpedienteDeParametros(p, 'crear_evento');
         const nuevoId = await crearEventoCore({
             titulo: p.titulo,
             tipo,
             fechaInicio: fechaInicio.toISOString(),
             todoElDia,
-            expedienteId: p.expedienteId != null ? parseInt(p.expedienteId) : null,
-            expedienteTexto: p.expedienteTexto || null,
+            expedienteId: expEvento ? expEvento.id : null,
+            expedienteTexto: expEvento ? null : (p.expedienteTexto || null),
             descripcion: p.descripcion || ''
         });
         registrarDeshacer({ tipo: 'evento_creado', id: nuevoId, etiqueta: `evento "${p.titulo}"` });
@@ -1047,7 +1074,8 @@
     }
 
     async function accEditarExpediente(p) {
-        const id = parseInt(p.expedienteId);
+        const expRef = await resolverExpedienteDeParametros(p, 'editar_expediente', { obligatorio: true });
+        const id = expRef ? expRef.id : parseInt(p.expedienteId);
         if (!id) throw new Error('No identifiqué qué expediente editar');
         const exp = await obtenerExpediente(id);
         if (!exp) throw new Error('Expediente no encontrado');
@@ -1082,10 +1110,9 @@
     }
 
     async function accArchivarExpediente(p) {
-        const id = parseInt(p.expedienteId);
-        if (!id) throw new Error('No identifiqué qué expediente archivar');
-        const exp = await obtenerExpediente(id);
-        if (!exp) throw new Error('Expediente no encontrado');
+        const exp = await resolverExpedienteDeParametros(p, 'archivar_expediente', { obligatorio: true });
+        if (!exp) throw new Error('No identifiqué qué expediente archivar');
+        const id = exp.id;
         await archivarExpedienteCore(id, true, p.motivo || 'concluido', '');
         registrarDeshacer({ tipo: 'expediente_archivado', id, etiqueta: `archivo del expediente ${exp.numero || exp.nombre}` });
         toast('Expediente archivado', 'success');
@@ -1093,7 +1120,8 @@
     }
 
     async function accMoverACarpeta(p) {
-        const id = parseInt(p.expedienteId);
+        const expMover = await resolverExpedienteDeParametros(p, 'mover_a_carpeta', { obligatorio: true });
+        const id = expMover ? expMover.id : parseInt(p.expedienteId);
         const carpetaId = p.carpetaId != null ? parseInt(p.carpetaId) : null;
         if (!id) throw new Error('No identifiqué qué expediente mover');
         const exp = await obtenerExpediente(id);
@@ -1113,9 +1141,10 @@
 
     async function accCrearNota(p) {
         if (!p.titulo) throw new Error('Falta el título de la nota');
+        const expNota = await resolverExpedienteDeParametros(p, 'crear_nota');
         const nuevoId = await crearNotaCore({
-            expedienteId: p.expedienteId != null ? parseInt(p.expedienteId) : null,
-            expedienteTexto: p.expedienteTexto || null,
+            expedienteId: expNota ? expNota.id : null,
+            expedienteTexto: expNota ? null : (p.expedienteTexto || null),
             titulo: p.titulo,
             contenido: p.contenido || ''
         });
@@ -1138,9 +1167,10 @@
             if (isNaN(d.getTime())) throw new Error('Fecha inválida: ' + p.fecha);
             fechaLimite = d.toISOString();
         }
+        const expPend = await resolverExpedienteDeParametros(p, 'crear_pendiente');
         const nuevoId = await crearPendienteCore({
-            expedienteId: p.expedienteId != null ? parseInt(p.expedienteId) : null,
-            expedienteTexto: p.expedienteTexto || null,
+            expedienteId: expPend ? expPend.id : null,
+            expedienteTexto: expPend ? null : (p.expedienteTexto || null),
             titulo: p.titulo,
             descripcion: p.descripcion || '',
             prioridad: p.prioridad || '',
@@ -1166,9 +1196,8 @@
     async function accConsultarPendientes(p) {
         const todos = await obtenerPendientes().catch(() => []);
         let abiertos = todos.filter(x => !x.completado);
-        if (p && p.expedienteId != null) {
-            abiertos = abiertos.filter(x => x.expedienteId === parseInt(p.expedienteId));
-        }
+        const expFiltro = await resolverExpedienteDeParametros(p, 'consultar_pendientes');
+        if (expFiltro) abiertos = abiertos.filter(x => x.expedienteId === expFiltro.id);
         if (abiertos.length === 0) return 'No tienes pendientes por hacer.';
 
         // Primero lo que tiene fecha, y de eso lo más cercano.
@@ -1207,29 +1236,149 @@
         throw new Error(`Tengo ${coincidencias.length} pendientes que coinciden: ${coincidencias.slice(0, 4).map(x => x.titulo).join('; ')}. ¿Cuál?`);
     }
 
+    // ==================== REFERENCIAS A EXPEDIENTES ====================
+    // El modelo acierta el id cuando el expediente está en el catálogo y el
+    // usuario fue preciso. Cuando no —dijo un fragmento, un apellido, o el
+    // expediente quedó fuera del catálogo—, manda expedienteRef con lo que oyó
+    // y aquí se resuelve contra la base completa, archivados incluidos.
+
+    // Acción a la espera de que el usuario elija entre varios expedientes.
+    let eleccionPendiente = null;
+
+    function limpiarEleccionPendiente() { eleccionPendiente = null; }
+
+    // Error que no es un fallo: significa "hacen falta datos del usuario".
+    function ErrorEleccion(mensaje) {
+        const e = new Error(mensaje);
+        e._esEleccion = true;
+        return e;
+    }
+
+    // Desenlace esperado, no un fallo del programa: "no encontré ese
+    // expediente" es información para el usuario y no debe ensuciar la consola
+    // donde se buscan errores de verdad.
+    function ErrorAviso(mensaje) {
+        const e = new Error(mensaje);
+        e._esAviso = true;
+        return e;
+    }
+
+    /**
+     * Devuelve el expediente al que se refiere el usuario.
+     * - Si el modelo dio un id válido, ese manda.
+     * - Si dio una referencia, se resuelve contra toda la base.
+     * - Si hay varias posibilidades reales, se muestran para elegir y se deja
+     *   la acción en espera, en vez de escoger una al azar.
+     * opciones.obligatorio: si no, devuelve null cuando no hay referencia.
+     */
+    async function resolverExpedienteDeParametros(p, accion, opciones = {}) {
+        if (p && p.expedienteId != null && p.expedienteId !== '') {
+            const exp = await obtenerExpediente(parseInt(p.expedienteId)).catch(() => null);
+            if (exp) return exp;
+            // Un id que ya no existe no debe hacer fallar todo: si además vino
+            // una referencia, se intenta con ella.
+        }
+
+        const ref = (p && (p.expedienteRef || p.expedienteTexto || p.consulta)) || '';
+        if (!ref.trim()) {
+            if (opciones.obligatorio) throw new Error('¿De qué expediente?');
+            return null;
+        }
+
+        if (typeof resolverExpedientePorReferencia !== 'function') {
+            throw new Error('No pude buscar el expediente en este momento');
+        }
+        const r = await resolverExpedientePorReferencia(ref);
+
+        if (r.estado === 'unico') return r.expediente;
+
+        if (r.estado === 'ninguno') {
+            throw ErrorAviso(`No encontré ningún expediente que coincida con "${ref}". Revisa el dato o dime otro.`);
+        }
+
+        // Varias posibilidades: se ofrecen y la acción queda esperando.
+        mostrarOpcionesExpediente(r.candidatos, ref, accion, p);
+        throw ErrorEleccion(`Encontré ${r.candidatos.length} expedientes que coinciden con "${ref}". ¿Cuál de estos?`);
+    }
+
+    // Pinta los candidatos como botones y deja anotado qué hacer al elegir.
+    function mostrarOpcionesExpediente(candidatos, ref, accion, parametros) {
+        eleccionPendiente = { accion, parametros };
+
+        const div = agregarMensaje('asistente',
+            `🔎 <strong>${esc(String(candidatos.length))} expedientes coinciden con “${esc(ref)}”.</strong> Elige uno:`);
+        if (!div) return;
+
+        candidatos.slice(0, 6).forEach(c => {
+            const exp = c.expediente;
+            const fila = document.createElement('div');
+            fila.className = 'voz-resultado';
+            fila.innerHTML =
+                '<div class="voz-resultado-info">' +
+                    '<strong>' + esc(exp.numero || exp.nombre || 'Expediente') + '</strong>' +
+                    (c.archivado ? ' <span class="voz-tag">archivado</span>' : '') +
+                    '<br><small>' + esc([exp.juzgado, exp.institucion !== 'TSJ' ? exp.institucion : ''].filter(Boolean).join(' · ')) + '</small>' +
+                    (exp.comentario ? '<br><small>💬 ' + esc(exp.comentario) + '</small>' : '') +
+                    '<br><small class="voz-motivo">' + esc(c.motivo) + '</small>' +
+                '</div>';
+
+            const btns = document.createElement('div');
+            btns.className = 'voz-resultado-btns';
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'voz-chip';
+            b.textContent = 'Usar este';
+            b.onclick = () => continuarConExpediente(exp);
+            btns.appendChild(b);
+            fila.appendChild(btns);
+            div.appendChild(fila);
+        });
+
+        if (candidatos.length > 6) {
+            const mas = document.createElement('div');
+            mas.className = 'voz-mas';
+            mas.textContent = `y ${candidatos.length - 6} más — afina el dato para acotar.`;
+            div.appendChild(mas);
+        }
+    }
+
+    // El usuario eligió: se repite la acción original con el id ya resuelto.
+    async function continuarConExpediente(exp) {
+        const pend = eleccionPendiente;
+        limpiarEleccionPendiente();
+        if (!pend) return;
+
+        agregarMensaje('usuario', esc(exp.numero || exp.nombre || 'ese expediente'));
+        const parametros = { ...pend.parametros, expedienteId: exp.id };
+        delete parametros.expedienteRef;
+
+        try {
+            await ejecutarAccionResuelta(pend.accion, parametros);
+        } catch (e) {
+            if (!e._esEleccion) {
+                agregarMensaje('asistente', esc('No se pudo completar: ' + e.message));
+                hablar('No se pudo completar: ' + e.message);
+            }
+        }
+    }
+
     async function accAbrirExpediente(p) {
-        const id = parseInt(p.expedienteId);
-        if (!id) throw new Error('No identifiqué qué expediente abrir');
-        const exp = await obtenerExpediente(id);
-        if (!exp) throw new Error('Expediente no encontrado');
+        const exp = await resolverExpedienteDeParametros(p, 'abrir_expediente', { obligatorio: true });
+        if (!exp) throw new Error('No identifiqué qué expediente abrir');
+        const id = exp.id;
         if (typeof mostrarExpediente === 'function') await mostrarExpediente(id);
         else if (typeof navegarA === 'function') navegarA('expedientes');
         return `Abrí el expediente ${exp.numero || exp.nombre}.`;
     }
 
     async function accBuscarLocal(p) {
-        const consulta = normalizar(p.consulta || '');
+        const consulta = (p.consulta || p.expedienteRef || '').trim();
         if (!consulta) throw new Error('¿Qué expediente busco?');
-        const activos = await obtenerExpedientes();
-        const archivados = await obtenerExpedientesArchivados().catch(() => []);
-        const todos = activos.map(e => ({ ...e, _arch: false }))
-            .concat(archivados.map(e => ({ ...e, _arch: true })));
 
-        const tokens = consulta.split(/\s+/).filter(Boolean);
-        const resultados = todos.filter(e => {
-            const blob = normalizar([e.numero, e.nombre, e.juzgado, e.categoria, e.comentario, e.institucion].join(' '));
-            return tokens.every(t => blob.includes(t));
-        });
+        // Mismo resolvedor que usa todo lo demás: ordena por qué tan bien
+        // encaja y entiende el dictado ("123 diagonal 2025") y los fragmentos.
+        const candidatos = await buscarExpedientesPorReferencia(consulta);
+        const resultados = candidatos.map(c => ({ ...c.expediente, _arch: c.archivado, _motivo: c.motivo }));
 
         if (!resultados.length) {
             const msg = 'No encontré expedientes que coincidan con "' + p.consulta + '".';
@@ -1295,6 +1444,15 @@
     }
 
     async function accBuscarTSJ(p) {
+        // Si mencionó un expediente, se usa su juzgado y su número en vez de
+        // abrir una ventana por cada juzgado del estado.
+        if (!p.juzgado && (p.expedienteId != null || p.expedienteRef)) {
+            const expTSJ = await resolverExpedienteDeParametros(p, 'buscar_tsj');
+            if (expTSJ) {
+                if (expTSJ.juzgado) p = { ...p, juzgado: expTSJ.juzgado };
+                if (!p.valor && expTSJ.numero) p = { ...p, valor: expTSJ.numero, tipoBusqueda: 'numero' };
+            }
+        }
         if (!p.valor) throw new Error('Falta el número o nombre a buscar');
         const tipo = p.tipoBusqueda === 'nombre' ? 'nombre' : 'numero';
         if (typeof construirUrlBusqueda !== 'function') throw new Error('El buscador TSJ no está disponible');
@@ -1333,8 +1491,8 @@
     }
 
     async function accBuscarPJF(p) {
-        let exp = null;
-        if (p.expedienteId != null) exp = await obtenerExpediente(parseInt(p.expedienteId));
+        // Aquí la referencia también sirve: "busca en el PJF lo de Ramírez".
+        const exp = await resolverExpedienteDeParametros(p, 'buscar_pjf');
         const numero = (exp && exp.numero) || p.numero || '';
 
         if (exp && exp.pjfOrgId && exp.pjfTipoAsunto && numero && typeof construirURLPJF === 'function') {
@@ -1400,10 +1558,19 @@
         const horaLegible = pad(ahora.getHours()) + ':' + pad(ahora.getMinutes());
 
         // Catálogo local de expedientes (compacto)
+        // El catálogo va recortado por tamaño de prompt, así que NO es la
+        // fuente de verdad: cuando el modelo no encuentra el expediente aquí,
+        // manda expedienteRef y la app lo resuelve contra toda la base.
+        const TOPE_CATALOGO = 250;
         let catalogo = [];
+        let totalExpedientes = 0;
         try {
             const activos = await obtenerExpedientes();
-            catalogo = activos.slice(0, 200).map(e => ({
+            const archivados = typeof obtenerExpedientesArchivados === 'function'
+                ? await obtenerExpedientesArchivados().catch(() => []) : [];
+            totalExpedientes = activos.length + archivados.length;
+            const todos = activos.concat(archivados.map(e => ({ ...e, _arch: true })));
+            catalogo = todos.slice(0, TOPE_CATALOGO).map(e => ({
                 id: e.id,
                 numero: e.numero || null,
                 nombre: e.nombre || null,
@@ -1411,6 +1578,10 @@
                 juzgado: e.juzgado || '',
                 carpetaId: e.carpetaId != null ? e.carpetaId : null,
                 tienePJF: !!(e.pjfOrgId && e.pjfTipoAsunto),
+                // Las partes son como el abogado suele referirse a un caso.
+                actor: e.actor || undefined,
+                demandado: e.demandado || undefined,
+                archivado: e._arch || undefined,
                 comentario: (e.comentario || '').slice(0, 60) || undefined
             }));
         } catch (e) { /* base aún no lista */ }
@@ -1446,8 +1617,9 @@
 
 FECHA Y HORA ACTUAL: ${fechaLegible}, ${horaLegible} (zona horaria de Cancún). Resuelve fechas relativas ("mañana", "el jueves", "en 15 días") contra esta fecha. Si el usuario dice un día de la semana sin fecha, usa el PRÓXIMO día con ese nombre.
 
-CATÁLOGO DE EXPEDIENTES DEL USUARIO (id, número/nombre, institución, juzgado, carpetaId):
+CATÁLOGO DE EXPEDIENTES DEL USUARIO (${catalogo.length} de ${totalExpedientes}; id, número/nombre, institución, juzgado, partes, carpetaId, archivado):
 ${JSON.stringify(catalogo)}
+${totalExpedientes > catalogo.length ? `ATENCIÓN: hay ${totalExpedientes - catalogo.length} expedientes MÁS que no caben aquí. Si el usuario menciona uno que no está en la lista, NO digas que no existe: usa expedienteRef.` : ''}
 
 CARPETAS DEL USUARIO (agrupan expedientes por caso):
 ${JSON.stringify(carpetas)}
@@ -1470,7 +1642,7 @@ RESPONDE SIEMPRE Y ÚNICAMENTE CON UN OBJETO JSON (sin texto adicional) con esta
 
 ACCIONES DISPONIBLES y sus parámetros:
 
-1. "crear_evento": {titulo, tipo:"audiencia"|"vencimiento"|"recordatorio"|"otro", fecha:"YYYY-MM-DD", hora:"HH:MM" o null, todoElDia:bool, expedienteId:número o null, expedienteTexto:texto o null, descripcion:""}
+1. "crear_evento": {titulo, tipo:"audiencia"|"vencimiento"|"recordatorio"|"otro", fecha:"YYYY-MM-DD", hora:"HH:MM" o null, todoElDia:bool, expedienteId:número o null, expedienteRef:texto o null, expedienteTexto:texto o null, descripcion:""}
    - Si menciona un expediente, resuélvelo contra el catálogo y usa su id en expedienteId. Si no está en el catálogo, pon el texto en expedienteTexto.
    - Si no dice hora → todoElDia=true. Obligatorios: titulo y fecha.
 2. "editar_evento": {eventoId:número, cambios:{titulo?, tipo?, fecha?:"YYYY-MM-DD", hora?:"HH:MM", todoElDia?, descripcion?}}
@@ -1479,26 +1651,32 @@ ACCIONES DISPONIBLES y sus parámetros:
 4. "consultar_agenda": {fechaInicio:"YYYY-MM-DD", fechaFin:"YYYY-MM-DD"} — para "¿qué tengo esta semana?", "audiencias de mañana", etc.
 5. "crear_expediente": {tipoRegistro:"numero"|"nombre", valor, institucion:"TSJ"|"PJF"|"OTRO", juzgado, comentario, carpetaId:número o null}
    - Para TSJ el juzgado es OBLIGATORIO y debe ser un nombre EXACTO de la lista de juzgados. Si el usuario no lo dice o no coincide, pregunta.
-6. "editar_expediente": {expedienteId:número, cambios:{numero?, nombre?, juzgado?, comentario?, institucion?}}
+6. "editar_expediente": {expedienteId:número o null, expedienteRef:texto o null, cambios:{numero?, nombre?, juzgado?, comentario?, institucion?}}
    - Resuelve el expediente contra el catálogo (por número tipo 123/2025 o por nombre de las partes). Si hay ambigüedad, pregunta.
-7. "archivar_expediente": {expedienteId:número, motivo:"concluido"|"suspendido"|"otro"}
-8. "crear_nota": {titulo, contenido, expedienteId:número o null, expedienteTexto o null}
-8b. "crear_pendiente": {titulo, descripcion o "", expedienteId:número o null, expedienteTexto o null, prioridad:"alta"|"media"|"baja" o "", fecha:"YYYY-MM-DD" o null, hora:"HH:MM" o null}
+7. "archivar_expediente": {expedienteId:número o null, expedienteRef:texto o null, motivo:"concluido"|"suspendido"|"otro"}
+8. "crear_nota": {titulo, contenido, expedienteId:número o null, expedienteRef:texto o null, expedienteTexto o null}
+8b. "crear_pendiente": {titulo, descripcion o "", expedienteId:número o null, expedienteRef:texto o null, expedienteTexto o null, prioridad:"alta"|"media"|"baja" o "", fecha:"YYYY-MM-DD" o null, hora:"HH:MM" o null}
     - Una tarea del expediente ("recuérdame contestar la demanda del 123/2025", "apúntame revisar el acuerdo"). La fecha es OPCIONAL: solo ponla si el usuario la dice. Con fecha, además queda agendada.
     - La prioridad también es opcional: ponla solo si el usuario la expresa ("es urgente" → alta, "cuando se pueda" → baja). Si no dice nada, déjala vacía.
 8c. "completar_pendiente": {pendienteId:número o null, titulo:texto o null} — marca un pendiente como terminado ("ya contesté la demanda", "marca como hecho lo de la promoción"). Usa el título tal como lo diga el usuario si no hay id.
-8d. "consultar_pendientes": {expedienteId:número o null} — lee los pendientes por hacer ("¿qué tengo pendiente?", "qué me falta del 123/2025").
-9. "mover_a_carpeta": {expedienteId:número, carpetaId:número o null} — asigna un expediente a una carpeta de la lista CARPETAS (null = quitarlo de su carpeta). Si la carpeta mencionada no existe, pregunta.
-10. "abrir_expediente": {expedienteId:número} — navega hasta el expediente y lo resalta ("abre el expediente 123/2025", "muéstrame el caso de Juan Pérez").
+8d. "consultar_pendientes": {expedienteId:número o null, expedienteRef:texto o null} — lee los pendientes por hacer ("¿qué tengo pendiente?", "qué me falta del 123/2025").
+9. "mover_a_carpeta": {expedienteId:número o null, expedienteRef:texto o null, carpetaId:número o null} — asigna un expediente a una carpeta de la lista CARPETAS (null = quitarlo de su carpeta). Si la carpeta mencionada no existe, pregunta.
+10. "abrir_expediente": {expedienteId:número o null, expedienteRef:texto o null} — navega hasta el expediente y lo resalta ("abre el expediente 123/2025", "muéstrame el caso de Juan Pérez", "ábreme el 123").
 11. "deshacer": {} — revierte la última acción hecha por el asistente ("deshaz lo último", "revierte eso").
-12. "buscar_local": {consulta} — buscar en el catálogo local del usuario ("busca mis expedientes de divorcio", "¿tengo algo de Juan Pérez?").
-13. "buscar_tsj": {valor, tipoBusqueda:"numero"|"nombre", juzgado:nombre exacto de la lista o null, ambito:"todos"|"primera"|"segunda" o null}
+12. "buscar_local": {consulta} — buscar en el catálogo local del usuario ("busca mis expedientes de divorcio", "¿tengo algo de Juan Pérez?", "qué tengo del 123"). Pasa la consulta TAL CUAL la dijo; la app la interpreta y ordena por relevancia.
+13. "buscar_tsj": {valor, tipoBusqueda:"numero"|"nombre", juzgado:nombre exacto de la lista o null, ambito:"todos"|"primera"|"segunda" o null, expedienteId:número o null, expedienteRef:texto o null}
     - Busca en los estrados en línea del TSJ Quintana Roo. Si el usuario menciona un expediente de su catálogo, usa el juzgado guardado de ese expediente. Si no especifica juzgado, deja juzgado=null y usa ambito (default "todos"; abre muchas ventanas).
-14. "buscar_pjf": {expedienteId:número o null, numero:texto o null, organismo:texto o null, tipoAsunto:texto o null}
+14. "buscar_pjf": {expedienteId:número o null, expedienteRef:texto o null, numero:texto o null, organismo:texto o null, tipoAsunto:texto o null}
     - Consulta en el portal del Poder Judicial de la Federación. Si el expediente está en el catálogo con tienePJF=true, usa su id.
     - Si el usuario dicta el órgano federal ("Juzgado Segundo de Distrito de Cancún", "Tribunal Colegiado del Vigésimo Séptimo Circuito"), pásalo TAL CUAL en "organismo" y el tipo de asunto tal como lo diga ("amparo indirecto", "juicio de amparo") en "tipoAsunto"; la app los resuelve contra el catálogo oficial.
 15. "navegar": {pagina:"inicio"|"expedientes"|"calendario"|"pendientes"|"notas"|"busqueda"|"pjf"|"impi"|"config"}
 16. "responder": para preguntas generales, saludos o cuando ninguna acción aplica. Usa el campo "respuesta".
+
+CÓMO REFERIRSE A UN EXPEDIENTE (importante):
+- Toda acción que reciba "expedienteId" acepta también "expedienteRef": el texto TAL CUAL lo dijo el usuario para referirse al expediente ("el 123", "lo de Ramírez", "el del juzgado segundo", "123 diagonal 2025").
+- Usa "expedienteId" SOLO cuando estés seguro de cuál es, porque lo identificaste sin ambigüedad en el catálogo.
+- En cualquier otro caso —dijo un fragmento, un apellido, algo que coincide con varios, o algo que no ves en el catálogo— pon "expedienteId": null y "expedienteRef" con sus palabras. La app buscará en TODA la base (incluidos archivados) y, si hay varias posibilidades, le mostrará las opciones reales para que elija. Eso es mejor que adivinar o que preguntar a ciegas.
+- No pidas el número completo si el usuario dio un fragmento: manda el fragmento en expedienteRef y deja que la app ofrezca las coincidencias.
 
 REGLAS:
 - Si falta un dato OBLIGATORIO para la acción: faltan_datos=true y "pregunta" con UNA pregunta corta y específica. Conserva en "parametros" todo lo que ya sepas.
@@ -1506,7 +1684,7 @@ REGLAS:
 - Si la referencia a un expediente o evento es ambigua (varios candidatos), pregunta cuál, listando las opciones brevemente en la pregunta.
 - "resumen" siempre en español, específico y corto (ej: 'Agendar audiencia del exp. 123/2025 el jueves 30 de julio a las 10:00').
 - Números de expediente suelen dictarse como "123 diagonal 2025" o "123 barra 2025" → normaliza a "123/2025".
-- Nunca inventes ids de expedientes o eventos: solo usa los del catálogo/agenda.`;
+- Nunca inventes ids de expedientes o eventos: solo usa los del catálogo/agenda. Si no está, usa expedienteRef.`;
     }
 
     async function llamarGroq(sistema, historial) {
@@ -1552,5 +1730,8 @@ REGLAS:
         init();
     }
 
-    window.VOZ = { abrir: abrirPanel, cerrar: cerrarPanel };
+    // ejecutar() corre una acción ya identificada, sin pasar por el
+    // reconocimiento de voz ni por el modelo: sirve para dispararlas desde
+    // otra parte de la app y para poder probar el flujo de resolución.
+    window.VOZ = { abrir: abrirPanel, cerrar: cerrarPanel, ejecutar: ejecutarAccionResuelta };
 })();

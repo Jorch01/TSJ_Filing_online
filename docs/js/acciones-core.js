@@ -417,3 +417,162 @@ async function eliminarPendienteCore(id) {
     await _coreSincronizar();
     return actual;
 }
+
+// ==================== RESOLUCIÓN DE REFERENCIAS A EXPEDIENTES ====================
+// Cuando el usuario menciona un expediente —dictado o escrito— casi nunca da el
+// dato exacto: dice "el 123", "lo de Ramírez", "el del juzgado segundo". Esto
+// convierte esa referencia en candidatos reales, ordenados por qué tan bien
+// encajan, para poder ofrecer opciones en vez de adivinar una.
+
+function _normRef(texto) {
+    return String(texto || '')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .toLowerCase().trim();
+}
+
+// Al dictar, la diagonal se pronuncia. También se cuelan muletillas que no
+// existen en ningún expediente y que, exigidas como palabra, matan la búsqueda.
+const _PALABRAS_RUIDO = new Set([
+    'el', 'la', 'los', 'las', 'del', 'de', 'lo', 'un', 'una', 'mi', 'mis',
+    'expediente', 'expedientes', 'asunto', 'caso', 'juicio', 'numero', 'num',
+    'que', 'con', 'para', 'por', 'sobre', 'al', 'y'
+]);
+
+function _limpiarReferencia(texto) {
+    let t = _normRef(texto)
+        .replace(/\b(diagonal|barra|slash)\b/g, '/')
+        .replace(/\b(guion|guion medio)\b/g, '-')
+        .replace(/\s*\/\s*/g, '/')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return t;
+}
+
+function _tokensUtiles(texto) {
+    return _limpiarReferencia(texto)
+        .split(/[\s,;]+/)
+        .filter(t => t && !_PALABRAS_RUIDO.has(t));
+}
+
+// "0123/2025" y "123/2025" son el mismo expediente dictado de dos formas.
+function _numeroComparable(numero) {
+    const n = _normRef(numero).replace(/\s+/g, '');
+    const m = n.match(/^0*(\d+)\s*\/\s*(\d{2,4})$/);
+    if (m) return m[1] + '/' + m[2];
+    return n.replace(/^0+/, '');
+}
+
+// Todo el texto por el que un expediente puede ser reconocido.
+function _blobExpediente(exp, nombreCarpeta) {
+    return _normRef([
+        exp.numero, exp.nombre, exp.juzgado, exp.categoria, exp.comentario,
+        exp.actor, exp.demandado, exp.institucion, nombreCarpeta
+    ].filter(Boolean).join(' '));
+}
+
+/**
+ * Busca expedientes que encajen con una referencia libre.
+ * Devuelve [{ expediente, puntaje, motivo, archivado }] de mayor a menor.
+ * opciones.incluirArchivados (por omisión true): los archivados también se
+ * ofrecen, marcados — decir "no lo encuentro" cuando existe archivado es peor
+ * que ofrecerlo con su etiqueta.
+ */
+async function buscarExpedientesPorReferencia(referencia, opciones = {}) {
+    const ref = _limpiarReferencia(referencia);
+    if (!ref) return [];
+
+    const incluirArchivados = opciones.incluirArchivados !== false;
+    const activos = await obtenerExpedientes().catch(() => []);
+    const archivados = incluirArchivados
+        ? await (typeof obtenerExpedientesArchivados === 'function'
+            ? obtenerExpedientesArchivados().catch(() => []) : Promise.resolve([]))
+        : [];
+
+    let carpetas = [];
+    try {
+        if (typeof obtenerCarpetas === 'function') carpetas = await obtenerCarpetas();
+    } catch (e) { /* sin carpetas */ }
+    const nombreCarpeta = (id) => (carpetas.find(c => c.id === id) || {}).nombre || '';
+
+    const tokens = _tokensUtiles(referencia);
+    const soloDigitos = ref.replace(/[^\d]/g, '');
+    const refNum = _numeroComparable(ref);
+
+    const candidatos = [];
+    const evaluar = (exp, archivado) => {
+        const numero = _normRef(exp.numero);
+        const numeroCmp = _numeroComparable(exp.numero);
+        const nombre = _normRef(exp.nombre);
+        const blob = _blobExpediente(exp, nombreCarpeta(exp.carpetaId));
+
+        let puntaje = 0;
+        let motivo = '';
+
+        if (numero && numeroCmp === refNum) { puntaje = 100; motivo = 'número exacto'; }
+        else if (numero && numero === ref) { puntaje = 100; motivo = 'número exacto'; }
+        else if (nombre && nombre === ref) { puntaje = 95; motivo = 'nombre exacto'; }
+        else if (numero && numeroCmp.startsWith(refNum) && refNum) { puntaje = 80; motivo = 'el número empieza así'; }
+        else if (numero && soloDigitos && numeroCmp.split('/')[0] === soloDigitos.replace(/^0+/, '')) {
+            // "el 123" cuando el expediente es 123/2025: el año no se dijo.
+            puntaje = 85; motivo = 'coincide el número, sin el año';
+        }
+        else if (numero && ref && numero.includes(ref)) { puntaje = 70; motivo = 'el número lo contiene'; }
+        else if (nombre && ref && nombre.startsWith(ref)) { puntaje = 75; motivo = 'el nombre empieza así'; }
+        else if (nombre && ref && nombre.includes(ref)) { puntaje = 60; motivo = 'aparece en el nombre'; }
+        else if (tokens.length && tokens.every(t => blob.includes(t))) {
+            // Todas las palabras útiles aparecen en algún dato del expediente.
+            puntaje = 50; motivo = 'coincide con sus datos';
+        }
+        else if (tokens.length > 1) {
+            const encontrados = tokens.filter(t => blob.includes(t)).length;
+            if (encontrados > 0) {
+                puntaje = 20 + Math.round((encontrados / tokens.length) * 20);
+                motivo = 'coincidencia parcial';
+            }
+        }
+
+        if (puntaje <= 0) return;
+        // Entre dos igual de buenos, el archivado va después.
+        if (archivado) puntaje -= 5;
+        candidatos.push({ expediente: exp, puntaje, motivo, archivado });
+    };
+
+    activos.forEach(e => evaluar(e, false));
+    archivados.forEach(e => evaluar(e, true));
+
+    candidatos.sort((a, b) => {
+        if (b.puntaje !== a.puntaje) return b.puntaje - a.puntaje;
+        const na = (a.expediente.numero || a.expediente.nombre || '');
+        const nb = (b.expediente.numero || b.expediente.nombre || '');
+        return na.localeCompare(nb, 'es');
+    });
+    return candidatos;
+}
+
+/**
+ * Resuelve una referencia a UN expediente.
+ * Devuelve { estado: 'unico'|'ambiguo'|'ninguno', expediente?, candidatos }.
+ * Se considera resuelto cuando hay un solo candidato, o cuando el mejor gana
+ * por margen claro a partir de una coincidencia fuerte: si dos empatan, es el
+ * usuario quien debe decidir, no el sistema.
+ */
+async function resolverExpedientePorReferencia(referencia, opciones = {}) {
+    const candidatos = await buscarExpedientesPorReferencia(referencia, opciones);
+    if (candidatos.length === 0) return { estado: 'ninguno', candidatos: [] };
+    if (candidatos.length === 1) return { estado: 'unico', expediente: candidatos[0].expediente, candidatos };
+
+    const mejor = candidatos[0];
+    const segundo = candidatos[1];
+    if (mejor.puntaje >= 80 && mejor.puntaje - segundo.puntaje >= 15) {
+        return { estado: 'unico', expediente: mejor.expediente, candidatos };
+    }
+    return { estado: 'ambiguo', candidatos };
+}
+
+/** Etiqueta corta y reconocible de un expediente, para listas y avisos. */
+function etiquetaExpediente(exp) {
+    const principal = exp.numero || exp.nombre || 'Expediente';
+    const detalle = [exp.juzgado, exp.institucion && exp.institucion !== 'TSJ' ? exp.institucion : '']
+        .filter(Boolean).join(' · ');
+    return detalle ? `${principal} (${detalle})` : principal;
+}
