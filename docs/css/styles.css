@@ -4491,3 +4491,15 @@ button.pendiente-prioridad:focus-visible {
     margin: 0.25rem 0.3rem;
     background: var(--border-color);
 }
+
+/* Motivo por el que un expediente aparece entre las opciones del asistente */
+.voz-motivo {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.voz-mas {
+    margin-top: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
