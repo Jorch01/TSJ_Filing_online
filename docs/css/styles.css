@@ -1,42 +1,69 @@
 /* TSJ Filing Online - Estilos */
 
 :root {
-    --primary: #366092;
-    --primary-dark: #2a4a70;
-    --primary-light: #4a7bb5;
-    --success: #28a745;
-    --warning: #ffc107;
-    --danger: #dc3545;
-    --info: #17a2b8;
+    /* Azul de la marca, con más saturación para que el acento se vea vivo
+       sobre los grises fríos, sin perder el tono institucional. */
+    --primary: #2563a8;
+    --primary-dark: #1c4b80;
+    --primary-light: #4a8bd4;
+    --primary-suave: #eaf2fb;
+
+    --success: #16a34a;
+    --warning: #d97706;
+    --danger: #dc2626;
+    --info: #0891b2;
+
+    /* Neutros ligeramente fríos: acompañan al azul mejor que los grises
+       puros y hacen que el blanco de las tarjetas destaque. */
     --bg-primary: #ffffff;
-    --bg-secondary: #f8f9fa;
-    --bg-tertiary: #e9ecef;
-    --text-primary: #212529;
-    --text-secondary: #6c757d;
-    --text-muted: #adb5bd;
-    --border-color: #dee2e6;
-    --shadow: 0 2px 8px rgba(0,0,0,0.1);
-    --radius: 8px;
-    --radius-lg: 12px;
+    --bg-secondary: #f4f6f9;
+    --bg-tertiary: #e8ecf2;
+    --text-primary: #16202c;
+    --text-secondary: #5a6a7d;
+    --text-muted: #93a1b2;
+    --border-color: #e2e8f0;
+    --border-fuerte: #cbd5e1;
+
+    /* Sombras en capas: una fina que dibuja el borde y otra difusa que da
+       profundidad. Una sola sombra dura se ve plana. */
+    --shadow-sm: 0 1px 2px rgba(16, 32, 48, 0.06);
+    --shadow: 0 1px 3px rgba(16, 32, 48, 0.08), 0 4px 12px rgba(16, 32, 48, 0.06);
+    --shadow-md: 0 2px 6px rgba(16, 32, 48, 0.08), 0 10px 24px rgba(16, 32, 48, 0.08);
+    --shadow-anillo: 0 0 0 3px rgba(37, 99, 168, 0.18);
+
+    --radius-sm: 6px;
+    --radius: 10px;
+    --radius-lg: 14px;
+    --radius-full: 999px;
 }
 
 /* Tema Oscuro */
 [data-theme="dark"] {
-    --primary: #5a8cc7;
-    --primary-dark: #4a7bb5;
-    --primary-light: #7aa8d9;
-    --success: #48c774;
-    --warning: #ffdd57;
-    --danger: #f14668;
-    --info: #3298dc;
-    --bg-primary: #1a1a2e;
-    --bg-secondary: #16213e;
-    --bg-tertiary: #0f3460;
-    --text-primary: #e8e8e8;
-    --text-secondary: #b0b0b0;
-    --text-muted: #808080;
-    --border-color: #2d3a4f;
-    --shadow: 0 2px 8px rgba(0,0,0,0.3);
+    --primary: #5c9ce6;
+    --primary-dark: #4a86cc;
+    --primary-light: #85b8f0;
+    --primary-suave: #1b2a3d;
+
+    --success: #4ade80;
+    --warning: #fbbf24;
+    --danger: #f87171;
+    --info: #38bdf8;
+
+    /* Azul-pizarra en vez de morado: el tema oscuro anterior tiraba a violeta
+       y peleaba con el azul de la marca. */
+    --bg-primary: #131a24;
+    --bg-secondary: #0d131b;
+    --bg-tertiary: #1e2833;
+    --text-primary: #e6edf5;
+    --text-secondary: #9bacc0;
+    --text-muted: #6b7c90;
+    --border-color: #263243;
+    --border-fuerte: #33445a;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.5), 0 10px 24px rgba(0, 0, 0, 0.4);
+    --shadow-anillo: 0 0 0 3px rgba(92, 156, 230, 0.25);
 }
 
 [data-theme="dark"] .nav-sidebar,
@@ -388,11 +415,31 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto,
+                 'Helvetica Neue', Arial, sans-serif;
     background: var(--bg-secondary);
     color: var(--text-primary);
     line-height: 1.6;
     min-height: 100vh;
+    /* Los números de expediente se leen mejor alineados en tabla. */
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Los títulos tiran a apretado y oscuro; el cuerpo se queda holgado. Esa
+   diferencia es la que da jerarquía sin subir tamaños. */
+h1, h2, h3, h4 {
+    letter-spacing: -0.015em;
+    line-height: 1.25;
+    color: var(--text-primary);
+}
+
+/* Un anillo de foco visible y consistente en todo lo accionable. */
+:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
 }
 
 /* Header */
@@ -403,11 +450,14 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 1.5rem;
-    height: 64px;
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    padding: 0 1.25rem;
+    height: 60px;
+    /* Superficie sólida con un borde fino, en vez del degradado pesado: la
+       barra deja de competir con el contenido. */
+    background: var(--primary-dark);
     color: white;
-    box-shadow: var(--shadow);
+    box-shadow: var(--shadow-sm);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.15);
 }
 
 .header-brand {
@@ -416,9 +466,9 @@ body {
     gap: 0.75rem;
 }
 
-.brand-icon { font-size: 1.75rem; }
-.brand-text h1 { font-size: 1.25rem; margin: 0; line-height: 1.2; }
-.brand-subtitle { font-size: 0.75rem; opacity: 0.8; }
+.brand-icon { font-size: 1.5rem; }
+.brand-text h1 { font-size: 1.05rem; margin: 0; line-height: 1.2; font-weight: 650; letter-spacing: -0.01em; }
+.brand-subtitle { font-size: 0.7rem; opacity: 0.65; letter-spacing: 0.01em; }
 
 .header-nav {
     display: flex;
@@ -426,18 +476,24 @@ body {
 }
 
 .nav-btn {
-    padding: 0.5rem 1rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.8rem;
     background: transparent;
     border: none;
-    color: rgba(255,255,255,0.8);
+    color: rgba(255,255,255,0.75);
     cursor: pointer;
-    border-radius: var(--radius);
-    font-size: 0.875rem;
-    transition: all 0.2s;
+    border-radius: var(--radius-full);
+    font-size: 0.83rem;
+    font-weight: 500;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease;
 }
 
-.nav-btn:hover { background: rgba(255,255,255,0.1); color: white; }
-.nav-btn.active { background: rgba(255,255,255,0.2); color: white; }
+.nav-btn:hover { background: rgba(255,255,255,0.12); color: white; }
+.nav-btn.active { background: rgba(255,255,255,0.18); color: white; font-weight: 600; }
 
 .menu-toggle {
     display: none;
@@ -477,6 +533,9 @@ body {
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 /* Page Header */
+.page-header h2 { font-size: 1.45rem; font-weight: 680; }
+.page-header .subtitle { color: var(--text-secondary); font-size: 0.87rem; }
+
 .page-header {
     display: flex;
     justify-content: space-between;
@@ -562,23 +621,35 @@ body {
 /* Cards */
 .card {
     background: var(--bg-primary);
+    border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow);
+    box-shadow: var(--shadow-sm);
     overflow: hidden;
 }
 
+/* Sin relleno gris: el encabezado se separa por el borde y el peso del
+   título, que ensucia menos que una franja de color. */
 .card-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem 1.25rem;
-    background: var(--bg-secondary);
+    gap: 0.75rem;
+    padding: 0.9rem 1.15rem;
+    background: transparent;
     border-bottom: 1px solid var(--border-color);
 }
 
-.card-header h3 { font-size: 1rem; margin: 0; }
+.card-header h3 { font-size: 0.95rem; margin: 0; font-weight: 650; }
 .card-body { padding: 1.25rem; }
-.card-footer { padding: 1rem 1.25rem; background: var(--bg-secondary); border-top: 1px solid var(--border-color); }
+.card-footer {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    padding: 0.85rem 1.15rem;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+}
 
 /* Empty State */
 .empty-state {
@@ -590,7 +661,8 @@ body {
 }
 
 .empty-state.small { padding: 1.5rem; }
-.empty-state span, .empty-icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
+.empty-state span, .empty-icon { font-size: 2.25rem; margin-bottom: 0.75rem; opacity: 0.35; }
+.empty-state h3 { font-size: 1rem; font-weight: 600; }
 .empty-state.small span { font-size: 2rem; }
 .empty-state h3 { margin-bottom: 0.5rem; }
 .empty-state p { color: var(--text-muted); margin-bottom: 1rem; }
@@ -630,28 +702,45 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: var(--radius);
-    font-weight: 500;
+    gap: 0.4rem;
+    padding: 0.5rem 0.9rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    font-weight: 550;
+    font-family: inherit;
     cursor: pointer;
-    transition: all 0.2s;
+    /* Solo lo que cambia: animar "all" hace saltar también el layout. */
+    transition: background 0.15s ease, border-color 0.15s ease,
+                color 0.15s ease, box-shadow 0.15s ease, transform 0.06s ease;
     text-decoration: none;
-    font-size: 0.875rem;
+    font-size: 0.83rem;
+    line-height: 1.35;
+    white-space: nowrap;
 }
 
-.btn-primary { background: var(--primary); color: white; }
+/* Un hundido mínimo al presionar: confirma el clic sin animaciones vistosas. */
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:disabled:active { transform: none; }
+
+.btn-primary { background: var(--primary); color: white; box-shadow: var(--shadow-sm); }
 .btn-primary:hover { background: var(--primary-dark); }
-.btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); }
-.btn-secondary:hover { background: var(--border-color); }
+
+/* Los secundarios son de contorno: en una tarjeta con cinco botones, cinco
+   rellenos de color compiten entre sí y con el contenido. */
+.btn-secondary { background: var(--bg-primary); color: var(--text-primary); border-color: var(--border-fuerte); }
+.btn-secondary:hover { background: var(--bg-secondary); border-color: var(--text-muted); }
 .btn-success { background: var(--success); color: white; }
-.btn-success:hover { background: #218838; }
-.btn-danger { background: var(--danger); color: white; }
-.btn-danger:hover { background: #c82333; }
-.btn-outline { background: transparent; border: 2px solid var(--primary); color: var(--primary); }
-.btn-outline:hover { background: var(--primary); color: white; }
-.btn-sm { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
+.btn-success:hover { filter: brightness(0.93); }
+.btn-danger { background: var(--bg-primary); color: var(--danger); border-color: var(--border-fuerte); }
+.btn-danger:hover { background: var(--danger); color: white; border-color: var(--danger); }
+.btn-outline { background: transparent; border: 1px solid var(--primary); color: var(--primary); }
+.btn-outline:hover { background: var(--primary-suave); }
+.btn-info { background: var(--bg-primary); color: var(--text-secondary); border-color: var(--border-fuerte); }
+.btn-info:hover { background: var(--bg-secondary); color: var(--primary); border-color: var(--primary-light); }
+.btn-warning { background: var(--bg-primary); color: var(--warning); border-color: var(--border-fuerte); }
+.btn-warning:hover { background: var(--warning); color: white; border-color: var(--warning); }
+.btn-sm { padding: 0.3rem 0.55rem; font-size: 0.78rem; border-radius: var(--radius-sm); }
 .btn-xs { padding: 0.2rem 0.5rem; font-size: 0.7rem; white-space: nowrap; }
 .btn-lg { padding: 0.75rem 1.5rem; font-size: 1rem; }
 .btn-close { background: none; border: none; font-size: 1.25rem; cursor: pointer; padding: 0; color: var(--text-secondary); }
@@ -665,17 +754,22 @@ body {
 input[type="text"], input[type="email"], input[type="number"], input[type="date"],
 input[type="time"], input[type="datetime-local"], textarea, select {
     width: 100%;
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius);
-    font-size: 0.875rem;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--border-fuerte);
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    font-family: inherit;
+    color: var(--text-primary);
+    background: var(--bg-primary);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
+
+::placeholder { color: var(--text-muted); }
 
 input:focus, textarea:focus, select:focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(54, 96, 146, 0.15);
+    box-shadow: var(--shadow-anillo);
 }
 
 .radio-group { display: flex; gap: 1.5rem; }
@@ -751,19 +845,43 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* Filters */
+/* Barra de filtros compacta. Antes cada control ocupaba una línea completa
+   —los campos son width:100% por omisión— y tres filtros comían media
+   pantalla antes de ver un solo dato. */
 .filters-section {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
+    gap: 0.6rem;
+    margin-bottom: 1.1rem;
+    padding: 0.6rem 0.7rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
     flex-wrap: wrap;
 }
 
-.search-box { position: relative; flex: 1; min-width: 200px; }
-.search-icon { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); }
-.search-box input { padding-left: 2.25rem; }
-.filters-section select { min-width: 180px; }
-.results-count { font-size: 0.875rem; color: var(--text-secondary); }
+.search-box { position: relative; flex: 1 1 220px; min-width: 180px; }
+.search-icon {
+    position: absolute; left: 0.65rem; top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.85rem; opacity: 0.55; pointer-events: none;
+}
+.search-box input { padding-left: 2.1rem; }
+
+.filters-section select {
+    width: auto;
+    min-width: 0;
+    flex: 0 1 auto;
+    max-width: 220px;
+}
+
+.results-count {
+    margin-left: auto;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
 
 /* View Toggle */
 .view-toggle {
@@ -797,13 +915,20 @@ input:focus, textarea:focus, select:focus {
 
 .expediente-card {
     background: var(--bg-primary);
+    border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow);
+    box-shadow: var(--shadow-sm);
     overflow: hidden;
-    transition: transform 0.2s, box-shadow 0.2s;
+    /* Solo lo que cambia: animar transform y sombra basta y no provoca
+       recálculos de layout en listas largas. */
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
-.expediente-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+.expediente-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--primary-light);
+}
 
 /* Drag and Drop */
 .expediente-card[draggable="true"] {
@@ -930,13 +1055,7 @@ input:focus, textarea:focus, select:focus {
     margin-left: 0.35rem;
     vertical-align: middle;
 }
-.btn-warning {
-    background: #ff9800;
-    color: white;
-}
-.btn-warning:hover {
-    background: #f57c00;
-}
+/* .btn-warning se define una sola vez, junto a los demás botones. */
 
 /* Expedientes Table */
 .expedientes-table-container {
@@ -2051,8 +2170,10 @@ textarea:focus {
 
 /* Footer */
 .app-footer {
-    background: linear-gradient(135deg, var(--primary-dark) 0%, #1a1a2e 100%);
-    color: white;
+    /* Tono propio y fijo: con --primary-dark el pie se volvía azul claro en
+       tema oscuro, más brillante que la propia página. */
+    background: #16283d;
+    color: rgba(255, 255, 255, 0.85);
     margin-top: 3rem;
     padding: 2rem 0 0;
 }
@@ -2347,14 +2468,7 @@ textarea:focus {
 }
 
 /* Button info style */
-.btn-info {
-    background-color: var(--info);
-    color: white;
-}
-
-.btn-info:hover {
-    background-color: #138496;
-}
+/* .btn-info se define una sola vez, junto a los demás botones. */
 
 /* ==================== REPORTE DE FUSIÓN DE DUPLICADOS ==================== */
 .fusion-reporte {
@@ -2634,16 +2748,7 @@ textarea:focus {
     border-color: var(--primary, #366092);
 }
 
-.btn-warning {
-    background: #ffc107;
-    color: #212529;
-    border: 1px solid #e0a800;
-}
-
-.btn-warning:hover {
-    background: #e0a800;
-    color: #212529;
-}
+/* .btn-warning se define una sola vez, junto a los demás botones. */
 
 /* ==================== BULK OPEN NOTICE ==================== */
 
@@ -4138,16 +4243,17 @@ textarea:focus {
     display: flex;
     align-items: flex-start;
     gap: 0.75rem;
-    padding: 0.85rem 1rem;
+    padding: 0.8rem 0.95rem;
     border: 1px solid var(--border-color);
-    border-left: 4px solid var(--primary);
-    border-radius: var(--radius);
+    border-left: 3px solid var(--primary);
+    border-radius: var(--radius-sm);
     background: var(--bg-primary);
     transition: all 0.15s ease;
 }
 
 .pendiente-item:hover {
     box-shadow: var(--shadow);
+    border-color: var(--border-fuerte);
 }
 
 /* Vencido: el borde izquierdo es la señal, sin depender solo del color del texto */
@@ -4502,4 +4608,97 @@ button.pendiente-prioridad:focus-visible {
     margin-top: 0.4rem;
     font-size: 0.78rem;
     color: var(--text-secondary);
+}
+
+/* ==================== AJUSTES DE CONJUNTO ==================== */
+/* Detalles que sostienen el mismo lenguaje visual en toda la app. */
+
+/* Los distintivos comparten forma: pastilla, texto corto y peso alto. */
+.expediente-categoria,
+.categoria-badge,
+.siga-badge-gaceta,
+.siga-badge-seccion,
+.impi-status-badge {
+    border-radius: var(--radius-full);
+    font-size: 0.68rem;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    padding: 0.12rem 0.5rem;
+}
+
+/* La franja de acciones de cada tarjeta se separa con aire, no con una línea */
+.expediente-footer {
+    border-top: 1px solid var(--border-color);
+    padding-top: 0.7rem;
+    margin-top: 0.7rem;
+}
+
+.expediente-titulo { font-size: 1rem; font-weight: 650; letter-spacing: -0.01em; }
+.expediente-juzgado { font-size: 0.82rem; color: var(--text-secondary); }
+.expediente-comentario { font-size: 0.8rem; color: var(--text-muted); }
+.expediente-fecha { font-size: 0.75rem; color: var(--text-muted); }
+
+/* El grupo de pendientes: encabezado sobrio, sin franja pesada */
+.pendiente-grupo {
+    box-shadow: var(--shadow-sm);
+}
+
+.pendiente-grupo-header {
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.pendiente-grupo:hover { box-shadow: var(--shadow); }
+.pendiente-grupo.plegado .pendiente-grupo-header { border-bottom-color: transparent; }
+.pendiente-grupo-items { background: var(--bg-secondary); }
+
+/* Modal: entra con un gesto corto en vez de aparecer de golpe */
+.modal {
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    animation: modal-entra 0.16s ease-out;
+}
+
+@keyframes modal-entra {
+    from { opacity: 0; transform: translateY(8px) scale(0.99); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* Quien prefiere menos movimiento no debería ver ninguno. */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Tablas: filas con separación fina y encabezado discreto */
+table th {
+    font-size: 0.75rem;
+    font-weight: 650;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+/* El pie deja de ser un bloque oscuro que compite con el contenido */
+.app-footer {
+    border-top: 1px solid var(--border-color);
+}
+
+/* En tema oscuro la barra superior debe ser una superficie oscura: con el azul
+   de marca quedaba más clara que el contenido y perdía de ser un marco. */
+[data-theme="dark"] .app-header {
+    background: #0f1620;
+    border-bottom-color: var(--border-color);
+}
+
+[data-theme="dark"] .app-footer {
+    background: #0b1119;
+    border-top-color: var(--border-color);
+}
+
+[data-theme="dark"] .filters-section,
+[data-theme="dark"] .pendiente-grupo-header {
+    background: var(--bg-primary);
 }
