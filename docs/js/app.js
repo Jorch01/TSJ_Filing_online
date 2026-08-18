@@ -4458,7 +4458,8 @@ async function descargarTemplatePJF() {
     csv += '# NOTAS:\n';
     csv += '#   - Proporciona "organo" (nombre) O "organismo_id" (ID), o ambos\n';
     csv += '#   - Con organismo_id + tipo_asunto_id el boton [Buscar] abre el portal PJF directamente\n';
-    csv += '#   - El nombre en "organo" debe coincidir EXACTAMENTE con el catálogo (incluyendo tildes)\n';
+    csv += '#   - El nombre en "organo" debe ser el del catálogo (no distingue mayúsculas ni tildes)\n';
+    csv += '#   - Los expedientes que ya tengas registrados se omiten, no se duplican\n';
     csv += '#   - Las filas que empiezan con # son comentarios y se ignoran al importar\n';
     csv += '#\n';
 
@@ -4543,10 +4544,11 @@ async function descargarTemplatePJF() {
 }
 
 function parsePJFCSV(texto) {
-    const lineas = texto.split('\n').filter(l => l.trim() && !l.trim().startsWith('#'));
+    const lineas = _lineasUtilesCSV(texto);
     if (lineas.length < 2) return [];
 
-    const encabezados = lineas[0].split(',').map(h => h.trim().toLowerCase());
+    const separador = _detectarSeparador(lineas[0]);
+    const encabezados = parseCSVLine(lineas[0], separador).map(h => h.trim().toLowerCase());
 
     if (!encabezados.includes('expediente')) {
         throw new Error('Falta la columna requerida: expediente');
@@ -4554,9 +4556,7 @@ function parsePJFCSV(texto) {
 
     const datos = [];
     for (let i = 1; i < lineas.length; i++) {
-        const linea = lineas[i].trim();
-        if (!linea || linea.startsWith('#')) continue;
-        const valores = parseCSVLine(linea);
+        const valores = parseCSVLine(lineas[i], separador);
         const fila = {};
         encabezados.forEach((enc, idx) => { fila[enc] = valores[idx] || ''; });
         datos.push(fila);
@@ -4600,9 +4600,10 @@ async function importarExpedientesPJFCSV(event) {
             let resolvedOrgNombre = organoNombre;
 
             if (!resolvedOrgId && organoNombre) {
-                const org = pjfOrganismos.find(o =>
-                    o.nombre.toLowerCase() === organoNombre.toLowerCase()
-                );
+                // Sin tildes: los nombres del catálogo federal las llevan y
+                // exigir que se tecleen igual convertía cada acento en un error.
+                const objetivo = _normalizarValorCSV(organoNombre);
+                const org = pjfOrganismos.find(o => _normalizarValorCSV(o.nombre) === objetivo);
                 if (org) {
                     resolvedOrgId = String(org.id);
                     resolvedOrgNombre = org.nombre;
@@ -4630,33 +4631,59 @@ async function importarExpedientesPJFCSV(event) {
             expedientesValidos.push(nuevoExp);
         });
 
-        if (errores.length > 0 && expedientesValidos.length === 0) {
-            mostrarToast(`Error: ${errores[0]}`, 'error');
+        // Descartar los que ya están registrados y los repetidos del archivo,
+        // en vez de darlos de alta y dejar que un barrido posterior los borre.
+        const clavesExistentes = new Set((await obtenerExpedientes()).map(_claveExpediente));
+        const nuevos = [];
+        let duplicados = 0;
+
+        for (const exp of expedientesValidos) {
+            const clave = _claveExpediente(exp);
+            if (clavesExistentes.has(clave)) { duplicados++; continue; }
+            clavesExistentes.add(clave);
+            nuevos.push(exp);
+        }
+
+        if (nuevos.length === 0) {
+            const motivo = duplicados > 0
+                ? `Los ${duplicados} expedientes del archivo ya estaban registrados.`
+                : 'Ninguna fila del archivo se pudo importar.';
+            mostrarInformeImportacion('📥 Importación PJF sin cambios', [motivo], errores);
             event.target.value = '';
             return;
         }
 
-        const mensaje = errores.length > 0
-            ? `Se importarán ${expedientesValidos.length} expedientes (${errores.length} filas con errores ignoradas). ¿Continuar?`
-            : `¿Importar ${expedientesValidos.length} expedientes PJF?`;
+        const { lista: aImportar, aviso, sinCupo } = await _aplicarLimitePlanAImportacion(nuevos);
+        if (sinCupo) { event.target.value = ''; return; }
+
+        const detalles = [];
+        if (errores.length > 0) detalles.push(`${errores.length} con errores`);
+        if (duplicados > 0) detalles.push(`${duplicados} ya registrados`);
+
+        const mensaje = `¿Importar ${aImportar.length} expedientes PJF?` +
+            (detalles.length > 0 ? `\n\nSe omitirán: ${detalles.join(', ')}.` : '') + aviso;
 
         if (!confirm(mensaje)) {
             event.target.value = '';
             return;
         }
 
-        let importados = 0;
-        for (const exp of expedientesValidos) {
-            try {
-                await agregarExpediente(exp);
-                importados++;
-            } catch (e) {
-                Logger.error('Error al agregar expediente PJF:', e);
-            }
-        }
+        // Por el núcleo, igual que el formulario y la carga masiva del TSJ:
+        // refresca la UI y sincroniza una sola vez al terminar.
+        const { ids, fallos } = await crearExpedientesEnLoteCore(aImportar);
+        fallos.forEach(f => errores.push(`${f.datos.numero}: no se pudo guardar (${f.error})`));
 
-        await Promise.all([cargarExpedientesPJF(), cargarExpedientes(), cargarEstadisticas()]);
-        mostrarToast(`${importados} expedientes PJF importados correctamente`, 'success');
+        if (typeof cargarExpedientesPJF === 'function') await cargarExpedientesPJF();
+
+        const resumen = [`✅ ${ids.length} expedientes PJF importados.`];
+        if (duplicados > 0) resumen.push(`↩️ ${duplicados} omitidos por estar ya registrados.`);
+        if (aviso) aviso.trim().split('\n').filter(Boolean).forEach(l => resumen.push(l));
+
+        if (errores.length > 0 || resumen.length > 1) {
+            mostrarInformeImportacion('📥 Resultado de la importación PJF', resumen, errores);
+        } else {
+            mostrarToast(`${ids.length} expedientes PJF importados correctamente`, 'success');
+        }
 
     } catch (error) {
         Logger.error('Error al importar PJF:', error);
@@ -4668,32 +4695,78 @@ async function importarExpedientesPJFCSV(event) {
 
 // ---- TSJ QROO: Template y carga masiva ----
 
+// Filas de ejemplo del template. Se listan aquí —y no sueltas dentro del
+// generador— porque la importación las reconoce para saltárselas: si el usuario
+// no las borra, no queremos darle de alta un expediente de "Juan Pérez García".
+const TEMPLATE_TSJ_EJEMPLOS = [
+    { expediente: '1234/2025', tipo: 'numero', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN', carpeta: '', comentario: 'Ejemplo: búsqueda por número de expediente' },
+    { expediente: 'Juan Pérez García', tipo: 'nombre', juzgado: 'JUZGADO SEGUNDO FAMILIAR ORAL CANCUN', carpeta: '', comentario: 'Ejemplo: búsqueda por nombre del actor' },
+    { expediente: '5678/2024', tipo: 'numero', juzgado: 'PRIMERA SALA CIVIL MERCANTIL Y FAMILIAR', carpeta: 'Caso Pérez', comentario: 'Ejemplo: Segunda Instancia agrupado en carpeta' }
+];
+
+const TEMPLATE_TSJ_COLUMNAS = ['expediente', 'tipo', 'juzgado', 'carpeta', 'comentario'];
+
+// Envuelve entre comillas si el valor lleva coma, comillas o salto de línea.
+function _csvCampo(valor) {
+    const s = String(valor == null ? '' : valor);
+    return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
 function descargarTemplateCSV() {
-    // Encabezados
-    let csv = 'expediente,tipo,juzgado,comentario\n';
+    const fecha = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    const totalJuzgados = Object.keys(JUZGADOS).length + Object.keys(SALAS_SEGUNDA_INSTANCIA).length;
 
-    // Filas de ejemplo
-    csv += '1234/2025,numero,JUZGADO PRIMERO CIVIL CANCUN,Ejemplo de expediente por número\n';
-    csv += 'Juan Pérez García,nombre,JUZGADO SEGUNDO FAMILIAR ORAL CANCUN,Ejemplo de búsqueda por nombre\n';
-    csv += '5678/2024,numero,PRIMERA SALA CIVIL MERCANTIL Y FAMILIAR,Ejemplo en Segunda Instancia\n';
+    let csv = '';
 
-    // Agregar sección de referencia con todos los juzgados
-    csv += '\n# ==================== REFERENCIA DE JUZGADOS ====================\n';
-    csv += '# Copia el nombre exacto del juzgado de esta lista:\n';
-    csv += '# TIPOS VÁLIDOS: numero, nombre\n';
+    // ── Encabezado con instrucciones ───────────────────────────────────────
+    csv += '# ================================================================\n';
+    csv += '# TEMPLATE DE CARGA MASIVA - EXPEDIENTES TSJ QUINTANA ROO\n';
+    csv += `# Generado: ${fecha}\n`;
+    csv += `# Catálogo: ${totalJuzgados} juzgados y salas\n`;
+    csv += '# ================================================================\n';
+    csv += '#\n';
+    csv += '# COLUMNAS:\n';
+    csv += '#   expediente - Número (ej: 1234/2025) o nombre del actor        [OBLIGATORIO]\n';
+    csv += '#   tipo       - "numero" o "nombre"                              [opcional: se deduce del valor]\n';
+    csv += '#   juzgado    - Juzgado o sala (ver catálogo abajo)              [OBLIGATORIO]\n';
+    csv += '#   carpeta    - Agrupa expedientes del mismo caso; se crea sola  [opcional]\n';
+    csv += '#   comentario - Nota libre                                        [opcional]\n';
+    csv += '#\n';
+    csv += '# NOTAS:\n';
+    csv += '#   - Las filas que empiezan con # son comentarios y se ignoran al importar\n';
+    csv += '#   - Las filas de ejemplo se detectan y se omiten, pero puedes borrarlas\n';
+    csv += '#   - El juzgado no distingue mayúsculas ni acentos, pero el nombre debe ser\n';
+    csv += '#     el del catálogo (no vale "Civil 1" en lugar de "JUZGADO PRIMERO CIVIL CANCUN")\n';
+    csv += '#   - Los expedientes que ya tengas registrados se omiten, no se duplican\n';
+    csv += '#   - Guarda desde Excel como "CSV UTF-8 (delimitado por comas)"\n';
     csv += '#\n';
 
-    // Generar lista automáticamente desde CATEGORIAS_JUZGADOS
+    // ── Encabezado CSV y filas de ejemplo ─────────────────────────────────
+    csv += TEMPLATE_TSJ_COLUMNAS.join(',') + '\n';
+    TEMPLATE_TSJ_EJEMPLOS.forEach(ej => {
+        csv += TEMPLATE_TSJ_COLUMNAS.map(col => _csvCampo(ej[col])).join(',') + '\n';
+    });
+
+    // ── Catálogo de juzgados (generado desde CATEGORIAS_JUZGADOS) ─────────
+    csv += '\n# ================================================================\n';
+    csv += '# CATALOGO DE JUZGADOS Y SALAS\n';
+    csv += '# Copia el nombre completo en la columna "juzgado"\n';
+    csv += '# ================================================================\n';
+
     CATEGORIAS_JUZGADOS.forEach(cat => {
-        csv += `# --- ${cat.nombre} ---\n`;
+        csv += `#\n# --- ${cat.nombre} (${cat.juzgados.length}) ---\n`;
         cat.juzgados.forEach(juzgado => {
             csv += `# ${juzgado}\n`;
         });
-        csv += '#\n';
     });
 
-    // Descargar archivo
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    csv += '#\n# ================================================================\n';
+    csv += '# FIN DEL CATALOGO\n';
+    csv += '# ================================================================\n';
+
+    // El BOM es lo que hace que Excel lea el archivo como UTF-8; sin él las
+    // tildes del catálogo y de los comentarios salen como "PÃ©rez".
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -4701,7 +4774,131 @@ function descargarTemplateCSV() {
     a.click();
     URL.revokeObjectURL(url);
 
-    mostrarToast('Template descargado', 'success');
+    mostrarToast(`Template descargado: ${totalJuzgados} juzgados y salas`, 'success');
+}
+
+// Normaliza para comparar valores del CSV: sin tildes, minúsculas, sin espacios
+// de sobra. "NÚMERO", "Numero" y "numero" son lo mismo para quien llena el CSV.
+function _normalizarValorCSV(valor) {
+    return String(valor || '')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+// Sinónimos de la columna "tipo". Un abogado escribe "actor" o "demandado"
+// cuando busca por nombre, no la palabra "nombre".
+const _TIPOS_CSV_NUMERO = ['numero', 'num', 'no', 'expediente', 'exp', 'numero de expediente'];
+const _TIPOS_CSV_NOMBRE = ['nombre', 'actor', 'demandado', 'parte', 'persona', 'nombre del actor'];
+
+/**
+ * Interpreta la columna "tipo". Si viene vacía la deduce del valor: algo como
+ * "1234/2025" es un número de expediente y "Juan Pérez" no lo es. Devuelve
+ * 'numero', 'nombre' o null si se escribió algo que no se entiende.
+ */
+function _tipoBusquedaDesdeCSV(tipoCrudo, valor) {
+    const tipo = _normalizarValorCSV(tipoCrudo);
+    if (!tipo) return /^\d[\d\s./-]*$/.test(String(valor || '').trim()) ? 'numero' : 'nombre';
+    if (_TIPOS_CSV_NUMERO.includes(tipo)) return 'numero';
+    if (_TIPOS_CSV_NOMBRE.includes(tipo)) return 'nombre';
+    return null;
+}
+
+// ¿Es una de las filas de ejemplo del template? Se comparan las tres columnas
+// que las identifican para no descartar por accidente un expediente real que
+// casualmente se llame igual que el del ejemplo.
+function _esFilaEjemploTemplate(expediente, juzgadoCanonico, tipo) {
+    return TEMPLATE_TSJ_EJEMPLOS.some(ej =>
+        _normalizarValorCSV(ej.expediente) === _normalizarValorCSV(expediente) &&
+        ej.juzgado === juzgadoCanonico &&
+        ej.tipo === tipo
+    );
+}
+
+// Clave de identidad de un expediente, para no volver a dar de alta lo que ya
+// está registrado. Es más estricta que la de eliminarExpedientesDuplicados()
+// —ignora la categoría— porque aquí conviene omitir de más antes que crear un
+// duplicado que un barrido posterior borre en silencio.
+function _claveExpediente(exp) {
+    const identificador = _normalizarValorCSV(exp.numero || exp.nombre || '');
+    const juzgado = _normalizarValorCSV(exp.juzgado || '');
+    return `${identificador}|${juzgado}`;
+}
+
+/**
+ * Resuelve los nombres de carpeta del CSV a carpetaId, creando las que no
+ * existan. Devuelve { mapa: Map(claveNormalizada -> id), creadas: n }.
+ */
+async function _resolverCarpetasDeImportacion(nombres) {
+    const mapa = new Map();
+    let creadas = 0;
+    if (nombres.length === 0) return { mapa, creadas };
+
+    const existentes = await obtenerCarpetas();
+    existentes.forEach(c => mapa.set(_claveNombreCarpetaLocal(c.nombre), c.id));
+
+    for (const nombre of nombres) {
+        const clave = _claveNombreCarpetaLocal(nombre);
+        if (mapa.has(clave)) continue;
+        try {
+            const id = await agregarCarpeta({ nombre, color: '#3b82f6', comentario: '' });
+            mapa.set(clave, id);
+            creadas++;
+        } catch (e) {
+            Logger.error('Error al crear carpeta durante la importación:', e);
+        }
+    }
+
+    if (creadas > 0 && typeof cargarCarpetasUI === 'function') await cargarCarpetasUI();
+    return { mapa, creadas };
+}
+
+// Informe visible de las filas que no se pudieron importar. Antes solo iban a
+// la consola: el usuario veía "3 filas con errores" sin saber cuáles ni por qué.
+function mostrarInformeImportacion(titulo, resumen, errores) {
+    const listaHTML = errores.length === 0 ? '' : `
+        <p style="margin:0.75rem 0 0.35rem; font-weight:600;">Filas no importadas (${errores.length}):</p>
+        <div style="max-height:260px; overflow:auto; border:1px solid var(--border-color, #dee2e6); border-radius:6px; padding:0.5rem;">
+            ${errores.map(e => `<div style="font-size:0.85rem; padding:0.15rem 0;">• ${escapeText(e)}</div>`).join('')}
+        </div>`;
+
+    document.getElementById('modal-titulo').textContent = titulo;
+    document.getElementById('modal-body').innerHTML = `
+        <div style="padding:10px 0;">
+            ${resumen.map(r => `<p style="margin:0.2rem 0;">${escapeText(r)}</p>`).join('')}
+            ${listaHTML}
+        </div>`;
+    document.getElementById('modal-footer').innerHTML =
+        '<button class="btn btn-secondary" onclick="cerrarModal()">Cerrar</button>';
+    abrirModal();
+}
+
+/**
+ * Recorta la lista al límite del plan gratuito. Devuelve { lista, aviso }.
+ * Sin esto, la importación era la puerta trasera del límite: se guardaban
+ * todos y luego la pantalla solo mostraba los primeros 10, dejando el resto
+ * invisible pero ocupando espacio.
+ */
+async function _aplicarLimitePlanAImportacion(lista) {
+    if (estadoPremium && estadoPremium.activo) return { lista, aviso: '' };
+
+    const yaRegistrados = (await obtenerExpedientes()).length;
+    const cupo = Math.max(0, PREMIUM_CONFIG.limiteExpedientes - yaRegistrados);
+
+    if (lista.length <= cupo) return { lista, aviso: '' };
+
+    // Sin cupo no hay nada que confirmar: se explica el límite con el mismo
+    // modal que el formulario en vez de preguntar "¿importar 0 expedientes?".
+    if (cupo === 0) {
+        mostrarModalLimite('expedientes');
+        return { lista: [], aviso: '', sinCupo: true };
+    }
+
+    return {
+        lista: lista.slice(0, cupo),
+        aviso: `\n\n⚠️ CUENTA GRATUITA: solo se importarán ${cupo} de ${lista.length} expedientes ` +
+               `(límite de ${PREMIUM_CONFIG.limiteExpedientes} y ya tienes ${yaRegistrados}).\n\n` +
+               `Activa Premium ($${PREMIUM_CONFIG.precioMensual} MXN/mes) para importar todos.`
+    };
 }
 
 async function importarExpedientesCSV(event) {
@@ -4711,17 +4908,15 @@ async function importarExpedientesCSV(event) {
     const extension = file.name.split('.').pop().toLowerCase();
 
     try {
-        let datos;
-
-        if (extension === 'csv') {
-            const texto = await file.text();
-            datos = parseCSV(texto);
-        } else if (extension === 'xlsx' || extension === 'xls') {
-            // Para Excel, necesitamos leerlo de forma diferente
-            mostrarToast('Para archivos Excel, primero expórtalos a CSV', 'warning');
+        if (extension === 'xlsx' || extension === 'xls') {
+            mostrarToast('Excel no se lee directamente: en Excel usa "Guardar como" → ' +
+                         '"CSV UTF-8 (delimitado por comas)" y vuelve a importar', 'warning');
             event.target.value = '';
             return;
         }
+
+        const texto = await file.text();
+        const datos = parseCSV(texto);
 
         if (!datos || datos.length === 0) {
             mostrarToast('No se encontraron datos válidos', 'error');
@@ -4729,84 +4924,133 @@ async function importarExpedientesCSV(event) {
             return;
         }
 
-        // Validar y procesar datos
-        const expedientesValidos = [];
+        // ── Validación fila a fila ────────────────────────────────────────
+        const candidatos = [];
         const errores = [];
+        let ejemplosOmitidos = 0;
 
         datos.forEach((fila, index) => {
-            const expediente = fila.expediente?.trim();
-            const tipo = fila.tipo?.trim().toLowerCase();
-            const juzgado = fila.juzgado?.trim().toUpperCase();
-            const comentario = fila.comentario?.trim() || '';
+            const numeroFila = index + 2;
+            const expediente = (fila.expediente || '').trim();
+            const juzgadoCrudo = (fila.juzgado || '').trim();
+            const carpeta = (fila.carpeta || '').trim();
+            const comentario = (fila.comentario || '').trim();
 
-            // Validar campos requeridos
             if (!expediente) {
-                errores.push(`Fila ${index + 2}: Falta el expediente`);
+                errores.push(`Fila ${numeroFila}: falta el expediente`);
                 return;
             }
 
-            if (!tipo || (tipo !== 'numero' && tipo !== 'nombre')) {
-                errores.push(`Fila ${index + 2}: Tipo inválido (debe ser 'numero' o 'nombre')`);
+            // El nombre canónico del catálogo, no lo que se tecleó: la búsqueda
+            // en estrados resuelve el id del juzgado por nombre exacto.
+            const juzgado = resolverJuzgadoTSJ(juzgadoCrudo);
+            if (!juzgado) {
+                errores.push(juzgadoCrudo
+                    ? `Fila ${numeroFila}: juzgado no reconocido: "${juzgadoCrudo}"`
+                    : `Fila ${numeroFila}: falta el juzgado`);
                 return;
             }
 
-            // Validar juzgado
-            const juzgadoValido = JUZGADOS[juzgado] || SALAS_SEGUNDA_INSTANCIA[juzgado];
-            if (!juzgadoValido) {
-                errores.push(`Fila ${index + 2}: Juzgado no reconocido: ${juzgado}`);
+            const tipo = _tipoBusquedaDesdeCSV(fila.tipo, expediente);
+            if (!tipo) {
+                errores.push(`Fila ${numeroFila}: tipo inválido "${(fila.tipo || '').trim()}" (usa "numero" o "nombre")`);
+                return;
+            }
+
+            if (_esFilaEjemploTemplate(expediente, juzgado, tipo)) {
+                ejemplosOmitidos++;
                 return;
             }
 
             const nuevoExpediente = {
-                juzgado: juzgado,
+                juzgado,
+                institucion: 'TSJ',
                 categoria: obtenerCategoriaJuzgado(juzgado),
                 comentario: comentario || undefined
             };
+            if (tipo === 'numero') nuevoExpediente.numero = expediente;
+            else nuevoExpediente.nombre = expediente;
 
-            if (tipo === 'numero') {
-                nuevoExpediente.numero = expediente;
-            } else {
-                nuevoExpediente.nombre = expediente;
-            }
+            if (carpeta) nuevoExpediente._carpetaNombre = carpeta;
 
-            expedientesValidos.push(nuevoExpediente);
+            candidatos.push(nuevoExpediente);
         });
 
-        // Mostrar errores si hay
-        if (errores.length > 0) {
-            Logger.warn('Errores en importación:', errores);
-            if (expedientesValidos.length === 0) {
-                mostrarToast(`Error: ${errores[0]}`, 'error');
-                event.target.value = '';
-                return;
+        // ── Descartar los que ya están registrados y los repetidos del propio
+        //    archivo. Antes se daban de alta y un barrido posterior los borraba
+        //    en silencio, dejando un conteo de "importados" que no era cierto.
+        const clavesExistentes = new Set((await obtenerExpedientes()).map(_claveExpediente));
+        const expedientesValidos = [];
+        let duplicados = 0;
+
+        for (const exp of candidatos) {
+            const clave = _claveExpediente(exp);
+            if (clavesExistentes.has(clave)) {
+                duplicados++;
+                continue;
             }
+            clavesExistentes.add(clave);
+            expedientesValidos.push(exp);
         }
 
-        // Confirmar importación
-        const mensaje = errores.length > 0
-            ? `Se importarán ${expedientesValidos.length} expedientes (${errores.length} filas con errores ignoradas). ¿Continuar?`
-            : `¿Importar ${expedientesValidos.length} expedientes?`;
+        if (expedientesValidos.length === 0) {
+            const motivo = duplicados > 0
+                ? `Los ${duplicados} expedientes del archivo ya estaban registrados.`
+                : ejemplosOmitidos > 0 && errores.length === 0
+                ? 'El archivo solo contenía las filas de ejemplo del template.'
+                : 'Ninguna fila del archivo se pudo importar.';
+            mostrarInformeImportacion('📥 Importación sin cambios', [motivo], errores);
+            event.target.value = '';
+            return;
+        }
+
+        // ── Límite del plan ───────────────────────────────────────────────
+        const { lista: aImportar, aviso, sinCupo } = await _aplicarLimitePlanAImportacion(expedientesValidos);
+        if (sinCupo) { event.target.value = ''; return; }
+
+        // ── Confirmación ──────────────────────────────────────────────────
+        const detalles = [];
+        if (errores.length > 0) detalles.push(`${errores.length} con errores`);
+        if (duplicados > 0) detalles.push(`${duplicados} ya registrados`);
+        if (ejemplosOmitidos > 0) detalles.push(`${ejemplosOmitidos} filas de ejemplo`);
+
+        const mensaje = `¿Importar ${aImportar.length} expedientes?` +
+            (detalles.length > 0 ? `\n\nSe omitirán: ${detalles.join(', ')}.` : '') + aviso;
 
         if (!confirm(mensaje)) {
             event.target.value = '';
             return;
         }
 
-        // Importar expedientes
-        let importados = 0;
-        for (const exp of expedientesValidos) {
-            try {
-                await agregarExpediente(exp);
-                importados++;
-            } catch (e) {
-                Logger.error('Error al agregar expediente:', e);
+        // ── Carpetas y alta ───────────────────────────────────────────────
+        const { mapa: carpetasPorClave, creadas: carpetasCreadas } =
+            await _resolverCarpetasDeImportacion([...new Set(aImportar.map(e => e._carpetaNombre).filter(Boolean))]);
+
+        aImportar.forEach(exp => {
+            if (exp._carpetaNombre) {
+                const id = carpetasPorClave.get(_claveNombreCarpetaLocal(exp._carpetaNombre));
+                if (id != null) exp.carpetaId = id;
             }
+            delete exp._carpetaNombre;
+        });
+
+        // Por el núcleo: aplica las mismas reglas que el formulario y sincroniza
+        // con los demás dispositivos una sola vez al terminar.
+        const { ids, fallos } = await crearExpedientesEnLoteCore(aImportar);
+        fallos.forEach(f => errores.push(
+            `${f.datos.numero || f.datos.nombre}: no se pudo guardar (${f.error})`));
+
+        const resumen = [`✅ ${ids.length} expedientes importados.`];
+        if (carpetasCreadas > 0) resumen.push(`📁 ${carpetasCreadas} carpetas creadas.`);
+        if (duplicados > 0) resumen.push(`↩️ ${duplicados} omitidos por estar ya registrados.`);
+        if (ejemplosOmitidos > 0) resumen.push(`ℹ️ ${ejemplosOmitidos} filas de ejemplo del template omitidas.`);
+        if (aviso) aviso.trim().split('\n').filter(Boolean).forEach(l => resumen.push(l));
+
+        if (errores.length > 0 || resumen.length > 1) {
+            mostrarInformeImportacion('📥 Resultado de la importación', resumen, errores);
+        } else {
+            mostrarToast(`${ids.length} expedientes importados correctamente`, 'success');
         }
-
-        await cargarExpedientes();
-        await cargarEstadisticas();
-
-        mostrarToast(`${importados} expedientes importados correctamente`, 'success');
 
     } catch (error) {
         Logger.error('Error al importar:', error);
@@ -4816,16 +5060,40 @@ async function importarExpedientesCSV(event) {
     event.target.value = '';
 }
 
+// Quita el BOM inicial que Excel escribe al guardar como "CSV UTF-8". Sin esto
+// el primer encabezado se llama "﻿expediente" y la columna no se reconoce.
+function _quitarBOM(texto) {
+    return String(texto || '').replace(/^﻿/, '');
+}
+
+// Excel usa el separador de listas de la configuración regional: en varias
+// (España, buena parte de Europa) guarda con punto y coma en vez de coma. Se
+// elige el que produzca más columnas en el encabezado.
+function _detectarSeparador(lineaEncabezado) {
+    const comas = (lineaEncabezado.match(/,/g) || []).length;
+    const puntoYComa = (lineaEncabezado.match(/;/g) || []).length;
+    return puntoYComa > comas ? ';' : ',';
+}
+
+// Separa las líneas útiles: sin vacías y sin comentarios (#).
+function _lineasUtilesCSV(texto) {
+    return _quitarBOM(texto).split('\n')
+        .map(l => l.trim())
+        .filter(l => l && !l.startsWith('#'));
+}
+
 function parseCSV(texto) {
-    const lineas = texto.split('\n').filter(l => l.trim() && !l.trim().startsWith('#'));
+    const lineas = _lineasUtilesCSV(texto);
 
     if (lineas.length < 2) return [];
 
+    const separador = _detectarSeparador(lineas[0]);
+
     // Obtener encabezados
-    const encabezados = lineas[0].split(',').map(h => h.trim().toLowerCase());
+    const encabezados = parseCSVLine(lineas[0], separador).map(h => h.trim().toLowerCase());
 
     // Validar encabezados requeridos
-    const requeridos = ['expediente', 'tipo', 'juzgado'];
+    const requeridos = ['expediente', 'juzgado'];
     const faltantes = requeridos.filter(r => !encabezados.includes(r));
     if (faltantes.length > 0) {
         throw new Error(`Faltan columnas requeridas: ${faltantes.join(', ')}`);
@@ -4834,11 +5102,7 @@ function parseCSV(texto) {
     // Parsear filas
     const datos = [];
     for (let i = 1; i < lineas.length; i++) {
-        const linea = lineas[i].trim();
-        if (!linea || linea.startsWith('#')) continue;
-
-        // Parsear CSV considerando comillas
-        const valores = parseCSVLine(linea);
+        const valores = parseCSVLine(lineas[i], separador);
 
         const fila = {};
         encabezados.forEach((encabezado, index) => {
@@ -4851,7 +5115,8 @@ function parseCSV(texto) {
     return datos;
 }
 
-function parseCSVLine(linea) {
+function parseCSVLine(linea, separador) {
+    const sep = separador || ',';
     const valores = [];
     let valorActual = '';
     let dentroComillas = false;
@@ -4860,8 +5125,15 @@ function parseCSVLine(linea) {
         const char = linea[i];
 
         if (char === '"') {
-            dentroComillas = !dentroComillas;
-        } else if (char === ',' && !dentroComillas) {
+            // "" dentro de un campo entrecomillado es una comilla literal
+            // (así escribe Excel un texto con comillas).
+            if (dentroComillas && linea[i + 1] === '"') {
+                valorActual += '"';
+                i++;
+            } else {
+                dentroComillas = !dentroComillas;
+            }
+        } else if (char === sep && !dentroComillas) {
             valores.push(valorActual.trim());
             valorActual = '';
         } else {
