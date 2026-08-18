@@ -4426,285 +4426,61 @@ async function cargarConfigAutoBackup() {
     }
 }
 
-// ==================== IMPORTACIÓN CSV/EXCEL ====================
+// ==================== IMPORTACIÓN CSV ====================
 
-// ---- PJF: Template y carga masiva ----
-
-async function descargarTemplatePJF() {
-    await cargarCatalogosPJF();
-
-    const fecha = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: '2-digit', day: '2-digit' });
-    const totalOrganos = pjfOrganismos.length;
-    const totalCircuitos = pjfCircuitos.length;
-    const totalTiposOrgano = Object.keys(pjfTiposOrgano).length;
-
-    let csv = '';
-
-    // ── Encabezado informativo ─────────────────────────────────────────────
-    csv += '# ================================================================\n';
-    csv += '# TEMPLATE DE CARGA MASIVA - EXPEDIENTES PJF\n';
-    csv += '# Poder Judicial de la Federación - Portal DGEJ/CJF\n';
-    csv += `# Generado: ${fecha}\n`;
-    csv += `# Catálogo: ${totalOrganos} órganos | ${totalCircuitos} circuitos | ${totalTiposOrgano} tipos de órgano\n`;
-    csv += '# ================================================================\n';
-    csv += '#\n';
-    csv += '# COLUMNAS:\n';
-    csv += '#   expediente     - Número de expediente (ej: 67/2021)              [OBLIGATORIO]\n';
-    csv += '#   organo         - Nombre EXACTO del órgano (ver catálogo abajo)   [obligatorio si no hay organismo_id]\n';
-    csv += '#   organismo_id   - ID numérico del órgano (preferido)              [obligatorio si no hay organo]\n';
-    csv += '#   tipo_asunto_id - ID numérico del tipo de asunto                  [recomendado para búsqueda directa]\n';
-    csv += '#   comentario     - Nota libre                                       [opcional]\n';
-    csv += '#\n';
-    csv += '# NOTAS:\n';
-    csv += '#   - Proporciona "organo" (nombre) O "organismo_id" (ID), o ambos\n';
-    csv += '#   - Con organismo_id + tipo_asunto_id el boton [Buscar] abre el portal PJF directamente\n';
-    csv += '#   - El nombre en "organo" debe ser el del catálogo (no distingue mayúsculas ni tildes)\n';
-    csv += '#   - Los expedientes que ya tengas registrados se omiten, no se duplican\n';
-    csv += '#   - Las filas que empiezan con # son comentarios y se ignoran al importar\n';
-    csv += '#\n';
-
-    // ── Encabezado CSV y filas de ejemplo ─────────────────────────────────
-    csv += 'expediente,organo,organismo_id,tipo_asunto_id,comentario\n';
-
-    // Ejemplos con organos reales del catalogo
-    const ejemplos = [
-        { num: '67/2021', orgId: 394, tipoId: 1,  nota: 'Ejemplo: Amparo Indirecto en Juzgado de Distrito' },
-        { num: '123/2023', orgId: 394, tipoId: 68, nota: 'Ejemplo: Juicio Oral Mercantil' },
-        { num: '456/2024', orgId: 395, tipoId: 10, nota: 'Ejemplo: Amparo Directo en Tribunal Colegiado' },
-        { num: '789/2022', orgId: '',  tipoId: 74, nota: 'Ejemplo: solo organismo_id vacio, llena con el ID real' },
-    ];
-    ejemplos.forEach(function(ej) {
-        const org = ej.orgId ? pjfOrganismos.find(function(o) { return o.id === ej.orgId; }) : null;
-        const nombre = org ? org.nombre : '';
-        csv += `${ej.num},"${nombre}",${ej.orgId || ''},${ej.tipoId},"${ej.nota}"\n`;
-    });
-
-    csv += '\n';
-
-    // ── Sección: Tipos de Asunto por Tipo de Órgano ───────────────────────
-    csv += '# ================================================================\n';
-    csv += '# CATALOGO: TIPOS DE ASUNTO POR TIPO DE ORGANO\n';
-    csv += '# Usa el ID en la columna tipo_asunto_id\n';
-    csv += '# ================================================================\n';
-
-    // Ordenar por TipoOrganismoId y mostrar tipos de asunto (union)
-    const tiposOrganoOrdenados = Object.keys(pjfTiposOrgano)
-        .map(function(tid) {
-            return { id: Number(tid), nombre: pjfTiposOrgano[tid].nombre, tipos: pjfTiposOrgano[tid].tiposAsuntoArr || [] };
-        })
-        .filter(function(to) { return to.tipos.length > 0; })
-        .sort(function(a, b) { return a.id - b.id; });
-
-    tiposOrganoOrdenados.forEach(function(to) {
-        csv += `#\n# --- TipoOrganismo ${to.id}: ${to.nombre} ---\n`;
-        to.tipos.forEach(function(t) {
-            csv += `#   tipo_asunto_id=${t.id}  ->  ${t.nombre}\n`;
-        });
-    });
-
-    csv += '#\n';
-
-    // ── Sección: Catálogo de Circuitos y Órganos ──────────────────────────
-    csv += '# ================================================================\n';
-    csv += '# CATALOGO: CIRCUITOS Y ORGANOS\n';
-    csv += '# Usa el nombre EXACTO en "organo" o el ID en "organismo_id"\n';
-    csv += '# Formato: # ID | Nombre del organo | Tipo de organo | Ciudad\n';
-    csv += '# ================================================================\n';
-
-    pjfCircuitos.forEach(function(c) {
-        const organosPorCircuito = pjfOrganismos
-            .filter(function(o) { return o.circuito_id === c.numero_circuito; })
-            .sort(function(a, b) { return a.nombre.localeCompare(b.nombre, 'es'); });
-
-        if (organosPorCircuito.length === 0) return;
-
-        csv += `#\n# ---- CIRCUITO ${c.numero_circuito}: ${c.nombre} (${organosPorCircuito.length} órganos) ----\n`;
-        organosPorCircuito.forEach(function(o) {
-            const ciudad = o.ciudad ? ' | ' + o.ciudad : '';
-            csv += `# ID=${o.id} | "${o.nombre}" | ${o.tipoOrganismo}${ciudad}\n`;
-        });
-    });
-
-    csv += '#\n# ================================================================\n';
-    csv += '# FIN DEL CATALOGO\n';
-    csv += '# ================================================================\n';
-
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = 'template_expedientes_pjf.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-
-    mostrarToast(
-        `Template PJF descargado: ${totalOrganos} órganos, ${totalCircuitos} circuitos, tipos de asunto completos`,
-        'success'
-    );
-}
-
-function parsePJFCSV(texto) {
-    const lineas = _lineasUtilesCSV(texto);
-    if (lineas.length < 2) return [];
-
-    const separador = _detectarSeparador(lineas[0]);
-    const encabezados = parseCSVLine(lineas[0], separador).map(h => h.trim().toLowerCase());
-
-    if (!encabezados.includes('expediente')) {
-        throw new Error('Falta la columna requerida: expediente');
-    }
-
-    const datos = [];
-    for (let i = 1; i < lineas.length; i++) {
-        const valores = parseCSVLine(lineas[i], separador);
-        const fila = {};
-        encabezados.forEach((enc, idx) => { fila[enc] = valores[idx] || ''; });
-        datos.push(fila);
-    }
-    return datos;
-}
-
-async function importarExpedientesPJFCSV(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    try {
-        const texto = await file.text();
-        const datos = parsePJFCSV(texto);
-
-        if (!datos || datos.length === 0) {
-            mostrarToast('No se encontraron datos válidos en el archivo', 'error');
-            event.target.value = '';
-            return;
-        }
-
-        await cargarCatalogosPJF();
-
-        const expedientesValidos = [];
-        const errores = [];
-
-        datos.forEach((fila, index) => {
-            const expediente = fila.expediente?.trim();
-            const organoNombre = fila.organo?.trim() || '';
-            const organismoId = fila.organismo_id?.trim() || '';
-            const tipoAsuntoId = fila.tipo_asunto_id?.trim() || '';
-            const comentario = fila.comentario?.trim() || '';
-
-            if (!expediente) {
-                errores.push(`Fila ${index + 2}: Falta el número de expediente`);
-                return;
-            }
-
-            // Resolver organismo
-            let resolvedOrgId = organismoId;
-            let resolvedOrgNombre = organoNombre;
-
-            if (!resolvedOrgId && organoNombre) {
-                // Sin tildes: los nombres del catálogo federal las llevan y
-                // exigir que se tecleen igual convertía cada acento en un error.
-                const objetivo = _normalizarValorCSV(organoNombre);
-                const org = pjfOrganismos.find(o => _normalizarValorCSV(o.nombre) === objetivo);
-                if (org) {
-                    resolvedOrgId = String(org.id);
-                    resolvedOrgNombre = org.nombre;
-                }
-            } else if (resolvedOrgId && !organoNombre) {
-                const org = pjfOrganismos.find(o => String(o.id) === resolvedOrgId);
-                if (org) resolvedOrgNombre = org.nombre;
-            }
-
-            if (!resolvedOrgNombre && !resolvedOrgId) {
-                errores.push(`Fila ${index + 2}: Falta el órgano (columna "organo" o "organismo_id")`);
-                return;
-            }
-
-            const nuevoExp = {
-                numero: expediente,
-                juzgado: resolvedOrgNombre || `Organismo ID: ${resolvedOrgId}`,
-                categoria: 'PJF Federal',
-                institucion: 'PJF',
-                comentario: comentario || undefined
-            };
-            if (resolvedOrgId) nuevoExp.pjfOrgId = resolvedOrgId;
-            if (tipoAsuntoId) nuevoExp.pjfTipoAsunto = tipoAsuntoId;
-
-            expedientesValidos.push(nuevoExp);
-        });
-
-        // Descartar los que ya están registrados y los repetidos del archivo,
-        // en vez de darlos de alta y dejar que un barrido posterior los borre.
-        const clavesExistentes = new Set((await obtenerExpedientes()).map(_claveExpediente));
-        const nuevos = [];
-        let duplicados = 0;
-
-        for (const exp of expedientesValidos) {
-            const clave = _claveExpediente(exp);
-            if (clavesExistentes.has(clave)) { duplicados++; continue; }
-            clavesExistentes.add(clave);
-            nuevos.push(exp);
-        }
-
-        if (nuevos.length === 0) {
-            const motivo = duplicados > 0
-                ? `Los ${duplicados} expedientes del archivo ya estaban registrados.`
-                : 'Ninguna fila del archivo se pudo importar.';
-            mostrarInformeImportacion('📥 Importación PJF sin cambios', [motivo], errores);
-            event.target.value = '';
-            return;
-        }
-
-        const { lista: aImportar, aviso, sinCupo } = await _aplicarLimitePlanAImportacion(nuevos);
-        if (sinCupo) { event.target.value = ''; return; }
-
-        const detalles = [];
-        if (errores.length > 0) detalles.push(`${errores.length} con errores`);
-        if (duplicados > 0) detalles.push(`${duplicados} ya registrados`);
-
-        const mensaje = `¿Importar ${aImportar.length} expedientes PJF?` +
-            (detalles.length > 0 ? `\n\nSe omitirán: ${detalles.join(', ')}.` : '') + aviso;
-
-        if (!confirm(mensaje)) {
-            event.target.value = '';
-            return;
-        }
-
-        // Por el núcleo, igual que el formulario y la carga masiva del TSJ:
-        // refresca la UI y sincroniza una sola vez al terminar.
-        const { ids, fallos } = await crearExpedientesEnLoteCore(aImportar);
-        fallos.forEach(f => errores.push(`${f.datos.numero}: no se pudo guardar (${f.error})`));
-
-        if (typeof cargarExpedientesPJF === 'function') await cargarExpedientesPJF();
-
-        const resumen = [`✅ ${ids.length} expedientes PJF importados.`];
-        if (duplicados > 0) resumen.push(`↩️ ${duplicados} omitidos por estar ya registrados.`);
-        if (aviso) aviso.trim().split('\n').filter(Boolean).forEach(l => resumen.push(l));
-
-        if (errores.length > 0 || resumen.length > 1) {
-            mostrarInformeImportacion('📥 Resultado de la importación PJF', resumen, errores);
-        } else {
-            mostrarToast(`${ids.length} expedientes PJF importados correctamente`, 'success');
-        }
-
-    } catch (error) {
-        Logger.error('Error al importar PJF:', error);
-        mostrarToast('Error al procesar el archivo: ' + error.message, 'error');
-    }
-
-    event.target.value = '';
-}
-
-// ---- TSJ QROO: Template y carga masiva ----
+// ---- Template único de carga masiva (TSJ + PJF + otras autoridades) ----
+//
+// Un solo archivo para todo el despacho: cada fila declara dónde está radicado
+// el asunto y la importación lo manda a su sección (la lista del TSJ filtra por
+// institucion === 'TSJ' y la federal por 'PJF'). Además de dar de alta el
+// expediente, una fila puede traer un pendiente y una audiencia, que es como
+// llega realmente el trabajo: "este asunto, en este juzgado, con esta
+// contestación que vence tal día y audiencia tal otro".
 
 // Filas de ejemplo del template. Se listan aquí —y no sueltas dentro del
 // generador— porque la importación las reconoce para saltárselas: si el usuario
 // no las borra, no queremos darle de alta un expediente de "Juan Pérez García".
-const TEMPLATE_TSJ_EJEMPLOS = [
-    { expediente: '1234/2025', tipo: 'numero', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN', carpeta: '', comentario: 'Ejemplo: búsqueda por número de expediente' },
-    { expediente: 'Juan Pérez García', tipo: 'nombre', juzgado: 'JUZGADO SEGUNDO FAMILIAR ORAL CANCUN', carpeta: '', comentario: 'Ejemplo: búsqueda por nombre del actor' },
-    { expediente: '5678/2024', tipo: 'numero', juzgado: 'PRIMERA SALA CIVIL MERCANTIL Y FAMILIAR', carpeta: 'Caso Pérez', comentario: 'Ejemplo: Segunda Instancia agrupado en carpeta' }
+const TEMPLATE_EJEMPLOS = [
+    {
+        expediente: '1234/2025', tipo: 'numero', institucion: 'TSJ',
+        juzgado: 'JUZGADO PRIMERO CIVIL CANCUN',
+        actor: 'Comercializadora del Caribe SA de CV', demandado: 'Juan Pérez García',
+        carpeta: 'Caso Caribe', comentario: 'Ejemplo: juicio estatal con pendiente y audiencia',
+        pendiente: 'Contestar la demanda', pendiente_fecha: '15/03/2026', pendiente_prioridad: 'alta',
+        audiencia: 'Audiencia preliminar', audiencia_fecha: '02/04/2026 09:30', audiencia_tipo: 'audiencia'
+    },
+    {
+        expediente: 'María López Sánchez', tipo: 'nombre', institucion: 'TSJ',
+        juzgado: 'JUZGADO SEGUNDO FAMILIAR ORAL CANCUN',
+        comentario: 'Ejemplo: búsqueda por nombre del actor'
+    },
+    {
+        expediente: '5678/2024', tipo: 'numero', institucion: 'TSJ',
+        juzgado: 'PRIMERA SALA CIVIL MERCANTIL Y FAMILIAR',
+        carpeta: 'Caso Caribe', comentario: 'Ejemplo: apelación del mismo caso, en Segunda Instancia'
+    },
+    {
+        expediente: '67/2021', tipo: 'numero', institucion: 'PJF',
+        juzgado: 'Juzgado Primero de Distrito en el Estado de Aguascalientes',
+        organismo_id: '394', tipo_asunto_id: '1',
+        comentario: 'Ejemplo: amparo indirecto federal',
+        pendiente: 'Revisar acuerdo', pendiente_fecha: '20/03/2026', pendiente_prioridad: 'media'
+    },
+    {
+        expediente: 'ABC-123/2025', tipo: 'numero', institucion: 'OTRO',
+        juzgado: 'IMSS Subdelegación Cancún',
+        comentario: 'Ejemplo: trámite ante otra autoridad',
+        audiencia: 'Vence plazo para desahogar requerimiento',
+        audiencia_fecha: '10/03/2026', audiencia_tipo: 'vencimiento'
+    }
 ];
 
-const TEMPLATE_TSJ_COLUMNAS = ['expediente', 'tipo', 'juzgado', 'carpeta', 'comentario'];
+const TEMPLATE_COLUMNAS = [
+    'expediente', 'tipo', 'institucion', 'juzgado', 'organismo_id', 'tipo_asunto_id',
+    'actor', 'demandado', 'carpeta', 'comentario',
+    'pendiente', 'pendiente_fecha', 'pendiente_prioridad',
+    'audiencia', 'audiencia_fecha', 'audiencia_tipo'
+];
 
 // Envuelve entre comillas si el valor lleva coma, comillas o salto de línea.
 function _csvCampo(valor) {
@@ -4712,69 +4488,143 @@ function _csvCampo(valor) {
     return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
-function descargarTemplateCSV() {
+/** Catálogo del TSJ como comentarios, agrupado por categoría. */
+function _catalogoTSJParaTemplate() {
+    let csv = '# ================================================================\n';
+    csv += '# CATALOGO TSJ QUINTANA ROO — juzgados y salas\n';
+    csv += '# Copia el nombre completo en la columna "juzgado"\n';
+    csv += '# ================================================================\n';
+    CATEGORIAS_JUZGADOS.forEach(cat => {
+        csv += `#\n# --- ${cat.nombre} (${cat.juzgados.length}) ---\n`;
+        cat.juzgados.forEach(j => { csv += `# ${j}\n`; });
+    });
+    return csv;
+}
+
+/** Tipos de asunto federales agrupados por tipo de órgano. */
+function _catalogoTiposAsuntoParaTemplate() {
+    let csv = '#\n# ================================================================\n';
+    csv += '# CATALOGO PJF — tipos de asunto (columna "tipo_asunto_id")\n';
+    csv += '# ================================================================\n';
+
+    Object.keys(pjfTiposOrgano)
+        .map(tid => ({ id: Number(tid), nombre: pjfTiposOrgano[tid].nombre, tipos: pjfTiposOrgano[tid].tiposAsuntoArr || [] }))
+        .filter(to => to.tipos.length > 0)
+        .sort((a, b) => a.id - b.id)
+        .forEach(to => {
+            csv += `#\n# --- ${to.nombre} ---\n`;
+            to.tipos.forEach(t => { csv += `#   tipo_asunto_id=${t.id}  ->  ${t.nombre}\n`; });
+        });
+    return csv;
+}
+
+/** Órganos federales agrupados por circuito. */
+function _catalogoOrganosPJFParaTemplate() {
+    let csv = '#\n# ================================================================\n';
+    csv += '# CATALOGO PJF — órganos jurisdiccionales\n';
+    csv += '# Usa el nombre en "juzgado" o el ID en "organismo_id"\n';
+    csv += '# Formato: # ID | Nombre | Tipo de órgano | Ciudad\n';
+    csv += '# ================================================================\n';
+
+    pjfCircuitos.forEach(c => {
+        const organos = pjfOrganismos
+            .filter(o => o.circuito_id === c.numero_circuito)
+            .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+        if (organos.length === 0) return;
+        csv += `#\n# ---- CIRCUITO ${c.numero_circuito}: ${c.nombre} (${organos.length} órganos) ----\n`;
+        organos.forEach(o => {
+            csv += `# ID=${o.id} | "${o.nombre}" | ${o.tipoOrganismo}${o.ciudad ? ' | ' + o.ciudad : ''}\n`;
+        });
+    });
+    return csv;
+}
+
+/**
+ * Descarga el template único. Incluye los catálogos completos del TSJ y del
+ * PJF como comentarios, para que el usuario no tenga que salir del archivo a
+ * buscar cómo se llama su juzgado.
+ */
+async function descargarTemplateExpedientes() {
+    await cargarCatalogosPJF();
+
     const fecha = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: '2-digit', day: '2-digit' });
-    const totalJuzgados = Object.keys(JUZGADOS).length + Object.keys(SALAS_SEGUNDA_INSTANCIA).length;
+    const totalTSJ = Object.keys(JUZGADOS).length + Object.keys(SALAS_SEGUNDA_INSTANCIA).length;
+    const totalPJF = pjfOrganismos.length;
 
     let csv = '';
-
-    // ── Encabezado con instrucciones ───────────────────────────────────────
     csv += '# ================================================================\n';
-    csv += '# TEMPLATE DE CARGA MASIVA - EXPEDIENTES TSJ QUINTANA ROO\n';
+    csv += '# TEMPLATE DE CARGA MASIVA DE EXPEDIENTES\n';
+    csv += '# TSJ Quintana Roo + Poder Judicial de la Federación + otras autoridades\n';
     csv += `# Generado: ${fecha}\n`;
-    csv += `# Catálogo: ${totalJuzgados} juzgados y salas\n`;
+    csv += `# Catálogos: ${totalTSJ} juzgados del TSJ | ${totalPJF} órganos federales\n`;
     csv += '# ================================================================\n';
     csv += '#\n';
-    csv += '# COLUMNAS:\n';
-    csv += '#   expediente - Número (ej: 1234/2025) o nombre del actor        [OBLIGATORIO]\n';
-    csv += '#   tipo       - "numero" o "nombre"                              [opcional: se deduce del valor]\n';
-    csv += '#   juzgado    - Juzgado o sala (ver catálogo abajo)              [OBLIGATORIO]\n';
-    csv += '#   carpeta    - Agrupa expedientes del mismo caso; se crea sola  [opcional]\n';
-    csv += '#   comentario - Nota libre                                        [opcional]\n';
+    csv += '# Un solo archivo para todo. Cada expediente va a su sección según\n';
+    csv += '# dónde esté radicado; no hace falta separar archivos por institución.\n';
     csv += '#\n';
-    csv += '# NOTAS:\n';
+    csv += '# ---------- EL EXPEDIENTE ----------\n';
+    csv += '#   expediente     - Número (ej: 1234/2025) o nombre del actor      [OBLIGATORIO]\n';
+    csv += '#   tipo           - "numero" o "nombre"          [opcional: se deduce del valor]\n';
+    csv += '#   institucion    - TSJ | PJF | OTRO             [opcional: se deduce del juzgado]\n';
+    csv += '#   juzgado        - Juzgado del TSJ, órgano federal o autoridad     [OBLIGATORIO]\n';
+    csv += '#   organismo_id   - ID del órgano federal        [opcional, solo PJF]\n';
+    csv += '#   tipo_asunto_id - ID del tipo de asunto        [opcional, solo PJF]\n';
+    csv += '#   actor          - Parte actora                 [opcional]\n';
+    csv += '#   demandado      - Parte demandada              [opcional]\n';
+    csv += '#   carpeta        - Agrupa expedientes del mismo caso; se crea sola [opcional]\n';
+    csv += '#   comentario     - Nota libre                   [opcional]\n';
+    csv += '#\n';
+    csv += '# ---------- PENDIENTE (tarea del expediente) ----------\n';
+    csv += '#   pendiente            - Qué hay que hacer      [opcional]\n';
+    csv += '#   pendiente_fecha      - Fecha límite; si la pones, aparece en el calendario\n';
+    csv += '#   pendiente_prioridad  - alta | media | baja    [opcional]\n';
+    csv += '#\n';
+    csv += '# ---------- AUDIENCIA / FECHA DEL CALENDARIO ----------\n';
+    csv += '#   audiencia       - Título de la cita           [opcional]\n';
+    csv += '#   audiencia_fecha - Cuándo                      [obligatorio si pones audiencia]\n';
+    csv += '#   audiencia_tipo  - audiencia | vencimiento | recordatorio | otro\n';
+    csv += '#\n';
+    csv += '# ---------- FORMATO DE LAS FECHAS ----------\n';
+    csv += '#   El DÍA VA PRIMERO: 15/03/2026 es el 15 de marzo, no el 3 de mayo.\n';
+    csv += '#   Se aceptan: 15/03/2026 | 15-03-2026 | 2026-03-15 | 15 de marzo de 2026\n';
+    csv += '#   Con hora:   15/03/2026 09:30 | 15/03/2026 2:00 pm\n';
+    csv += '#   Sin hora se guarda como evento de todo el día.\n';
+    csv += '#\n';
+    csv += '# ---------- NOTAS ----------\n';
     csv += '#   - Las filas que empiezan con # son comentarios y se ignoran al importar\n';
     csv += '#   - Las filas de ejemplo se detectan y se omiten, pero puedes borrarlas\n';
-    csv += '#   - El juzgado no distingue mayúsculas ni acentos, pero el nombre debe ser\n';
-    csv += '#     el del catálogo (no vale "Civil 1" en lugar de "JUZGADO PRIMERO CIVIL CANCUN")\n';
+    csv += '#   - Los nombres de juzgado no distinguen mayúsculas ni acentos\n';
+    csv += '#   - Si un juzgado no está en los catálogos se registra como "Otros/Varios";\n';
+    csv += '#     si se parece a uno conocido, la importación te avisa por si es un dedazo\n';
     csv += '#   - Los expedientes que ya tengas registrados se omiten, no se duplican\n';
+    csv += '#   - Para varios pendientes de un mismo expediente, repite la fila del\n';
+    csv += '#     expediente cambiando solo las columnas de pendiente/audiencia\n';
     csv += '#   - Guarda desde Excel como "CSV UTF-8 (delimitado por comas)"\n';
     csv += '#\n';
 
-    // ── Encabezado CSV y filas de ejemplo ─────────────────────────────────
-    csv += TEMPLATE_TSJ_COLUMNAS.join(',') + '\n';
-    TEMPLATE_TSJ_EJEMPLOS.forEach(ej => {
-        csv += TEMPLATE_TSJ_COLUMNAS.map(col => _csvCampo(ej[col])).join(',') + '\n';
+    csv += TEMPLATE_COLUMNAS.join(',') + '\n';
+    TEMPLATE_EJEMPLOS.forEach(ej => {
+        csv += TEMPLATE_COLUMNAS.map(col => _csvCampo(ej[col])).join(',') + '\n';
     });
 
-    // ── Catálogo de juzgados (generado desde CATEGORIAS_JUZGADOS) ─────────
-    csv += '\n# ================================================================\n';
-    csv += '# CATALOGO DE JUZGADOS Y SALAS\n';
-    csv += '# Copia el nombre completo en la columna "juzgado"\n';
-    csv += '# ================================================================\n';
-
-    CATEGORIAS_JUZGADOS.forEach(cat => {
-        csv += `#\n# --- ${cat.nombre} (${cat.juzgados.length}) ---\n`;
-        cat.juzgados.forEach(juzgado => {
-            csv += `# ${juzgado}\n`;
-        });
-    });
-
+    csv += '\n' + _catalogoTSJParaTemplate();
+    csv += _catalogoTiposAsuntoParaTemplate();
+    csv += _catalogoOrganosPJFParaTemplate();
     csv += '#\n# ================================================================\n';
-    csv += '# FIN DEL CATALOGO\n';
+    csv += '# FIN DE LOS CATALOGOS\n';
     csv += '# ================================================================\n';
 
     // El BOM es lo que hace que Excel lea el archivo como UTF-8; sin él las
-    // tildes del catálogo y de los comentarios salen como "PÃ©rez".
+    // tildes de los catálogos y los comentarios salen como "PÃ©rez".
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'template_expedientes_tsj.csv';
+    a.download = 'template_expedientes.csv';
     a.click();
     URL.revokeObjectURL(url);
 
-    mostrarToast(`Template descargado: ${totalJuzgados} juzgados y salas`, 'success');
+    mostrarToast(`Template descargado: ${totalTSJ} juzgados del TSJ y ${totalPJF} órganos federales`, 'success');
 }
 
 // Normaliza para comparar valores del CSV: sin tildes, minúsculas, sin espacios
@@ -4783,6 +4633,215 @@ function _normalizarValorCSV(valor) {
     return String(valor || '')
         .normalize('NFD').replace(/[̀-ͯ]/g, '')
         .toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+// ==================== FECHAS DEL CSV ====================
+// El día va primero (15/03/2026 = 15 de marzo), que es como se escribe una
+// fecha en México y como la exporta Excel en español. Se admite también el
+// formato ISO (2026-03-15) porque es lo que sale de Google Sheets.
+
+const _MESES_CSV = {
+    ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6,
+    jul: 7, ago: 8, sep: 9, oct: 10, nov: 11, dic: 12
+};
+
+function _mesDesdeTexto(txt) {
+    const clave = _normalizarValorCSV(txt).slice(0, 3);
+    return _MESES_CSV[clave] || null;
+}
+
+/**
+ * Convierte lo que se escribió en una celda de fecha a ISO.
+ * Acepta "15/03/2026", "15-03-2026", "2026-03-15", "15 mar 2026" y cualquiera
+ * de ellas con hora ("15/03/2026 09:30", "… 9:30 am").
+ *
+ * @returns {{iso: string, todoElDia: boolean}|{error: string}|null} null si la
+ *          celda venía vacía (una fecha ausente no es un error).
+ */
+function _fechaDesdeCSV(valor) {
+    const txt = String(valor || '').trim();
+    if (!txt) return null;
+
+    // Separar la parte de hora, si viene
+    const conHora = txt.match(/^(.*?)[\s,]+(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|am|pm|hrs?\.?|horas)?$/i);
+    const parteFecha = (conHora ? conHora[1] : txt).trim();
+
+    let hora = 0, minuto = 0, tieneHora = false;
+    if (conHora) {
+        hora = parseInt(conHora[2], 10);
+        minuto = parseInt(conHora[3] || '0', 10);
+        const sufijo = _normalizarValorCSV(conHora[4] || '').replace(/\./g, '');
+        if (sufijo === 'pm' && hora < 12) hora += 12;
+        if (sufijo === 'am' && hora === 12) hora = 0;
+        if (hora > 23 || minuto > 59) return { error: `hora inválida en "${txt}"` };
+        tieneHora = true;
+    }
+
+    let anio, mes, dia;
+
+    const iso = parteFecha.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+    const latino = parteFecha.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
+    const conMes = parteFecha.match(/^(\d{1,2})[\s-]+de[\s-]+([a-záéíóú]+)[\s-]+(?:de[\s-]+)?(\d{4})$/i)
+                || parteFecha.match(/^(\d{1,2})[\s-]+([a-záéíóú]+)[\s-]+(\d{4})$/i);
+
+    if (iso) {
+        anio = +iso[1]; mes = +iso[2]; dia = +iso[3];
+    } else if (latino) {
+        dia = +latino[1]; mes = +latino[2]; anio = +latino[3];
+        if (anio < 100) anio += 2000;   // "26" → 2026
+    } else if (conMes) {
+        dia = +conMes[1]; mes = _mesDesdeTexto(conMes[2]); anio = +conMes[3];
+        if (!mes) return { error: `no entiendo el mes de "${txt}"` };
+    } else {
+        return { error: `fecha no reconocida: "${txt}" (usa dd/mm/aaaa)` };
+    }
+
+    if (mes < 1 || mes > 12 || dia < 1 || dia > 31) {
+        return { error: `fecha fuera de rango: "${txt}" (el día va primero: dd/mm/aaaa)` };
+    }
+
+    const fecha = new Date(anio, mes - 1, dia, hora, minuto, 0, 0);
+    // Rechaza el 31 de febrero y demás fechas que el constructor "arregla" solo.
+    if (fecha.getFullYear() !== anio || fecha.getMonth() !== mes - 1 || fecha.getDate() !== dia) {
+        return { error: `esa fecha no existe: "${txt}"` };
+    }
+
+    return { iso: fecha.toISOString(), todoElDia: !tieneHora };
+}
+
+// ==================== DETECCIÓN DE INSTITUCIÓN ====================
+// La sección en la que acaba un expediente la decide su campo "institucion"
+// (la lista del TSJ filtra por 'TSJ' y la federal por 'PJF'). Por eso el
+// template no obliga a declararla: se deduce de dónde esté radicado el asunto,
+// que es el dato que el abogado sí tiene a la mano.
+
+const _INSTITUCIONES_CSV = {
+    tsj: 'TSJ', tsjqroo: 'TSJ', 'tsj qroo': 'TSJ', estatal: 'TSJ', local: 'TSJ',
+    'tsj quintana roo': 'TSJ', 'poder judicial del estado': 'TSJ',
+    pjf: 'PJF', federal: 'PJF', cjf: 'PJF', 'poder judicial de la federacion': 'PJF',
+    otro: 'OTRO', otros: 'OTRO', varios: 'OTRO', 'otros/varios': 'OTRO',
+    autoridad: 'OTRO', dependencia: 'OTRO', administrativo: 'OTRO'
+};
+
+// Palabras que no distinguen a un juzgado de otro y solo ensucian el parecido.
+const _PALABRAS_VACIAS_JUZGADO = new Set(['de', 'del', 'la', 'las', 'el', 'los', 'en', 'y', 'lo']);
+
+function _tokensJuzgado(texto) {
+    return _normalizarValorCSV(texto).split(/[^a-z0-9]+/)
+        .filter(t => t && !_PALABRAS_VACIAS_JUZGADO.has(t));
+}
+
+/**
+ * Juzgado del TSJ más parecido a lo escrito, con su grado de parecido (0-1)
+ * medido como proporción de palabras compartidas. Sirve para dos cosas:
+ * proponer "¿quisiste decir…?" y distinguir un juzgado mal escrito de una
+ * autoridad legítima que simplemente no está en ningún catálogo.
+ */
+function _sugerirJuzgadoTSJ(texto) {
+    const tokens = _tokensJuzgado(texto);
+    if (tokens.length === 0) return null;
+
+    let mejor = null;
+    for (const candidato of Object.keys(JUZGADOS).concat(Object.keys(SALAS_SEGUNDA_INSTANCIA))) {
+        const suyos = new Set(_tokensJuzgado(candidato));
+        if (suyos.size === 0) continue;
+        const comunes = tokens.filter(t => suyos.has(t)).length;
+        // Se divide entre el mayor de los dos para que un texto corto no
+        // "acierte" por accidente con un nombre largo.
+        const parecido = comunes / Math.max(tokens.length, suyos.size);
+        if (!mejor || parecido > mejor.parecido) mejor = { nombre: candidato, parecido };
+    }
+    return mejor;
+}
+
+// Por encima de esto, un nombre que no está en el catálogo se trata como un
+// juzgado mal escrito (se avisa) y no como una autoridad distinta.
+const _PARECIDO_MINIMO_SUGERENCIA = 0.55;
+
+/** Busca un órgano del PJF por nombre exacto (sin tildes) y si no, aproximado. */
+function _buscarOrganoPJFPorNombre(nombre) {
+    if (!nombre || typeof pjfOrganismos === 'undefined' || !pjfOrganismos.length) return null;
+    const objetivo = _normalizarValorCSV(nombre);
+    const exacto = pjfOrganismos.find(o => _normalizarValorCSV(o.nombre) === objetivo);
+    if (exacto) return exacto;
+    return typeof buscarOrganismoPJF === 'function' ? buscarOrganismoPJF(nombre) : null;
+}
+
+/**
+ * Decide a qué institución pertenece una fila y deja el juzgado con el nombre
+ * canónico que esa institución usa. Devuelve
+ * { institucion, juzgado, pjfOrgId?, pjfTipoAsunto? } o { error }.
+ *
+ * Sin columna "institucion" se deduce así: primero el catálogo del TSJ,
+ * después el federal, y lo que no esté en ninguno se toma por una autoridad
+ * distinta (IMSS, SAT, una notaría…) — salvo que se parezca demasiado a un
+ * juzgado conocido, en cuyo caso es casi seguro un dedazo y se avisa en vez de
+ * archivarlo callando en "Otros/Varios".
+ */
+function _resolverDestinoFila(fila) {
+    const declarada = _INSTITUCIONES_CSV[_normalizarValorCSV(fila.institucion)];
+    const texto = (fila.juzgado || fila.organo || fila.autoridad || '').trim();
+    const organismoId = (fila.organismo_id || '').trim();
+    const tipoAsunto = (fila.tipo_asunto_id || '').trim();
+
+    // Un id de órgano o de tipo de asunto solo existe en el portal federal.
+    const pareceFederal = declarada === 'PJF' || (!declarada && (organismoId || tipoAsunto));
+
+    // ---- Federal ----
+    if (pareceFederal) {
+        const porId = organismoId && typeof pjfOrganismos !== 'undefined'
+            ? pjfOrganismos.find(o => String(o.id) === organismoId) : null;
+        const organo = porId || _buscarOrganoPJFPorNombre(texto);
+
+        if (!organo && !organismoId && !texto) {
+            return { error: 'falta el órgano federal (columna "juzgado" u "organismo_id")' };
+        }
+
+        const destino = {
+            institucion: 'PJF',
+            juzgado: organo ? organo.nombre : (texto || `Organismo ID: ${organismoId}`)
+        };
+        if (organo) destino.pjfOrgId = String(organo.id);
+        else if (organismoId) destino.pjfOrgId = organismoId;
+        if (tipoAsunto) destino.pjfTipoAsunto = tipoAsunto;
+        return destino;
+    }
+
+    // ---- Estatal ----
+    const juzgadoTSJ = resolverJuzgadoTSJ(texto);
+    if (juzgadoTSJ && declarada !== 'OTRO') {
+        return { institucion: 'TSJ', juzgado: juzgadoTSJ };
+    }
+
+    if (declarada === 'TSJ') {
+        const sug = _sugerirJuzgadoTSJ(texto);
+        return {
+            error: texto
+                ? `juzgado del TSJ no reconocido: "${texto}"` +
+                  (sug && sug.parecido >= _PARECIDO_MINIMO_SUGERENCIA ? ` — ¿quisiste decir "${sug.nombre}"?` : '')
+                : 'falta el juzgado'
+        };
+    }
+
+    // ---- Otras autoridades ----
+    if (declarada === 'OTRO') {
+        return { institucion: 'OTRO', juzgado: texto || 'Autoridad no especificada' };
+    }
+
+    if (!texto) return { error: 'falta el juzgado o autoridad' };
+
+    // Sin institución declarada: quizá sea un órgano federal escrito a mano.
+    const organoPJF = _buscarOrganoPJFPorNombre(texto);
+    if (organoPJF) {
+        return { institucion: 'PJF', juzgado: organoPJF.nombre, pjfOrgId: String(organoPJF.id) };
+    }
+
+    const sugerencia = _sugerirJuzgadoTSJ(texto);
+    if (sugerencia && sugerencia.parecido >= _PARECIDO_MINIMO_SUGERENCIA) {
+        return { error: `juzgado no reconocido: "${texto}" — ¿quisiste decir "${sugerencia.nombre}"?` };
+    }
+
+    return { institucion: 'OTRO', juzgado: texto };
 }
 
 // Sinónimos de la columna "tipo". Un abogado escribe "actor" o "demandado"
@@ -4803,14 +4862,21 @@ function _tipoBusquedaDesdeCSV(tipoCrudo, valor) {
     return null;
 }
 
-// ¿Es una de las filas de ejemplo del template? Se comparan las tres columnas
-// que las identifican para no descartar por accidente un expediente real que
-// casualmente se llame igual que el del ejemplo.
-function _esFilaEjemploTemplate(expediente, juzgadoCanonico, tipo) {
-    return TEMPLATE_TSJ_EJEMPLOS.some(ej =>
+/**
+ * ¿Es una fila de ejemplo del template que el usuario no borró?
+ *
+ * Se exige que coincidan expediente, juzgado Y comentario, los tres tal como
+ * salieron del template. Con menos que eso acabaríamos descartando el
+ * expediente de alguien: "67/2021" en un Juzgado de Distrito es un número
+ * perfectamente real. En cuanto se toca cualquiera de los tres campos —que es
+ * lo que hace quien aprovecha la fila de ejemplo para escribir la suya— deja
+ * de considerarse ejemplo y se importa.
+ */
+function _esFilaEjemploTemplate(expediente, juzgadoCanonico, comentario) {
+    return TEMPLATE_EJEMPLOS.some(ej =>
         _normalizarValorCSV(ej.expediente) === _normalizarValorCSV(expediente) &&
-        ej.juzgado === juzgadoCanonico &&
-        ej.tipo === tipo
+        _normalizarValorCSV(ej.juzgado) === _normalizarValorCSV(juzgadoCanonico) &&
+        _normalizarValorCSV(ej.comentario) === _normalizarValorCSV(comentario)
     );
 }
 
@@ -4886,12 +4952,10 @@ async function _aplicarLimitePlanAImportacion(lista) {
 
     if (lista.length <= cupo) return { lista, aviso: '' };
 
-    // Sin cupo no hay nada que confirmar: se explica el límite con el mismo
-    // modal que el formulario en vez de preguntar "¿importar 0 expedientes?".
-    if (cupo === 0) {
-        mostrarModalLimite('expedientes');
-        return { lista: [], aviso: '', sinCupo: true };
-    }
+    // Quién avisa del límite lo decide el llamador: si el archivo además trae
+    // pendientes para expedientes ya registrados, la importación sigue adelante
+    // y sacar aquí el modal dejaría dos diálogos encima del otro.
+    if (cupo === 0) return { lista: [], aviso: '', sinCupo: true };
 
     return {
         lista: lista.slice(0, cupo),
@@ -4901,7 +4965,83 @@ async function _aplicarLimitePlanAImportacion(lista) {
     };
 }
 
-async function importarExpedientesCSV(event) {
+// Prioridades que se aceptan en la columna pendiente_prioridad.
+const _PRIORIDADES_CSV = { alta: 'alta', urgente: 'alta', media: 'media', normal: 'media', baja: 'baja', low: 'baja' };
+
+// Tipos de evento del calendario y sus sinónimos.
+const _TIPOS_EVENTO_CSV = {
+    audiencia: 'audiencia', vista: 'audiencia', comparecencia: 'audiencia', diligencia: 'audiencia',
+    vencimiento: 'vencimiento', plazo: 'vencimiento', termino: 'vencimiento',
+    recordatorio: 'recordatorio', aviso: 'recordatorio',
+    otro: 'otro'
+};
+
+/**
+ * Lee de una fila el pendiente y la audiencia, si los trae. Devuelve
+ * { pendiente?, evento?, errores[] }. Una fecha mal escrita se reporta pero no
+ * tumba el expediente: es preferible dar de alta el asunto y avisar de la
+ * fecha, que perder ambos.
+ */
+function _extrasDeFila(fila, numeroFila) {
+    const errores = [];
+    const extras = {};
+
+    // ---- Pendiente ----
+    const tituloPendiente = (fila.pendiente || '').trim();
+    if (tituloPendiente) {
+        const pendiente = {
+            titulo: tituloPendiente,
+            prioridad: _PRIORIDADES_CSV[_normalizarValorCSV(fila.pendiente_prioridad)] || ''
+        };
+        const fecha = _fechaDesdeCSV(fila.pendiente_fecha);
+        if (fecha && fecha.error) {
+            errores.push(`Fila ${numeroFila}: el pendiente se creará sin fecha — ${fecha.error}`);
+        } else if (fecha) {
+            pendiente.fechaLimite = fecha.iso;
+            pendiente.todoElDia = fecha.todoElDia;
+        }
+        extras.pendiente = pendiente;
+    } else if ((fila.pendiente_fecha || '').trim()) {
+        errores.push(`Fila ${numeroFila}: hay fecha de pendiente pero falta la columna "pendiente" con lo que hay que hacer`);
+    }
+
+    // ---- Audiencia / fecha del calendario ----
+    const tituloEvento = (fila.audiencia || '').trim();
+    const fechaEventoCruda = (fila.audiencia_fecha || '').trim();
+    if (tituloEvento || fechaEventoCruda) {
+        const fecha = _fechaDesdeCSV(fechaEventoCruda);
+        if (!tituloEvento) {
+            errores.push(`Fila ${numeroFila}: hay fecha de audiencia pero falta la columna "audiencia" con el título`);
+        } else if (!fecha) {
+            errores.push(`Fila ${numeroFila}: la audiencia "${tituloEvento}" necesita fecha en "audiencia_fecha"`);
+        } else if (fecha.error) {
+            errores.push(`Fila ${numeroFila}: audiencia no agendada — ${fecha.error}`);
+        } else {
+            extras.evento = {
+                titulo: tituloEvento,
+                tipo: _TIPOS_EVENTO_CSV[_normalizarValorCSV(fila.audiencia_tipo)] || 'audiencia',
+                fechaInicio: fecha.iso,
+                todoElDia: fecha.todoElDia
+            };
+        }
+    }
+
+    return { ...extras, errores };
+}
+
+/**
+ * Importa expedientes, pendientes y fechas de calendario desde un solo CSV.
+ *
+ * Cada fila se enruta sola: el expediente acaba en la sección del TSJ, en la
+ * federal o en "Otros/Varios" según dónde esté radicado, sin que haya que
+ * separar archivos por institución.
+ *
+ * Repetir el mismo expediente en varias filas no lo duplica: las filas
+ * siguientes solo aportan sus pendientes y audiencias. Eso permite cargar
+ * varias tareas de un mismo asunto, y también añadir pendientes a expedientes
+ * que ya estaban dados de alta.
+ */
+async function importarExpedientes(event) {
     const file = event.target.files[0];
     if (!file) return;
 
@@ -4924,30 +5064,34 @@ async function importarExpedientesCSV(event) {
             return;
         }
 
-        // ── Validación fila a fila ────────────────────────────────────────
-        const candidatos = [];
+        // El catálogo federal hace falta para reconocer los órganos del PJF.
+        await cargarCatalogosPJF().catch(() => {});
+
+        // ── Un "asunto" por expediente distinto, con sus extras acumulados ──
+        const asuntos = new Map();
         const errores = [];
         let ejemplosOmitidos = 0;
+
+        const existentes = await obtenerExpedientes();
+        const idPorClave = new Map(existentes.map(e => [_claveExpediente(e), e.id]));
 
         datos.forEach((fila, index) => {
             const numeroFila = index + 2;
             const expediente = (fila.expediente || '').trim();
-            const juzgadoCrudo = (fila.juzgado || '').trim();
-            const carpeta = (fila.carpeta || '').trim();
-            const comentario = (fila.comentario || '').trim();
 
             if (!expediente) {
-                errores.push(`Fila ${numeroFila}: falta el expediente`);
+                // Una fila sin expediente pero con datos sueltos suele ser una
+                // fila vacía que Excel dejó al final: solo molesta avisar si
+                // realmente traía algo.
+                if (Object.values(fila).some(v => (v || '').trim())) {
+                    errores.push(`Fila ${numeroFila}: falta el expediente`);
+                }
                 return;
             }
 
-            // El nombre canónico del catálogo, no lo que se tecleó: la búsqueda
-            // en estrados resuelve el id del juzgado por nombre exacto.
-            const juzgado = resolverJuzgadoTSJ(juzgadoCrudo);
-            if (!juzgado) {
-                errores.push(juzgadoCrudo
-                    ? `Fila ${numeroFila}: juzgado no reconocido: "${juzgadoCrudo}"`
-                    : `Fila ${numeroFila}: falta el juzgado`);
+            const destino = _resolverDestinoFila(fila);
+            if (destino.error) {
+                errores.push(`Fila ${numeroFila}: ${destino.error}`);
                 return;
             }
 
@@ -4957,46 +5101,56 @@ async function importarExpedientesCSV(event) {
                 return;
             }
 
-            if (_esFilaEjemploTemplate(expediente, juzgado, tipo)) {
+            if (_esFilaEjemploTemplate(expediente, destino.juzgado, fila.comentario)) {
                 ejemplosOmitidos++;
                 return;
             }
 
-            const nuevoExpediente = {
-                juzgado,
-                institucion: 'TSJ',
-                categoria: obtenerCategoriaJuzgado(juzgado),
-                comentario: comentario || undefined
-            };
-            if (tipo === 'numero') nuevoExpediente.numero = expediente;
-            else nuevoExpediente.nombre = expediente;
+            const clave = _claveExpediente({
+                numero: tipo === 'numero' ? expediente : '',
+                nombre: tipo === 'nombre' ? expediente : '',
+                juzgado: destino.juzgado
+            });
 
-            if (carpeta) nuevoExpediente._carpetaNombre = carpeta;
+            if (!asuntos.has(clave)) {
+                const nuevo = {
+                    juzgado: destino.juzgado,
+                    institucion: destino.institucion,
+                    categoria: categoriaExpedienteCore(destino.institucion, destino.juzgado),
+                    comentario: (fila.comentario || '').trim() || undefined,
+                    actor: (fila.actor || '').trim() || undefined,
+                    demandado: (fila.demandado || '').trim() || undefined
+                };
+                if (tipo === 'numero') nuevo.numero = expediente;
+                else nuevo.nombre = expediente;
+                if (destino.pjfOrgId) nuevo.pjfOrgId = destino.pjfOrgId;
+                if (destino.pjfTipoAsunto) nuevo.pjfTipoAsunto = destino.pjfTipoAsunto;
 
-            candidatos.push(nuevoExpediente);
+                asuntos.set(clave, {
+                    expediente: nuevo,
+                    etiqueta: expediente,
+                    carpetaNombre: (fila.carpeta || '').trim(),
+                    idExistente: idPorClave.has(clave) ? idPorClave.get(clave) : null,
+                    pendientes: [],
+                    eventos: []
+                });
+            }
+
+            const asunto = asuntos.get(clave);
+            const extras = _extrasDeFila(fila, numeroFila);
+            errores.push(...extras.errores);
+            if (extras.pendiente) asunto.pendientes.push(extras.pendiente);
+            if (extras.evento) asunto.eventos.push(extras.evento);
         });
 
-        // ── Descartar los que ya están registrados y los repetidos del propio
-        //    archivo. Antes se daban de alta y un barrido posterior los borraba
-        //    en silencio, dejando un conteo de "importados" que no era cierto.
-        const clavesExistentes = new Set((await obtenerExpedientes()).map(_claveExpediente));
-        const expedientesValidos = [];
-        let duplicados = 0;
+        const todos = [...asuntos.values()];
+        const nuevos = todos.filter(a => a.idExistente === null);
+        const yaRegistrados = todos.filter(a => a.idExistente !== null);
+        const extrasSobreExistentes = yaRegistrados.filter(a => a.pendientes.length || a.eventos.length);
+        const duplicadosSinAporte = yaRegistrados.length - extrasSobreExistentes.length;
 
-        for (const exp of candidatos) {
-            const clave = _claveExpediente(exp);
-            if (clavesExistentes.has(clave)) {
-                duplicados++;
-                continue;
-            }
-            clavesExistentes.add(clave);
-            expedientesValidos.push(exp);
-        }
-
-        if (expedientesValidos.length === 0) {
-            const motivo = duplicados > 0
-                ? `Los ${duplicados} expedientes del archivo ya estaban registrados.`
-                : ejemplosOmitidos > 0 && errores.length === 0
+        if (todos.length === 0) {
+            const motivo = ejemplosOmitidos > 0 && errores.length === 0
                 ? 'El archivo solo contenía las filas de ejemplo del template.'
                 : 'Ninguna fila del archivo se pudo importar.';
             mostrarInformeImportacion('📥 Importación sin cambios', [motivo], errores);
@@ -5004,53 +5158,102 @@ async function importarExpedientesCSV(event) {
             return;
         }
 
-        // ── Límite del plan ───────────────────────────────────────────────
-        const { lista: aImportar, aviso, sinCupo } = await _aplicarLimitePlanAImportacion(expedientesValidos);
-        if (sinCupo) { event.target.value = ''; return; }
+        // ── Límite del plan (solo cuentan los expedientes nuevos) ──────────
+        const { lista: nuevosAImportar, aviso, sinCupo } = await _aplicarLimitePlanAImportacion(nuevos);
+        if (sinCupo && extrasSobreExistentes.length === 0) {
+            // Nada que hacer: se explica el límite con el mismo modal que el
+            // formulario, en vez de preguntar "¿importar 0 expedientes?".
+            mostrarModalLimite('expedientes');
+            event.target.value = '';
+            return;
+        }
 
-        // ── Confirmación ──────────────────────────────────────────────────
-        const detalles = [];
-        if (errores.length > 0) detalles.push(`${errores.length} con errores`);
-        if (duplicados > 0) detalles.push(`${duplicados} ya registrados`);
-        if (ejemplosOmitidos > 0) detalles.push(`${ejemplosOmitidos} filas de ejemplo`);
+        const aProcesar = nuevosAImportar.concat(extrasSobreExistentes);
+        if (aProcesar.length === 0) {
+            mostrarInformeImportacion('📥 Importación sin cambios',
+                ['Todos los expedientes del archivo ya estaban registrados y no traían pendientes ni audiencias nuevas.'],
+                errores);
+            event.target.value = '';
+            return;
+        }
 
-        const mensaje = `¿Importar ${aImportar.length} expedientes?` +
-            (detalles.length > 0 ? `\n\nSe omitirán: ${detalles.join(', ')}.` : '') + aviso;
+        // ── Confirmación ───────────────────────────────────────────────────
+        const totalPendientes = aProcesar.reduce((n, a) => n + a.pendientes.length, 0);
+        const totalEventos = aProcesar.reduce((n, a) => n + a.eventos.length, 0);
+        const porInstitucion = _contarPorInstitucion(nuevosAImportar);
+
+        const partes = [];
+        if (nuevosAImportar.length > 0) partes.push(`${nuevosAImportar.length} expedientes (${porInstitucion})`);
+        if (totalPendientes > 0) partes.push(`${totalPendientes} pendientes`);
+        if (totalEventos > 0) partes.push(`${totalEventos} fechas de calendario`);
+
+        const omitidos = [];
+        if (errores.length > 0) omitidos.push(`${errores.length} avisos`);
+        if (duplicadosSinAporte > 0) omitidos.push(`${duplicadosSinAporte} expedientes ya registrados`);
+        if (ejemplosOmitidos > 0) omitidos.push(`${ejemplosOmitidos} filas de ejemplo`);
+
+        const mensaje = `¿Importar ${partes.join(', ')}?` +
+            (omitidos.length > 0 ? `\n\nSe omitirán: ${omitidos.join(', ')}.` : '') + aviso;
 
         if (!confirm(mensaje)) {
             event.target.value = '';
             return;
         }
 
-        // ── Carpetas y alta ───────────────────────────────────────────────
+        // ── Carpetas ───────────────────────────────────────────────────────
         const { mapa: carpetasPorClave, creadas: carpetasCreadas } =
-            await _resolverCarpetasDeImportacion([...new Set(aImportar.map(e => e._carpetaNombre).filter(Boolean))]);
+            await _resolverCarpetasDeImportacion([...new Set(aProcesar.map(a => a.carpetaNombre).filter(Boolean))]);
 
-        aImportar.forEach(exp => {
-            if (exp._carpetaNombre) {
-                const id = carpetasPorClave.get(_claveNombreCarpetaLocal(exp._carpetaNombre));
-                if (id != null) exp.carpetaId = id;
+        nuevosAImportar.forEach(a => {
+            if (a.carpetaNombre) {
+                const id = carpetasPorClave.get(_claveNombreCarpetaLocal(a.carpetaNombre));
+                if (id != null) a.expediente.carpetaId = id;
             }
-            delete exp._carpetaNombre;
         });
 
-        // Por el núcleo: aplica las mismas reglas que el formulario y sincroniza
-        // con los demás dispositivos una sola vez al terminar.
-        const { ids, fallos } = await crearExpedientesEnLoteCore(aImportar);
+        // ── Expedientes ────────────────────────────────────────────────────
+        const { ids, fallos } = await crearExpedientesEnLoteCore(nuevosAImportar.map(a => a.expediente));
         fallos.forEach(f => errores.push(
-            `${f.datos.numero || f.datos.nombre}: no se pudo guardar (${f.error})`));
+            `${f.datos.numero || f.datos.nombre}: no se pudo guardar el expediente (${f.error})`));
 
-        const resumen = [`✅ ${ids.length} expedientes importados.`];
+        // crearExpedientesEnLoteCore devuelve los ids en orden y omite los que
+        // fallaron, así que se emparejan recorriendo ambas listas a la vez.
+        const fallidos = new Set(fallos.map(f => f.datos));
+        let cursor = 0;
+        nuevosAImportar.forEach(a => {
+            if (fallidos.has(a.expediente)) { a.id = null; return; }
+            a.id = ids[cursor++];
+        });
+        extrasSobreExistentes.forEach(a => { a.id = a.idExistente; });
+
+        // ── Pendientes y fechas de calendario ──────────────────────────────
+        const { pendientes, eventos } = await _crearExtrasDeImportacion(aProcesar, errores);
+
+        // ── Informe ────────────────────────────────────────────────────────
+        const resumen = [`✅ ${ids.length} expedientes importados${ids.length ? ` (${porInstitucion})` : ''}.`];
+        if (pendientes > 0) resumen.push(`📌 ${pendientes} pendientes creados.`);
+        if (eventos > 0) resumen.push(`📅 ${eventos} fechas agendadas en el calendario.`);
         if (carpetasCreadas > 0) resumen.push(`📁 ${carpetasCreadas} carpetas creadas.`);
-        if (duplicados > 0) resumen.push(`↩️ ${duplicados} omitidos por estar ya registrados.`);
+        if (extrasSobreExistentes.length > 0) {
+            resumen.push(`🔗 ${extrasSobreExistentes.length} expedientes ya existían: se les añadieron sus pendientes y fechas.`);
+        }
+        if (duplicadosSinAporte > 0) resumen.push(`↩️ ${duplicadosSinAporte} omitidos por estar ya registrados.`);
         if (ejemplosOmitidos > 0) resumen.push(`ℹ️ ${ejemplosOmitidos} filas de ejemplo del template omitidas.`);
         if (aviso) aviso.trim().split('\n').filter(Boolean).forEach(l => resumen.push(l));
 
-        if (errores.length > 0 || resumen.length > 1) {
+        // Si el archivo mezcló instituciones, el informe es lo único que
+        // explica a qué sección fue cada expediente; un toast de "5 importados"
+        // dejaría al usuario buscándolos.
+        const mezclaInstituciones = new Set(nuevosAImportar.map(a => a.expediente.institucion)).size > 1;
+
+        if (errores.length > 0 || resumen.length > 1 || mezclaInstituciones) {
             mostrarInformeImportacion('📥 Resultado de la importación', resumen, errores);
         } else {
             mostrarToast(`${ids.length} expedientes importados correctamente`, 'success');
         }
+
+        // Repintar la lista federal, que tiene su propio render.
+        if (typeof cargarExpedientesPJF === 'function') await cargarExpedientesPJF();
 
     } catch (error) {
         Logger.error('Error al importar:', error);
@@ -5058,6 +5261,50 @@ async function importarExpedientesCSV(event) {
     }
 
     event.target.value = '';
+}
+
+/** "3 del TSJ, 2 federales" — para que el usuario vea a dónde va cada cosa. */
+function _contarPorInstitucion(asuntos) {
+    const cuenta = { TSJ: 0, PJF: 0, OTRO: 0 };
+    asuntos.forEach(a => { cuenta[a.expediente.institucion] = (cuenta[a.expediente.institucion] || 0) + 1; });
+    const partes = [];
+    if (cuenta.TSJ) partes.push(`${cuenta.TSJ} del TSJ`);
+    if (cuenta.PJF) partes.push(`${cuenta.PJF} federales`);
+    if (cuenta.OTRO) partes.push(`${cuenta.OTRO} de otras autoridades`);
+    return partes.join(', ');
+}
+
+/**
+ * Da de alta los pendientes y las fechas de calendario de cada asunto, ya con
+ * el id del expediente al que cuelgan. Un pendiente con fecha límite genera
+ * además su evento en el calendario: de eso se encarga crearPendienteCore.
+ */
+async function _crearExtrasDeImportacion(asuntos, errores) {
+    let pendientes = 0, eventos = 0;
+
+    for (const asunto of asuntos) {
+        if (asunto.id == null) continue;   // su expediente no se pudo guardar
+
+        for (const p of asunto.pendientes) {
+            try {
+                await crearPendienteCore({ ...p, expedienteId: asunto.id, expedienteTexto: asunto.etiqueta });
+                pendientes++;
+            } catch (e) {
+                errores.push(`${asunto.etiqueta}: no se pudo crear el pendiente "${p.titulo}" (${e.message})`);
+            }
+        }
+
+        for (const ev of asunto.eventos) {
+            try {
+                await crearEventoCore({ ...ev, expedienteId: asunto.id, expedienteTexto: asunto.etiqueta });
+                eventos++;
+            } catch (e) {
+                errores.push(`${asunto.etiqueta}: no se pudo agendar "${ev.titulo}" (${e.message})`);
+            }
+        }
+    }
+
+    return { pendientes, eventos };
 }
 
 // Quita el BOM inicial que Excel escribe al guardar como "CSV UTF-8". Sin esto
@@ -5092,11 +5339,14 @@ function parseCSV(texto) {
     // Obtener encabezados
     const encabezados = parseCSVLine(lineas[0], separador).map(h => h.trim().toLowerCase());
 
-    // Validar encabezados requeridos
-    const requeridos = ['expediente', 'juzgado'];
-    const faltantes = requeridos.filter(r => !encabezados.includes(r));
-    if (faltantes.length > 0) {
-        throw new Error(`Faltan columnas requeridas: ${faltantes.join(', ')}`);
+    // Validar encabezados requeridos. La columna del órgano admite varios
+    // nombres porque los templates anteriores la llamaban "organo" (PJF) y
+    // el formulario de otras autoridades, "autoridad".
+    if (!encabezados.includes('expediente')) {
+        throw new Error('Falta la columna requerida: expediente');
+    }
+    if (!['juzgado', 'organo', 'autoridad'].some(c => encabezados.includes(c))) {
+        throw new Error('Falta la columna del juzgado (o "organo" / "autoridad")');
     }
 
     // Parsear filas
