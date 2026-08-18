@@ -1030,16 +1030,11 @@
         return '';
     }
 
+    // La resolución vive en juzgados.js (misma regla que usa la carga masiva
+    // por CSV), para que voz y CSV acepten exactamente los mismos nombres.
     function matchJuzgadoTSJ(nombre) {
-        if (!nombre) return null;
-        const todos = []
-            .concat(typeof JUZGADOS !== 'undefined' ? Object.keys(JUZGADOS) : [])
-            .concat(typeof SALAS_SEGUNDA_INSTANCIA !== 'undefined' ? Object.keys(SALAS_SEGUNDA_INSTANCIA) : []);
-        if (todos.includes(nombre)) return nombre;
-        const objetivo = normalizar(nombre);
-        return todos.find(j => normalizar(j) === objetivo) ||
-               todos.find(j => normalizar(j).includes(objetivo) || objetivo.includes(normalizar(j))) ||
-               null;
+        if (typeof resolverJuzgadoTSJ !== 'function') return null;
+        return resolverJuzgadoTSJ(nombre);
     }
 
     async function accCrearExpediente(p) {

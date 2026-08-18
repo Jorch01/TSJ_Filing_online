@@ -214,6 +214,47 @@ function obtenerCategoriaJuzgado(nombre) {
     return 'OTROS';
 }
 
+// Normaliza un nombre de juzgado para comparar: sin tildes, minúsculas y
+// espacios colapsados. El catálogo guarda "CANCUN" y "SEPTIMA" sin tilde, pero
+// nadie escribe así: hace falta que "Cancún" y "SÉPTIMA" también encuentren su
+// juzgado.
+function normalizarNombreJuzgado(nombre) {
+    return String(nombre || '')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/**
+ * Resuelve lo que el usuario escribió al nombre EXACTO del catálogo (regla
+ * única para el asistente de voz y la carga masiva por CSV). Devolver el
+ * nombre canónico —y no el que se tecleó— es imprescindible: construirUrlBusqueda
+ * busca el id por nombre exacto, así que un expediente guardado como
+ * "Juzgado Primero Civil Cancún" quedaría sin botón de búsqueda.
+ *
+ * @returns {string|null} nombre canónico, o null si no hay coincidencia.
+ */
+function resolverJuzgadoTSJ(nombre) {
+    if (!nombre) return null;
+    const todos = Object.keys(JUZGADOS).concat(Object.keys(SALAS_SEGUNDA_INSTANCIA));
+    if (todos.includes(nombre)) return nombre;
+
+    const objetivo = normalizarNombreJuzgado(nombre);
+    if (!objetivo) return null;
+
+    const exacto = todos.find(j => normalizarNombreJuzgado(j) === objetivo);
+    if (exacto) return exacto;
+
+    // Último recurso: coincidencia parcial, pero solo si es inequívoca. Con
+    // varios candidatos se prefiere fallar a adivinar mal el juzgado.
+    const parciales = todos.filter(j => {
+        const n = normalizarNombreJuzgado(j);
+        return n.includes(objetivo) || objetivo.includes(n);
+    });
+    return parciales.length === 1 ? parciales[0] : null;
+}
+
 /**
  * Construye la URL correcta de búsqueda según el tipo de juzgado
  * - Primera Instancia: buscador_primera.php

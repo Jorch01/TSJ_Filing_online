@@ -170,6 +170,34 @@ async function crearExpedienteCore(datos) {
     return nuevoId;
 }
 
+/**
+ * Crea varios expedientes de una sola vez (carga masiva por CSV). Aplica las
+ * mismas reglas que crearExpedienteCore a cada uno, pero refresca la UI y
+ * sincroniza UNA sola vez al final: hacerlo por expediente convertiría una
+ * importación de 200 filas en 200 subidas a la nube y 200 repintados.
+ *
+ * No corta al primer fallo —una fila mala no debe tirar el resto de la
+ * importación—; devuelve { ids, fallos } para que el llamador informe.
+ */
+async function crearExpedientesEnLoteCore(lista) {
+    const ids = [];
+    const fallos = [];
+
+    await _coreEnLoteEjecutar(async () => {
+        for (const datos of lista || []) {
+            try {
+                ids.push(await crearExpedienteCore(datos));
+            } catch (e) {
+                fallos.push({ datos, error: e && e.message ? e.message : String(e) });
+            }
+        }
+    });
+
+    await _coreRefrescarUI();
+    await _coreSincronizar();
+    return { ids, fallos };
+}
+
 /** Actualiza un expediente. Recalcula la categoría si cambia el juzgado o la institución. */
 async function actualizarExpedienteCore(id, cambios) {
     const aplicar = { ...cambios };
