@@ -224,6 +224,96 @@ async function main() {
         });
         igual('todos los tooltips quedan colocados al hacer hover', sinColocar, []);
 
+        // ---- Borrar todo debe vaciar TODOS los stores ----
+        // El fallo original: se limpiaban 4 de 9, y los pendientes y las
+        // búsquedas del IMPI sobrevivían a "eliminar todos los datos".
+        page.on('dialog', d => d.accept());
+        await page.evaluate(async () => {
+            const carpetaId = await agregarCarpeta({ nombre: 'Caso de prueba', color: '#3b82f6' });
+            const id = await crearExpedienteCore({
+                numero: '1/2025', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN',
+                institucion: 'TSJ', carpetaId });
+            await crearPendienteCore({ titulo: 'Tarea', expedienteId: id,
+                fechaLimite: new Date(2026, 2, 15).toISOString() });
+            await crearNotaCore({ titulo: 'Nota', expedienteId: id });
+            await guardarConfig('email_destino', 'x@y.z');
+            await new Promise(r => {
+                const q = db.transaction(['sigaGuardadas'], 'readwrite')
+                    .objectStore('sigaGuardadas').add({ query: 'nike', tool: 'impi' });
+                q.onsuccess = () => r(); q.onerror = () => r();
+            });
+        });
+
+        const contarStores = () => page.evaluate(async () => {
+            const leer = (store) => new Promise(r => {
+                const q = db.transaction([store], 'readonly').objectStore(store).getAll();
+                q.onsuccess = () => r((q.result || []).length);
+                q.onerror = () => r(0);
+            });
+            const out = {};
+            for (const s of Array.from(db.objectStoreNames)) out[s] = await leer(s);
+            return out;
+        });
+
+        const antes = await contarStores();
+        verificar('borrar todo: había datos que borrar',
+            Object.values(antes).some(n => n > 0), JSON.stringify(antes));
+        verificar('borrar todo: había pendientes antes', antes.pendientes > 0, JSON.stringify(antes));
+        verificar('borrar todo: había búsquedas del IMPI antes',
+            antes.sigaGuardadas > 0, JSON.stringify(antes));
+
+        await page.evaluate(() => eliminarTodosDatos());
+        await page.waitForTimeout(2000);
+
+        const despues = await contarStores();
+        igual('borrar todo: no sobrevive nada en ningún store',
+            Object.entries(despues).filter(([, n]) => n > 0), []);
+
+        // ---- Selección múltiple en Pendientes ----
+        await page.evaluate(async () => {
+            const id = await crearExpedienteCore({
+                numero: '9/2025', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN', institucion: 'TSJ' });
+            for (let i = 1; i <= 4; i++) {
+                await crearPendienteCore({ titulo: 'Tarea ' + i, expedienteId: id,
+                    fechaLimite: i === 1 ? new Date(2026, 2, 15).toISOString() : null });
+            }
+            navegarA('pendientes');
+        });
+        await page.waitForTimeout(800);
+
+        igual('selección: la barra empieza oculta',
+            await page.locator('#bulk-actions-pendientes').isVisible(), false);
+
+        await page.click('#btn-toggle-seleccion-pendientes');
+        await page.waitForTimeout(400);
+        igual('selección: al activarla aparece la barra',
+            await page.locator('#bulk-actions-pendientes').isVisible(), true);
+        igual('selección: cada pendiente recibe su casilla',
+            await page.locator('.pendiente-seleccion input').count(), 4);
+
+        await page.click('#check-todos-pendientes');
+        await page.waitForTimeout(300);
+        igual('selección: "todos" marca los 4',
+            (await page.locator('#conteo-seleccion-pendientes').textContent()).trim(), '4 seleccionados');
+
+        await page.locator('.pendiente-seleccion input').first().uncheck();
+        await page.waitForTimeout(300);
+        igual('selección: al desmarcar uno quedan 3',
+            (await page.locator('#conteo-seleccion-pendientes').textContent()).trim(), '3 seleccionados');
+        igual('selección: la casilla de cabecera queda a medias',
+            await page.locator('#check-todos-pendientes').evaluate(el => el.indeterminate), true);
+
+        const eventosAntes = await page.evaluate(async () => (await obtenerEventos()).length);
+        await page.click('button:has-text("Eliminar seleccionados")');
+        await page.waitForTimeout(1500);
+
+        igual('selección: quedan los pendientes no seleccionados',
+            await page.evaluate(async () => (await obtenerPendientes()).length), 1);
+        igual('selección: el modo se cierra al terminar',
+            await page.locator('#bulk-actions-pendientes').isVisible(), false);
+        verificar('selección: los eventos de los borrados se van con ellos',
+            await page.evaluate(async () => (await obtenerEventos()).length) <= eventosAntes);
+
         igual('la página no lanza errores de JavaScript', erroresPagina, []);
 
     } finally {

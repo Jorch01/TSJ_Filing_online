@@ -655,8 +655,27 @@
                     <h2>✅ Pendientes</h2>
                     <p class="subtitle">Tareas por expediente. Ponles fecha para verlas en el calendario.</p>
                 </div>
-                <button class="btn btn-primary" onclick="mostrarFormularioPendiente()">
-                    ➕ Nuevo Pendiente
+                <div class="header-buttons">
+                    <button class="btn btn-secondary" id="btn-toggle-seleccion-pendientes"
+                            onclick="toggleModoSeleccionPendientes()"
+                            title="Seleccionar varios pendientes para eliminarlos de una vez">
+                        ☑️ Selección múltiple
+                    </button>
+                    <button class="btn btn-primary" onclick="mostrarFormularioPendiente()">
+                        ➕ Nuevo Pendiente
+                    </button>
+                </div>
+            </div>
+
+            <!-- Acciones sobre los pendientes seleccionados -->
+            <div class="bulk-actions" id="bulk-actions-pendientes" style="display:none;">
+                <label class="bulk-check">
+                    <input type="checkbox" id="check-todos-pendientes" onchange="alternarTodosPendientes(this.checked)">
+                    <span>Seleccionar todos los que se ven</span>
+                </label>
+                <span class="bulk-count" id="conteo-seleccion-pendientes">0 seleccionados</span>
+                <button class="btn btn-danger btn-sm" onclick="eliminarPendientesSeleccionados()">
+                    🗑️ Eliminar seleccionados
                 </button>
             </div>
 

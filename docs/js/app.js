@@ -2063,6 +2063,11 @@ function _pendienteItemHTML(p, mostrarExpediente) {
     const tituloPosponer = p.fechaLimite ? 'Posponer' : 'Ponerle fecha';
     return `
         <div class="pendiente-item${p.completado ? ' completado' : ''}${vencido ? ' vencido' : ''} prio-${p.prioridad || 'ninguna'}" data-id="${p.id}">
+            ${modoSeleccionPendientes ? `
+            <label class="pendiente-seleccion" title="Seleccionar para eliminar">
+                <input type="checkbox" ${pendientesSeleccionados.has(p.id) ? 'checked' : ''}
+                       onchange="togglePendienteSeleccionado(${p.id}, this.checked)">
+            </label>` : ''}
             <label class="pendiente-check" title="${p.completado ? 'Reabrir' : 'Marcar como terminado'}">
                 <input type="checkbox" ${p.completado ? 'checked' : ''} onchange="togglePendiente(${p.id}, this.checked)">
             </label>
@@ -2159,6 +2164,7 @@ function renderizarPendientes() {
     if (!agrupacionActiva()) {
         lista.innerHTML = visibles.slice().sort(compararPendientes)
             .map(p => _pendienteItemHTML(p, true)).join('');
+        if (modoSeleccionPendientes) _actualizarBarraSeleccionPendientes();
         return;
     }
 
@@ -2179,6 +2185,10 @@ function renderizarPendientes() {
                 ${g.items.map(p => _pendienteItemHTML(p, false)).join('')}
             </div>
         </div>`).join('');
+
+    // El repintado rehace las casillas: hay que recalcular cuántas quedan
+    // marcadas y el estado de "seleccionar todos".
+    if (modoSeleccionPendientes) _actualizarBarraSeleccionPendientes();
 }
 
 // Qué grupos están plegados. Vive fuera del DOM porque renderizarPendientes
@@ -2696,6 +2706,113 @@ async function confirmarEliminarPendiente(id) {
         mostrarToast('Pendiente eliminado', 'success');
     } catch (error) {
         mostrarToast('Error: ' + error.message, 'error');
+    }
+}
+
+// ==================== PENDIENTES: SELECCIÓN MÚLTIPLE ====================
+// Depurar una lista larga de uno en uno es un suplicio: cada borrado pide su
+// confirmación y repinta. Con selección, una sola confirmación y una sola
+// subida a la nube.
+
+let modoSeleccionPendientes = false;
+const pendientesSeleccionados = new Set();
+
+function toggleModoSeleccionPendientes() {
+    modoSeleccionPendientes = !modoSeleccionPendientes;
+    pendientesSeleccionados.clear();
+
+    const barra = document.getElementById('bulk-actions-pendientes');
+    if (barra) barra.style.display = modoSeleccionPendientes ? 'flex' : 'none';
+
+    const boton = document.getElementById('btn-toggle-seleccion-pendientes');
+    if (boton) {
+        boton.textContent = modoSeleccionPendientes ? '✕ Cancelar selección' : '☑️ Selección múltiple';
+        boton.classList.toggle('btn-warning', modoSeleccionPendientes);
+        boton.classList.toggle('btn-secondary', !modoSeleccionPendientes);
+    }
+
+    renderizarPendientes();
+}
+
+/** Ids de los pendientes que el filtro actual deja a la vista. */
+function _pendientesVisiblesIds() {
+    return Array.from(document.querySelectorAll('#lista-pendientes .pendiente-item'))
+        .map(el => parseInt(el.dataset.id, 10))
+        .filter(id => !isNaN(id));
+}
+
+function togglePendienteSeleccionado(id, seleccionado) {
+    if (seleccionado) pendientesSeleccionados.add(id);
+    else pendientesSeleccionados.delete(id);
+    _actualizarBarraSeleccionPendientes();
+}
+
+/** "Todos" son los que se ven ahora, no los que hay: respeta los filtros. */
+function alternarTodosPendientes(seleccionar) {
+    const visibles = _pendientesVisiblesIds();
+    visibles.forEach(id => {
+        if (seleccionar) pendientesSeleccionados.add(id);
+        else pendientesSeleccionados.delete(id);
+    });
+    document.querySelectorAll('#lista-pendientes .pendiente-seleccion input')
+        .forEach(cb => { cb.checked = seleccionar; });
+    _actualizarBarraSeleccionPendientes();
+}
+
+function _actualizarBarraSeleccionPendientes() {
+    const n = pendientesSeleccionados.size;
+    const conteo = document.getElementById('conteo-seleccion-pendientes');
+    if (conteo) conteo.textContent = `${n} seleccionado${n !== 1 ? 's' : ''}`;
+
+    // La casilla de cabecera refleja el estado real: marcada si están todos los
+    // visibles, indeterminada si solo algunos.
+    const todos = document.getElementById('check-todos-pendientes');
+    if (todos) {
+        const visibles = _pendientesVisiblesIds();
+        const marcados = visibles.filter(id => pendientesSeleccionados.has(id)).length;
+        todos.checked = visibles.length > 0 && marcados === visibles.length;
+        todos.indeterminate = marcados > 0 && marcados < visibles.length;
+    }
+}
+
+async function eliminarPendientesSeleccionados() {
+    const ids = Array.from(pendientesSeleccionados);
+    if (ids.length === 0) {
+        mostrarToast('No hay pendientes seleccionados', 'warning');
+        return;
+    }
+
+    const conFecha = pendientesCache.filter(p => ids.includes(p.id) && p.fechaLimite).length;
+    const aviso = conFecha > 0
+        ? `\n\n${conFecha} tiene${conFecha !== 1 ? 'n' : ''} fecha: también se quitará${conFecha !== 1 ? 'n' : ''} del calendario.`
+        : '';
+
+    if (!confirm(`¿Eliminar ${ids.length} pendiente${ids.length !== 1 ? 's' : ''}?${aviso}`)) return;
+
+    let borrados = 0;
+    const errores = [];
+
+    // En lote: sin esto, cada pendiente dispararía su propio repintado y su
+    // propia subida a la nube.
+    await enLoteCore(async () => {
+        for (const id of ids) {
+            try {
+                await eliminarPendienteCore(id);
+                borrados++;
+            } catch (e) {
+                errores.push(`${id}: ${e.message}`);
+            }
+        }
+    });
+
+    pendientesSeleccionados.clear();
+    if (modoSeleccionPendientes) toggleModoSeleccionPendientes();
+
+    if (errores.length > 0) {
+        Logger.error('Errores al eliminar pendientes:', errores);
+        mostrarToast(`${borrados} eliminados, ${errores.length} con error`, 'warning');
+    } else {
+        mostrarToast(`${borrados} pendiente${borrados !== 1 ? 's' : ''} eliminado${borrados !== 1 ? 's' : ''}`, 'success');
     }
 }
 
@@ -4333,17 +4450,74 @@ function mostrarModalAdvertenciaPremium(totalOriginal, totalImportado) {
 }
 
 async function eliminarTodosDatos() {
-    if (confirm('¿Estás seguro? Esta acción eliminará TODOS los datos permanentemente.')) {
-        if (confirm('¿REALMENTE seguro? No se puede deshacer.')) {
-            await eliminarTodosLosDatos();
-            await cargarExpedientes();
-            await cargarNotas();
-            await cargarEventos();
-            await cargarEstadisticas();
-            renderizarCalendario();
-            mostrarToast('Todos los datos han sido eliminados', 'success');
+    // Se enumera qué se va exactamente: antes decía "TODOS los datos" y en
+    // realidad dejaba atrás los pendientes y las búsquedas del IMPI.
+    const resumen = await _resumenDatosAEliminar();
+
+    if (!confirm('Esto eliminará permanentemente:\n\n' + resumen +
+                 '\n\nTu licencia y las preferencias de la aplicación se conservan.')) return;
+    if (!confirm('¿REALMENTE seguro? No se puede deshacer desde la aplicación.')) return;
+
+    try {
+        // El respaldo en la nube va ANTES de tocar nada local: si falla, se
+        // avisa y se decide, en vez de quedarse sin datos en los dos sitios.
+        if (typeof respaldarYLimpiarSyncRemoto === 'function') {
+            const resultado = await respaldarYLimpiarSyncRemoto();
+            if (resultado && resultado.error && !confirm(
+                    'No se pudo respaldar ni limpiar la copia en la nube:\n\n' + resultado.error +
+                    '\n\n¿Borrar igualmente los datos de este dispositivo?')) {
+                return;
+            }
         }
+
+        await eliminarTodosLosDatos();
+
+        await Promise.all([
+            cargarExpedientes(),
+            typeof cargarExpedientesPJF === 'function' ? cargarExpedientesPJF() : null,
+            cargarNotas(),
+            cargarEventos(),
+            typeof cargarPendientes === 'function' ? cargarPendientes() : null,
+            typeof cargarCarpetasUI === 'function' ? cargarCarpetasUI() : null,
+            cargarEstadisticas()
+        ].filter(Boolean));
+        renderizarCalendario();
+
+        mostrarToast('Se eliminaron todos los datos', 'success');
+    } catch (error) {
+        Logger.error('Error al eliminar todos los datos:', error);
+        mostrarToast('Error al eliminar: ' + error.message, 'error');
     }
+}
+
+/** Cuenta lo que hay para que el aviso diga qué se va a perder, no "todo". */
+async function _resumenDatosAEliminar() {
+    const contar = async (fn) => {
+        if (typeof fn !== 'function') return 0;
+        try { return (await fn()).length; } catch (e) { return 0; }
+    };
+
+    const [expedientes, archivados, notas, eventos, pendientes, carpetas, busquedas] = await Promise.all([
+        contar(typeof obtenerExpedientes === 'function' ? obtenerExpedientes : null),
+        contar(typeof obtenerExpedientesArchivados === 'function' ? obtenerExpedientesArchivados : null),
+        contar(typeof obtenerNotas === 'function' ? obtenerNotas : null),
+        contar(typeof obtenerEventos === 'function' ? obtenerEventos : null),
+        contar(typeof obtenerPendientes === 'function' ? obtenerPendientes : null),
+        contar(typeof obtenerCarpetas === 'function' ? obtenerCarpetas : null),
+        contar(typeof obtenerBusquedasGuardadas === 'function' ? obtenerBusquedasGuardadas : null)
+    ]);
+
+    const lineas = [];
+    const agregar = (n, singular, plural) => { if (n > 0) lineas.push(`• ${n} ${n === 1 ? singular : plural}`); };
+    agregar(expedientes + archivados, 'expediente (incluido el archivo)', 'expedientes (incluido el archivo)');
+    agregar(notas, 'nota', 'notas');
+    agregar(eventos, 'evento del calendario', 'eventos del calendario');
+    agregar(pendientes, 'pendiente', 'pendientes');
+    agregar(carpetas, 'carpeta', 'carpetas');
+    agregar(busquedas, 'búsqueda guardada del IMPI', 'búsquedas guardadas del IMPI');
+    lineas.push('• El historial de cambios y los ajustes de la aplicación');
+
+    return lineas.join('\n');
 }
 
 // ==================== RESPALDO AUTOMÁTICO DIARIO ====================

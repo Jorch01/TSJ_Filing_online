@@ -16,6 +16,15 @@
  * I: max_dispositivos (auto: 2, puedes cambiar manualmente)
  * J: dispositivos_json (auto)
  * K: datos_sync (auto)
+ * L, M, N: datos_sync_2/3/4 (auto) — el bloque no cabe en una sola celda
+ * O, P, Q, R: respaldo_1..4 (auto) — copia que deja el borrado masivo
+ * S: respaldo_fecha (auto)
+ *
+ * Las columnas L a S se crean solas al usarse: en una hoja que ya existe no
+ * hay que añadir nada a mano, basta con que estén libres a la derecha de K.
+ *
+ * Para devolver a un usuario lo que borró: abrir este editor, ejecutar
+ * restaurarRespaldoSync("SU-CODIGO") y pedirle que sincronice.
  */
 
 // ==================== CONFIGURACIÓN ====================
@@ -34,8 +43,42 @@ const COL = {
   ULTIMO_ACCESO: 7,             // H
   MAX_DISPOSITIVOS: 8,          // I
   DISPOSITIVOS_JSON: 9,         // J
-  DATOS_SYNC: 10                // K
+  DATOS_SYNC: 10,               // K  ─┐
+  DATOS_SYNC_2: 11,             // L   │ el bloque se reparte entre estas
+  DATOS_SYNC_3: 12,             // M   │ cuatro; se leen concatenadas
+  DATOS_SYNC_4: 13,             // N  ─┘
+  RESPALDO_1: 14,               // O  ─┐
+  RESPALDO_2: 15,               // P   │ copia que deja el borrado masivo,
+  RESPALDO_3: 16,               // Q   │ por si hay que recuperar
+  RESPALDO_4: 17,               // R  ─┘
+  RESPALDO_FECHA: 18            // S
 };
+
+// Una celda de Google Sheets admite 50 000 caracteres. Repartir el bloque
+// entre cuatro columnas multiplica por cuatro lo que cabe, sin cambiar nada
+// más de la estructura de la hoja.
+const COLUMNAS_DATOS = [COL.DATOS_SYNC, COL.DATOS_SYNC_2, COL.DATOS_SYNC_3, COL.DATOS_SYNC_4];
+const COLUMNAS_RESPALDO = [COL.RESPALDO_1, COL.RESPALDO_2, COL.RESPALDO_3, COL.RESPALDO_4];
+
+/**
+ * Lee el bloque de sincronización completo de una fila, uniendo las columnas.
+ * Una hoja antigua solo tiene la primera con datos y las demás vacías, así que
+ * la unión devuelve exactamente lo mismo que antes: no hay que migrar nada.
+ */
+function leerDatosSync(sheet, rowNum) {
+  const valores = sheet.getRange(rowNum, COLUMNAS_DATOS[0] + 1, 1, COLUMNAS_DATOS.length).getValues()[0];
+  return valores.map(function (v) { return v === null || v === undefined ? '' : String(v); }).join('');
+}
+
+/**
+ * Escribe el bloque repartido entre las columnas de datos. Las que sobran se
+ * vacían siempre: si no, un bloque más corto dejaría cola de la escritura
+ * anterior y al concatenar saldría un blob corrupto.
+ */
+function escribirDatosSync(sheet, rowNum, partes) {
+  const fila = COLUMNAS_DATOS.map(function (_, i) { return partes[i] || ''; });
+  sheet.getRange(rowNum, COLUMNAS_DATOS[0] + 1, 1, COLUMNAS_DATOS.length).setValues([fila]);
+}
 
 // ==================== FUNCIONES PRINCIPALES ====================
 
@@ -94,6 +137,9 @@ function procesarSolicitud(params) {
         break;
       case 'guardar_sync':
         resultado = guardarDatosSync(params);
+        break;
+      case 'respaldar_sync':
+        resultado = respaldarYLimpiarSync(params);
         break;
       default:
         resultado = { error: true, mensaje: 'Acción no válida: ' + (action || 'ninguna') };
@@ -658,7 +704,7 @@ function obtenerDatosSync(params) {
         return { success: false, mensaje: 'Licencia expirada' };
       }
 
-      const datosSync = row[COL.DATOS_SYNC] || null;
+      const datosSync = leerDatosSync(sheet, i + 1) || null;
       sheet.getRange(i + 1, COL.ULTIMO_ACCESO + 1).setValue(new Date());
 
       return {
@@ -709,7 +755,7 @@ function guardarDatosSync(params) {
 
       // Verificar versión solo cuando el cliente la envió explícitamente.
       if (!forzar && versionExpected !== undefined && versionExpected !== null && versionExpected !== '') {
-        const datosActuales = sheet.getRange(rowNum, COL.DATOS_SYNC + 1).getValue() || '';
+        const datosActuales = leerDatosSync(sheet, rowNum);
         const versionActual = computeSyncHash(String(datosActuales));
         if (String(versionExpected) !== versionActual) {
           return {
@@ -721,17 +767,109 @@ function guardarDatosSync(params) {
         }
       }
 
-      sheet.getRange(rowNum, COL.DATOS_SYNC + 1).setValue(datos);
+      // El cliente manda el bloque partido en datos, datos_2, datos_3 y
+      // datos_4. Un cliente antiguo manda solo "datos": las demás llegan
+      // vacías y se escriben vacías, que es justo lo que hace falta.
+      const partes = [datos, params.datos_2, params.datos_3, params.datos_4]
+        .map(function (p) { return p === null || p === undefined ? '' : String(p); });
+      escribirDatosSync(sheet, rowNum, partes);
       sheet.getRange(rowNum, COL.ULTIMO_ACCESO + 1).setValue(new Date());
 
       return {
         success: true,
         mensaje: 'Datos sincronizados correctamente',
-        version: computeSyncHash(String(datos))
+        version: computeSyncHash(partes.join(''))
       };
     }
   }
 
+  return { success: false, mensaje: 'Código no encontrado' };
+}
+
+/**
+ * Mueve el bloque de sincronización a las columnas de respaldo y deja vacías
+ * las de datos. Está pensada EXCLUSIVAMENTE para el borrado masivo desde la
+ * aplicación: una sincronización normal nunca la llama, porque sobrescribiría
+ * el respaldo anterior con cada guardado y dejaría de servir para recuperar.
+ *
+ * El respaldo es de un solo nivel: guarda el último borrado, no un historial.
+ * Si se borra todo dos veces, la segunda pisa la copia de la primera.
+ */
+function respaldarYLimpiarSync(params) {
+  const codigo = params.codigo;
+  if (!codigo) {
+    return { success: false, mensaje: 'Código requerido' };
+  }
+
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][COL.CODIGO] !== codigo) continue;
+
+    const row = data[i];
+    if (!esEstadoActivo(row[COL.ESTADO])) {
+      return { success: false, mensaje: 'Licencia inactiva' };
+    }
+
+    const rowNum = i + 1;
+    const actuales = sheet.getRange(rowNum, COLUMNAS_DATOS[0] + 1, 1, COLUMNAS_DATOS.length).getValues()[0];
+    const tenia = actuales.some(function (v) { return v !== null && v !== undefined && String(v) !== ''; });
+
+    if (tenia) {
+      // Copia tal cual, columna a columna: así el respaldo se puede devolver a
+      // su sitio sin volver a partirlo.
+      sheet.getRange(rowNum, COLUMNAS_RESPALDO[0] + 1, 1, COLUMNAS_RESPALDO.length).setValues([actuales]);
+      sheet.getRange(rowNum, COL.RESPALDO_FECHA + 1).setValue(new Date());
+    }
+
+    escribirDatosSync(sheet, rowNum, ['', '', '', '']);
+    sheet.getRange(rowNum, COL.ULTIMO_ACCESO + 1).setValue(new Date());
+
+    return {
+      success: true,
+      respaldado: tenia,
+      mensaje: tenia
+        ? 'Datos movidos al respaldo y sincronización vaciada'
+        : 'No había datos en la nube; sincronización vaciada',
+      version: ''
+    };
+  }
+
+  return { success: false, mensaje: 'Código no encontrado' };
+}
+
+/**
+ * Devuelve a las columnas de datos lo que guardó el último borrado masivo.
+ * No hay botón para esto en la aplicación a propósito: se ejecuta a mano desde
+ * el editor de Apps Script cuando alguien pide recuperar su información, para
+ * que una recuperación sea siempre una decisión consciente.
+ *
+ * Uso: cambiar el código y ejecutar la función desde el editor.
+ */
+function restaurarRespaldoSync(codigo) {
+  const sheet = getSheet();
+  const data = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][COL.CODIGO] !== codigo) continue;
+
+    const rowNum = i + 1;
+    const respaldo = sheet.getRange(rowNum, COLUMNAS_RESPALDO[0] + 1, 1, COLUMNAS_RESPALDO.length).getValues()[0];
+    const tiene = respaldo.some(function (v) { return v !== null && v !== undefined && String(v) !== ''; });
+
+    if (!tiene) {
+      Logger.log('No hay respaldo para el código ' + codigo);
+      return { success: false, mensaje: 'No hay respaldo para ese código' };
+    }
+
+    escribirDatosSync(sheet, rowNum, respaldo.map(function (v) { return String(v || ''); }));
+    Logger.log('Respaldo restaurado para ' + codigo +
+               ' (' + String(respaldo.join('')).length + ' caracteres)');
+    return { success: true, mensaje: 'Respaldo restaurado' };
+  }
+
+  Logger.log('Código no encontrado: ' + codigo);
   return { success: false, mensaje: 'Código no encontrado' };
 }
 

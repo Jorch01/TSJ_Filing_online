@@ -554,12 +554,66 @@ async function descargarDatosRemotos() {
 // version_expected es el hash que vimos en la última descarga. El servidor
 // rechaza la subida con conflict si su cell tiene un hash distinto (alguien
 // más escribió en medio).
-// Una celda de Google Sheets no admite más de 50 000 caracteres, y ahí es
-// donde acaba el bloque cifrado entero. Pasado ese punto el Apps Script no
-// puede escribirlo; el aviso llega antes para que se sepa qué ocurre y no
-// parezca un problema de conexión.
-const LIMITE_CELDA_SHEETS = 50000;
-const AVISO_CELDA_SHEETS = 45000;   // ~90%: margen para avisar antes de romper
+// Una celda de Google Sheets no admite más de 50 000 caracteres. El bloque
+// cifrado se reparte entre varias columnas (K a N), así que lo que cabe es esa
+// cifra multiplicada por el número de columnas. Se deja algo de margen por
+// celda para no jugarse el borde exacto.
+const CELDAS_DATOS_SYNC = 4;
+const TAMANO_POR_CELDA = 49000;
+const LIMITE_CELDA_SHEETS = CELDAS_DATOS_SYNC * TAMANO_POR_CELDA;
+const AVISO_CELDA_SHEETS = Math.round(LIMITE_CELDA_SHEETS * 0.9);
+
+/**
+ * Parte el bloque en los trozos que van a cada columna. Devuelve siempre
+ * CELDAS_DATOS_SYNC elementos: los sobrantes van vacíos para que el servidor
+ * limpie las columnas que ya no se usan (si no, quedaría cola de una
+ * sincronización anterior más larga y el bloque se leería corrupto).
+ */
+function _partirParaCeldas(texto) {
+    const partes = [];
+    for (let i = 0; i < CELDAS_DATOS_SYNC; i++) {
+        partes.push(texto.substr(i * TAMANO_POR_CELDA, TAMANO_POR_CELDA));
+    }
+    return partes;
+}
+
+/**
+ * Mueve lo que hay en la nube a las columnas de respaldo y deja la
+ * sincronización vacía. La llama SOLO el borrado masivo desde configuración:
+ * en una sincronización normal el respaldo se sobrescribiría con cada guardado
+ * y no serviría para recuperar nada.
+ *
+ * Devuelve { ok: true, respaldado } o { error: 'motivo' }. No lanza: quien
+ * borra decide si sigue adelante aunque la nube no se haya podido limpiar.
+ */
+async function respaldarYLimpiarSyncRemoto() {
+    if (typeof estadoPremium === 'undefined' || !estadoPremium.activo || !estadoPremium.codigo) {
+        return { ok: true, respaldado: false, sinCuenta: true };
+    }
+
+    try {
+        const response = await fetchConReintentos(PREMIUM_CONFIG.apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: 'respaldar_sync', codigo: estadoPremium.codigo }),
+            timeout: 60000
+        });
+
+        const resultado = JSON.parse(await response.text());
+        if (!resultado.success) {
+            return { error: resultado.mensaje || 'El servidor rechazó la petición' };
+        }
+
+        // La copia remota ya no existe: se olvida la versión conocida para que
+        // la siguiente subida no choque contra un conflicto que no lo es.
+        syncState.remoteVersion = null;
+        limpiarPendienteSync();
+
+        return { ok: true, respaldado: !!resultado.respaldado };
+    } catch (error) {
+        return { error: error.message };
+    }
+}
 
 async function subirDatosRemotos(datosCifrados, versionExpected) {
     const url = PREMIUM_CONFIG.apiUrl;
@@ -573,7 +627,8 @@ async function subirDatosRemotos(datosCifrados, versionExpected) {
     if (tamano > LIMITE_CELDA_SHEETS) {
         const error = new Error(
             `Tus datos ya no caben en una sincronización: ocupan ${tamano.toLocaleString('es')} ` +
-            `caracteres y el máximo que admite la hoja de cálculo es ${LIMITE_CELDA_SHEETS.toLocaleString('es')}. ` +
+            `caracteres y el máximo que admite la hoja de cálculo es ${LIMITE_CELDA_SHEETS.toLocaleString('es')} ` +
+            `(${CELDAS_DATOS_SYNC} celdas de ${TAMANO_POR_CELDA.toLocaleString('es')}). ` +
             'No es un problema de conexión y reintentar no va a servir. ' +
             'Archiva expedientes que ya no sigas, o pide que se amplíe el almacenamiento.');
         error.tipoFallo = 'tamano';
@@ -582,10 +637,16 @@ async function subirDatosRemotos(datosCifrados, versionExpected) {
     }
 
     try {
+        // El primer trozo viaja como "datos" para que un servidor antiguo
+        // —sin las columnas nuevas— siga entendiendo la petición.
+        const partes = _partirParaCeldas(datosCifrados);
         const body = {
             action: 'guardar_sync',
             codigo: estadoPremium.codigo,
-            datos: datosCifrados
+            datos: partes[0],
+            datos_2: partes[1],
+            datos_3: partes[2],
+            datos_4: partes[3]
         };
         if (versionExpected !== undefined && versionExpected !== null) {
             body.version_expected = versionExpected;
