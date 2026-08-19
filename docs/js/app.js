@@ -7563,6 +7563,7 @@ const ANUNCIOS_CONFIG = [
         tipo: 'texto',
         contenido: '📢 ¿Quieres anunciarte aquí? Contáctanos',
         enlace: 'mailto:frida@empirica.mx?subject=Publicidad en TSJ Filing Online',
+        relleno: true,
         activo: true
     },
     {
@@ -7570,6 +7571,7 @@ const ANUNCIOS_CONFIG = [
         tipo: 'texto',
         contenido: '💼 Espacio publicitario disponible - Llega a abogados de Quintana Roo',
         enlace: 'mailto:frida@empirica.mx?subject=Solicitud de espacio publicitario en TSJ Filing',
+        relleno: true,
         activo: true
     },
     {
@@ -7577,6 +7579,7 @@ const ANUNCIOS_CONFIG = [
         tipo: 'placeholder',
         contenido: '📢 Espacio disponible para anunciantes',
         enlace: 'mailto:frida@empirica.mx?subject=Anuncio en TSJ Filing Online',
+        relleno: true,
         activo: true
     }
 ];
@@ -7608,19 +7611,40 @@ function mostrarAnuncios() {
     const anunciosActivos = ANUNCIOS_CONFIG.filter(a => a.activo);
     if (anunciosActivos.length === 0) return;
 
-    // Rotar anuncios aleatoriamente
-    const anuncioAleatorio = () => anunciosActivos[Math.floor(Math.random() * anunciosActivos.length)];
-
-    // Mostrar en cada contenedor de anuncios
-    const contenedores = document.querySelectorAll('.ad-banner');
-    contenedores.forEach(contenedor => {
+    const contenedores = Array.from(document.querySelectorAll('.ad-banner'));
+    contenedores.forEach((contenedor, i) => {
         contenedor.style.display = 'block';
         const bodyEl = contenedor.querySelector('.ad-body');
         if (bodyEl) {
-            const anuncio = anuncioAleatorio();
-            bodyEl.innerHTML = generarHTMLAnuncio(anuncio);
+            bodyEl.innerHTML = generarHTMLAnuncio(
+                elegirAnuncio(anunciosActivos, i, contenedores.length));
         }
     });
+}
+
+/**
+ * Qué anuncio le toca a cada contenedor.
+ *
+ * Los anuncios de verdad van por delante de los de relleno ("¿quieres
+ * anunciarte aquí?"). Antes cada hueco sorteaba entre todos por igual, así que
+ * con un anunciante real y tres rellenos el anuncio de pago salía una de cada
+ * cuatro veces y daba la impresión de no estar puesto.
+ *
+ * El último hueco se reserva para el relleno: es de donde salen los
+ * anunciantes nuevos y conviene que la invitación siga estando en algún sitio.
+ * Si no hay anuncios reales, todos los huecos son de relleno, que es como se
+ * comportaba antes.
+ */
+function elegirAnuncio(anunciosActivos, indice, total) {
+    const reales = anunciosActivos.filter(a => !a.relleno);
+    const relleno = anunciosActivos.filter(a => a.relleno);
+
+    if (reales.length === 0) return relleno[indice % relleno.length];
+    if (relleno.length === 0) return reales[indice % reales.length];
+
+    return indice === total - 1
+        ? relleno[Math.floor(Math.random() * relleno.length)]
+        : reales[indice % reales.length];
 }
 
 // Generar HTML para un anuncio (con sanitización)

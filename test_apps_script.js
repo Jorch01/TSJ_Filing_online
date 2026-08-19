@@ -44,13 +44,18 @@ function crearHoja(filas) {
   };
 }
 
+// Un id de Google Sheets son 44 caracteres de letras, números, guion y guion
+// bajo. La prueba usa uno con esa forma porque el script distingue un id real
+// de un texto de ejemplo justo por ahí.
+const ID_PRUEBA = '1TESTtestTESTtestTESTtestTESTtestTESTtest123';
+
 const CABECERA = ['codigo','fecha_exp','disp','usuario','estado','freg','intentos','ultimo','max','disp_json',
                   'datos_sync','datos_2','datos_3','datos_4','resp_1','resp_2','resp_3','resp_4','resp_fecha'];
 const hoja = crearHoja([CABECERA, ['ABC123','perpetua','','','activo','',0,'',2,'[]','','','','','','','','','']]);
 
 // Propiedades del script: aquí vive la configuración que sobrevive a las
 // actualizaciones del código.
-const propiedades = { SPREADSHEET_ID: 'ID-DE-PRUEBA', SHEET_NAME: 'Licencias' };
+const propiedades = { SPREADSHEET_ID: ID_PRUEBA, SHEET_NAME: 'Licencias' };
 
 const sandbox = {
   PropertiesService: {
@@ -164,12 +169,12 @@ try {
     try { vm.runInContext('getSheet()', sandbox); } catch (e) { errorConfig = e.message; }
 
     verificar('sin configurar, el error dice qué ejecutar',
-        /configurar\(/.test(errorConfig || ''), errorConfig);
+        /configurarAqui\(\)/.test(errorConfig || ''), errorConfig);
     verificar('y no suelta el error críptico de Google',
         !/Illegal spreadsheet id/.test(errorConfig || ''), errorConfig);
 
     // Una pestaña que no existe: el otro error que se veía como "reading null"
-    propiedades.SPREADSHEET_ID = 'ID-DE-PRUEBA';
+    propiedades.SPREADSHEET_ID = ID_PRUEBA;
     propiedades.SHEET_NAME = 'PestanaQueNoExiste';
     let errorPestana = null;
     try { vm.runInContext('getSheet()', sandbox); } catch (e) { errorPestana = e.message; }
@@ -184,7 +189,7 @@ try {
     // configurar() valida antes de guardar
     propiedades.SHEET_NAME = 'Licencias';
     let errorConfigurar = null;
-    try { vm.runInContext('configurar("ID-DE-PRUEBA", "NoExiste")', sandbox); }
+    try { vm.runInContext('configurar("' + ID_PRUEBA + '", "NoExiste")', sandbox); }
     catch (e) { errorConfigurar = e.message; }
     verificar('configurar() rechaza una pestaña que no existe',
         /NoExiste/.test(errorConfigurar || ''), errorConfigurar);
@@ -193,12 +198,67 @@ try {
     try { vm.runInContext('configurar("TU_SPREADSHEET_ID_AQUI")', sandbox); }
     catch (e) { errorEjemplo = e.message; }
     verificar('configurar() rechaza el id de ejemplo',
-        /id real/.test(errorEjemplo || ''), errorEjemplo);
+        /no parece el id/.test(errorEjemplo || ''), errorEjemplo);
 
-    const guardado = vm.runInContext('configurar("ID-DE-PRUEBA", "Licencias")', sandbox);
+    // El editor de Apps Script ejecuta la función seleccionada SIN pasarle
+    // argumentos. Antes eso caía en el mismo mensaje que un id mal escrito
+    // ("pasa el id real de tu hoja") y no había forma de adivinar que el
+    // problema era el botón y no el id.
+    let errorSinArgumentos = null;
+    try { vm.runInContext('configurar()', sandbox); }
+    catch (e) { errorSinArgumentos = e.message; }
+    verificar('ejecutar configurar desde el botón ▶ manda a configurarAqui',
+        /configurarAqui/.test(errorSinArgumentos || ''), errorSinArgumentos);
+    verificar('y no culpa al id, que no es el problema',
+        !/no parece el id/.test(errorSinArgumentos || ''), errorSinArgumentos);
+
+    const guardado = vm.runInContext('configurar("' + ID_PRUEBA + '", "Licencias")', sandbox);
     verificar('configurar() guarda cuando todo es correcto', guardado.success, JSON.stringify(guardado));
     igual('y queda registrado en las propiedades del script',
-        propiedades.SPREADSHEET_ID, 'ID-DE-PRUEBA');
+        propiedades.SPREADSHEET_ID, ID_PRUEBA);
+
+    // ---------- El fallo que dejó la app sin sincronizar ----------
+    // SPREADSHEET_ID y el id de ejemplo estaban una línea debajo de la otra
+    // con el mismo valor. Al sustituir "el id de tu hoja" se cambiaban las
+    // dos, y entonces el id REAL pasaba a ser "el id de ejemplo": el script se
+    // declaraba sin configurar y configurar() rechazaba el id bueno.
+    const REAL = '18U5xEDwgHoI0IK1RZAEcG_j736Q12LFCM5ayGvQX00U';
+    verificar('un id real no se confunde con un texto de ejemplo',
+        vm.runInContext('idSinConfigurar("' + REAL + '")', sandbox) === false);
+    verificar('el texto de ejemplo sí se detecta',
+        vm.runInContext('idSinConfigurar("TU_SPREADSHEET_ID_AQUI")', sandbox) === true);
+    verificar('y un id vacío también',
+        vm.runInContext('idSinConfigurar("")', sandbox) === true);
+
+    // Con configuración guardada la constante del archivo da igual: es lo que
+    // permite pegar una versión nueva de codigo.gs sin romper nada.
+    propiedades.SPREADSHEET_ID = ID_PRUEBA;
+    propiedades.SHEET_NAME = 'Licencias';
+    let errorConGuardado = null;
+    try { vm.runInContext('getSheet()', sandbox); } catch (e) { errorConGuardado = e.message; }
+    verificar('con la configuración guardada, getSheet() no protesta', !errorConGuardado, errorConGuardado);
+
+    // ---------- configurarAqui() ----------
+    verificar('configurarAqui() existe para ejecutarla desde el botón ▶',
+        vm.runInContext('typeof configurarAqui', sandbox) === 'function');
+
+    const antesDeAqui = propiedades.SPREADSHEET_ID;
+    let errorAqui = null;
+    try { vm.runInContext('configurarAqui()', sandbox); } catch (e) { errorAqui = e.message; }
+    verificar('sin rellenar, configurarAqui() avisa en vez de guardar basura',
+        /no parece el id/.test(errorAqui || ''), errorAqui);
+    igual('y deja intacta la configuración que ya había',
+        propiedades.SPREADSHEET_ID, antesDeAqui);
+
+    // ---------- limpiarCeldaSync no puede dejar cola ----------
+    // Vaciaba solo la columna K; las otras tres se quedaban con su parte y al
+    // concatenarlas salía un bloque corrupto.
+    llamar({ action: 'guardar_sync', codigo: 'ABC123',
+             datos: partes[0], datos_2: partes[1], datos_3: partes[2] });
+    vm.runInContext('limpiarCeldaSync("ABC123")', sandbox);
+    r = llamar({ action: 'obtener_sync', codigo: 'ABC123' });
+    verificar('limpiarCeldaSync vacía las cuatro columnas, no solo la primera',
+        !r.datos, 'quedaron ' + String(r.datos || '').length + ' caracteres');
 
 
 } catch (e) {

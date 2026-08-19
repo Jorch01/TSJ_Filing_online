@@ -346,6 +346,41 @@ async function main() {
                 anuncio.llamada.includes('WhatsApp'), anuncio.llamada);
         }
 
+        // ---- ...y que además se vea ----
+        // La comprobación de arriba pinta el anuncio a mano, así que pasaba
+        // aunque en la página no saliera nunca: el reparto sorteaba entre los
+        // cuatro anuncios por igual y el de pago caía una de cada cuatro veces.
+        // Esto ejecuta el reparto de verdad y mira lo que queda en pantalla.
+        const reparto = await page.evaluate(() => {
+            mostrarAnuncios();
+            const cuerpos = [...document.querySelectorAll('.ad-banner .ad-body')];
+            return {
+                huecos: cuerpos.length,
+                conEdictos: cuerpos.filter(b => /Edictos/.test(b.textContent)).length,
+                conRelleno: cuerpos.filter(b => /anunciarte aquí|Espacio/.test(b.textContent)).length
+            };
+        });
+
+        verificar('anuncio: hay huecos de anuncio en la página', reparto.huecos > 0,
+            JSON.stringify(reparto));
+        verificar('anuncio: el reparto real lo saca en pantalla, no una vez de cada cuatro',
+            reparto.conEdictos >= reparto.huecos - 1, JSON.stringify(reparto));
+        verificar('anuncio: queda un hueco para la invitación a anunciarse',
+            reparto.conRelleno >= 1, JSON.stringify(reparto));
+
+        // Y no depende de la suerte: diez repartos seguidos, siempre igual.
+        const constante = await page.evaluate(() => {
+            const cuenta = [];
+            for (let i = 0; i < 10; i++) {
+                mostrarAnuncios();
+                cuenta.push([...document.querySelectorAll('.ad-banner .ad-body')]
+                    .filter(b => /Edictos/.test(b.textContent)).length);
+            }
+            return cuenta;
+        });
+        igual('anuncio: sale siempre, no según el sorteo',
+            [...new Set(constante)].length, 1);
+
         igual('la página no lanza errores de JavaScript', erroresPagina, []);
 
     } finally {
