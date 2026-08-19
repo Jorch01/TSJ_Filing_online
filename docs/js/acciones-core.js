@@ -171,6 +171,26 @@ async function crearExpedienteCore(datos) {
 }
 
 /**
+ * Ejecuta varias operaciones del núcleo como si fueran una sola: mientras dura
+ * el lote se omiten el refresco de UI y la subida a la nube, y al terminar se
+ * hacen una única vez.
+ *
+ * Hay que envolver la operación COMPLETA. Agrupar solo una parte no basta:
+ * una importación crea expedientes, pendientes y eventos, y cada una de esas
+ * funciones sincroniza por su cuenta al terminar, así que lo que quede fuera
+ * del lote dispara su propia subida. Los lotes se pueden anidar sin problema
+ * (se llevan con un contador), de modo que envolver de más nunca hace daño.
+ *
+ * @param {Function} fn Operación a ejecutar; se devuelve lo que ella devuelva.
+ */
+async function enLoteCore(fn) {
+    const resultado = await _coreEnLoteEjecutar(fn);
+    await _coreRefrescarUI();
+    await _coreSincronizar();
+    return resultado;
+}
+
+/**
  * Crea varios expedientes de una sola vez (carga masiva por CSV). Aplica las
  * mismas reglas que crearExpedienteCore a cada uno, pero refresca la UI y
  * sincroniza UNA sola vez al final: hacerlo por expediente convertiría una

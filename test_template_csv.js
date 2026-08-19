@@ -703,6 +703,36 @@ async function main() {
             estado.sincronizaciones > 0, true);
     });
 
+    // ---------- 17. Una importación = una sola subida a la nube ----------
+    await bloque('17. Una importación = una sola subida', async () => {
+        const { sandbox, estado } = crearEntorno();
+        cargarCodigoReal(sandbox);
+
+        // 30 asuntos, cada uno con su pendiente y su audiencia. Como el
+        // pendiente con fecha genera además su evento, son 120 objetos.
+        const filas = [];
+        for (let i = 1; i <= 30; i++) {
+            filas.push({
+                expediente: `90${String(i).padStart(2, '0')}/2025`,
+                juzgado: 'JUZGADO PRIMERO CIVIL CANCUN',
+                pendiente: `Contestar ${i}`, pendiente_fecha: '15/03/2026', pendiente_prioridad: 'alta',
+                audiencia: `Audiencia ${i}`, audiencia_fecha: '02/04/2026 09:30', audiencia_tipo: 'audiencia'
+            });
+        }
+        await importar(sandbox, estado, csvCon(...filas));
+
+        igual('lote: se crean los 30 expedientes', estado.expedientes.length, 30);
+        igual('lote: y sus 30 pendientes', estado.pendientes.length, 30);
+        igual('lote: y sus 60 eventos (audiencia + reflejo del pendiente)', estado.eventos.length, 60);
+
+        // Lo que importa: cada crearPendienteCore y cada crearEventoCore
+        // sincroniza al terminar. Sin agrupar toda la importación en un lote,
+        // esto eran 61 subidas seguidas; con la red caída, cada una gasta 14 s
+        // en reintentos y la app se queda minutos en una tormenta de errores.
+        igual('lote: toda la importación sube a la nube UNA sola vez',
+            estado.sincronizaciones, 1);
+    });
+
     // ==================== RESULTADO ====================
     console.log(`\n${pasadas} pruebas pasadas, ${fallidas} fallidas\n`);
     if (fallidas > 0) {
