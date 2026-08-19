@@ -4277,6 +4277,61 @@ textarea:focus {
     text-decoration: line-through;
 }
 
+/* Casilla de selección múltiple. Va antes de la de "terminado" y en otro
+   color, porque son dos casillas seguidas que hacen cosas muy distintas:
+   una marca la tarea como hecha y la otra la señala para borrarla. */
+.pendiente-seleccion {
+    display: flex;
+    align-items: center;
+    padding-top: 0.15rem;
+    padding-right: 0.35rem;
+    margin-right: 0.35rem;
+    border-right: 1px dashed var(--border-color, #dee2e6);
+    cursor: pointer;
+}
+
+.pendiente-seleccion input {
+    width: 1.15rem;
+    height: 1.15rem;
+    cursor: pointer;
+    accent-color: var(--danger, #dc3545);
+}
+
+/* Barra de acciones sobre lo seleccionado */
+.bulk-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 0.65rem 1rem;
+    margin-bottom: 1rem;
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border-color, #dee2e6);
+    border-left: 4px solid var(--danger, #dc3545);
+    border-radius: var(--radius, 8px);
+}
+
+.bulk-actions .bulk-check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.bulk-actions .bulk-check input {
+    width: 1.15rem;
+    height: 1.15rem;
+    cursor: pointer;
+    accent-color: var(--danger, #dc3545);
+}
+
+.bulk-actions .bulk-count {
+    color: var(--text-secondary, #6c757d);
+    font-size: 0.9rem;
+    margin-right: auto;
+}
+
 .pendiente-check {
     display: flex;
     align-items: center;

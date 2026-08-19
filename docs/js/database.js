@@ -1198,19 +1198,8 @@ async function exportarTodosDatos() {
     const carpetas = typeof obtenerCarpetas === 'function'
         ? await obtenerCarpetas().catch(() => []) : [];
 
-    // Exportar búsquedas guardadas SIGA si el store existe
-    let sigaGuardadas = [];
-    try {
-        if (db.objectStoreNames.contains('sigaGuardadas')) {
-            sigaGuardadas = await new Promise((resolve, reject) => {
-                const tx = db.transaction(['sigaGuardadas'], 'readonly');
-                const store = tx.objectStore('sigaGuardadas');
-                const req = store.getAll();
-                req.onsuccess = () => resolve(req.result || []);
-                req.onerror = () => resolve([]);
-            });
-        }
-    } catch (e) { /* store may not exist in older DBs */ }
+    // Búsquedas guardadas de las herramientas de marcas.
+    const sigaGuardadas = await obtenerBusquedasGuardadas();
 
     return {
         version: 1,
@@ -1340,11 +1329,62 @@ async function limpiarStore(storeName) {
     });
 }
 
+/**
+ * Búsquedas guardadas de las herramientas de marcas (IMPI, SIGA, Marcanet).
+ * El store puede no existir en bases antiguas, así que se comprueba antes.
+ */
+async function obtenerBusquedasGuardadas() {
+    if (!db || !db.objectStoreNames.contains('sigaGuardadas')) return [];
+    return new Promise(resolve => {
+        try {
+            const request = db.transaction(['sigaGuardadas'], 'readonly')
+                .objectStore('sigaGuardadas').getAll();
+            request.onsuccess = () => resolve(request.result || []);
+            request.onerror = () => resolve([]);
+        } catch (e) {
+            resolve([]);
+        }
+    });
+}
+
+// Claves de localStorage que dejan de tener sentido cuando ya no hay datos:
+// apuntan a eventos, búsquedas o sincronizaciones que acaban de desaparecer.
+// NO se tocan las de la licencia (_tsjp, _tsjprem, _tsjdid…) ni las
+// preferencias de la interfaz: borrar todo el contenido no es cerrar sesión ni
+// reconfigurar la aplicación.
+const CLAVES_LOCALES_A_LIMPIAR = [
+    'recordatorios_enviados',
+    'ultima_verificacion_recordatorios',
+    'siga_last_auto_check',
+    'sync_pendiente',
+    'sync_last_sync'
+];
+
+/**
+ * Borra TODO el contenido del usuario: expedientes, notas, eventos,
+ * pendientes, carpetas, historial, búsquedas guardadas del IMPI y ajustes.
+ *
+ * Los stores se recorren desde la propia base y no desde una lista escrita a
+ * mano: esa lista es justo lo que falló antes, porque se fueron añadiendo
+ * stores (pendientes, carpetas, sigaGuardadas…) y aquí seguían borrándose
+ * solo cuatro, así que los pendientes y las búsquedas del IMPI sobrevivían al
+ * "eliminar todo".
+ *
+ * @returns {Promise<string[]>} nombres de los stores vaciados.
+ */
 async function eliminarTodosLosDatos() {
-    await limpiarStore('expedientes');
-    await limpiarStore('notas');
-    await limpiarStore('eventos');
-    await limpiarStore('config');
+    const stores = Array.from(db.objectStoreNames);
+
+    for (const store of stores) {
+        await limpiarStore(store);
+    }
+
+    for (const clave of CLAVES_LOCALES_A_LIMPIAR) {
+        try { localStorage.removeItem(clave); } catch (e) { /* modo privado */ }
+    }
+
+    if (typeof invalidarIndiceBusqueda === 'function') invalidarIndiceBusqueda();
+    return stores;
 }
 
 // ==================== ESTADÍSTICAS ====================
