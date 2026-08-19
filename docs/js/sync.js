@@ -428,6 +428,41 @@ function huellaContenido(datos) {
     }
 }
 
+// Distingue por qué falló un fetch. Antes todo acababa en "verifica tu
+// conexión a internet", incluidos los que no tienen nada que ver con la
+// conexión: un servidor que tarda demasiado y un permiso mal puesto se veían
+// exactamente igual, y eso manda a buscar el problema donde no está.
+//
+// - 'tiempo'    el servidor no contestó a tiempo (AbortError del AbortController)
+// - 'red'       no se pudo alcanzar el servidor: sin conexión, CORS, o el
+//               despliegue pide iniciar sesión en vez de responder
+// - 'servidor'  contestó, pero con un error (HTTP 4xx/5xx)
+// - 'otro'      cualquier otra cosa
+function _clasificarErrorFetch(error) {
+    if (error.name === 'AbortError') return 'tiempo';
+    if (error.name === 'TypeError' ||
+        /NetworkError|Failed to fetch|Load failed|network/i.test(error.message)) return 'red';
+    if (/^HTTP \d{3}/.test(error.message)) return 'servidor';
+    return 'otro';
+}
+
+function _mensajeErrorFetch(tipo, error, segundos) {
+    switch (tipo) {
+        case 'tiempo':
+            return `El servidor no respondió en ${segundos} segundos. ` +
+                   'Suele pasar cuando hay muchos datos que subir; vuelve a intentarlo ' +
+                   'y si sigue igual, avisa: puede que el bloque de sincronización sea demasiado grande.';
+        case 'red':
+            return 'No se pudo contactar con el servidor de sincronización. ' +
+                   'Puede ser tu conexión, o que el despliegue de Google Apps Script ya no sea público ' +
+                   '(comprueba que su acceso siga siendo "cualquier persona con el enlace").';
+        case 'servidor':
+            return `El servidor respondió con un error (${error.message}).`;
+        default:
+            return error.message;
+    }
+}
+
 // Función auxiliar para fetch con timeout y reintentos
 async function fetchConReintentos(url, opciones = {}, maxReintentos = 3) {
     const timeout = opciones.timeout || 30000; // 30 segundos por defecto
@@ -450,26 +485,24 @@ async function fetchConReintentos(url, opciones = {}, maxReintentos = 3) {
 
             return response;
         } catch (error) {
-            const esErrorRed = error.name === 'TypeError' ||
-                               error.name === 'AbortError' ||
-                               error.message.includes('NetworkError') ||
-                               error.message.includes('Failed to fetch') ||
-                               error.message.includes('Load failed') ||
-                               error.message.includes('network');
+            const tipo = _clasificarErrorFetch(error);
+            const reintentable = tipo === 'red' || tipo === 'tiempo';
 
-            if (esErrorRed && intento < maxReintentos) {
+            if (reintentable && intento < maxReintentos) {
                 // Esperar con backoff exponencial: 2s, 4s, 8s
                 const espera = Math.pow(2, intento + 1) * 1000;
-                console.log(`Reintentando en ${espera/1000}s (intento ${intento + 1}/${maxReintentos})...`);
+                console.log(`Reintentando en ${espera / 1000}s (intento ${intento + 1}/${maxReintentos}) ` +
+                            `— causa: ${tipo} (${error.name}: ${error.message})`);
                 await new Promise(r => setTimeout(r, espera));
                 continue;
             }
 
-            // Dar mensaje más amigable para errores de red
-            if (esErrorRed) {
-                throw new Error('No se pudo conectar. Verifica tu conexión a internet e intenta de nuevo.');
-            }
-            throw error;
+            if (tipo === 'otro') throw error;
+
+            const fallo = new Error(_mensajeErrorFetch(tipo, error, Math.round(timeout / 1000)));
+            fallo.tipoFallo = tipo;
+            fallo.causaOriginal = `${error.name}: ${error.message}`;
+            throw fallo;
         }
     }
 }
@@ -521,8 +554,32 @@ async function descargarDatosRemotos() {
 // version_expected es el hash que vimos en la última descarga. El servidor
 // rechaza la subida con conflict si su cell tiene un hash distinto (alguien
 // más escribió en medio).
+// Una celda de Google Sheets no admite más de 50 000 caracteres, y ahí es
+// donde acaba el bloque cifrado entero. Pasado ese punto el Apps Script no
+// puede escribirlo; el aviso llega antes para que se sepa qué ocurre y no
+// parezca un problema de conexión.
+const LIMITE_CELDA_SHEETS = 50000;
+const AVISO_CELDA_SHEETS = 45000;   // ~90%: margen para avisar antes de romper
+
 async function subirDatosRemotos(datosCifrados, versionExpected) {
     const url = PREMIUM_CONFIG.apiUrl;
+
+    const tamano = datosCifrados.length;
+    if (tamano > AVISO_CELDA_SHEETS) {
+        console.warn(`[SYNC] El bloque ocupa ${tamano.toLocaleString('es')} de ` +
+                     `${LIMITE_CELDA_SHEETS.toLocaleString('es')} caracteres que admite la celda ` +
+                     `(${Math.round(tamano / LIMITE_CELDA_SHEETS * 100)}%).`);
+    }
+    if (tamano > LIMITE_CELDA_SHEETS) {
+        const error = new Error(
+            `Tus datos ya no caben en una sincronización: ocupan ${tamano.toLocaleString('es')} ` +
+            `caracteres y el máximo que admite la hoja de cálculo es ${LIMITE_CELDA_SHEETS.toLocaleString('es')}. ` +
+            'No es un problema de conexión y reintentar no va a servir. ' +
+            'Archiva expedientes que ya no sigas, o pide que se amplíe el almacenamiento.');
+        error.tipoFallo = 'tamano';
+        error.tamanoBloque = tamano;
+        throw error;
+    }
 
     try {
         const body = {
