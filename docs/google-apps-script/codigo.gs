@@ -28,9 +28,65 @@
  */
 
 // ==================== CONFIGURACIÓN ====================
+//
+// PARA CONFIGURARLO LA PRIMERA VEZ, o después de pegar una versión nueva de
+// este archivo, ejecuta UNA VEZ desde el editor:
+//
+//     configurar('EL-ID-DE-TU-HOJA', 'Licencias')
+//
+// Eso lo guarda en las propiedades del script, que NO se pierden al actualizar
+// el código. Pegar este archivo encima vuelve a dejar las constantes de abajo
+// en su valor de ejemplo, pero la configuración guardada sigue mandando y todo
+// continúa funcionando.
+//
+// Las constantes solo se usan si no hay nada guardado.
+
 const SPREADSHEET_ID = 'TU_SPREADSHEET_ID_AQUI'; // Reemplaza con tu ID
 const SHEET_NAME = 'Licencias';
 const DIAS_EXPIRACION_DEFAULT = 365; // 1 año por defecto
+
+const ID_DE_EJEMPLO = 'TU_SPREADSHEET_ID_AQUI';
+
+/**
+ * Guarda el id de la hoja y el nombre de la pestaña donde no se pierdan al
+ * actualizar el código. Ejecutar una sola vez desde el editor de Apps Script.
+ */
+function configurar(idHoja, nombrePestana) {
+  if (!idHoja || idHoja === ID_DE_EJEMPLO) {
+    throw new Error('Pasa el id real de tu hoja: configurar("1AbC...", "Licencias")');
+  }
+
+  // Se comprueba antes de guardar: mejor fallar aquí, con el editor delante,
+  // que dejar guardada una configuración que no abre nada.
+  const hoja = SpreadsheetApp.openById(idHoja);
+  const pestana = nombrePestana || SHEET_NAME;
+  if (!hoja.getSheetByName(pestana)) {
+    throw new Error('La hoja existe pero no tiene ninguna pestaña llamada "' + pestana +
+                    '". Las que tiene son: ' +
+                    hoja.getSheets().map(function (h) { return h.getName(); }).join(', '));
+  }
+
+  PropertiesService.getScriptProperties().setProperties({
+    SPREADSHEET_ID: idHoja,
+    SHEET_NAME: pestana
+  });
+
+  Logger.log('Configuración guardada: "' + hoja.getName() + '" / pestaña "' + pestana + '".');
+  Logger.log('Sobrevive a futuras actualizaciones del código.');
+  return { success: true, hoja: hoja.getName(), pestana: pestana };
+}
+
+/** Muestra la configuración en uso. Útil para comprobar tras actualizar. */
+function verConfiguracion() {
+  const props = PropertiesService.getScriptProperties().getProperties();
+  const id = props.SPREADSHEET_ID || SPREADSHEET_ID;
+  Logger.log('id de la hoja : ' + id + (props.SPREADSHEET_ID ? '  (guardado)' : '  (de la constante)'));
+  Logger.log('pestaña       : ' + (props.SHEET_NAME || SHEET_NAME));
+  if (id === ID_DE_EJEMPLO) {
+    Logger.log('⚠ Sin configurar. Ejecuta: configurar("EL-ID-DE-TU-HOJA", "Licencias")');
+  }
+  return props;
+}
 
 const COL = {
   CODIGO: 0,                    // A
@@ -155,8 +211,44 @@ function procesarSolicitud(params) {
 
 // ==================== HELPERS ====================
 
+/**
+ * La hoja de licencias, con la configuración guardada por delante de las
+ * constantes del archivo.
+ *
+ * Los errores explican qué falta y cómo arreglarlo. Antes, un id sin sustituir
+ * salía como "Illegal spreadsheet id or key: TU_SPREADSHEET_ID_AQUI" y una
+ * pestaña mal nombrada como "Cannot read properties of null", que no le dicen
+ * nada a quien acaba de pegar una versión nueva del script.
+ */
 function getSheet() {
-  return SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+  const props = PropertiesService.getScriptProperties().getProperties();
+  const id = props.SPREADSHEET_ID || SPREADSHEET_ID;
+  const pestana = props.SHEET_NAME || SHEET_NAME;
+
+  if (!id || id === ID_DE_EJEMPLO) {
+    throw new Error('El script no tiene configurada la hoja de cálculo. ' +
+      'Abre el editor de Apps Script y ejecuta una vez: ' +
+      'configurar("EL-ID-DE-TU-HOJA", "' + pestana + '")');
+  }
+
+  let hoja;
+  try {
+    hoja = SpreadsheetApp.openById(id);
+  } catch (e) {
+    throw new Error('No se pudo abrir la hoja de cálculo con id "' + id + '". ' +
+      'Comprueba que el id sea correcto y que la cuenta del script tenga acceso. ' +
+      'Para corregirlo: configurar("EL-ID-CORRECTO", "' + pestana + '")');
+  }
+
+  const sheet = hoja.getSheetByName(pestana);
+  if (!sheet) {
+    throw new Error('La hoja "' + hoja.getName() + '" no tiene ninguna pestaña llamada "' +
+      pestana + '". Las que tiene son: ' +
+      hoja.getSheets().map(function (h) { return h.getName(); }).join(', ') +
+      '. Para corregirlo: configurar("' + id + '", "NOMBRE-CORRECTO")');
+  }
+
+  return sheet;
 }
 
 // Verificar si el estado es activo (case-insensitive)

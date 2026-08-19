@@ -48,8 +48,31 @@ const CABECERA = ['codigo','fecha_exp','disp','usuario','estado','freg','intento
                   'datos_sync','datos_2','datos_3','datos_4','resp_1','resp_2','resp_3','resp_4','resp_fecha'];
 const hoja = crearHoja([CABECERA, ['ABC123','perpetua','','','activo','',0,'',2,'[]','','','','','','','','','']]);
 
+// Propiedades del script: aquí vive la configuración que sobrevive a las
+// actualizaciones del código.
+const propiedades = { SPREADSHEET_ID: 'ID-DE-PRUEBA', SHEET_NAME: 'Licencias' };
+
 const sandbox = {
-  SpreadsheetApp: { openById: () => ({ getSheetByName: () => hoja }) },
+  PropertiesService: {
+    getScriptProperties: () => ({
+      getProperties: () => Object.assign({}, propiedades),
+      setProperties: (p) => Object.assign(propiedades, p)
+    })
+  },
+  SpreadsheetApp: {
+    openById: (id) => {
+      if (!id || id === 'TU_SPREADSHEET_ID_AQUI') throw new Error('Illegal spreadsheet id or key: ' + id);
+      // La hoja real solo tiene estas pestañas, mire quien mire: si el stub
+      // devolviera lo que le pidan, no se podría probar el caso de una
+      // pestaña mal escrita, que es justo uno de los que rompió.
+      const PESTANAS = ['Licencias', 'Otra'];
+      return {
+        getName: () => 'Hoja de prueba',
+        getSheetByName: (n) => (PESTANAS.indexOf(n) !== -1 ? hoja : null),
+        getSheets: () => PESTANAS.map(n => ({ getName: () => n }))
+      };
+    }
+  },
   Utilities: { computeDigest: (a, s) => Array.from(require('crypto').createHash('md5').update(String(s)).digest()),
                DigestAlgorithm: { MD5: 'MD5' } },
   ContentService: { createTextOutput: (t) => ({ setMimeType: () => t }), MimeType: { JSON: 'json' } },
@@ -74,59 +97,114 @@ function igual(descripcion, real, esperado) {
         `esperado ${JSON.stringify(esperado)}, obtenido ${JSON.stringify(real)}`);
 }
 
-// ---------- Un bloque que no cabe en una sola celda ----------
-const bloque = 'A'.repeat(120000);
-const partes = [bloque.substr(0, 49000), bloque.substr(49000, 49000), bloque.substr(98000, 49000), ''];
+// Una excepción aquí no debe tumbar la ejecución: se anota como fallo y se
+// sigue, para ver el alcance real en vez de solo el primer tropiezo.
+try {
+    // ---------- Un bloque que no cabe en una sola celda ----------
+    const bloque = 'A'.repeat(120000);
+    const partes = [bloque.substr(0, 49000), bloque.substr(49000, 49000), bloque.substr(98000, 49000), ''];
 
-let r = llamar({ action: 'guardar_sync', codigo: 'ABC123',
-                 datos: partes[0], datos_2: partes[1], datos_3: partes[2], datos_4: partes[3] });
-verificar('guardar un bloque de 120 000 caracteres', r.success, r.mensaje);
+    let r = llamar({ action: 'guardar_sync', codigo: 'ABC123',
+                     datos: partes[0], datos_2: partes[1], datos_3: partes[2], datos_4: partes[3] });
+    verificar('guardar un bloque de 120 000 caracteres', r.success, r.mensaje);
 
-const fila = hoja._datos[1];
-const largos = [10, 11, 12, 13].map(i => String(fila[i] || '').length);
-igual('se reparte entre las celdas sin perder nada',
-    largos.reduce((a, b) => a + b, 0), bloque.length);
-verificar('ninguna celda supera el límite de Google Sheets',
-    largos.every(n => n <= 50000), largos.join(' + '));
+    const fila = hoja._datos[1];
+    const largos = [10, 11, 12, 13].map(i => String(fila[i] || '').length);
+    igual('se reparte entre las celdas sin perder nada',
+        largos.reduce((a, b) => a + b, 0), bloque.length);
+    verificar('ninguna celda supera el límite de Google Sheets',
+        largos.every(n => n <= 50000), largos.join(' + '));
 
-// ---------- Vuelve entero ----------
-r = llamar({ action: 'obtener_sync', codigo: 'ABC123' });
-igual('al leerlo vuelve idéntico al original', r.datos, bloque);
+    // ---------- Vuelve entero ----------
+    r = llamar({ action: 'obtener_sync', codigo: 'ABC123' });
+    igual('al leerlo vuelve idéntico al original', r.datos, bloque);
 
-// ---------- Un bloque corto no deja cola del anterior ----------
-// Este es el fallo que corrompería datos en silencio: si las celdas sobrantes
-// no se vacían, el bloque leído sale más largo de lo que se guardó.
-llamar({ action: 'guardar_sync', codigo: 'ABC123', datos: 'corto' });
-r = llamar({ action: 'obtener_sync', codigo: 'ABC123' });
-igual('sobrescribir con algo más corto no arrastra cola', r.datos, 'corto');
+    // ---------- Un bloque corto no deja cola del anterior ----------
+    // Este es el fallo que corrompería datos en silencio: si las celdas sobrantes
+    // no se vacían, el bloque leído sale más largo de lo que se guardó.
+    llamar({ action: 'guardar_sync', codigo: 'ABC123', datos: 'corto' });
+    r = llamar({ action: 'obtener_sync', codigo: 'ABC123' });
+    igual('sobrescribir con algo más corto no arrastra cola', r.datos, 'corto');
 
-// ---------- Respaldo del borrado masivo ----------
-llamar({ action: 'guardar_sync', codigo: 'ABC123',
-         datos: partes[0], datos_2: partes[1], datos_3: partes[2] });
-r = llamar({ action: 'respaldar_sync', codigo: 'ABC123' });
-verificar('respaldar responde bien', r.success, r.mensaje);
-igual('y avisa de que había algo que respaldar', r.respaldado, true);
+    // ---------- Respaldo del borrado masivo ----------
+    llamar({ action: 'guardar_sync', codigo: 'ABC123',
+             datos: partes[0], datos_2: partes[1], datos_3: partes[2] });
+    r = llamar({ action: 'respaldar_sync', codigo: 'ABC123' });
+    verificar('respaldar responde bien', r.success, r.mensaje);
+    igual('y avisa de que había algo que respaldar', r.respaldado, true);
 
-verificar('las columnas de datos quedan vacías',
-    [10, 11, 12, 13].every(i => !fila[i]), JSON.stringify([10,11,12,13].map(i => String(fila[i]||'').length)));
-verificar('las de respaldo quedan con el contenido',
-    [14, 15, 16, 17].some(i => fila[i]));
-verificar('se guarda la fecha del respaldo', !!fila[18]);
+    verificar('las columnas de datos quedan vacías',
+        [10, 11, 12, 13].every(i => !fila[i]), JSON.stringify([10,11,12,13].map(i => String(fila[i]||'').length)));
+    verificar('las de respaldo quedan con el contenido',
+        [14, 15, 16, 17].some(i => fila[i]));
+    verificar('se guarda la fecha del respaldo', !!fila[18]);
 
-r = llamar({ action: 'obtener_sync', codigo: 'ABC123' });
-verificar('tras respaldar, la nube se lee vacía', !r.datos, String(r.datos).slice(0, 40));
+    r = llamar({ action: 'obtener_sync', codigo: 'ABC123' });
+    verificar('tras respaldar, la nube se lee vacía', !r.datos, String(r.datos).slice(0, 40));
 
-// ---------- Restaurar ----------
-const restaurado = vm.runInContext('restaurarRespaldoSync("ABC123")', sandbox);
-r = llamar({ action: 'obtener_sync', codigo: 'ABC123' });
-verificar('restaurar responde bien', restaurado.success, restaurado.mensaje);
-igual('y recupera el bloque original entero', r.datos, bloque);
+    // ---------- Restaurar ----------
+    const restaurado = vm.runInContext('restaurarRespaldoSync("ABC123")', sandbox);
+    r = llamar({ action: 'obtener_sync', codigo: 'ABC123' });
+    verificar('restaurar responde bien', restaurado.success, restaurado.mensaje);
+    igual('y recupera el bloque original entero', r.datos, bloque);
 
-// ---------- Compatibilidad con el cliente anterior ----------
-// Un navegador con la versión vieja en caché solo manda "datos".
-llamar({ action: 'guardar_sync', codigo: 'ABC123', datos: 'solo-datos-antiguo' });
-r = llamar({ action: 'obtener_sync', codigo: 'ABC123' });
-igual('un cliente antiguo sigue guardando y leyendo', r.datos, 'solo-datos-antiguo');
+    // ---------- Compatibilidad con el cliente anterior ----------
+    // Un navegador con la versión vieja en caché solo manda "datos".
+    llamar({ action: 'guardar_sync', codigo: 'ABC123', datos: 'solo-datos-antiguo' });
+    r = llamar({ action: 'obtener_sync', codigo: 'ABC123' });
+    igual('un cliente antiguo sigue guardando y leyendo', r.datos, 'solo-datos-antiguo');
+
+    // ---------- La configuración sobrevive a actualizar el código ----------
+    // Pegar una versión nueva de codigo.gs deja las constantes en su valor de
+    // ejemplo. Si eso bastara para romperlo, cada actualización tumbaría la
+    // sincronización de todo el mundo, que es justo lo que pasó.
+    propiedades.SPREADSHEET_ID = '';
+    propiedades.SHEET_NAME = '';
+    let errorConfig = null;
+    try { vm.runInContext('getSheet()', sandbox); } catch (e) { errorConfig = e.message; }
+
+    verificar('sin configurar, el error dice qué ejecutar',
+        /configurar\(/.test(errorConfig || ''), errorConfig);
+    verificar('y no suelta el error críptico de Google',
+        !/Illegal spreadsheet id/.test(errorConfig || ''), errorConfig);
+
+    // Una pestaña que no existe: el otro error que se veía como "reading null"
+    propiedades.SPREADSHEET_ID = 'ID-DE-PRUEBA';
+    propiedades.SHEET_NAME = 'PestanaQueNoExiste';
+    let errorPestana = null;
+    try { vm.runInContext('getSheet()', sandbox); } catch (e) { errorPestana = e.message; }
+
+    verificar('una pestaña inexistente se explica con nombre',
+        /PestanaQueNoExiste/.test(errorPestana || ''), errorPestana);
+    verificar('y enumera las pestañas que sí existen',
+        /Licencias/.test(errorPestana || ''), errorPestana);
+    verificar('sin el "Cannot read properties of null"',
+        !/Cannot read properties/.test(errorPestana || ''), errorPestana);
+
+    // configurar() valida antes de guardar
+    propiedades.SHEET_NAME = 'Licencias';
+    let errorConfigurar = null;
+    try { vm.runInContext('configurar("ID-DE-PRUEBA", "NoExiste")', sandbox); }
+    catch (e) { errorConfigurar = e.message; }
+    verificar('configurar() rechaza una pestaña que no existe',
+        /NoExiste/.test(errorConfigurar || ''), errorConfigurar);
+
+    let errorEjemplo = null;
+    try { vm.runInContext('configurar("TU_SPREADSHEET_ID_AQUI")', sandbox); }
+    catch (e) { errorEjemplo = e.message; }
+    verificar('configurar() rechaza el id de ejemplo',
+        /id real/.test(errorEjemplo || ''), errorEjemplo);
+
+    const guardado = vm.runInContext('configurar("ID-DE-PRUEBA", "Licencias")', sandbox);
+    verificar('configurar() guarda cuando todo es correcto', guardado.success, JSON.stringify(guardado));
+    igual('y queda registrado en las propiedades del script',
+        propiedades.SPREADSHEET_ID, 'ID-DE-PRUEBA');
+
+
+} catch (e) {
+    fallidas++;
+    fallos.push('la prueba reventó — ' + e.message);
+}
 
 // ---------- Resultado ----------
 console.log(`\n${pasadas} pruebas pasadas, ${fallidas} fallidas\n`);
