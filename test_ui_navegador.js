@@ -314,6 +314,38 @@ async function main() {
         verificar('selección: los eventos de los borrados se van con ellos',
             await page.evaluate(async () => (await obtenerEventos()).length) <= eventosAntes);
 
+        // ---- Anuncio de edictos ----
+        // El sanitizador de anuncios convierte en "#" todo lo que no empiece
+        // por http, así que un enlace mal formado se pierde en silencio.
+        const anuncio = await page.evaluate(() => {
+            const ad = ANUNCIOS_CONFIG.find(a => a.id === 'edictos');
+            if (!ad) return null;
+            const contenedor = document.querySelector('#page-expedientes .ad-banner');
+            if (contenedor) {
+                contenedor.style.display = 'block';
+                contenedor.querySelector('.ad-body').innerHTML = generarHTMLAnuncio(ad);
+            }
+            const a = document.querySelector('#page-expedientes .ad-detallado');
+            return a ? { href: a.getAttribute('href'), target: a.getAttribute('target'),
+                         rel: a.getAttribute('rel'),
+                         titulo: (a.querySelector('.ad-titulo') || {}).textContent || '',
+                         llamada: (a.querySelector('.ad-llamada') || {}).textContent || '' } : null;
+        });
+
+        verificar('anuncio: el de edictos está configurado y se pinta', !!anuncio);
+        if (anuncio) {
+            verificar('anuncio: enlaza a WhatsApp con el número correcto',
+                anuncio.href.startsWith('https://wa.me/529981399930?text='), anuncio.href);
+            verificar('anuncio: el enlace no lo descarta el sanitizador',
+                anuncio.href !== '#', anuncio.href);
+            igual('anuncio: se abre en otra pestaña', anuncio.target, '_blank');
+            verificar('anuncio: sin dejar acceso a la ventana de origen',
+                /noopener/.test(anuncio.rel || ''), anuncio.rel);
+            verificar('anuncio: tiene titular', anuncio.titulo.includes('Edictos'), anuncio.titulo);
+            verificar('anuncio: y llamada a la acción',
+                anuncio.llamada.includes('WhatsApp'), anuncio.llamada);
+        }
+
         igual('la página no lanza errores de JavaScript', erroresPagina, []);
 
     } finally {

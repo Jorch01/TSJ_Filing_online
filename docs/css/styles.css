@@ -2374,6 +2374,47 @@ textarea:focus {
     text-align: center;
 }
 
+/* Anuncio con titular, descripción y llamada a la acción. El texto va
+   alineado a la izquierda: un párrafo de varias líneas centrado se lee mal. */
+.ad-text-link.ad-detallado {
+    text-align: left;
+    padding: 0.85rem 1rem;
+    max-width: 68ch;
+    margin: 0 auto;
+}
+
+.ad-detallado .ad-titulo {
+    display: block;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text-primary, #212529);
+    margin-bottom: 0.3rem;
+}
+
+.ad-detallado .ad-text {
+    display: block;
+    line-height: 1.45;
+}
+
+.ad-detallado .ad-llamada {
+    display: inline-block;
+    margin-top: 0.55rem;
+    padding: 0.3rem 0.8rem;
+    background: #25D366;          /* el verde de WhatsApp */
+    color: #fff;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.ad-text-link.ad-detallado:hover {
+    text-decoration: none;
+}
+
+.ad-text-link.ad-detallado:hover .ad-llamada {
+    filter: brightness(0.93);
+}
+
 [data-theme="dark"] .ad-banner {
     background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
 }
