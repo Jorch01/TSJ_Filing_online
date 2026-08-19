@@ -304,29 +304,35 @@
                 </div>
                 <div class="header-buttons">
                     <div class="tooltip-container">
-                        <button class="btn btn-secondary" onclick="descargarTemplateCSV()">
+                        <button class="btn btn-secondary" onclick="descargarTemplateExpedientes()">
                             📄 Descargar Template
                         </button>
                         <div class="tooltip-content tooltip-bottom tooltip-right">
                             <h4>¿Cómo usar la carga masiva?</h4>
+                            <p><strong>Un solo archivo para todo:</strong> expedientes del TSJ, federales y de otras autoridades. Cada uno va a su sección según dónde esté radicado.</p>
                             <p><strong>Paso 1:</strong> Descarga el template CSV</p>
                             <p><strong>Paso 2:</strong> Ábrelo con Excel o Google Sheets</p>
                             <p><strong>Paso 3:</strong> Completa las columnas:</p>
                             <ul>
                                 <li><code>expediente</code>: Número (ej: 1234/2025) o nombre <em>(obligatorio)</em></li>
+                                <li><code>juzgado</code>: Juzgado del TSJ, órgano federal o autoridad <em>(obligatorio)</em>; no distingue mayúsculas ni acentos</li>
+                                <li><code>institucion</code>: TSJ, PJF u OTRO (si la dejas vacía se deduce del juzgado)</li>
                                 <li><code>tipo</code>: "numero" o "nombre" (si lo dejas vacío se deduce)</li>
-                                <li><code>juzgado</code>: Del catálogo del template <em>(obligatorio)</em>; no distingue mayúsculas ni acentos</li>
+                                <li><code>actor</code> y <code>demandado</code>: las partes, para poder buscar por ellas</li>
                                 <li><code>carpeta</code>: Agrupa expedientes del mismo caso; se crea sola</li>
+                                <li><code>pendiente</code> + <code>pendiente_fecha</code>: tarea del expediente; con fecha aparece en el calendario</li>
+                                <li><code>audiencia</code> + <code>audiencia_fecha</code>: cita para el calendario</li>
                                 <li><code>comentario</code>: Notas opcionales</li>
                             </ul>
+                            <p><strong>Fechas:</strong> el día va primero (15/03/2026), con hora opcional (15/03/2026 09:30).</p>
                             <p><strong>Paso 4:</strong> Guarda como <strong>CSV UTF-8</strong> e importa</p>
-                            <p>Las filas de ejemplo y los expedientes que ya tengas registrados se omiten solos.</p>
+                            <p>Las filas de ejemplo y los expedientes que ya tengas registrados se omiten solos. Repite la fila de un expediente para cargarle varios pendientes.</p>
                         </div>
                     </div>
                     <button class="btn btn-secondary" onclick="document.getElementById('import-csv').click()">
                         📥 Importar CSV
                     </button>
-                    <input type="file" id="import-csv" accept=".csv,.xlsx,.xls" style="display:none" onchange="importarExpedientesCSV(event)">
+                    <input type="file" id="import-csv" accept=".csv,.xlsx,.xls" style="display:none" onchange="importarExpedientes(event)">
                     <button class="btn btn-primary" onclick="mostrarFormularioExpediente()">
                         ➕ Nuevo Expediente
                     </button>
@@ -1120,20 +1126,21 @@
                         <h3>📁 Mis Expedientes Federales</h3>
                         <div class="header-buttons">
                             <div class="tooltip-container">
-                                <button class="btn btn-secondary btn-sm" onclick="descargarTemplatePJF()">
+                                <button class="btn btn-secondary btn-sm" onclick="descargarTemplateExpedientes()">
                                     📄 Descargar Template
                                 </button>
                                 <div class="tooltip-content tooltip-bottom tooltip-right">
-                                    <h4>¿Cómo usar la carga masiva PJF?</h4>
+                                    <h4>¿Cómo usar la carga masiva?</h4>
+                                    <p>Es <strong>el mismo template</strong> que en Expedientes: un solo archivo para lo federal, lo estatal y lo demás. Cada expediente llega a su sección solo.</p>
                                     <p><strong>Paso 1:</strong> Descarga el template CSV</p>
                                     <p><strong>Paso 2:</strong> Ábrelo con Excel o Google Sheets</p>
-                                    <p><strong>Paso 3:</strong> Completa las columnas:</p>
+                                    <p><strong>Paso 3:</strong> Para un asunto federal completa:</p>
                                     <ul>
                                         <li><code>expediente</code>: Número (ej: 67/2021) <em>(obligatorio)</em></li>
-                                        <li><code>organo</code>: Nombre del órgano del catálogo; no distingue mayúsculas ni acentos</li>
-                                        <li><code>organismo_id</code>: ID numérico (opcional)</li>
-                                        <li><code>tipo_asunto_id</code>: ID del tipo (opcional)</li>
-                                        <li><code>comentario</code>: Notas opcionales</li>
+                                        <li><code>juzgado</code>: Nombre del órgano del catálogo; no distingue mayúsculas ni acentos</li>
+                                        <li><code>organismo_id</code>: ID numérico del órgano (opcional)</li>
+                                        <li><code>tipo_asunto_id</code>: ID del tipo de asunto (opcional)</li>
+                                        <li><code>pendiente</code> y <code>audiencia</code> con sus fechas, si las tienes</li>
                                     </ul>
                                     <p><strong>Paso 4:</strong> Guarda como <strong>CSV UTF-8</strong> e importa</p>
                                     <p>Los expedientes que ya tengas registrados se omiten, no se duplican.</p>
@@ -1143,7 +1150,7 @@
                             <button class="btn btn-secondary btn-sm" onclick="document.getElementById('import-pjf-csv').click()">
                                 📥 Importar CSV
                             </button>
-                            <input type="file" id="import-pjf-csv" accept=".csv" style="display:none" onchange="importarExpedientesPJFCSV(event)">
+                            <input type="file" id="import-pjf-csv" accept=".csv,.xlsx,.xls" style="display:none" onchange="importarExpedientes(event)">
                             <button class="btn btn-secondary btn-sm" onclick="toggleModoSeleccionPJF()" id="btn-toggle-seleccion-pjf" title="Selección masiva para abrir varios expedientes a la vez">
                                 ☑️ Selección masiva
                             </button>
