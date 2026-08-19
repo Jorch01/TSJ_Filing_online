@@ -5215,23 +5215,30 @@ async function importarExpedientes(event) {
             }
         });
 
-        // ── Expedientes ────────────────────────────────────────────────────
-        const { ids, fallos } = await crearExpedientesEnLoteCore(nuevosAImportar.map(a => a.expediente));
+        // ── Expedientes, pendientes y fechas de calendario ─────────────────
+        // Todo dentro de un mismo lote: cada expediente, cada pendiente y cada
+        // evento sincroniza por su cuenta al crearse, así que sin agrupar, una
+        // importación de 30 asuntos con su pendiente y su audiencia lanzaba 61
+        // subidas a la nube en fila.
+        const { ids, fallos, pendientes, eventos } = await enLoteCore(async () => {
+            const alta = await crearExpedientesEnLoteCore(nuevosAImportar.map(a => a.expediente));
+
+            // crearExpedientesEnLoteCore devuelve los ids en orden y omite los
+            // que fallaron, así que se emparejan recorriendo ambas listas a la vez.
+            const fallidos = new Set(alta.fallos.map(f => f.datos));
+            let cursor = 0;
+            nuevosAImportar.forEach(a => {
+                if (fallidos.has(a.expediente)) { a.id = null; return; }
+                a.id = alta.ids[cursor++];
+            });
+            extrasSobreExistentes.forEach(a => { a.id = a.idExistente; });
+
+            const extras = await _crearExtrasDeImportacion(aProcesar, errores);
+            return { ...alta, ...extras };
+        });
+
         fallos.forEach(f => errores.push(
             `${f.datos.numero || f.datos.nombre}: no se pudo guardar el expediente (${f.error})`));
-
-        // crearExpedientesEnLoteCore devuelve los ids en orden y omite los que
-        // fallaron, así que se emparejan recorriendo ambas listas a la vez.
-        const fallidos = new Set(fallos.map(f => f.datos));
-        let cursor = 0;
-        nuevosAImportar.forEach(a => {
-            if (fallidos.has(a.expediente)) { a.id = null; return; }
-            a.id = ids[cursor++];
-        });
-        extrasSobreExistentes.forEach(a => { a.id = a.idExistente; });
-
-        // ── Pendientes y fechas de calendario ──────────────────────────────
-        const { pendientes, eventos } = await _crearExtrasDeImportacion(aProcesar, errores);
 
         // ── Informe ────────────────────────────────────────────────────────
         const resumen = [`✅ ${ids.length} expedientes importados${ids.length ? ` (${porInstitucion})` : ''}.`];
