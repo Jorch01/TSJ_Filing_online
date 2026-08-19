@@ -258,13 +258,9 @@ const GCAL = (() => {
                 'END:VCALENDAR'
             ];
 
-            const blob = new Blob([lineas.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `TSJ-Filing-eventos-${new Date().toISOString().substring(0, 10)}.ics`;
-            a.click();
-            URL.revokeObjectURL(url);
+            descargarArchivo(
+                `TSJ-Filing-eventos-${new Date().toISOString().substring(0, 10)}.ics`,
+                lineas.join('\r\n'), 'text/calendar;charset=utf-8');
             mostrarToast(`${eventos.length} evento(s) exportados`, 'success');
         } catch (err) {
             mostrarToast('Error al exportar: ' + err.message, 'error');

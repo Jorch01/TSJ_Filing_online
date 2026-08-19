@@ -45,3 +45,6 @@ chromedriver.exe
 
 # Logs
 *.log
+
+# Dependencias de las pruebas de navegador (Playwright)
+node_modules/

@@ -29,7 +29,7 @@ function crearEntorno() {
     const estado = {
         expedientes: [], carpetas: [], pendientes: [], eventos: [],
         siguienteId: 1,
-        toasts: [], informes: [], confirmaciones: [], limitesMostrados: [],
+        toasts: [], informes: [], confirmaciones: [], limitesMostrados: [], descargas: [],
         respuestaConfirm: true, csvGenerado: null,
         sincronizaciones: 0
     };
@@ -42,9 +42,17 @@ function crearEntorno() {
         // --- DOM mínimo ---
         document: {
             getElementById: () => ({ set textContent(v) {}, set innerHTML(v) {}, value: '', style: {} }),
-            createElement: () => ({ click() {}, set href(v) {}, set download(v) {} }),
+            // Suficiente para descargarArchivo(): el enlace se mete en el
+            // documento, se pulsa y se retira.
+            createElement: () => ({
+                style: {}, href: '', download: '', rel: '',
+                click() { estado.descargas.push({ nombre: this.download, enDocumento: this._enDocumento }); },
+                remove() { this._enDocumento = false; }
+            }),
+            body: { appendChild: (el) => { el._enDocumento = true; } },
             querySelectorAll: () => [], querySelector: () => null, addEventListener: () => {}
         },
+        setTimeout: (fn, ms) => 0,   // la limpieza diferida no interesa aquí
         Blob: class { constructor(partes) { estado.csvGenerado = partes.join(''); } },
         URL: { createObjectURL: () => 'blob:test', revokeObjectURL: () => {} },
         Logger: { log: () => {}, warn: () => {}, error: () => {} },
@@ -120,7 +128,7 @@ const NECESARIO_DE_APP = [
     // Template
     'TEMPLATE_EJEMPLOS', 'TEMPLATE_COLUMNAS', '_csvCampo',
     '_catalogoTSJParaTemplate', '_catalogoTiposAsuntoParaTemplate',
-    '_catalogoOrganosPJFParaTemplate', 'descargarTemplateExpedientes',
+    '_catalogoOrganosPJFParaTemplate', 'descargarArchivo', 'descargarTemplateExpedientes',
     // Parser CSV
     '_quitarBOM', '_detectarSeparador', '_lineasUtilesCSV', 'parseCSV', 'parseCSVLine',
     // Fechas

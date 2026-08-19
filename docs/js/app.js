@@ -208,53 +208,69 @@ function configurarTooltips() {
     const tooltipContainers = document.querySelectorAll('.tooltip-container');
 
     tooltipContainers.forEach(container => {
-        const helpBtn = container.querySelector('.help-btn');
         const tooltip = container.querySelector('.tooltip-content');
+        if (!tooltip) return;
 
-        if (!helpBtn || !tooltip) return;
+        // El disparador no siempre es un ".help-btn": algunos contenedores
+        // envuelven un botón normal. Buscando solo .help-btn se salía de aquí
+        // sin colocar el tooltip, y como es position:fixed sin top/left se
+        // quedaba dibujado justo encima del botón, tapándolo.
+        const disparador = container.querySelector('.help-btn')
+            || container.querySelector('button, a, input, select')
+            || container;
 
-        // Posicionar tooltip al hacer hover
         const posicionarTooltip = () => {
-            const btnRect = helpBtn.getBoundingClientRect();
-            const tooltipWidth = 320;
-            const tooltipHeight = tooltip.offsetHeight || 200;
-            const padding = 10;
+            const btn = disparador.getBoundingClientRect();
+            const margen = 10;
+            const anchoVentana = document.documentElement.clientWidth;
+            const altoVentana = document.documentElement.clientHeight;
 
-            // Calcular posición ideal (arriba del botón)
-            let top = btnRect.top - tooltipHeight - padding;
-            let left = btnRect.left + (btnRect.width / 2) - (tooltipWidth / 2);
-
-            // Si no hay espacio arriba, mostrar abajo
-            if (top < padding) {
-                top = btnRect.bottom + padding;
+            // Se mide con el tooltip ya visible; si aún no lo está, se fuerza
+            // una medición temporal para no colocarlo a ciegas.
+            const habiaMedida = tooltip.offsetHeight > 0;
+            if (!habiaMedida) {
+                tooltip.style.visibility = 'hidden';
+                tooltip.style.display = 'block';
+            }
+            const ancho = tooltip.offsetWidth || 320;
+            const alto = tooltip.offsetHeight || 200;
+            if (!habiaMedida) {
+                tooltip.style.display = '';
+                tooltip.style.visibility = '';
             }
 
-            // Ajustar si se sale por la izquierda
-            if (left < padding) {
-                left = padding;
-            }
+            // Se elige el lado con más sitio y se limita la altura a ese hueco,
+            // para que el tooltip nunca invada el botón ni se salga de pantalla.
+            const huecoArriba = btn.top - margen * 2;
+            const huecoAbajo = altoVentana - btn.bottom - margen * 2;
+            const arriba = huecoArriba >= alto || huecoArriba > huecoAbajo;
 
-            // Ajustar si se sale por la derecha
-            if (left + tooltipWidth > window.innerWidth - padding) {
-                left = window.innerWidth - tooltipWidth - padding;
-            }
+            tooltip.style.maxHeight = `${Math.max(120, Math.floor(arriba ? huecoArriba : huecoAbajo))}px`;
+            const altoFinal = Math.min(alto, arriba ? huecoArriba : huecoAbajo);
+
+            const top = arriba
+                ? Math.max(margen, btn.top - altoFinal - margen)
+                : Math.min(altoVentana - altoFinal - margen, btn.bottom + margen);
+
+            let left = btn.left + (btn.width / 2) - (ancho / 2);
+            left = Math.max(margen, Math.min(left, anchoVentana - ancho - margen));
 
             tooltip.style.top = `${top}px`;
             tooltip.style.left = `${left}px`;
         };
 
-        helpBtn.addEventListener('mouseenter', posicionarTooltip);
-        helpBtn.addEventListener('focus', posicionarTooltip);
+        // El CSS muestra el tooltip al pasar por el contenedor, así que hay que
+        // colocarlo en ese mismo momento y no solo al entrar en el botón.
+        container.addEventListener('mouseenter', posicionarTooltip);
+        disparador.addEventListener('mouseenter', posicionarTooltip);
+        disparador.addEventListener('focus', posicionarTooltip);
 
         // Reposicionar en scroll
         let scrollTimeout;
         window.addEventListener('scroll', () => {
             clearTimeout(scrollTimeout);
             scrollTimeout = setTimeout(() => {
-                if (tooltip.style.visibility === 'visible' ||
-                    tooltip.style.opacity === '1') {
-                    posicionarTooltip();
-                }
+                if (container.matches(':hover')) posicionarTooltip();
             }, 50);
         }, { passive: true });
     });
@@ -4217,15 +4233,9 @@ async function exportarDatos() {
     try {
         const datos = await exportarTodosDatos();
         const json = JSON.stringify(datos, null, 2);
-        const blob = new Blob([json], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `tsj_backup_${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
-
-        URL.revokeObjectURL(url);
+        descargarArchivo(
+            `tsj_backup_${new Date().toISOString().split('T')[0]}.json`,
+            json, 'application/json');
         mostrarToast('Datos exportados correctamente', 'success');
     } catch (error) {
         mostrarToast('Error al exportar: ' + error.message, 'error');
@@ -4374,16 +4384,8 @@ async function realizarRespaldoAutomatico() {
         }
 
         const json = JSON.stringify(datos, null, 2);
-        const blob = new Blob([json], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-
         const fechaHora = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `tsj_auto_backup_${fechaHora}.json`;
-        a.click();
-
-        URL.revokeObjectURL(url);
+        descargarArchivo(`tsj_auto_backup_${fechaHora}.json`, json, 'application/json');
 
         // Guardar fecha del último respaldo
         await guardarConfig('ultimo_respaldo_auto', new Date().toISOString().split('T')[0]);
@@ -4616,16 +4618,18 @@ async function descargarTemplateExpedientes() {
 
     // El BOM es lo que hace que Excel lea el archivo como UTF-8; sin él las
     // tildes de los catálogos y los comentarios salen como "PÃ©rez".
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'template_expedientes.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+    descargarArchivo('template_expedientes.csv', '﻿' + csv, 'text/csv;charset=utf-8;');
 
     mostrarToast(`Template descargado: ${totalTSJ} juzgados del TSJ y ${totalPJF} órganos federales`, 'success');
 }
+
+// Nombres anteriores del generador y del importador. Se conservan porque la
+// página y el JavaScript se cachean por separado: con un index.html viejo en
+// caché y este archivo ya nuevo, los botones llamarían a funciones que ya no
+// existen y no harían absolutamente nada, sin más pista que un error en
+// consola que el usuario no ve.
+const descargarTemplateCSV = descargarTemplateExpedientes;
+const descargarTemplatePJF = descargarTemplateExpedientes;
 
 // Normaliza para comparar valores del CSV: sin tildes, minúsculas, sin espacios
 // de sobra. "NÚMERO", "Numero" y "numero" son lo mismo para quien llena el CSV.
@@ -5307,6 +5311,9 @@ async function _crearExtrasDeImportacion(asuntos, errores) {
     return { pendientes, eventos };
 }
 
+const importarExpedientesCSV = importarExpedientes;
+const importarExpedientesPJFCSV = importarExpedientes;
+
 // Quita el BOM inicial que Excel escribe al guardar como "CSV UTF-8". Sin esto
 // el primer encabezado se llama "﻿expediente" y la columna no se reconoce.
 function _quitarBOM(texto) {
@@ -5396,6 +5403,42 @@ function parseCSVLine(linea, separador) {
 }
 
 // ==================== UTILIDADES ====================
+
+/**
+ * Descarga un archivo generado en el navegador.
+ *
+ * Dos detalles que parecen adorno y no lo son:
+ *
+ *  - El enlace tiene que estar EN el documento cuando se pulsa. Chrome acepta
+ *    un <a> suelto, pero Safari y Firefox ignoran el click y no descarga nada,
+ *    sin ningún error en consola.
+ *  - Revocar la URL del blob en el mismo turno corta la descarga antes de que
+ *    el navegador llegue a leerla. Se revoca después, ya con el archivo tomado.
+ *
+ * @param {string} nombreArchivo  Nombre con el que se guarda.
+ * @param {string|Blob} contenido Texto o un Blob ya construido.
+ * @param {string} [tipoMime]     Tipo MIME cuando el contenido es texto.
+ */
+function descargarArchivo(nombreArchivo, contenido, tipoMime) {
+    const blob = contenido instanceof Blob
+        ? contenido
+        : new Blob([contenido], { type: tipoMime || 'application/octet-stream' });
+
+    const url = URL.createObjectURL(blob);
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = nombreArchivo;
+    enlace.rel = 'noopener';
+    enlace.style.display = 'none';
+
+    document.body.appendChild(enlace);
+    enlace.click();
+
+    setTimeout(() => {
+        enlace.remove();
+        URL.revokeObjectURL(url);
+    }, 10000);
+}
 
 function configurarFormularios() {
     // Cambiar label según tipo de búsqueda

@@ -308,25 +308,10 @@
                             📄 Descargar Template
                         </button>
                         <div class="tooltip-content tooltip-bottom tooltip-right">
-                            <h4>¿Cómo usar la carga masiva?</h4>
-                            <p><strong>Un solo archivo para todo:</strong> expedientes del TSJ, federales y de otras autoridades. Cada uno va a su sección según dónde esté radicado.</p>
-                            <p><strong>Paso 1:</strong> Descarga el template CSV</p>
-                            <p><strong>Paso 2:</strong> Ábrelo con Excel o Google Sheets</p>
-                            <p><strong>Paso 3:</strong> Completa las columnas:</p>
-                            <ul>
-                                <li><code>expediente</code>: Número (ej: 1234/2025) o nombre <em>(obligatorio)</em></li>
-                                <li><code>juzgado</code>: Juzgado del TSJ, órgano federal o autoridad <em>(obligatorio)</em>; no distingue mayúsculas ni acentos</li>
-                                <li><code>institucion</code>: TSJ, PJF u OTRO (si la dejas vacía se deduce del juzgado)</li>
-                                <li><code>tipo</code>: "numero" o "nombre" (si lo dejas vacío se deduce)</li>
-                                <li><code>actor</code> y <code>demandado</code>: las partes, para poder buscar por ellas</li>
-                                <li><code>carpeta</code>: Agrupa expedientes del mismo caso; se crea sola</li>
-                                <li><code>pendiente</code> + <code>pendiente_fecha</code>: tarea del expediente; con fecha aparece en el calendario</li>
-                                <li><code>audiencia</code> + <code>audiencia_fecha</code>: cita para el calendario</li>
-                                <li><code>comentario</code>: Notas opcionales</li>
-                            </ul>
-                            <p><strong>Fechas:</strong> el día va primero (15/03/2026), con hora opcional (15/03/2026 09:30).</p>
-                            <p><strong>Paso 4:</strong> Guarda como <strong>CSV UTF-8</strong> e importa</p>
-                            <p>Las filas de ejemplo y los expedientes que ya tengas registrados se omiten solos. Repite la fila de un expediente para cargarle varios pendientes.</p>
+                            <h4>Carga masiva de expedientes</h4>
+                            <p><strong>Un solo archivo para todo:</strong> TSJ, federales y otras autoridades. Cada expediente va a su sección solo.</p>
+                            <p>Descarga el template, ábrelo en Excel, llena tus filas y guarda como <strong>CSV UTF-8</strong>. Cada fila puede traer también su pendiente y su audiencia.</p>
+                            <p>El archivo lleva dentro las instrucciones y el catálogo completo de juzgados.</p>
                         </div>
                     </div>
                     <button class="btn btn-secondary" onclick="document.getElementById('import-csv').click()">
@@ -1130,21 +1115,10 @@
                                     📄 Descargar Template
                                 </button>
                                 <div class="tooltip-content tooltip-bottom tooltip-right">
-                                    <h4>¿Cómo usar la carga masiva?</h4>
-                                    <p>Es <strong>el mismo template</strong> que en Expedientes: un solo archivo para lo federal, lo estatal y lo demás. Cada expediente llega a su sección solo.</p>
-                                    <p><strong>Paso 1:</strong> Descarga el template CSV</p>
-                                    <p><strong>Paso 2:</strong> Ábrelo con Excel o Google Sheets</p>
-                                    <p><strong>Paso 3:</strong> Para un asunto federal completa:</p>
-                                    <ul>
-                                        <li><code>expediente</code>: Número (ej: 67/2021) <em>(obligatorio)</em></li>
-                                        <li><code>juzgado</code>: Nombre del órgano del catálogo; no distingue mayúsculas ni acentos</li>
-                                        <li><code>organismo_id</code>: ID numérico del órgano (opcional)</li>
-                                        <li><code>tipo_asunto_id</code>: ID del tipo de asunto (opcional)</li>
-                                        <li><code>pendiente</code> y <code>audiencia</code> con sus fechas, si las tienes</li>
-                                    </ul>
-                                    <p><strong>Paso 4:</strong> Guarda como <strong>CSV UTF-8</strong> e importa</p>
-                                    <p>Los expedientes que ya tengas registrados se omiten, no se duplican.</p>
-                                    <p><em>Con organismo_id y tipo_asunto_id el botón "🔍 Buscar" abrirá el portal PJF directamente.</em></p>
+                                    <h4>Carga masiva de expedientes</h4>
+                                    <p>Es <strong>el mismo template</strong> que en Expedientes: un solo archivo para lo federal, lo estatal y lo demás.</p>
+                                    <p>Para un asunto federal basta el número y el órgano; con <code>organismo_id</code> y <code>tipo_asunto_id</code> el botón "🔍 Buscar" abre el portal PJF directamente.</p>
+                                    <p>El archivo lleva dentro las instrucciones y el catálogo de los 1 195 órganos federales.</p>
                                 </div>
                             </div>
                             <button class="btn btn-secondary btn-sm" onclick="document.getElementById('import-pjf-csv').click()">
