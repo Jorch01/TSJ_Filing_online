@@ -787,6 +787,44 @@ async function main() {
             estado.pendientes[0].expedienteId, id);
     });
 
+    // ---------- 20. Informe solo cuando hay algo que cuadrar ----------
+    await bloque('20. Informe solo cuando hay algo que cuadrar', async () => {
+        // Importación limpia: 3 filas -> 3 expedientes, nada omitido.
+        const { sandbox, estado } = crearEntorno();
+        cargarCodigoReal(sandbox);
+        await importar(sandbox, estado, csvCon(
+            { expediente: '1/2025', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' },
+            { expediente: '2/2025', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' },
+            { expediente: '3/2025', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' }
+        ));
+        igual('limpia: se importan las 3', estado.expedientes.length, 3);
+        igual('limpia: basta un aviso, sin modal que cerrar', estado.informes.length, 0);
+        verificar('limpia: el aviso lo confirma',
+            estado.toasts.some(t => /3 expedientes importados/.test(t.mensaje)),
+            JSON.stringify(estado.toasts));
+
+        // En cuanto los números dejan de coincidir, hace falta el desglose.
+        const casos = [
+            ['una fila repetida', [
+                { expediente: '4/2025', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' },
+                { expediente: '4/2025', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' }]],
+            ['una fila con error', [
+                { expediente: '5/2025', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' },
+                { expediente: '6/2025', juzgado: 'JUZGADO QUE NO EXISTE EN CANCUN' }]],
+            ['mezcla de instituciones', [
+                { expediente: '7/2025', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' },
+                { expediente: '8/2025', juzgado: 'Juzgado Primero de Distrito en el Estado de Aguascalientes' }]]
+        ];
+        for (const [nombre, filas] of casos) {
+            const { sandbox: s, estado: e } = crearEntorno();
+            cargarCodigoReal(s);
+            await importar(s, e, csvCon(...filas));
+            igual(`con ${nombre}: se muestra el informe`, e.informes.length, 1);
+            verificar(`con ${nombre}: el informe dice cuántas filas traía`,
+                /filas de datos/.test(JSON.stringify(e.informes)), JSON.stringify(e.informes));
+        }
+    });
+
     // ==================== RESULTADO ====================
     console.log(`\n${pasadas} pruebas pasadas, ${fallidas} fallidas\n`);
     if (fallidas > 0) {

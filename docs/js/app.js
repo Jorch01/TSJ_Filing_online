@@ -5304,11 +5304,25 @@ async function importarExpedientes(event) {
         if (errores.length > 0) resumen.push(`⚠️ ${errores.length} filas con algún problema (abajo el detalle).`);
         if (aviso) aviso.trim().split('\n').filter(Boolean).forEach(l => resumen.push(l));
 
-        // Siempre el informe, nunca un toast: una carga masiva mueve cientos de
-        // registros y puede repartirlos entre tres secciones. Un "689 importados"
-        // que se desvanece a los tres segundos no deja manera de cuadrar el
+        // El informe se muestra cuando hay algo que cuadrar. Si cada fila del
+        // archivo se convirtió en un expediente y no se omitió nada, no hay
+        // nada que explicar y basta un aviso; en cuanto los números dejan de
+        // coincidir —filas fusionadas, ya registrados, errores, o expedientes
+        // repartidos entre varias secciones— hace falta el desglose, porque un
+        // "689 importados" que se desvanece no deja manera de reconciliar el
         // archivo con lo que acabó en la aplicación.
-        mostrarInformeImportacion('📥 Resultado de la importación', resumen, errores);
+        const cuadraSinExplicacion =
+            ids.length === datos.length &&
+            filasFusionadas === 0 && duplicadosSinAporte === 0 &&
+            extrasSobreExistentes.length === 0 && archivadosEnArchivo === 0 &&
+            ejemplosOmitidos === 0 && errores.length === 0 && !aviso &&
+            new Set(nuevosAImportar.map(a => a.expediente.institucion)).size <= 1;
+
+        if (cuadraSinExplicacion) {
+            mostrarToast(`${ids.length} expedientes importados correctamente`, 'success');
+        } else {
+            mostrarInformeImportacion('📥 Resultado de la importación', resumen, errores);
+        }
 
         // Repintar la lista federal, que tiene su propio render.
         if (typeof cargarExpedientesPJF === 'function') await cargarExpedientesPJF();
