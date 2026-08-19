@@ -57,12 +57,24 @@ const hoja = crearHoja([CABECERA, ['ABC123','perpetua','','','activo','',0,'',2,
 // actualizaciones del código.
 const propiedades = { SPREADSHEET_ID: ID_PRUEBA, SHEET_NAME: 'Licencias' };
 
+// Bandeja de salida de mentira: lo que el script "manda" acaba aquí.
+const correosEnviados = [];
+
+// El PropertiesService de Apps Script tiene las cuatro operaciones. El doble
+// tenía solo getProperties/setProperties, así que nada de lo que usara
+// getProperty se podía probar: el código fallaba y la prueba no lo veía venir.
+function propiedadesFalsas(almacen) {
+  return {
+    getProperties: () => Object.assign({}, almacen),
+    setProperties: (p) => Object.assign(almacen, p),
+    getProperty: (k) => (k in almacen ? almacen[k] : null),
+    setProperty: (k, v) => { almacen[k] = v; }
+  };
+}
+
 const sandbox = {
   PropertiesService: {
-    getScriptProperties: () => ({
-      getProperties: () => Object.assign({}, propiedades),
-      setProperties: (p) => Object.assign(propiedades, p)
-    })
+    getScriptProperties: () => propiedadesFalsas(propiedades)
   },
   SpreadsheetApp: {
     openById: (id) => {
@@ -78,6 +90,8 @@ const sandbox = {
       };
     }
   },
+  MailApp: { sendEmail: (destino, asunto, cuerpo, opciones) =>
+      correosEnviados.push({ destino, asunto, cuerpo, opciones: opciones || {} }) },
   Utilities: { computeDigest: (a, s) => Array.from(require('crypto').createHash('md5').update(String(s)).digest()),
                DigestAlgorithm: { MD5: 'MD5' } },
   ContentService: { createTextOutput: (t) => ({ setMimeType: () => t }), MimeType: { JSON: 'json' } },
@@ -280,9 +294,7 @@ try {
 
     const sinGuardar = {};
     const sandbox2 = Object.assign({}, sandbox, {
-        PropertiesService: { getScriptProperties: () => ({
-            getProperties: () => Object.assign({}, sinGuardar),
-            setProperties: (p) => Object.assign(sinGuardar, p) }) }
+        PropertiesService: { getScriptProperties: () => propiedadesFalsas(sinGuardar) }
     });
     vm.createContext(sandbox2);
     vm.runInContext(codigoDelUsuario, sandbox2);
@@ -297,6 +309,67 @@ try {
     verificar('configurarAqui las guarda sin pedir el id otra vez', paso.success, JSON.stringify(paso));
     igual('guarda el id de la constante', sinGuardar.SPREADSHEET_ID, ID_PRUEBA);
     igual('y la pestaña de la constante', sinGuardar.SHEET_NAME, 'Otra');
+
+    // ---------- Reporte de errores ----------
+    correosEnviados.length = 0;
+
+    r = llamar({ action: 'reportar_bug', descripcion: '' });
+    verificar('un reporte vacío no manda nada', !r.success && correosEnviados.length === 0,
+        JSON.stringify(r));
+
+    r = llamar({ action: 'reportar_bug', descripcion: 'La importación duplica expedientes',
+                 contexto: 'Versión: v8.0\nRegistros: expedientes=900', contacto: 'abogado@ejemplo.mx' });
+    verificar('un reporte con texto se manda', r.success, JSON.stringify(r));
+    igual('llega un solo correo', correosEnviados.length, 1);
+    igual('al buzón de soporte', correosEnviados[0].destino, 'jorge_clemente@empirica.mx');
+    verificar('el asunto lleva la primera línea',
+        /La importación duplica expedientes/.test(correosEnviados[0].asunto), correosEnviados[0].asunto);
+    verificar('el cuerpo trae la descripción y los datos técnicos',
+        /duplica expedientes/.test(correosEnviados[0].cuerpo) &&
+        /expedientes=900/.test(correosEnviados[0].cuerpo));
+    igual('y se puede responder al que reporta',
+        correosEnviados[0].opciones.replyTo, 'abogado@ejemplo.mx');
+    verificar('nunca como html: lo escribe un desconocido',
+        !correosEnviados[0].opciones.htmlBody);
+
+    // Este endpoint es público —su url está en el javascript de la web—, así
+    // que si el destinatario saliera de la petición, cualquiera podría usarlo
+    // para mandar correo a quien quisiera desde esta cuenta.
+    correosEnviados.length = 0;
+    llamar({ action: 'reportar_bug', descripcion: 'intento de relé',
+             destinatario: 'victima@ejemplo.com', to: 'victima@ejemplo.com',
+             CORREO_REPORTES: 'victima@ejemplo.com' });
+    igual('no se puede redirigir el correo a otra dirección',
+        correosEnviados.map(c => c.destino), ['jorge_clemente@empirica.mx']);
+
+    // Un salto de línea en replyTo permitiría colar cabeceras extra.
+    correosEnviados.length = 0;
+    llamar({ action: 'reportar_bug', descripcion: 'con cabecera colada',
+             contacto: 'a@b.com\nBcc: otro@ejemplo.com' });
+    verificar('un contacto con salto de línea se descarta entero',
+        !correosEnviados[0].opciones.replyTo,
+        JSON.stringify(correosEnviados[0].opciones));
+
+    // El tope diario evita que una tarde de insistencia agote el cupo de
+    // correo de la cuenta.
+    correosEnviados.length = 0;
+    propiedades.REPORTES_DIA = new Date().toISOString().substring(0, 10) + '|40';
+    r = llamar({ action: 'reportar_bug', descripcion: 'uno más' });
+    verificar('pasado el tope diario deja de mandar', !r.success && correosEnviados.length === 0,
+        JSON.stringify(r));
+    verificar('y dice a dónde escribir mientras tanto',
+        /jorge_clemente@empirica\.mx/.test(r.mensaje || ''), r.mensaje);
+    delete propiedades.REPORTES_DIA;
+
+    // Reportar un fallo no puede depender de que la hoja esté bien: un error
+    // de configuración de la hoja es justo de lo que la gente querrá avisar.
+    correosEnviados.length = 0;
+    const idBueno = propiedades.SPREADSHEET_ID;
+    propiedades.SPREADSHEET_ID = '';
+    r = llamar({ action: 'reportar_bug', descripcion: 'no me sincroniza' });
+    verificar('se puede reportar aunque la hoja no esté configurada',
+        r.success && correosEnviados.length === 1, JSON.stringify(r));
+    propiedades.SPREADSHEET_ID = idBueno;
 
 } catch (e) {
     fallidas++;

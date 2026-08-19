@@ -4805,3 +4805,91 @@ table th {
 [data-theme="dark"] .pendiente-grupo-header {
     background: var(--bg-primary);
 }
+
+/* ==================== DETALLE DE UN EXPEDIENTE ==================== */
+/* Lo que se abre al pulsar una tarjeta: sus datos, sus pendientes y sus
+   fechas del calendario, juntos. */
+
+.detalle-bloque { margin-bottom: 1.5rem; }
+.detalle-bloque:last-child { margin-bottom: 0; }
+
+.detalle-bloque h4 {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    margin-bottom: 0.6rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border-color, #e5e5e5);
+    font-size: 1rem;
+}
+
+.detalle-cuenta {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: var(--text-muted, #6c757d);
+}
+
+.detalle-datos {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.5rem 1.25rem;
+}
+
+.detalle-dato { display: flex; flex-direction: column; gap: 0.1rem; }
+
+.detalle-etiqueta {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted, #6c757d);
+}
+
+.detalle-valor { font-size: 0.9rem; word-break: break-word; }
+
+.detalle-lista {
+    list-style: none;
+    margin: 0 0 0.75rem;
+    padding: 0;
+    max-height: 40vh;
+    overflow-y: auto;
+}
+
+.detalle-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.45rem 0.2rem;
+    border-bottom: 1px solid var(--border-color, #eee);
+}
+
+.detalle-item:last-child { border-bottom: none; }
+.detalle-item.hecho { opacity: 0.55; }
+.detalle-item.hecho .detalle-item-texto { text-decoration: line-through; }
+.detalle-item.atrasado .detalle-item-fecha { color: var(--danger, #dc3545); font-weight: 600; }
+
+.detalle-item-marca { flex: 0 0 auto; line-height: 1.4; }
+.detalle-item-texto { flex: 1 1 auto; display: flex; flex-direction: column; font-size: 0.9rem; }
+.detalle-item-fecha { font-size: 0.75rem; color: var(--text-muted, #6c757d); }
+
+.detalle-item-prioridad {
+    flex: 0 0 auto;
+    align-self: center;
+    padding: 0.1rem 0.5rem;
+    border-radius: 10px;
+    background: var(--bg-secondary, #f1f1f1);
+    font-size: 0.68rem;
+    text-transform: capitalize;
+}
+
+.detalle-item-prioridad.prioridad-alta { background: #f8d7da; color: #842029; }
+.detalle-item-prioridad.prioridad-baja { background: #e2e3e5; color: #41464b; }
+
+.detalle-vacio {
+    margin: 0 0 0.75rem;
+    font-size: 0.85rem;
+    color: var(--text-muted, #6c757d);
+}
+
+/* La tarjeta y la fila abren el detalle, así que deben parecer pulsables. */
+.expediente-card:not(.selection-mode) { cursor: pointer; }
+.expedientes-table tbody tr[data-id] { cursor: pointer; }

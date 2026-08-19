@@ -240,6 +240,9 @@ function procesarSolicitud(params) {
       case 'respaldar_sync':
         resultado = respaldarYLimpiarSync(params);
         break;
+      case 'reportar_bug':
+        resultado = reportarBug(params);
+        break;
       default:
         resultado = { error: true, mensaje: 'Acción no válida: ' + (action || 'ninguna') };
     }
@@ -1009,6 +1012,91 @@ function restaurarRespaldoSync(codigo) {
 
   Logger.log('Código no encontrado: ' + codigo);
   return { success: false, mensaje: 'Código no encontrado' };
+}
+
+// ==================== REPORTE DE ERRORES ====================
+
+// A quién llegan los reportes. Va fijo aquí y NUNCA se toma de la petición:
+// la url de este script está en el javascript de la web, o sea que cualquiera
+// puede llamarlo. Si el destinatario viniera de fuera, esto sería un relé para
+// mandar correo a quien fuera desde esta cuenta.
+const CORREO_REPORTES = 'jorge_clemente@empirica.mx';
+
+const LIMITE_REPORTES_DIARIOS = 40;   // por debajo del cupo de MailApp
+const LARGO_MAXIMO_REPORTE = 5000;
+
+/**
+ * Manda por correo lo que el usuario escribió en el formulario de reporte.
+ * No toca la hoja de cálculo a propósito: un error de configuración de la hoja
+ * es justo de las cosas que la gente querrá reportar, y sería absurdo que el
+ * formulario dejara de funcionar precisamente entonces.
+ */
+function reportarBug(params) {
+  const descripcion = String(params.descripcion || '').trim();
+  if (!descripcion) {
+    return { success: false, mensaje: 'Hace falta que describas el problema' };
+  }
+
+  if (!dentroDelCupoDeReportes()) {
+    return { success: false,
+             mensaje: 'Se han enviado demasiados reportes hoy. Escribe directamente a ' + CORREO_REPORTES };
+  }
+
+  const cuerpo = [
+    descripcion.substring(0, LARGO_MAXIMO_REPORTE),
+    '',
+    '────────────────────────────',
+    'Datos técnicos que adjuntó la aplicación:',
+    '',
+    String(params.contexto || '(ninguno)').substring(0, LARGO_MAXIMO_REPORTE),
+    '',
+    'Recibido: ' + new Date().toISOString()
+  ].join('\n');
+
+  // Texto plano, nunca htmlBody: lo escribe un desconocido y no tiene por qué
+  // acabar interpretándose en el lector de correo.
+  const opciones = { name: 'TSJ Filing Online' };
+  const responder = correoValido(params.contacto);
+  if (responder) opciones.replyTo = responder;
+
+  MailApp.sendEmail(CORREO_REPORTES, '[TSJ Filing] ' + asuntoDesde(descripcion), cuerpo, opciones);
+
+  return { success: true, mensaje: 'Reporte enviado' };
+}
+
+/**
+ * El correo de contacto, solo si de verdad lo parece.
+ *
+ * Lo importante no es validar bien una dirección —eso es imposible— sino que
+ * no lleve espacios ni saltos de línea: un salto de línea en replyTo permite
+ * colar cabeceras extra en el correo.
+ */
+function correoValido(valor) {
+  const limpio = String(valor || '').trim();
+  return /^[^\s@<>,;:]+@[^\s@<>,;:]+\.[A-Za-z]{2,}$/.test(limpio) ? limpio : '';
+}
+
+/** Primera línea de la descripción, para no abrir el correo a ciegas. */
+function asuntoDesde(texto) {
+  const linea = String(texto).replace(/\s+/g, ' ').trim();
+  return linea.length > 80 ? linea.substring(0, 77) + '...' : linea;
+}
+
+/**
+ * Tope diario de reportes. El formulario es público y sin él, una tarde de
+ * insistencia agotaría el cupo de correo de la cuenta y con él cualquier otro
+ * envío del script.
+ */
+function dentroDelCupoDeReportes() {
+  const props = PropertiesService.getScriptProperties();
+  const hoy = new Date().toISOString().substring(0, 10);
+  const partes = String(props.getProperty('REPORTES_DIA') || '').split('|');
+  const cuenta = (partes[0] === hoy ? parseInt(partes[1], 10) || 0 : 0);
+
+  if (cuenta >= LIMITE_REPORTES_DIARIOS) return false;
+
+  props.setProperty('REPORTES_DIA', hoy + '|' + (cuenta + 1));
+  return true;
 }
 
 // ==================== FUNCIONES DE ADMINISTRACIÓN ====================

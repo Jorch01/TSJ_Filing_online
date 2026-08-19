@@ -1419,7 +1419,8 @@ function renderTarjetaExpedienteHTML(exp, opciones = {}) {
     }
 
     return `
-        <div class="${cardClasses}" data-id="${exp.id}"${ordenAttr}${draggableAttr}>
+        <div class="${cardClasses}" data-id="${exp.id}"${ordenAttr}${draggableAttr}
+             onclick="_clicEnTarjetaExpediente(event, ${exp.id})">
             ${leadingControl}
             <div class="expediente-header">
                 <span class="expediente-tipo">${exp.numero ? '🔢' : '👤'}</span>
@@ -1469,7 +1470,7 @@ function renderFilaExpedienteHTML(exp, opciones = {}) {
 
     const carpetaBadge = _badgeCarpetaHTML(exp.carpetaId);
     return `
-        <tr data-id="${exp.id}">
+        <tr data-id="${exp.id}" onclick="_clicEnTarjetaExpediente(event, ${exp.id})">
             <td class="tipo-cell">${exp.numero ? '🔢' : '👤'}</td>
             <td><strong>${escapeText(exp.numero || exp.nombre)}</strong>${carpetaBadge ? ' ' + carpetaBadge : ''}</td>
             <td>${escapeText(exp.juzgado)}</td>
@@ -7538,6 +7539,321 @@ setInterval(async () => {
     }
 }, 60 * 60 * 1000); // Cada hora
 
+// ==================== DETALLE DE UN EXPEDIENTE ====================
+
+/**
+ * Abre el detalle al pulsar la tarjeta, salvo cuando el clic iba a otra cosa.
+ *
+ * Los botones de la tarjeta ya hacen lo suyo y las casillas de selección
+ * seleccionan: abrir además el detalle sería un segundo efecto que nadie pidió.
+ */
+function _clicEnTarjetaExpediente(event, expedienteId) {
+    if (event.target.closest('button, input, select, a, label, .drag-handle')) return;
+    if (event.currentTarget.classList.contains('selection-mode')) return;
+    if (window.getSelection && String(window.getSelection()).length > 0) return;  // estaba copiando texto
+    verDetalleExpediente(expedienteId);
+}
+
+/** Los eventos del calendario que cuelgan de un expediente, del más próximo al más lejano. */
+async function eventosDeExpediente(expedienteId) {
+    const todos = await obtenerEventos();
+    return todos
+        .filter(e => e.expedienteId === expedienteId)
+        .sort((a, b) => new Date(a.fechaInicio) - new Date(b.fechaInicio));
+}
+
+/**
+ * Todo lo de un expediente en un sitio: sus datos, sus pendientes y sus fechas
+ * del calendario. Antes había que ir a Pendientes y filtrar, y al calendario a
+ * buscar, para reunir lo que pasa en un asunto.
+ */
+async function verDetalleExpediente(expedienteId) {
+    const exp = await obtenerExpediente(expedienteId);
+    if (!exp) {
+        mostrarToast('Ese expediente ya no existe', 'warning');
+        return;
+    }
+
+    const [pendientes, todosLosEventos] = await Promise.all([
+        obtenerPendientesPorExpediente(expedienteId),
+        eventosDeExpediente(expedienteId)
+    ]);
+
+    // Un pendiente con fecha lleva su propio evento en el calendario. Aquí el
+    // pendiente ya sale arriba con su fecha, así que repetirlo abajo sería
+    // contar dos veces la misma cosa en la misma ventana.
+    const espejos = new Set(pendientes.map(p => p.eventoId).filter(id => id != null));
+    const eventos = todosLosEventos.filter(e => !espejos.has(e.id));
+
+    const abiertos = pendientes.filter(p => !p.completado);
+    const hechos = pendientes.filter(p => p.completado);
+    const ahora = new Date();
+    const proximos = eventos.filter(e => new Date(e.fechaInicio) >= ahora);
+    const pasados = eventos.filter(e => new Date(e.fechaInicio) < ahora);
+
+    document.getElementById('modal-titulo').textContent = exp.numero || exp.nombre || 'Expediente';
+    document.getElementById('modal-body').innerHTML = `
+        <div class="detalle-expediente">
+            ${_detalleDatosHTML(exp)}
+
+            <section class="detalle-bloque">
+                <h4>✅ Pendientes <span class="detalle-cuenta">${abiertos.length} por hacer</span></h4>
+                ${abiertos.length || hechos.length
+                    ? `<ul class="detalle-lista">
+                         ${abiertos.map(_detallePendienteHTML).join('')}
+                         ${hechos.map(_detallePendienteHTML).join('')}
+                       </ul>`
+                    : '<p class="detalle-vacio">Sin pendientes en este expediente.</p>'}
+                <button class="btn btn-sm btn-secondary" onclick="cerrarModal(); mostrarFormularioPendiente(null, ${exp.id});">
+                    ➕ Nuevo pendiente
+                </button>
+            </section>
+
+            <section class="detalle-bloque">
+                <h4>📅 Calendario <span class="detalle-cuenta">${proximos.length} por venir</span></h4>
+                ${proximos.length || pasados.length
+                    ? `<ul class="detalle-lista">
+                         ${proximos.map(e => _detalleEventoHTML(e, false)).join('')}
+                         ${pasados.slice(-5).reverse().map(e => _detalleEventoHTML(e, true)).join('')}
+                       </ul>`
+                    : '<p class="detalle-vacio">Sin fechas en el calendario para este expediente.</p>'}
+                ${pasados.length > 5
+                    ? `<p class="detalle-vacio">y ${pasados.length - 5} fecha${pasados.length - 5 !== 1 ? 's' : ''} más ya pasada${pasados.length - 5 !== 1 ? 's' : ''}.</p>`
+                    : ''}
+            </section>
+        </div>
+    `;
+
+    const editarFn = exp.institucion === 'PJF' && typeof editarExpedientePJF === 'function'
+        ? 'editarExpedientePJF' : 'editarExpediente';
+    document.getElementById('modal-footer').innerHTML = `
+        <button class="btn btn-secondary" onclick="cerrarModal()">Cerrar</button>
+        <button class="btn btn-info" onclick="cerrarModal(); verTimelineExpediente(${exp.id});">📜 Timeline</button>
+        <button class="btn btn-primary" onclick="cerrarModal(); ${editarFn}(${exp.id});">✏️ Editar</button>
+    `;
+
+    abrirModal();
+}
+
+function _detalleDatosHTML(exp) {
+    const filas = [
+        ['Juzgado', exp.juzgado],
+        ['Institución', exp.institucion === 'PJF' ? 'Federal (PJF)' : 'TSJ Quintana Roo'],
+        ['Actor', exp.actor],
+        ['Demandado', exp.demandado],
+        ['Categoría', exp.categoria],
+        ['Comentario', exp.comentario]
+    ].filter(([, valor]) => valor);
+
+    return `
+        <section class="detalle-bloque detalle-datos">
+            ${filas.map(([etiqueta, valor]) => `
+                <div class="detalle-dato">
+                    <span class="detalle-etiqueta">${escapeText(etiqueta)}</span>
+                    <span class="detalle-valor">${escapeText(valor)}</span>
+                </div>`).join('')}
+        </section>`;
+}
+
+function _detallePendienteHTML(p) {
+    const vence = p.fechaLimite ? formatearFecha(p.fechaLimite) : '';
+    const atrasado = p.fechaLimite && !p.completado && new Date(p.fechaLimite) < new Date();
+    return `
+        <li class="detalle-item${p.completado ? ' hecho' : ''}${atrasado ? ' atrasado' : ''}">
+            <span class="detalle-item-marca">${p.completado ? '☑' : '☐'}</span>
+            <span class="detalle-item-texto">
+                ${escapeText(p.titulo)}
+                ${vence ? `<span class="detalle-item-fecha">${escapeText(vence)}${atrasado ? ' · vencido' : ''}</span>` : ''}
+            </span>
+            <span class="detalle-item-prioridad prioridad-${escapeText(p.prioridad || 'media')}">${escapeText(p.prioridad || 'media')}</span>
+        </li>`;
+}
+
+function _detalleEventoHTML(evento, pasado) {
+    const cuando = evento.todoElDia ? formatearFecha(evento.fechaInicio) : formatearFechaHora(evento.fechaInicio);
+    return `
+        <li class="detalle-item${pasado ? ' hecho' : ''}">
+            <span class="detalle-item-marca" style="color: ${escapeText(evento.color || '#888')}">●</span>
+            <span class="detalle-item-texto">
+                ${escapeText(evento.titulo)}
+                <span class="detalle-item-fecha">${escapeText(cuando)}</span>
+            </span>
+            <span class="detalle-item-prioridad">${escapeText(evento.tipo || 'otro')}</span>
+        </li>`;
+}
+
+// ==================== REPORTE DE ERRORES ====================
+
+const CORREO_SOPORTE = 'jorge_clemente@empirica.mx';
+
+/**
+ * Datos técnicos que acompañan al reporte.
+ *
+ * Van CUENTAS de registros, nunca su contenido: saber que alguien tenía 900
+ * expedientes cuando falló la importación ayuda a reproducirlo, y no dice nada
+ * de ningún expediente. Aquí no entra ni un número de expediente, ni un
+ * nombre, ni una nota — es información de clientes y no tiene por qué salir
+ * del navegador de quien reporta.
+ */
+async function contextoTecnicoReporte() {
+    const lineas = [];
+    const acerca = document.querySelector('.about-info');
+
+    lineas.push('Versión: ' + (acerca ? (acerca.textContent.match(/v[\d.]+/) || ['?'])[0] : '?'));
+    lineas.push('Navegador: ' + navigator.userAgent);
+    lineas.push('Idioma: ' + navigator.language +
+                ' · Pantalla: ' + window.screen.width + '×' + window.screen.height);
+
+    const pagina = document.querySelector('.page.active');
+    lineas.push('Sección abierta: ' + (pagina ? pagina.id.replace('page-', '') : 'ninguna'));
+
+    const premium = typeof estadoPremium !== 'undefined' && estadoPremium && estadoPremium.activo;
+    lineas.push('Licencia: ' + (premium ? 'premium activa' : 'gratuita'));
+
+    if (typeof syncState !== 'undefined' && syncState) {
+        const pendiente = typeof hayPendienteSync === 'function' && hayPendienteSync();
+        lineas.push('Última sincronización: ' + (syncState.lastSync || 'nunca') +
+                    (pendiente ? ' (quedan cambios sin subir)' : ''));
+    }
+
+    try {
+        const conteos = [];
+        for (const almacen of Array.from(db.objectStoreNames)) {
+            const n = await new Promise(resolver => {
+                const peticion = db.transaction([almacen], 'readonly').objectStore(almacen).count();
+                peticion.onsuccess = () => resolver(peticion.result);
+                peticion.onerror = () => resolver('?');
+            });
+            conteos.push(almacen + '=' + n);
+        }
+        lineas.push('Registros: ' + conteos.join(', '));
+    } catch (error) {
+        lineas.push('Registros: no se pudieron contar (' + error.message + ')');
+    }
+
+    return lineas.join('\n');
+}
+
+async function mostrarModalReporteBug() {
+    const contexto = await contextoTecnicoReporte();
+
+    document.getElementById('modal-titulo').textContent = '🐞 Reportar un problema';
+    document.getElementById('modal-body').innerHTML = `
+        <form id="form-reporte-bug" onsubmit="enviarReporteBug(event)">
+            <p style="margin-bottom: 1rem;">
+                Cuéntame qué pasó y qué esperabas que pasara. Cuanto más concreto,
+                antes lo puedo reproducir y arreglar.
+            </p>
+
+            <div class="form-group">
+                <label for="reporte-descripcion">¿Qué ha pasado?</label>
+                <textarea id="reporte-descripcion" rows="7" required maxlength="5000"
+                          placeholder="Ejemplo: al importar el template con 200 expedientes, los pendientes se crean pero no aparecen en el calendario. Uso Chrome en Windows."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="reporte-contacto">Tu correo <span class="text-muted">(opcional, para poder responderte)</span></label>
+                <input type="email" id="reporte-contacto" placeholder="tucorreo@ejemplo.com">
+            </div>
+
+            <details style="margin-top: 0.75rem;">
+                <summary style="cursor: pointer; font-size: 0.85rem; color: var(--text-muted);">
+                    Se adjuntan estos datos técnicos (sin ningún dato de tus expedientes)
+                </summary>
+                <pre style="white-space: pre-wrap; word-break: break-word; font-size: 0.75rem;
+                            background: var(--bg-secondary, #f6f6f6); padding: 0.75rem;
+                            border-radius: 6px; margin-top: 0.5rem;">${escapeText(contexto)}</pre>
+            </details>
+        </form>
+    `;
+    document.getElementById('modal-footer').innerHTML = `
+        <button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>
+        <button class="btn btn-primary" id="btn-enviar-reporte"
+                onclick="document.getElementById('form-reporte-bug').requestSubmit()">Enviar reporte</button>
+    `;
+
+    // El contexto se guarda ya calculado: recalcularlo al enviar daría un
+    // retrato distinto del que el usuario vio y aceptó mandar.
+    document.getElementById('form-reporte-bug').dataset.contexto = contexto;
+
+    abrirModal();
+}
+
+async function enviarReporteBug(event) {
+    event.preventDefault();
+
+    const formulario = document.getElementById('form-reporte-bug');
+    const descripcion = document.getElementById('reporte-descripcion').value.trim();
+    const contacto = document.getElementById('reporte-contacto').value.trim();
+    const contexto = formulario.dataset.contexto || '';
+
+    if (!descripcion) {
+        mostrarToast('Escribe qué ha pasado antes de enviar', 'error');
+        return;
+    }
+
+    const boton = document.getElementById('btn-enviar-reporte');
+    boton.disabled = true;
+    boton.textContent = 'Enviando...';
+
+    try {
+        // Un solo reintento: quien reporta un fallo ya está molesto, y no le
+        // vamos a tener catorce segundos mirando un botón deshabilitado.
+        const respuesta = await fetchConReintentos(PREMIUM_CONFIG.apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: 'reportar_bug', descripcion, contacto, contexto }),
+            timeout: 20000
+        }, 1);
+
+        const resultado = JSON.parse(await respuesta.text());
+        if (!resultado.success) throw new Error(resultado.mensaje || 'El servidor rechazó el reporte');
+
+        cerrarModal();
+        mostrarToast('Reporte enviado. Gracias por avisar.', 'success');
+    } catch (error) {
+        // El reporte no se pierde: se ofrece mandarlo por correo normal, con
+        // todo ya escrito. Perder lo que alguien acaba de redactar por un fallo
+        // de red sería la peor forma de estrenar el formulario de fallos.
+        mostrarRespaldoReporteBug(descripcion, contexto, error.message);
+    } finally {
+        boton.disabled = false;
+        boton.textContent = 'Enviar reporte';
+    }
+}
+
+/** Plan B cuando el envío automático falla: el mismo texto, por correo. */
+function mostrarRespaldoReporteBug(descripcion, contexto, motivo) {
+    const cuerpo = descripcion + '\n\n────────────\n' + contexto;
+    const enlace = 'mailto:' + CORREO_SOPORTE +
+        '?subject=' + encodeURIComponent('[TSJ Filing] ' + descripcion.split('\n')[0].slice(0, 70)) +
+        '&body=' + encodeURIComponent(cuerpo.slice(0, 1800));
+
+    document.getElementById('modal-titulo').textContent = 'No se pudo enviar';
+    document.getElementById('modal-body').innerHTML = `
+        <p>El reporte no salió: <strong>${escapeText(motivo)}</strong></p>
+        <p style="margin-top: 0.75rem;">
+            No se ha perdido nada. Puedes mandarlo por correo con todo ya escrito,
+            o copiarlo y pegarlo donde prefieras.
+        </p>
+        <textarea id="reporte-respaldo" rows="8" readonly
+                  style="width: 100%; margin-top: 0.75rem; font-size: 0.8rem;">${escapeText(cuerpo)}</textarea>
+    `;
+    document.getElementById('modal-footer').innerHTML = `
+        <button class="btn btn-secondary" onclick="copiarTextoReporte()">📋 Copiar</button>
+        <a class="btn btn-primary" href="${escapeText(enlace)}">✉️ Abrir en mi correo</a>
+    `;
+}
+
+function copiarTextoReporte() {
+    const campo = document.getElementById('reporte-respaldo');
+    if (!campo) return;
+    campo.select();
+    navigator.clipboard.writeText(campo.value)
+        .then(() => mostrarToast('Reporte copiado', 'success'))
+        .catch(() => mostrarToast('Selecciónalo y cópialo con Ctrl+C', 'info'));
+}
+
 // ==================== SISTEMA DE ANUNCIOS ====================
 
 // Configuración de anuncios (pueden ser cargados de un servidor o configurados manualmente)
@@ -7547,15 +7863,15 @@ const ANUNCIOS_CONFIG = [
     {
         id: 'edictos',
         tipo: 'texto',
-        titulo: '📰 Publicación de Edictos en Quintana Roo',
+        titulo: '📰 Publicación de Edictos en Quintana Roo y Yucatán',
         contenido: 'Judiciales, sucesorios, de remate, notariales y corporativos en periódico de ' +
                    'circulación estatal. Revisamos que el texto coincida con el acuerdo, controlamos ' +
                    'las fechas y los intervalos entre publicaciones, y te entregamos los ejemplares ' +
                    'originales donde aparece tu edicto. Cancún, Chetumal, Playa del Carmen, Cozumel, ' +
-                   'Tulum y el resto del estado.',
+                   'Tulum y el resto de Quintana Roo, y también en el estado de Yucatán.',
         llamada: '💬 Consultar por WhatsApp',
         enlace: `https://wa.me/${WHATSAPP_EDICTOS}?text=` + encodeURIComponent(
-            'Hola, necesito publicar un edicto en Quintana Roo. ¿Me pueden dar informes?'),
+            'Hola, necesito publicar un edicto en Quintana Roo o Yucatán. ¿Me pueden dar informes?'),
         activo: true
     },
     {
