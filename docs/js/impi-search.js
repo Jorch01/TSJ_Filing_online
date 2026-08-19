@@ -840,12 +840,8 @@ async function exportarResultadosMARCia() {
     var csv = 'Denominación,Expediente,Registro,Estatus,Tipo,Titular,Clases,Fecha Presentación\n';
     registros.forEach(function(r) { csv += filaCSVMarca(r); });
 
-    var blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'marcas_impi_' + new Date().toISOString().slice(0, 10) + '.csv';
-    a.click();
-    URL.revokeObjectURL(a.href);
+    descargarArchivo('marcas_impi_' + new Date().toISOString().slice(0, 10) + '.csv',
+                     '\ufeff' + csv, 'text/csv;charset=utf-8;');
 
     var aviso = 'CSV exportado con ' + registros.length + ' resultado' + (registros.length !== 1 ? 's' : '');
     if (total > registros.length) aviso += ' de ' + total;
