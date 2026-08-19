@@ -168,8 +168,8 @@ try {
     let errorConfig = null;
     try { vm.runInContext('getSheet()', sandbox); } catch (e) { errorConfig = e.message; }
 
-    verificar('sin configurar, el error dice qué ejecutar',
-        /configurarAqui\(\)/.test(errorConfig || ''), errorConfig);
+    verificar('sin configurar, el error dice dónde escribirlo',
+        /SPREADSHEET_ID/.test(errorConfig || '') && /SHEET_NAME/.test(errorConfig || ''), errorConfig);
     verificar('y no suelta el error críptico de Google',
         !/Illegal spreadsheet id/.test(errorConfig || ''), errorConfig);
 
@@ -245,10 +245,18 @@ try {
     const antesDeAqui = propiedades.SPREADSHEET_ID;
     let errorAqui = null;
     try { vm.runInContext('configurarAqui()', sandbox); } catch (e) { errorAqui = e.message; }
-    verificar('sin rellenar, configurarAqui() avisa en vez de guardar basura',
+    verificar('con las constantes sin rellenar, configurarAqui avisa en vez de guardar basura',
         /no parece el id/.test(errorAqui || ''), errorAqui);
     igual('y deja intacta la configuración que ya había',
         propiedades.SPREADSHEET_ID, antesDeAqui);
+
+    // configurarAqui NO tiene copia propia del id: lo toma de las constantes.
+    // Tenerlo escrito en dos sitios es una copia que se desincroniza el día
+    // que cambie uno de los dos.
+    const fuenteAqui = fs.readFileSync(GS, 'utf8')
+        .match(/function configurarAqui\(\)[\s\S]*?\n\}/)[0];
+    verificar('configurarAqui toma el id de SPREADSHEET_ID, no de una copia suya',
+        /configurar\(SPREADSHEET_ID, SHEET_NAME\)/.test(fuenteAqui), fuenteAqui);
 
     // ---------- limpiarCeldaSync no puede dejar cola ----------
     // Vaciaba solo la columna K; las otras tres se quedaban con su parte y al
@@ -260,6 +268,35 @@ try {
     verificar('limpiarCeldaSync vacía las cuatro columnas, no solo la primera',
         !r.datos, 'quedaron ' + String(r.datos || '').length + ' caracteres');
 
+
+    // ---------- Rellenar solo las constantes tiene que bastar ----------
+    // Es lo que hace todo el mundo: pegar el script y sustituir el id en
+    // SPREADSHEET_ID. Si eso no funcionara sin ejecutar además una función,
+    // el script estaría pidiendo un paso que nadie adivina.
+    const codigoDelUsuario = fs.readFileSync(GS, 'utf8')
+        .replace("const SPREADSHEET_ID = 'TU_SPREADSHEET_ID_AQUI';",
+                 "const SPREADSHEET_ID = '" + ID_PRUEBA + "';")
+        .replace("const SHEET_NAME = 'Licencias';", "const SHEET_NAME = 'Otra';");
+
+    const sinGuardar = {};
+    const sandbox2 = Object.assign({}, sandbox, {
+        PropertiesService: { getScriptProperties: () => ({
+            getProperties: () => Object.assign({}, sinGuardar),
+            setProperties: (p) => Object.assign(sinGuardar, p) }) }
+    });
+    vm.createContext(sandbox2);
+    vm.runInContext(codigoDelUsuario, sandbox2);
+
+    let errorSoloConstantes = null;
+    try { vm.runInContext('getSheet()', sandbox2); } catch (e) { errorSoloConstantes = e.message; }
+    verificar('con las constantes rellenas, funciona sin ejecutar nada',
+        !errorSoloConstantes, errorSoloConstantes);
+
+    // Y configurarAqui las pasa a las propiedades sin volver a escribirlas.
+    const paso = vm.runInContext('configurarAqui()', sandbox2);
+    verificar('configurarAqui las guarda sin pedir el id otra vez', paso.success, JSON.stringify(paso));
+    igual('guarda el id de la constante', sinGuardar.SPREADSHEET_ID, ID_PRUEBA);
+    igual('y la pestaña de la constante', sinGuardar.SHEET_NAME, 'Otra');
 
 } catch (e) {
     fallidas++;

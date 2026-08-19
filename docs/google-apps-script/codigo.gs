@@ -29,19 +29,18 @@
 
 // ==================== CONFIGURACIÓN ====================
 //
-// PARA CONFIGURARLO LA PRIMERA VEZ, o después de pegar una versión nueva de
-// este archivo: baja a configurarAqui(), rellena sus dos líneas, selecciónala
-// en el desplegable de arriba y pulsa ▶ Ejecutar. Una sola vez.
+// PARA CONFIGURARLO: escribe tus datos en las dos constantes de aquí abajo,
+// SPREADSHEET_ID y SHEET_NAME. Con eso ya funciona.
 //
-// (El botón ▶ no sabe pasarle datos a una función, por eso hay que dejarlos
-// escritos dentro de configurarAqui en vez de llamar a configurar a mano.)
+// Y para que no se pierdan la próxima vez que pegues una versión nueva de
+// este archivo, selecciona configurarAqui en el desplegable de arriba y pulsa
+// ▶ Ejecutar, una sola vez. Eso los copia a las propiedades del script, que
+// sobreviven a las actualizaciones del código.
 //
-// Lo que escribas queda guardado en las propiedades del script, que NO se
-// pierden al actualizar el código. Pegar este archivo encima vuelve a dejar
-// las constantes de abajo en su valor de ejemplo, pero la configuración
-// guardada sigue mandando y todo continúa funcionando.
+// (No intentes ejecutar configurar directamente: el botón ▶ ejecuta la
+// función sin pasarle argumentos, y por eso existe configurarAqui.)
 //
-// Las constantes solo se usan si no hay nada guardado.
+// Las constantes solo se usan mientras no haya nada guardado.
 
 const SPREADSHEET_ID = 'TU_SPREADSHEET_ID_AQUI'; // Reemplaza con tu ID
 const SHEET_NAME = 'Licencias';
@@ -70,18 +69,19 @@ function idSinConfigurar(id) {
 }
 
 /**
- * ▼▼▼ RELLENA ESTAS DOS LÍNEAS Y PULSA ▶ EJECUTAR ▼▼▼
+ * Guarda en las propiedades del script lo que hay en SPREADSHEET_ID y
+ * SHEET_NAME, ahí arriba. Selecciónala en el desplegable y pulsa ▶ Ejecutar.
  *
- * Es la forma de configurar el script desde el editor, porque el botón ▶
- * ejecuta la función sin pasarle nada. Solo hace falta una vez: lo que
- * escribas aquí se guarda en las propiedades del script y a partir de ese
- * momento estas dos líneas ya no pintan nada.
+ * Existe porque el botón ▶ ejecuta la función SIN pasarle argumentos, así que
+ * llamar a configurar() desde ahí no puede funcionar. Y toma los datos de las
+ * constantes en vez de tener los suyos propios: escribir el id en dos sitios
+ * es una copia que se queda desincronizada el día que cambie.
+ *
+ * Solo hace falta una vez. A partir de ahí la configuración vive fuera del
+ * código y sobrevive a pegar una versión nueva de este archivo.
  */
 function configurarAqui() {
-  const ID_DE_MI_HOJA = 'TU_SPREADSHEET_ID_AQUI';  // la parte larga de la url, entre /d/ y /edit
-  const NOMBRE_DE_MI_PESTANA = 'Hoja 1';           // el nombre de la pestaña, tal cual sale abajo
-
-  return configurar(ID_DE_MI_HOJA, NOMBRE_DE_MI_PESTANA);
+  return configurar(SPREADSHEET_ID, SHEET_NAME);
 }
 
 /**
@@ -91,7 +91,7 @@ function configurarAqui() {
 function configurar(idHoja, nombrePestana) {
   if (idHoja === undefined) {
     throw new Error('El botón ▶ Ejecutar no le pasa datos a esta función. ' +
-      'Rellena las dos líneas de configurarAqui() y ejecuta esa en su lugar.');
+      'Selecciona configurarAqui en el desplegable y ejecuta esa en su lugar.');
   }
 
   if (idSinConfigurar(idHoja)) {
@@ -126,7 +126,7 @@ function verConfiguracion() {
   Logger.log('id de la hoja : ' + id + (props.SPREADSHEET_ID ? '  (guardado)' : '  (de la constante)'));
   Logger.log('pestaña       : ' + (props.SHEET_NAME || SHEET_NAME));
   if (!props.SPREADSHEET_ID && idSinConfigurar(id)) {
-    Logger.log('⚠ Sin configurar. Rellena configurarAqui() y ejecútala.');
+    Logger.log('⚠ Sin configurar. Escribe tu id en SPREADSHEET_ID y ejecuta configurarAqui.');
   }
   return props;
 }
@@ -273,8 +273,8 @@ function getSheet() {
   // quedado sin sustituir.
   if (!props.SPREADSHEET_ID && idSinConfigurar(id)) {
     throw new Error('El script no tiene configurada la hoja de cálculo. ' +
-      'Abre el editor de Apps Script, rellena las dos líneas de configurarAqui() ' +
-      'y ejecuta esa función una vez.');
+      'Abre el editor de Apps Script, escribe el id de tu hoja en SPREADSHEET_ID ' +
+      'y el nombre de la pestaña en SHEET_NAME, arriba del todo.');
   }
 
   let hoja;
@@ -283,7 +283,7 @@ function getSheet() {
   } catch (e) {
     throw new Error('No se pudo abrir la hoja de cálculo con id "' + id + '". ' +
       'Comprueba que el id sea correcto y que la cuenta del script tenga acceso. ' +
-      'Para corregirlo, cambia el id en configurarAqui() y ejecútala.');
+      'Para corregirlo, cambia SPREADSHEET_ID y ejecuta configurarAqui.');
   }
 
   const sheet = hoja.getSheetByName(pestana);
@@ -291,7 +291,7 @@ function getSheet() {
     throw new Error('La hoja "' + hoja.getName() + '" no tiene ninguna pestaña llamada "' +
       pestana + '". Las que tiene son: ' +
       hoja.getSheets().map(function (h) { return h.getName(); }).join(', ') +
-      '. Para corregirlo, pon ese nombre en configurarAqui() y ejecútala.');
+      '. Para corregirlo, pon ese nombre en SHEET_NAME y ejecuta configurarAqui.');
   }
 
   return sheet;
