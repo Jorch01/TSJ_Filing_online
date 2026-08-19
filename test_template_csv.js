@@ -68,6 +68,7 @@ function crearEntorno() {
             const id = nuevoId(); estado.expedientes.push({ ...exp, id, activo: true }); return id;
         },
         obtenerExpedientes: async () => estado.expedientes.filter(e => e.activo !== false && !e.archivado),
+        obtenerExpedientesArchivados: async () => estado.expedientes.filter(e => e.activo !== false && e.archivado === true),
         obtenerCarpetas: async () => estado.carpetas.slice(),
         agregarCarpeta: async (c) => { const id = nuevoId(); estado.carpetas.push({ ...c, id }); return id; },
         agregarPendiente: async (p) => { const id = nuevoId(); estado.pendientes.push({ ...p, id }); return id; },
@@ -731,6 +732,59 @@ async function main() {
         // en reintentos y la app se queda minutos en una tormenta de errores.
         igual('lote: toda la importación sube a la nube UNA sola vez',
             estado.sincronizaciones, 1);
+    });
+
+    // ---------- 18. Los números del informe cuadran con el archivo ----------
+    await bloque('18. Los números cuadran con el archivo', async () => {
+        const { sandbox, estado } = crearEntorno();
+        cargarCodigoReal(sandbox);
+
+        // 10 expedientes distintos + 4 filas que repiten alguno de ellos
+        const filas = [];
+        for (let i = 1; i <= 10; i++) {
+            filas.push({ expediente: `${i}/2025`, juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' });
+        }
+        for (let i = 1; i <= 4; i++) {
+            filas.push({ expediente: `${i}/2025`, juzgado: 'JUZGADO PRIMERO CIVIL CANCUN',
+                         pendiente: `Tarea extra ${i}` });
+        }
+        await importar(sandbox, estado, csvCon(...filas));
+
+        igual('cuadrar: se crean 10 expedientes, no 14', estado.expedientes.length, 10);
+        igual('cuadrar: las 4 filas repetidas aportan sus pendientes', estado.pendientes.length, 4);
+
+        const informe = JSON.stringify(estado.informes[0]);
+        verificar('cuadrar: el informe dice cuántas filas traía el archivo',
+            /14 filas de datos/.test(informe), informe);
+        verificar('cuadrar: y explica las 4 que se fusionaron',
+            /4 filas repetían un expediente/.test(informe), informe);
+        verificar('cuadrar: la confirmación también lo avisa antes de importar',
+            /14 filas/.test(estado.confirmaciones[0] || ''), estado.confirmaciones[0]);
+    });
+
+    // ---------- 19. Los archivados cuentan como ya registrados ----------
+    await bloque('19. Los archivados cuentan como ya registrados', async () => {
+        const { sandbox, estado } = crearEntorno();
+        cargarCodigoReal(sandbox);
+
+        const fila = { expediente: '555/2025', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' };
+        await importar(sandbox, estado, csvCon(fila));
+        igual('archivados: se crea la primera vez', estado.expedientes.length, 1);
+
+        const id = estado.expedientes[0].id;
+        estado.expedientes[0].archivado = true;      // el usuario lo archiva
+
+        await importar(sandbox, estado, csvCon(fila));
+        igual('archivados: reimportarlo NO lo duplica', estado.expedientes.length, 1);
+        verificar('archivados: el informe explica que está en el archivo',
+            /archivados/i.test(JSON.stringify(estado.informes)), JSON.stringify(estado.informes));
+
+        // Y sus pendientes deben colgar del expediente archivado, no de uno nuevo
+        await importar(sandbox, estado, csvCon(
+            { ...fila, pendiente: 'Algo por hacer', pendiente_fecha: '15/03/2026' }));
+        igual('archivados: sigue sin duplicarse', estado.expedientes.length, 1);
+        igual('archivados: el pendiente cuelga del expediente que ya existía',
+            estado.pendientes[0].expedienteId, id);
     });
 
     // ==================== RESULTADO ====================
