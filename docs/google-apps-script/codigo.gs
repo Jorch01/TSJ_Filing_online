@@ -30,14 +30,16 @@
 // ==================== CONFIGURACIÓN ====================
 //
 // PARA CONFIGURARLO LA PRIMERA VEZ, o después de pegar una versión nueva de
-// este archivo, ejecuta UNA VEZ desde el editor:
+// este archivo: baja a configurarAqui(), rellena sus dos líneas, selecciónala
+// en el desplegable de arriba y pulsa ▶ Ejecutar. Una sola vez.
 //
-//     configurar('EL-ID-DE-TU-HOJA', 'Licencias')
+// (El botón ▶ no sabe pasarle datos a una función, por eso hay que dejarlos
+// escritos dentro de configurarAqui en vez de llamar a configurar a mano.)
 //
-// Eso lo guarda en las propiedades del script, que NO se pierden al actualizar
-// el código. Pegar este archivo encima vuelve a dejar las constantes de abajo
-// en su valor de ejemplo, pero la configuración guardada sigue mandando y todo
-// continúa funcionando.
+// Lo que escribas queda guardado en las propiedades del script, que NO se
+// pierden al actualizar el código. Pegar este archivo encima vuelve a dejar
+// las constantes de abajo en su valor de ejemplo, pero la configuración
+// guardada sigue mandando y todo continúa funcionando.
 //
 // Las constantes solo se usan si no hay nada guardado.
 
@@ -45,15 +47,56 @@ const SPREADSHEET_ID = 'TU_SPREADSHEET_ID_AQUI'; // Reemplaza con tu ID
 const SHEET_NAME = 'Licencias';
 const DIAS_EXPIRACION_DEFAULT = 365; // 1 año por defecto
 
-const ID_DE_EJEMPLO = 'TU_SPREADSHEET_ID_AQUI';
+// Textos de relleno que trae este archivo. Se listan aparte de SPREADSHEET_ID
+// para que sustituirlos no sea lo mismo que configurar el script.
+const IDS_DE_EJEMPLO = ['TU_SPREADSHEET_ID_AQUI', 'EL-ID-DE-TU-HOJA', 'EL-ID-CORRECTO', '1AbC...'];
+
+/**
+ * ¿Este id sigue siendo el texto de ejemplo, sin sustituir?
+ *
+ * Se mira la FORMA del id, no si coincide con una constante concreta: un id de
+ * Google Sheets son treinta y tantos o cuarenta y tantos caracteres de letras,
+ * números, guion y guion bajo, y ninguno de los textos de relleno lo es. Antes
+ * esto era una comparación contra una constante que estaba justo debajo de
+ * SPREADSHEET_ID, con el mismo valor: quien sustituía su id con "buscar y
+ * reemplazar" cambiaba las dos, y el script quedaba convencido de que su id
+ * real era el de ejemplo.
+ */
+function idSinConfigurar(id) {
+  const limpio = String(id || '').trim();
+  if (!limpio) return true;
+  if (IDS_DE_EJEMPLO.indexOf(limpio) !== -1) return true;
+  return !/^[A-Za-z0-9_-]{25,}$/.test(limpio);
+}
+
+/**
+ * ▼▼▼ RELLENA ESTAS DOS LÍNEAS Y PULSA ▶ EJECUTAR ▼▼▼
+ *
+ * Es la forma de configurar el script desde el editor, porque el botón ▶
+ * ejecuta la función sin pasarle nada. Solo hace falta una vez: lo que
+ * escribas aquí se guarda en las propiedades del script y a partir de ese
+ * momento estas dos líneas ya no pintan nada.
+ */
+function configurarAqui() {
+  const ID_DE_MI_HOJA = 'TU_SPREADSHEET_ID_AQUI';  // la parte larga de la url, entre /d/ y /edit
+  const NOMBRE_DE_MI_PESTANA = 'Hoja 1';           // el nombre de la pestaña, tal cual sale abajo
+
+  return configurar(ID_DE_MI_HOJA, NOMBRE_DE_MI_PESTANA);
+}
 
 /**
  * Guarda el id de la hoja y el nombre de la pestaña donde no se pierdan al
  * actualizar el código. Ejecutar una sola vez desde el editor de Apps Script.
  */
 function configurar(idHoja, nombrePestana) {
-  if (!idHoja || idHoja === ID_DE_EJEMPLO) {
-    throw new Error('Pasa el id real de tu hoja: configurar("1AbC...", "Licencias")');
+  if (idHoja === undefined) {
+    throw new Error('El botón ▶ Ejecutar no le pasa datos a esta función. ' +
+      'Rellena las dos líneas de configurarAqui() y ejecuta esa en su lugar.');
+  }
+
+  if (idSinConfigurar(idHoja)) {
+    throw new Error('Esto no parece el id de una hoja de cálculo: "' + idHoja + '". ' +
+      'El id es la parte larga de la url de tu hoja, entre /d/ y /edit.');
   }
 
   // Se comprueba antes de guardar: mejor fallar aquí, con el editor delante,
@@ -82,8 +125,8 @@ function verConfiguracion() {
   const id = props.SPREADSHEET_ID || SPREADSHEET_ID;
   Logger.log('id de la hoja : ' + id + (props.SPREADSHEET_ID ? '  (guardado)' : '  (de la constante)'));
   Logger.log('pestaña       : ' + (props.SHEET_NAME || SHEET_NAME));
-  if (id === ID_DE_EJEMPLO) {
-    Logger.log('⚠ Sin configurar. Ejecuta: configurar("EL-ID-DE-TU-HOJA", "Licencias")');
+  if (!props.SPREADSHEET_ID && idSinConfigurar(id)) {
+    Logger.log('⚠ Sin configurar. Rellena configurarAqui() y ejecútala.');
   }
   return props;
 }
@@ -225,10 +268,13 @@ function getSheet() {
   const id = props.SPREADSHEET_ID || SPREADSHEET_ID;
   const pestana = props.SHEET_NAME || SHEET_NAME;
 
-  if (!id || id === ID_DE_EJEMPLO) {
+  // Si hay configuración guardada se usa tal cual: solo se juzga la forma del
+  // id cuando viene de la constante del archivo, que es la que puede haberse
+  // quedado sin sustituir.
+  if (!props.SPREADSHEET_ID && idSinConfigurar(id)) {
     throw new Error('El script no tiene configurada la hoja de cálculo. ' +
-      'Abre el editor de Apps Script y ejecuta una vez: ' +
-      'configurar("EL-ID-DE-TU-HOJA", "' + pestana + '")');
+      'Abre el editor de Apps Script, rellena las dos líneas de configurarAqui() ' +
+      'y ejecuta esa función una vez.');
   }
 
   let hoja;
@@ -237,7 +283,7 @@ function getSheet() {
   } catch (e) {
     throw new Error('No se pudo abrir la hoja de cálculo con id "' + id + '". ' +
       'Comprueba que el id sea correcto y que la cuenta del script tenga acceso. ' +
-      'Para corregirlo: configurar("EL-ID-CORRECTO", "' + pestana + '")');
+      'Para corregirlo, cambia el id en configurarAqui() y ejecútala.');
   }
 
   const sheet = hoja.getSheetByName(pestana);
@@ -245,7 +291,7 @@ function getSheet() {
     throw new Error('La hoja "' + hoja.getName() + '" no tiene ninguna pestaña llamada "' +
       pestana + '". Las que tiene son: ' +
       hoja.getSheets().map(function (h) { return h.getName(); }).join(', ') +
-      '. Para corregirlo: configurar("' + id + '", "NOMBRE-CORRECTO")');
+      '. Para corregirlo, pon ese nombre en configurarAqui() y ejecútala.');
   }
 
   return sheet;
@@ -1036,14 +1082,16 @@ function inicializarTodosLosCodigos() {
  *
  * Cambia CODIGO_A_LIMPIAR por el código premium que quieres resetear.
  */
-function limpiarCeldaSync() {
-  const CODIGO_A_LIMPIAR = 'PONER_CODIGO_AQUI'; // <-- cambia esto
+function limpiarCeldaSync(codigo) {
+  const CODIGO_A_LIMPIAR = codigo || 'PONER_CODIGO_AQUI'; // <-- cambia esto
   const sheet = getSheet();
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][COL.CODIGO]).trim() === CODIGO_A_LIMPIAR) {
-      sheet.getRange(i + 1, COL.DATOS_SYNC + 1).setValue('');
-      Logger.log('Celda de sync limpiada para: ' + CODIGO_A_LIMPIAR);
+      // Las cuatro, no solo la K: vaciar una sola dejaría la cola de las otras
+      // tres y al concatenarlas saldría un bloque corrupto.
+      escribirDatosSync(sheet, i + 1, ['', '', '', '']);
+      Logger.log('Celdas de sync limpiadas para: ' + CODIGO_A_LIMPIAR);
       return 'OK - celda limpiada para ' + CODIGO_A_LIMPIAR;
     }
   }
