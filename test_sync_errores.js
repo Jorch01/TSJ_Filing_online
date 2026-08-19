@@ -52,7 +52,9 @@ function cargar() {
 
     const src = fs.readFileSync(SYNC, 'utf8');
     for (const n of ['_clasificarErrorFetch', '_mensajeErrorFetch',
-                     'LIMITE_CELDA_SHEETS', 'AVISO_CELDA_SHEETS', 'subirDatosRemotos']) {
+                     'CELDAS_DATOS_SYNC', 'TAMANO_POR_CELDA',
+                     'LIMITE_CELDA_SHEETS', 'AVISO_CELDA_SHEETS',
+                     '_partirParaCeldas', 'subirDatosRemotos']) {
         vm.runInContext(extraerDeclaracion(src, n), sandbox, { filename: `sync.js:${n}` });
     }
 
@@ -133,8 +135,27 @@ async function main() {
 
     // ---------- El límite de la celda se avisa antes de romper ----------
     const limite = leer('LIMITE_CELDA_SHEETS');
-    igual('el límite es el de una celda de Google Sheets', limite, 50000);
+    const celdas = leer('CELDAS_DATOS_SYNC');
+    const porCelda = leer('TAMANO_POR_CELDA');
+
+    igual('el techo es el de todas las celdas juntas', limite, celdas * porCelda);
+    verificar('cada celda deja margen bajo los 50 000 de Sheets', porCelda <= 50000, String(porCelda));
+    verificar('se usan varias celdas, no una', celdas > 1, String(celdas));
     verificar('el umbral de aviso deja margen', leer('AVISO_CELDA_SHEETS') < limite);
+
+    // ---------- El bloque se parte para caber en las celdas ----------
+    const partir = sandbox._partirParaCeldas;
+
+    igual('partir: siempre devuelve una parte por celda',
+        partir('x'.repeat(100)).length, celdas);
+    igual('partir: un bloque corto ocupa solo la primera',
+        partir('x'.repeat(100)).slice(1).join(''), '');
+    verificar('partir: ninguna parte se pasa del tamaño de celda',
+        partir('x'.repeat(limite)).every(p => p.length <= porCelda));
+    igual('partir: al unirlas sale exactamente el original',
+        partir('abc'.repeat(40000)).join(''), 'abc'.repeat(40000));
+    igual('partir: reparte un bloque grande entre todas',
+        partir('x'.repeat(limite)).filter(p => p.length > 0).length, celdas);
 
     // Por debajo del límite ni siquiera se comprueba la red aquí: se deja pasar
     // y falla al hacer fetch, que es lo que queremos distinguir.
@@ -146,7 +167,8 @@ async function main() {
     verificar('pasado el límite, falla antes de intentar la subida', !!fallo);
     igual('y se marca como problema de tamaño', fallo && fallo.tipoFallo, 'tamano');
     verificar('el mensaje dice cuánto ocupa y cuánto cabe',
-        /50\.001/.test(fallo.message) && /50\.000/.test(fallo.message), fallo.message);
+        fallo.message.includes((limite + 1).toLocaleString('es')) &&
+        fallo.message.includes(limite.toLocaleString('es')), fallo.message);
     verificar('el mensaje deja claro que NO es la conexión',
         /no es un problema de conexión/i.test(fallo.message), fallo.message);
     verificar('y que reintentar no sirve',
@@ -193,8 +215,8 @@ async function main() {
         if (tamanoDe(n) > limite) break;
         cabenSinExtras = n;
     }
-    verificar(`caben al menos 1000 expedientes sencillos (medido: ${cabenSinExtras})`,
-        cabenSinExtras >= 1000, `solo caben ${cabenSinExtras}`);
+    verificar(`caben al menos 4000 expedientes sencillos (medido: ${cabenSinExtras})`,
+        cabenSinExtras >= 4000, `solo caben ${cabenSinExtras}`);
 
     console.log(`\n${pasadas} pruebas pasadas, ${fallidas} fallidas`);
     console.log(`(referencia: entran ~${cabenSinExtras.toLocaleString('es')} expedientes sin pendientes ni eventos)\n`);
