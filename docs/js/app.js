@@ -5075,9 +5075,26 @@ async function importarExpedientes(event) {
         const asuntos = new Map();
         const errores = [];
         let ejemplosOmitidos = 0;
+        let filasFusionadas = 0;
 
-        const existentes = await obtenerExpedientes();
-        const idPorClave = new Map(existentes.map(e => [_claveExpediente(e), e.id]));
+        // Los archivados cuentan como ya registrados. obtenerExpedientes() los
+        // deja fuera, así que mirando solo ahí un expediente archivado se
+        // volvía a dar de alta como nuevo: el usuario acababa con el mismo
+        // asunto dos veces, uno en el archivo y otro en la lista.
+        const activos = await obtenerExpedientes();
+        const archivados = typeof obtenerExpedientesArchivados === 'function'
+            ? await obtenerExpedientesArchivados().catch(() => []) : [];
+
+        const idPorClave = new Map();
+        const clavesArchivadas = new Set();
+        activos.forEach(e => idPorClave.set(_claveExpediente(e), e.id));
+        archivados.forEach(e => {
+            const clave = _claveExpediente(e);
+            if (!idPorClave.has(clave)) {
+                idPorClave.set(clave, e.id);
+                clavesArchivadas.add(clave);
+            }
+        });
 
         datos.forEach((fila, index) => {
             const numeroFila = index + 2;
@@ -5135,9 +5152,16 @@ async function importarExpedientes(event) {
                     etiqueta: expediente,
                     carpetaNombre: (fila.carpeta || '').trim(),
                     idExistente: idPorClave.has(clave) ? idPorClave.get(clave) : null,
+                    estaArchivado: clavesArchivadas.has(clave),
                     pendientes: [],
                     eventos: []
                 });
+            } else {
+                // Otra fila del mismo expediente: aporta sus pendientes y sus
+                // audiencias, pero no es un expediente más. Se cuenta para que
+                // el informe explique por qué salen menos expedientes que filas
+                // tiene el archivo.
+                filasFusionadas++;
             }
 
             const asunto = asuntos.get(clave);
@@ -5152,6 +5176,7 @@ async function importarExpedientes(event) {
         const yaRegistrados = todos.filter(a => a.idExistente !== null);
         const extrasSobreExistentes = yaRegistrados.filter(a => a.pendientes.length || a.eventos.length);
         const duplicadosSinAporte = yaRegistrados.length - extrasSobreExistentes.length;
+        const archivadosEnArchivo = yaRegistrados.filter(a => a.estaArchivado).length;
 
         if (todos.length === 0) {
             const motivo = ejemplosOmitidos > 0 && errores.length === 0
@@ -5174,9 +5199,19 @@ async function importarExpedientes(event) {
 
         const aProcesar = nuevosAImportar.concat(extrasSobreExistentes);
         if (aProcesar.length === 0) {
-            mostrarInformeImportacion('📥 Importación sin cambios',
-                ['Todos los expedientes del archivo ya estaban registrados y no traían pendientes ni audiencias nuevas.'],
-                errores);
+            const sinCambios = [
+                `📄 El archivo tenía ${datos.length} filas de datos.`,
+                'Todos sus expedientes ya estaban registrados y no traían pendientes ni audiencias nuevas.'
+            ];
+            if (archivadosEnArchivo > 0) {
+                // Si no se dice, el usuario ve que "no pasó nada" y no encuentra
+                // los expedientes en la lista, porque están en el Archivo.
+                sinCambios.push(`📦 ${archivadosEnArchivo} de ellos están archivados: por eso no aparecen en la lista de expedientes.`);
+            }
+            if (filasFusionadas > 0) {
+                sinCambios.push(`🔁 ${filasFusionadas} filas repetían un expediente ya presente en el archivo.`);
+            }
+            mostrarInformeImportacion('📥 Importación sin cambios', sinCambios, errores);
             event.target.value = '';
             return;
         }
@@ -5191,13 +5226,20 @@ async function importarExpedientes(event) {
         if (totalPendientes > 0) partes.push(`${totalPendientes} pendientes`);
         if (totalEventos > 0) partes.push(`${totalEventos} fechas de calendario`);
 
-        const omitidos = [];
-        if (errores.length > 0) omitidos.push(`${errores.length} avisos`);
-        if (duplicadosSinAporte > 0) omitidos.push(`${duplicadosSinAporte} expedientes ya registrados`);
-        if (ejemplosOmitidos > 0) omitidos.push(`${ejemplosOmitidos} filas de ejemplo`);
+        // Se parte del total de filas y se desglosa todo, para que los números
+        // cuadren siempre. Un "689 expedientes" a secas frente a un archivo de
+        // 900 filas no dice si faltan datos o si simplemente se agruparon.
+        const desglose = [`El archivo tiene ${datos.length} filas de datos.`];
+        if (filasFusionadas > 0) {
+            desglose.push(`${filasFusionadas} son filas repetidas del mismo expediente (aportan sus pendientes y fechas, no cuentan como expediente aparte).`);
+        }
+        if (duplicadosSinAporte > 0) desglose.push(`${duplicadosSinAporte} ya los tenías registrados.`);
+        if (archivadosEnArchivo > 0) desglose.push(`${archivadosEnArchivo} ya existen pero están archivados.`);
+        if (ejemplosOmitidos > 0) desglose.push(`${ejemplosOmitidos} son filas de ejemplo del template.`);
+        if (errores.length > 0) desglose.push(`${errores.length} tienen algún problema (se detallan al terminar).`);
 
-        const mensaje = `¿Importar ${partes.join(', ')}?` +
-            (omitidos.length > 0 ? `\n\nSe omitirán: ${omitidos.join(', ')}.` : '') + aviso;
+        const mensaje = `¿Importar ${partes.join(', ')}?\n\n` +
+            desglose.join('\n') + aviso;
 
         if (!confirm(mensaje)) {
             event.target.value = '';
@@ -5241,26 +5283,45 @@ async function importarExpedientes(event) {
             `${f.datos.numero || f.datos.nombre}: no se pudo guardar el expediente (${f.error})`));
 
         // ── Informe ────────────────────────────────────────────────────────
-        const resumen = [`✅ ${ids.length} expedientes importados${ids.length ? ` (${porInstitucion})` : ''}.`];
+        // Arranca por el total de filas del archivo y da cuenta de todas, para
+        // que se pueda cuadrar sin tener que adivinar dónde fue a parar cada una.
+        const resumen = [`📄 El archivo tenía ${datos.length} filas de datos.`];
+        resumen.push(`✅ ${ids.length} expedientes nuevos${ids.length ? ` (${porInstitucion})` : ''}.`);
         if (pendientes > 0) resumen.push(`📌 ${pendientes} pendientes creados.`);
         if (eventos > 0) resumen.push(`📅 ${eventos} fechas agendadas en el calendario.`);
         if (carpetasCreadas > 0) resumen.push(`📁 ${carpetasCreadas} carpetas creadas.`);
+        if (filasFusionadas > 0) {
+            resumen.push(`🔁 ${filasFusionadas} filas repetían un expediente ya presente en el archivo: aportaron sus pendientes y fechas, sin crear un expediente aparte.`);
+        }
         if (extrasSobreExistentes.length > 0) {
             resumen.push(`🔗 ${extrasSobreExistentes.length} expedientes ya existían: se les añadieron sus pendientes y fechas.`);
         }
         if (duplicadosSinAporte > 0) resumen.push(`↩️ ${duplicadosSinAporte} omitidos por estar ya registrados.`);
+        if (archivadosEnArchivo > 0) {
+            resumen.push(`📦 ${archivadosEnArchivo} de ellos están archivados: no se volvieron a crear, míralos en el Archivo.`);
+        }
         if (ejemplosOmitidos > 0) resumen.push(`ℹ️ ${ejemplosOmitidos} filas de ejemplo del template omitidas.`);
+        if (errores.length > 0) resumen.push(`⚠️ ${errores.length} filas con algún problema (abajo el detalle).`);
         if (aviso) aviso.trim().split('\n').filter(Boolean).forEach(l => resumen.push(l));
 
-        // Si el archivo mezcló instituciones, el informe es lo único que
-        // explica a qué sección fue cada expediente; un toast de "5 importados"
-        // dejaría al usuario buscándolos.
-        const mezclaInstituciones = new Set(nuevosAImportar.map(a => a.expediente.institucion)).size > 1;
+        // El informe se muestra cuando hay algo que cuadrar. Si cada fila del
+        // archivo se convirtió en un expediente y no se omitió nada, no hay
+        // nada que explicar y basta un aviso; en cuanto los números dejan de
+        // coincidir —filas fusionadas, ya registrados, errores, o expedientes
+        // repartidos entre varias secciones— hace falta el desglose, porque un
+        // "689 importados" que se desvanece no deja manera de reconciliar el
+        // archivo con lo que acabó en la aplicación.
+        const cuadraSinExplicacion =
+            ids.length === datos.length &&
+            filasFusionadas === 0 && duplicadosSinAporte === 0 &&
+            extrasSobreExistentes.length === 0 && archivadosEnArchivo === 0 &&
+            ejemplosOmitidos === 0 && errores.length === 0 && !aviso &&
+            new Set(nuevosAImportar.map(a => a.expediente.institucion)).size <= 1;
 
-        if (errores.length > 0 || resumen.length > 1 || mezclaInstituciones) {
-            mostrarInformeImportacion('📥 Resultado de la importación', resumen, errores);
-        } else {
+        if (cuadraSinExplicacion) {
             mostrarToast(`${ids.length} expedientes importados correctamente`, 'success');
+        } else {
+            mostrarInformeImportacion('📥 Resultado de la importación', resumen, errores);
         }
 
         // Repintar la lista federal, que tiene su propio render.
