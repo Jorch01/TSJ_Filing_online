@@ -4836,40 +4836,91 @@ function _mesDesdeTexto(txt) {
  * @returns {{iso: string, todoElDia: boolean}|{error: string}|null} null si la
  *          celda venía vacía (una fecha ausente no es un error).
  */
+// Cuando una celda tiene formato de fecha, Excel no exporta texto sino el
+// número de días transcurridos desde el 1/1/1900. Un "46096" en la columna de
+// fechas no es un error de quien llenó el archivo: es Excel haciendo su
+// trabajo, y hay que entenderlo.
+//
+// El desfase de dos días sale de dos cosas que se compensan a medias: Excel
+// cuenta el 1/1/1900 como día 1 (no como 0) y además cree que 1900 fue
+// bisiesto, un error que arrastra desde Lotus 1-2-3 y que nunca corrigió.
+function _fechaDesdeSerieExcel(numero) {
+    if (!isFinite(numero) || numero < 1 || numero > 2958465) return null;   // hasta el año 9999
+    const dias = Math.floor(numero);
+    const fraccion = numero - dias;
+
+    const base = new Date(1899, 11, 30);
+    base.setDate(base.getDate() + dias);
+
+    const segundosDelDia = Math.round(fraccion * 86400);
+    base.setHours(Math.floor(segundosDelDia / 3600),
+                  Math.floor((segundosDelDia % 3600) / 60),
+                  segundosDelDia % 60, 0);
+
+    return { fecha: base, tieneHora: fraccion > 0 };
+}
+
 function _fechaDesdeCSV(valor) {
-    const txt = String(valor || '').trim();
+    let txt = String(valor || '').trim();
     if (!txt) return null;
 
-    // Separar la parte de hora, si viene
-    const conHora = txt.match(/^(.*?)[\s,]+(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|am|pm|hrs?\.?|horas)?$/i);
+    // Formato largo: "domingo, 15 de marzo de 2026". El día de la semana no
+    // aporta nada y estorba a todo lo demás, así que se quita de entrada.
+    txt = txt.replace(/^(lunes|martes|mi[ée]rcoles|jueves|viernes|s[áa]bado|domingo)\s*,?\s*/i, '');
+
+    // Número suelto: Excel exportando una celda con formato de fecha.
+    if (/^\d+([.,]\d+)?$/.test(txt)) {
+        const serie = _fechaDesdeSerieExcel(parseFloat(txt.replace(',', '.')));
+        if (!serie) return { error: `no entiendo la fecha "${txt}"` };
+        return { iso: serie.fecha.toISOString(), todoElDia: !serie.tieneHora };
+    }
+
+    // Separar la parte de hora. El "a. m." de es-MX lleva espacios y puntos.
+    const conHora = txt.match(
+        /^(.*?)[\s,]+(\d{1,2})(?::(\d{2}))?(?::\d{2})?\s*(a\.?\s*m\.?|p\.?\s*m\.?|am|pm|hrs?\.?|horas)?$/i);
     const parteFecha = (conHora ? conHora[1] : txt).trim();
 
     let hora = 0, minuto = 0, tieneHora = false;
     if (conHora) {
         hora = parseInt(conHora[2], 10);
         minuto = parseInt(conHora[3] || '0', 10);
-        const sufijo = _normalizarValorCSV(conHora[4] || '').replace(/\./g, '');
+        const sufijo = _normalizarValorCSV(conHora[4] || '').replace(/[.\s]/g, '');
         if (sufijo === 'pm' && hora < 12) hora += 12;
         if (sufijo === 'am' && hora === 12) hora = 0;
         if (hora > 23 || minuto > 59) return { error: `hora inválida en "${txt}"` };
-        tieneHora = true;
+        // "15/03/2026 0:00" es lo que escribe Excel para una fecha sin hora:
+        // tratarla como cita a medianoche sería inventarse un dato.
+        tieneHora = !(hora === 0 && minuto === 0);
     }
 
     let anio, mes, dia;
 
     const iso = parteFecha.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
     const latino = parteFecha.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
-    const conMes = parteFecha.match(/^(\d{1,2})[\s-]+de[\s-]+([a-záéíóú]+)[\s-]+(?:de[\s-]+)?(\d{4})$/i)
-                || parteFecha.match(/^(\d{1,2})[\s-]+([a-záéíóú]+)[\s-]+(\d{4})$/i);
+    // El mes en letra, con año de dos o cuatro cifras y el punto que Excel
+    // pone en las abreviaturas en español ("15-mar.-26").
+    const conMes = parteFecha.match(/^(\d{1,2})[\s.\-]+(?:de[\s.\-]+)?([a-záéíóúñ]+)\.?[\s.\-]+(?:de[\s.\-]+)?(\d{2,4})$/i);
+    // Estilo inglés: "mar 15, 2026".
+    const mesPrimero = parteFecha.match(/^([a-záéíóúñ]+)\.?[\s.\-]+(\d{1,2})\s*,?\s*(\d{2,4})$/i);
 
     if (iso) {
         anio = +iso[1]; mes = +iso[2]; dia = +iso[3];
     } else if (latino) {
         dia = +latino[1]; mes = +latino[2]; anio = +latino[3];
+        // Un mes mayor que 12 solo puede ser un día: la fecha viene en formato
+        // de EE. UU. (mm/dd). Se acepta únicamente cuando leerla como dd/mm es
+        // imposible; en cuanto ambos números caben como mes, manda el día
+        // primero, que es como se escribe aquí.
+        if (mes > 12 && dia <= 12) { const t = dia; dia = mes; mes = t; }
         if (anio < 100) anio += 2000;   // "26" → 2026
     } else if (conMes) {
         dia = +conMes[1]; mes = _mesDesdeTexto(conMes[2]); anio = +conMes[3];
         if (!mes) return { error: `no entiendo el mes de "${txt}"` };
+        if (anio < 100) anio += 2000;
+    } else if (mesPrimero) {
+        mes = _mesDesdeTexto(mesPrimero[1]); dia = +mesPrimero[2]; anio = +mesPrimero[3];
+        if (!mes) return { error: `no entiendo el mes de "${txt}"` };
+        if (anio < 100) anio += 2000;
     } else {
         return { error: `fecha no reconocida: "${txt}" (usa dd/mm/aaaa)` };
     }
@@ -5163,6 +5214,10 @@ const _TIPOS_EVENTO_CSV = {
 function _extrasDeFila(fila, numeroFila) {
     const errores = [];
     const extras = {};
+    // Se cuentan aparte: un pendiente que entra sin su fecha no llega al
+    // calendario, y perdido entre los demás avisos no se ve. Es justo lo que
+    // pasó con las fechas que Excel exporta en formatos que no se aceptaban.
+    let fechasDescartadas = 0;
 
     // ---- Pendiente ----
     const tituloPendiente = (fila.pendiente || '').trim();
@@ -5173,7 +5228,9 @@ function _extrasDeFila(fila, numeroFila) {
         };
         const fecha = _fechaDesdeCSV(fila.pendiente_fecha);
         if (fecha && fecha.error) {
-            errores.push(`Fila ${numeroFila}: el pendiente se creará sin fecha — ${fecha.error}`);
+            fechasDescartadas++;
+            errores.push(`Fila ${numeroFila}: el pendiente "${tituloPendiente}" se creará SIN FECHA ` +
+                         `y no aparecerá en el calendario — ${fecha.error}`);
         } else if (fecha) {
             pendiente.fechaLimite = fecha.iso;
             pendiente.todoElDia = fecha.todoElDia;
@@ -5193,7 +5250,8 @@ function _extrasDeFila(fila, numeroFila) {
         } else if (!fecha) {
             errores.push(`Fila ${numeroFila}: la audiencia "${tituloEvento}" necesita fecha en "audiencia_fecha"`);
         } else if (fecha.error) {
-            errores.push(`Fila ${numeroFila}: audiencia no agendada — ${fecha.error}`);
+            fechasDescartadas++;
+            errores.push(`Fila ${numeroFila}: la audiencia "${tituloEvento}" NO se agendó — ${fecha.error}`);
         } else {
             extras.evento = {
                 titulo: tituloEvento,
@@ -5204,7 +5262,7 @@ function _extrasDeFila(fila, numeroFila) {
         }
     }
 
-    return { ...extras, errores };
+    return { ...extras, errores, fechasDescartadas };
 }
 
 /**
@@ -5250,6 +5308,7 @@ async function importarExpedientes(event) {
         const errores = [];
         let ejemplosOmitidos = 0;
         let filasFusionadas = 0;
+        let fechasDescartadas = 0;
 
         // Los archivados cuentan como ya registrados. obtenerExpedientes() los
         // deja fuera, así que mirando solo ahí un expediente archivado se
@@ -5341,6 +5400,7 @@ async function importarExpedientes(event) {
             const asunto = asuntos.get(clave);
             const extras = _extrasDeFila(fila, numeroFila);
             errores.push(...extras.errores);
+            fechasDescartadas += extras.fechasDescartadas;
             if (extras.pendiente) asunto.pendientes.push(extras.pendiente);
             if (extras.evento) asunto.eventos.push(extras.evento);
         });
@@ -5410,6 +5470,10 @@ async function importarExpedientes(event) {
         if (duplicadosSinAporte > 0) desglose.push(`${duplicadosSinAporte} ya los tenías registrados.`);
         if (archivadosEnArchivo > 0) desglose.push(`${archivadosEnArchivo} ya existen pero están archivados.`);
         if (ejemplosOmitidos > 0) desglose.push(`${ejemplosOmitidos} son filas de ejemplo del template.`);
+        if (fechasDescartadas > 0) {
+            desglose.push(`⚠️ ${fechasDescartadas} fecha${fechasDescartadas !== 1 ? 's' : ''} no se entendieron y ` +
+                          `${fechasDescartadas !== 1 ? 'esos pendientes entrarán' : 'ese pendiente entrará'} sin fecha.`);
+        }
         if (errores.length > 0) desglose.push(`${errores.length} tienen algún problema (se detallan al terminar).`);
 
         const mensaje = `¿Importar ${partes.join(', ')}?\n\n` +
@@ -5475,6 +5539,11 @@ async function importarExpedientes(event) {
             resumen.push(`📦 ${archivadosEnArchivo} de ellos están archivados: no se volvieron a crear, míralos en el Archivo.`);
         }
         if (ejemplosOmitidos > 0) resumen.push(`ℹ️ ${ejemplosOmitidos} filas de ejemplo del template omitidas.`);
+        if (fechasDescartadas > 0) {
+            resumen.push(`📆 ${fechasDescartadas} fecha${fechasDescartadas !== 1 ? 's no se entendieron' : ' no se entendió'}: ` +
+                `${fechasDescartadas !== 1 ? 'esos pendientes están' : 'ese pendiente está'} creado${fechasDescartadas !== 1 ? 's' : ''} ` +
+                `pero sin fecha, así que no aparece${fechasDescartadas !== 1 ? 'n' : ''} en el calendario. Revisa el detalle de abajo.`);
+        }
         if (errores.length > 0) resumen.push(`⚠️ ${errores.length} filas con algún problema (abajo el detalle).`);
         if (aviso) aviso.trim().split('\n').filter(Boolean).forEach(l => resumen.push(l));
 
@@ -7472,7 +7541,23 @@ setInterval(async () => {
 // ==================== SISTEMA DE ANUNCIOS ====================
 
 // Configuración de anuncios (pueden ser cargados de un servidor o configurados manualmente)
+const WHATSAPP_EDICTOS = '529981399930';
+
 const ANUNCIOS_CONFIG = [
+    {
+        id: 'edictos',
+        tipo: 'texto',
+        titulo: '📰 Publicación de Edictos en Quintana Roo',
+        contenido: 'Judiciales, sucesorios, de remate, notariales y corporativos en periódico de ' +
+                   'circulación estatal. Revisamos que el texto coincida con el acuerdo, controlamos ' +
+                   'las fechas y los intervalos entre publicaciones, y te entregamos los ejemplares ' +
+                   'originales donde aparece tu edicto. Cancún, Chetumal, Playa del Carmen, Cozumel, ' +
+                   'Tulum y el resto del estado.',
+        llamada: '💬 Consultar por WhatsApp',
+        enlace: `https://wa.me/${WHATSAPP_EDICTOS}?text=` + encodeURIComponent(
+            'Hola, necesito publicar un edicto en Quintana Roo. ¿Me pueden dar informes?'),
+        activo: true
+    },
     {
         id: 'ad1',
         tipo: 'texto',
@@ -7551,9 +7636,16 @@ function generarHTMLAnuncio(anuncio) {
             </a>
         `;
     } else {
+        // Un anuncio con titular y llamada a la acción se lee muchísimo mejor
+        // que un párrafo largo en una sola línea; los que no los traen siguen
+        // saliendo exactamente igual que antes.
+        const abrirFuera = enlaceSanitizado.startsWith('http')
+            ? 'target="_blank" rel="noopener noreferrer"' : '';
         return `
-            <a href="${enlaceSanitizado}" ${enlaceSanitizado.startsWith('http') ? 'target="_blank" rel="noopener noreferrer"' : ''} class="ad-text-link">
+            <a href="${enlaceSanitizado}" ${abrirFuera} class="ad-text-link${anuncio.titulo ? ' ad-detallado' : ''}">
+                ${anuncio.titulo ? `<span class="ad-titulo">${escapeText(anuncio.titulo)}</span>` : ''}
                 <span class="ad-text">${escapeText(anuncio.contenido || '')}</span>
+                ${anuncio.llamada ? `<span class="ad-llamada">${escapeText(anuncio.llamada)}</span>` : ''}
             </a>
         `;
     }

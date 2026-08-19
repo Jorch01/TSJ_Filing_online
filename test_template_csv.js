@@ -133,7 +133,7 @@ const NECESARIO_DE_APP = [
     // Parser CSV
     '_quitarBOM', '_detectarSeparador', '_lineasUtilesCSV', 'parseCSV', 'parseCSVLine',
     // Fechas
-    '_MESES_CSV', '_mesDesdeTexto', '_fechaDesdeCSV',
+    '_MESES_CSV', '_mesDesdeTexto', '_fechaDesdeSerieExcel', '_fechaDesdeCSV',
     // Institución
     '_normalizarValorCSV', '_INSTITUCIONES_CSV', '_PALABRAS_VACIAS_JUZGADO',
     '_tokensJuzgado', '_sugerirJuzgadoTSJ', '_PARECIDO_MINIMO_SUGERENCIA',
@@ -397,6 +397,32 @@ async function main() {
         igual('fecha: pm se convierte a 24h', new Date(f('15/03/2026 2:00 pm').iso).getHours(), 14);
         igual('fecha: sin hora es de todo el día', f('15/03/2026').todoElDia, true);
 
+        // Lo que Excel escribe de verdad cuando la celda tiene formato de fecha.
+        // Que estos fallen no es un error de quien llena el archivo, y sin
+        // embargo dejaba el pendiente sin fecha y fuera del calendario.
+        igual('fecha: mes abreviado con año corto (15-mar-26)', dia('15-mar-26'), '15/3');
+        igual('fecha: abreviatura con punto de es-MX (15-mar.-26)', dia('15-mar.-26'), '15/3');
+        igual('fecha: estilo inglés (mar 15, 2026)', dia('mar 15, 2026'), '15/3');
+        igual('fecha: formato largo con día de la semana',
+            dia('domingo, 15 de marzo de 2026'), '15/3');
+        igual('fecha: número de serie de Excel', dia('46096'), '15/3');
+        igual('fecha: serie de Excel con hora', dia('46096.5'), '15/3');
+        igual('fecha: "a. m." con espacios y puntos (es-MX)',
+            new Date(f('15/03/2026 09:30 a. m.').iso).getHours(), 9);
+        igual('fecha: "p. m." con espacios y puntos (es-MX)',
+            new Date(f('15/03/2026 2:00 p. m.').iso).getHours(), 14);
+
+        // "0:00" es lo que pone Excel en una fecha sin hora: tomarlo por una
+        // cita a medianoche sería inventarse un dato que nadie escribió.
+        igual('fecha: "0:00" de Excel se trata como todo el día',
+            f('15/03/2026 0:00').todoElDia, true);
+
+        // Ambigüedad dd/mm vs mm/dd: solo se cambia el orden cuando leerlo
+        // como día primero es imposible.
+        igual('fecha: con ambos ≤ 12 manda el día primero', dia('05/03/2026'), '5/3');
+        igual('fecha: si el primero no cabe como mes, es formato de EE. UU.',
+            dia('3/15/2026'), '15/3');
+
         igual('fecha: celda vacía no es error', f(''), null);
         verificar('fecha: el 31 de febrero se rechaza', !!(f('31/02/2026') || {}).error);
         verificar('fecha: mes 13 se rechaza', !!(f('13/13/2026') || {}).error);
@@ -554,7 +580,12 @@ async function main() {
         verificar('errores: falta el expediente', /falta el expediente/.test(txt), txt);
         verificar('errores: falta el juzgado', /falta el juzgado/.test(txt), txt);
         verificar('errores: tipo inválido', /tipo inválido/.test(txt), txt);
-        verificar('errores: la fecha rota del pendiente se avisa', /sin fecha/.test(txt), txt);
+        verificar('errores: la fecha rota del pendiente se avisa', /sin fecha/i.test(txt), txt);
+        verificar('errores: y se destaca arriba, no solo en el detalle',
+            /no se entendió|no se entendieron/.test(JSON.stringify(informe.resumen)),
+            JSON.stringify(informe.resumen));
+        verificar('errores: el aviso explica que no llega al calendario',
+            /calendario/.test(JSON.stringify(informe.resumen)), JSON.stringify(informe.resumen));
         verificar('errores: la audiencia sin fecha se avisa', /necesita fecha/.test(txt), txt);
 
         // Un dato malo no debe tumbar el expediente entero
