@@ -57,12 +57,24 @@ const hoja = crearHoja([CABECERA, ['ABC123','perpetua','','','activo','',0,'',2,
 // actualizaciones del código.
 const propiedades = { SPREADSHEET_ID: ID_PRUEBA, SHEET_NAME: 'Licencias' };
 
+// Bandeja de salida de mentira: lo que el script "manda" acaba aquí.
+const correosEnviados = [];
+
+// El PropertiesService de Apps Script tiene las cuatro operaciones. El doble
+// tenía solo getProperties/setProperties, así que nada de lo que usara
+// getProperty se podía probar: el código fallaba y la prueba no lo veía venir.
+function propiedadesFalsas(almacen) {
+  return {
+    getProperties: () => Object.assign({}, almacen),
+    setProperties: (p) => Object.assign(almacen, p),
+    getProperty: (k) => (k in almacen ? almacen[k] : null),
+    setProperty: (k, v) => { almacen[k] = v; }
+  };
+}
+
 const sandbox = {
   PropertiesService: {
-    getScriptProperties: () => ({
-      getProperties: () => Object.assign({}, propiedades),
-      setProperties: (p) => Object.assign(propiedades, p)
-    })
+    getScriptProperties: () => propiedadesFalsas(propiedades)
   },
   SpreadsheetApp: {
     openById: (id) => {
@@ -78,6 +90,8 @@ const sandbox = {
       };
     }
   },
+  MailApp: { sendEmail: (destino, asunto, cuerpo, opciones) =>
+      correosEnviados.push({ destino, asunto, cuerpo, opciones: opciones || {} }) },
   Utilities: { computeDigest: (a, s) => Array.from(require('crypto').createHash('md5').update(String(s)).digest()),
                DigestAlgorithm: { MD5: 'MD5' } },
   ContentService: { createTextOutput: (t) => ({ setMimeType: () => t }), MimeType: { JSON: 'json' } },
@@ -168,8 +182,8 @@ try {
     let errorConfig = null;
     try { vm.runInContext('getSheet()', sandbox); } catch (e) { errorConfig = e.message; }
 
-    verificar('sin configurar, el error dice qué ejecutar',
-        /configurarAqui\(\)/.test(errorConfig || ''), errorConfig);
+    verificar('sin configurar, el error dice dónde escribirlo',
+        /SPREADSHEET_ID/.test(errorConfig || '') && /SHEET_NAME/.test(errorConfig || ''), errorConfig);
     verificar('y no suelta el error críptico de Google',
         !/Illegal spreadsheet id/.test(errorConfig || ''), errorConfig);
 
@@ -245,10 +259,18 @@ try {
     const antesDeAqui = propiedades.SPREADSHEET_ID;
     let errorAqui = null;
     try { vm.runInContext('configurarAqui()', sandbox); } catch (e) { errorAqui = e.message; }
-    verificar('sin rellenar, configurarAqui() avisa en vez de guardar basura',
+    verificar('con las constantes sin rellenar, configurarAqui avisa en vez de guardar basura',
         /no parece el id/.test(errorAqui || ''), errorAqui);
     igual('y deja intacta la configuración que ya había',
         propiedades.SPREADSHEET_ID, antesDeAqui);
+
+    // configurarAqui NO tiene copia propia del id: lo toma de las constantes.
+    // Tenerlo escrito en dos sitios es una copia que se desincroniza el día
+    // que cambie uno de los dos.
+    const fuenteAqui = fs.readFileSync(GS, 'utf8')
+        .match(/function configurarAqui\(\)[\s\S]*?\n\}/)[0];
+    verificar('configurarAqui toma el id de SPREADSHEET_ID, no de una copia suya',
+        /configurar\(SPREADSHEET_ID, SHEET_NAME\)/.test(fuenteAqui), fuenteAqui);
 
     // ---------- limpiarCeldaSync no puede dejar cola ----------
     // Vaciaba solo la columna K; las otras tres se quedaban con su parte y al
@@ -260,6 +282,94 @@ try {
     verificar('limpiarCeldaSync vacía las cuatro columnas, no solo la primera',
         !r.datos, 'quedaron ' + String(r.datos || '').length + ' caracteres');
 
+
+    // ---------- Rellenar solo las constantes tiene que bastar ----------
+    // Es lo que hace todo el mundo: pegar el script y sustituir el id en
+    // SPREADSHEET_ID. Si eso no funcionara sin ejecutar además una función,
+    // el script estaría pidiendo un paso que nadie adivina.
+    const codigoDelUsuario = fs.readFileSync(GS, 'utf8')
+        .replace("const SPREADSHEET_ID = 'TU_SPREADSHEET_ID_AQUI';",
+                 "const SPREADSHEET_ID = '" + ID_PRUEBA + "';")
+        .replace("const SHEET_NAME = 'Licencias';", "const SHEET_NAME = 'Otra';");
+
+    const sinGuardar = {};
+    const sandbox2 = Object.assign({}, sandbox, {
+        PropertiesService: { getScriptProperties: () => propiedadesFalsas(sinGuardar) }
+    });
+    vm.createContext(sandbox2);
+    vm.runInContext(codigoDelUsuario, sandbox2);
+
+    let errorSoloConstantes = null;
+    try { vm.runInContext('getSheet()', sandbox2); } catch (e) { errorSoloConstantes = e.message; }
+    verificar('con las constantes rellenas, funciona sin ejecutar nada',
+        !errorSoloConstantes, errorSoloConstantes);
+
+    // Y configurarAqui las pasa a las propiedades sin volver a escribirlas.
+    const paso = vm.runInContext('configurarAqui()', sandbox2);
+    verificar('configurarAqui las guarda sin pedir el id otra vez', paso.success, JSON.stringify(paso));
+    igual('guarda el id de la constante', sinGuardar.SPREADSHEET_ID, ID_PRUEBA);
+    igual('y la pestaña de la constante', sinGuardar.SHEET_NAME, 'Otra');
+
+    // ---------- Reporte de errores ----------
+    correosEnviados.length = 0;
+
+    r = llamar({ action: 'reportar_bug', descripcion: '' });
+    verificar('un reporte vacío no manda nada', !r.success && correosEnviados.length === 0,
+        JSON.stringify(r));
+
+    r = llamar({ action: 'reportar_bug', descripcion: 'La importación duplica expedientes',
+                 contexto: 'Versión: v8.0\nRegistros: expedientes=900', contacto: 'abogado@ejemplo.mx' });
+    verificar('un reporte con texto se manda', r.success, JSON.stringify(r));
+    igual('llega un solo correo', correosEnviados.length, 1);
+    igual('al buzón de soporte', correosEnviados[0].destino, 'jorge_clemente@empirica.mx');
+    verificar('el asunto lleva la primera línea',
+        /La importación duplica expedientes/.test(correosEnviados[0].asunto), correosEnviados[0].asunto);
+    verificar('el cuerpo trae la descripción y los datos técnicos',
+        /duplica expedientes/.test(correosEnviados[0].cuerpo) &&
+        /expedientes=900/.test(correosEnviados[0].cuerpo));
+    igual('y se puede responder al que reporta',
+        correosEnviados[0].opciones.replyTo, 'abogado@ejemplo.mx');
+    verificar('nunca como html: lo escribe un desconocido',
+        !correosEnviados[0].opciones.htmlBody);
+
+    // Este endpoint es público —su url está en el javascript de la web—, así
+    // que si el destinatario saliera de la petición, cualquiera podría usarlo
+    // para mandar correo a quien quisiera desde esta cuenta.
+    correosEnviados.length = 0;
+    llamar({ action: 'reportar_bug', descripcion: 'intento de relé',
+             destinatario: 'victima@ejemplo.com', to: 'victima@ejemplo.com',
+             CORREO_REPORTES: 'victima@ejemplo.com' });
+    igual('no se puede redirigir el correo a otra dirección',
+        correosEnviados.map(c => c.destino), ['jorge_clemente@empirica.mx']);
+
+    // Un salto de línea en replyTo permitiría colar cabeceras extra.
+    correosEnviados.length = 0;
+    llamar({ action: 'reportar_bug', descripcion: 'con cabecera colada',
+             contacto: 'a@b.com\nBcc: otro@ejemplo.com' });
+    verificar('un contacto con salto de línea se descarta entero',
+        !correosEnviados[0].opciones.replyTo,
+        JSON.stringify(correosEnviados[0].opciones));
+
+    // El tope diario evita que una tarde de insistencia agote el cupo de
+    // correo de la cuenta.
+    correosEnviados.length = 0;
+    propiedades.REPORTES_DIA = new Date().toISOString().substring(0, 10) + '|40';
+    r = llamar({ action: 'reportar_bug', descripcion: 'uno más' });
+    verificar('pasado el tope diario deja de mandar', !r.success && correosEnviados.length === 0,
+        JSON.stringify(r));
+    verificar('y dice a dónde escribir mientras tanto',
+        /jorge_clemente@empirica\.mx/.test(r.mensaje || ''), r.mensaje);
+    delete propiedades.REPORTES_DIA;
+
+    // Reportar un fallo no puede depender de que la hoja esté bien: un error
+    // de configuración de la hoja es justo de lo que la gente querrá avisar.
+    correosEnviados.length = 0;
+    const idBueno = propiedades.SPREADSHEET_ID;
+    propiedades.SPREADSHEET_ID = '';
+    r = llamar({ action: 'reportar_bug', descripcion: 'no me sincroniza' });
+    verificar('se puede reportar aunque la hoja no esté configurada',
+        r.success && correosEnviados.length === 1, JSON.stringify(r));
+    propiedades.SPREADSHEET_ID = idBueno;
 
 } catch (e) {
     fallidas++;

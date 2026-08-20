@@ -29,19 +29,18 @@
 
 // ==================== CONFIGURACIÓN ====================
 //
-// PARA CONFIGURARLO LA PRIMERA VEZ, o después de pegar una versión nueva de
-// este archivo: baja a configurarAqui(), rellena sus dos líneas, selecciónala
-// en el desplegable de arriba y pulsa ▶ Ejecutar. Una sola vez.
+// PARA CONFIGURARLO: escribe tus datos en las dos constantes de aquí abajo,
+// SPREADSHEET_ID y SHEET_NAME. Con eso ya funciona.
 //
-// (El botón ▶ no sabe pasarle datos a una función, por eso hay que dejarlos
-// escritos dentro de configurarAqui en vez de llamar a configurar a mano.)
+// Y para que no se pierdan la próxima vez que pegues una versión nueva de
+// este archivo, selecciona configurarAqui en el desplegable de arriba y pulsa
+// ▶ Ejecutar, una sola vez. Eso los copia a las propiedades del script, que
+// sobreviven a las actualizaciones del código.
 //
-// Lo que escribas queda guardado en las propiedades del script, que NO se
-// pierden al actualizar el código. Pegar este archivo encima vuelve a dejar
-// las constantes de abajo en su valor de ejemplo, pero la configuración
-// guardada sigue mandando y todo continúa funcionando.
+// (No intentes ejecutar configurar directamente: el botón ▶ ejecuta la
+// función sin pasarle argumentos, y por eso existe configurarAqui.)
 //
-// Las constantes solo se usan si no hay nada guardado.
+// Las constantes solo se usan mientras no haya nada guardado.
 
 const SPREADSHEET_ID = 'TU_SPREADSHEET_ID_AQUI'; // Reemplaza con tu ID
 const SHEET_NAME = 'Licencias';
@@ -70,18 +69,19 @@ function idSinConfigurar(id) {
 }
 
 /**
- * ▼▼▼ RELLENA ESTAS DOS LÍNEAS Y PULSA ▶ EJECUTAR ▼▼▼
+ * Guarda en las propiedades del script lo que hay en SPREADSHEET_ID y
+ * SHEET_NAME, ahí arriba. Selecciónala en el desplegable y pulsa ▶ Ejecutar.
  *
- * Es la forma de configurar el script desde el editor, porque el botón ▶
- * ejecuta la función sin pasarle nada. Solo hace falta una vez: lo que
- * escribas aquí se guarda en las propiedades del script y a partir de ese
- * momento estas dos líneas ya no pintan nada.
+ * Existe porque el botón ▶ ejecuta la función SIN pasarle argumentos, así que
+ * llamar a configurar() desde ahí no puede funcionar. Y toma los datos de las
+ * constantes en vez de tener los suyos propios: escribir el id en dos sitios
+ * es una copia que se queda desincronizada el día que cambie.
+ *
+ * Solo hace falta una vez. A partir de ahí la configuración vive fuera del
+ * código y sobrevive a pegar una versión nueva de este archivo.
  */
 function configurarAqui() {
-  const ID_DE_MI_HOJA = 'TU_SPREADSHEET_ID_AQUI';  // la parte larga de la url, entre /d/ y /edit
-  const NOMBRE_DE_MI_PESTANA = 'Hoja 1';           // el nombre de la pestaña, tal cual sale abajo
-
-  return configurar(ID_DE_MI_HOJA, NOMBRE_DE_MI_PESTANA);
+  return configurar(SPREADSHEET_ID, SHEET_NAME);
 }
 
 /**
@@ -91,7 +91,7 @@ function configurarAqui() {
 function configurar(idHoja, nombrePestana) {
   if (idHoja === undefined) {
     throw new Error('El botón ▶ Ejecutar no le pasa datos a esta función. ' +
-      'Rellena las dos líneas de configurarAqui() y ejecuta esa en su lugar.');
+      'Selecciona configurarAqui en el desplegable y ejecuta esa en su lugar.');
   }
 
   if (idSinConfigurar(idHoja)) {
@@ -126,7 +126,7 @@ function verConfiguracion() {
   Logger.log('id de la hoja : ' + id + (props.SPREADSHEET_ID ? '  (guardado)' : '  (de la constante)'));
   Logger.log('pestaña       : ' + (props.SHEET_NAME || SHEET_NAME));
   if (!props.SPREADSHEET_ID && idSinConfigurar(id)) {
-    Logger.log('⚠ Sin configurar. Rellena configurarAqui() y ejecútala.');
+    Logger.log('⚠ Sin configurar. Escribe tu id en SPREADSHEET_ID y ejecuta configurarAqui.');
   }
   return props;
 }
@@ -240,6 +240,9 @@ function procesarSolicitud(params) {
       case 'respaldar_sync':
         resultado = respaldarYLimpiarSync(params);
         break;
+      case 'reportar_bug':
+        resultado = reportarBug(params);
+        break;
       default:
         resultado = { error: true, mensaje: 'Acción no válida: ' + (action || 'ninguna') };
     }
@@ -273,8 +276,8 @@ function getSheet() {
   // quedado sin sustituir.
   if (!props.SPREADSHEET_ID && idSinConfigurar(id)) {
     throw new Error('El script no tiene configurada la hoja de cálculo. ' +
-      'Abre el editor de Apps Script, rellena las dos líneas de configurarAqui() ' +
-      'y ejecuta esa función una vez.');
+      'Abre el editor de Apps Script, escribe el id de tu hoja en SPREADSHEET_ID ' +
+      'y el nombre de la pestaña en SHEET_NAME, arriba del todo.');
   }
 
   let hoja;
@@ -283,7 +286,7 @@ function getSheet() {
   } catch (e) {
     throw new Error('No se pudo abrir la hoja de cálculo con id "' + id + '". ' +
       'Comprueba que el id sea correcto y que la cuenta del script tenga acceso. ' +
-      'Para corregirlo, cambia el id en configurarAqui() y ejecútala.');
+      'Para corregirlo, cambia SPREADSHEET_ID y ejecuta configurarAqui.');
   }
 
   const sheet = hoja.getSheetByName(pestana);
@@ -291,7 +294,7 @@ function getSheet() {
     throw new Error('La hoja "' + hoja.getName() + '" no tiene ninguna pestaña llamada "' +
       pestana + '". Las que tiene son: ' +
       hoja.getSheets().map(function (h) { return h.getName(); }).join(', ') +
-      '. Para corregirlo, pon ese nombre en configurarAqui() y ejecútala.');
+      '. Para corregirlo, pon ese nombre en SHEET_NAME y ejecuta configurarAqui.');
   }
 
   return sheet;
@@ -1009,6 +1012,91 @@ function restaurarRespaldoSync(codigo) {
 
   Logger.log('Código no encontrado: ' + codigo);
   return { success: false, mensaje: 'Código no encontrado' };
+}
+
+// ==================== REPORTE DE ERRORES ====================
+
+// A quién llegan los reportes. Va fijo aquí y NUNCA se toma de la petición:
+// la url de este script está en el javascript de la web, o sea que cualquiera
+// puede llamarlo. Si el destinatario viniera de fuera, esto sería un relé para
+// mandar correo a quien fuera desde esta cuenta.
+const CORREO_REPORTES = 'jorge_clemente@empirica.mx';
+
+const LIMITE_REPORTES_DIARIOS = 40;   // por debajo del cupo de MailApp
+const LARGO_MAXIMO_REPORTE = 5000;
+
+/**
+ * Manda por correo lo que el usuario escribió en el formulario de reporte.
+ * No toca la hoja de cálculo a propósito: un error de configuración de la hoja
+ * es justo de las cosas que la gente querrá reportar, y sería absurdo que el
+ * formulario dejara de funcionar precisamente entonces.
+ */
+function reportarBug(params) {
+  const descripcion = String(params.descripcion || '').trim();
+  if (!descripcion) {
+    return { success: false, mensaje: 'Hace falta que describas el problema' };
+  }
+
+  if (!dentroDelCupoDeReportes()) {
+    return { success: false,
+             mensaje: 'Se han enviado demasiados reportes hoy. Escribe directamente a ' + CORREO_REPORTES };
+  }
+
+  const cuerpo = [
+    descripcion.substring(0, LARGO_MAXIMO_REPORTE),
+    '',
+    '────────────────────────────',
+    'Datos técnicos que adjuntó la aplicación:',
+    '',
+    String(params.contexto || '(ninguno)').substring(0, LARGO_MAXIMO_REPORTE),
+    '',
+    'Recibido: ' + new Date().toISOString()
+  ].join('\n');
+
+  // Texto plano, nunca htmlBody: lo escribe un desconocido y no tiene por qué
+  // acabar interpretándose en el lector de correo.
+  const opciones = { name: 'TSJ Filing Online' };
+  const responder = correoValido(params.contacto);
+  if (responder) opciones.replyTo = responder;
+
+  MailApp.sendEmail(CORREO_REPORTES, '[TSJ Filing] ' + asuntoDesde(descripcion), cuerpo, opciones);
+
+  return { success: true, mensaje: 'Reporte enviado' };
+}
+
+/**
+ * El correo de contacto, solo si de verdad lo parece.
+ *
+ * Lo importante no es validar bien una dirección —eso es imposible— sino que
+ * no lleve espacios ni saltos de línea: un salto de línea en replyTo permite
+ * colar cabeceras extra en el correo.
+ */
+function correoValido(valor) {
+  const limpio = String(valor || '').trim();
+  return /^[^\s@<>,;:]+@[^\s@<>,;:]+\.[A-Za-z]{2,}$/.test(limpio) ? limpio : '';
+}
+
+/** Primera línea de la descripción, para no abrir el correo a ciegas. */
+function asuntoDesde(texto) {
+  const linea = String(texto).replace(/\s+/g, ' ').trim();
+  return linea.length > 80 ? linea.substring(0, 77) + '...' : linea;
+}
+
+/**
+ * Tope diario de reportes. El formulario es público y sin él, una tarde de
+ * insistencia agotaría el cupo de correo de la cuenta y con él cualquier otro
+ * envío del script.
+ */
+function dentroDelCupoDeReportes() {
+  const props = PropertiesService.getScriptProperties();
+  const hoy = new Date().toISOString().substring(0, 10);
+  const partes = String(props.getProperty('REPORTES_DIA') || '').split('|');
+  const cuenta = (partes[0] === hoy ? parseInt(partes[1], 10) || 0 : 0);
+
+  if (cuenta >= LIMITE_REPORTES_DIARIOS) return false;
+
+  props.setProperty('REPORTES_DIA', hoy + '|' + (cuenta + 1));
+  return true;
 }
 
 // ==================== FUNCIONES DE ADMINISTRACIÓN ====================

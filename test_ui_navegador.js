@@ -381,6 +381,182 @@ async function main() {
         igual('anuncio: sale siempre, no según el sorteo',
             [...new Set(constante)].length, 1);
 
+        // ---- El anuncio cubre también Yucatán ----
+        const cobertura = await page.evaluate(() => {
+            const ad = ANUNCIOS_CONFIG.find(a => a.id === 'edictos');
+            return { titulo: ad.titulo, contenido: ad.contenido, enlace: ad.enlace };
+        });
+        verificar('anuncio: el titular nombra los dos estados',
+            /Quintana Roo/.test(cobertura.titulo) && /Yucatán/.test(cobertura.titulo), cobertura.titulo);
+        verificar('anuncio: el texto también lo dice', /Yucatán/.test(cobertura.contenido), cobertura.contenido);
+        verificar('anuncio: y el mensaje de WhatsApp que se manda',
+            /Yucat%C3%A1n/.test(cobertura.enlace), cobertura.enlace);
+
+        // ---- Detalle de un expediente ----
+        // Pulsar la tarjeta tiene que reunir en un sitio los pendientes y las
+        // fechas del expediente, que antes había que ir a buscar a dos
+        // pantallas distintas.
+        await page.evaluate(async () => {
+            const id = await crearExpedienteCore({
+                numero: '77/2026', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN', institucion: 'TSJ',
+                actor: 'Pérez', demandado: 'García', comentario: 'Contestación presentada' });
+            await crearPendienteCore({ titulo: 'Presentar pruebas', expedienteId: id,
+                fechaLimite: new Date(2027, 4, 10).toISOString(), prioridad: 'alta' });
+            await crearPendienteCore({ titulo: 'Ya hecho', expedienteId: id });
+            await crearEventoCore({ titulo: 'Audiencia de ley', tipo: 'audiencia',
+                fechaInicio: new Date(2027, 4, 20, 10, 0).toISOString(), expedienteId: id });
+            // Otro expediente con sus cosas: no deben aparecer en el detalle del primero.
+            const otro = await crearExpedienteCore({
+                numero: '88/2026', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN', institucion: 'TSJ' });
+            await crearPendienteCore({ titulo: 'De otro expediente', expedienteId: otro });
+            await crearEventoCore({ titulo: 'Audiencia ajena', tipo: 'audiencia',
+                fechaInicio: new Date(2027, 5, 1).toISOString(), expedienteId: otro });
+            navegarA('expedientes');
+        });
+        await page.waitForTimeout(900);
+
+        await page.locator('.expediente-card', { hasText: '77/2026' }).first().click();
+        await page.waitForTimeout(700);
+
+        const detalle = await page.evaluate(() => {
+            const cuerpo = document.getElementById('modal-body');
+            return {
+                abierto: document.getElementById('modal-overlay').classList.contains('active'),
+                titulo: document.getElementById('modal-titulo').textContent,
+                texto: cuerpo.textContent,
+                pendientes: cuerpo.querySelectorAll('.detalle-bloque')[1].querySelectorAll('.detalle-item').length,
+                eventos: cuerpo.querySelectorAll('.detalle-bloque')[2].querySelectorAll('.detalle-item').length
+            };
+        });
+
+        igual('detalle: pulsar la tarjeta abre el detalle', detalle.abierto, true);
+        igual('detalle: con el número del expediente por título', detalle.titulo, '77/2026');
+        verificar('detalle: muestra actor y demandado',
+            /Pérez/.test(detalle.texto) && /García/.test(detalle.texto));
+        igual('detalle: lista sus dos pendientes', detalle.pendientes, 2);
+        igual('detalle: y su fecha del calendario', detalle.eventos, 1);
+        verificar('detalle: nombra el pendiente', /Presentar pruebas/.test(detalle.texto));
+        verificar('detalle: y la audiencia', /Audiencia de ley/.test(detalle.texto));
+        verificar('detalle: sin colar lo de otro expediente',
+            !/De otro expediente/.test(detalle.texto) && !/Audiencia ajena/.test(detalle.texto),
+            detalle.texto.slice(0, 200));
+
+        await page.evaluate(() => cerrarModal());
+        await page.waitForTimeout(300);
+
+        // Pulsar un botón de la tarjeta hace lo del botón y NADA más: si el
+        // detalle se abriera también, cada botón tendría dos efectos.
+        const guardas = await page.evaluate(() => {
+            const original = verDetalleExpediente;
+            let llamadas = 0;
+            window.verDetalleExpediente = () => { llamadas++; };
+
+            const tarjeta = [...document.querySelectorAll('.expediente-card')]
+                .find(c => c.textContent.includes('77/2026'));
+            window.getSelection().removeAllRanges();
+
+            // Se llama a la guarda directamente. Un clic real no probaría nada:
+            // los botones de hoy frenan la propagación por su cuenta, así que
+            // el detalle no se abriría aunque la guarda no existiese — y el día
+            // que se añada un botón que no la frene, esto lo cubre.
+            _clicEnTarjetaExpediente(
+                { target: tarjeta.querySelector('button[title="Ver historial"]'), currentTarget: tarjeta }, 1);
+            const trasBoton = llamadas;
+
+            _clicEnTarjetaExpediente(
+                { target: tarjeta.querySelector('.expediente-titulo'), currentTarget: tarjeta }, 1);
+            const trasCuerpo = llamadas;
+
+            window.verDetalleExpediente = original;
+            return { trasBoton, trasCuerpo };
+        });
+
+        igual('detalle: pulsar un botón de la tarjeta no abre además el detalle',
+            guardas.trasBoton, 0);
+        igual('detalle: pulsar el cuerpo de la tarjeta sí lo abre',
+            guardas.trasCuerpo, 1);
+
+        await page.evaluate(() => cerrarModal());
+        await page.waitForTimeout(300);
+
+        // ---- Reporte de errores ----
+        await page.evaluate(() => navegarA('config'));
+        await page.waitForTimeout(500);
+        await page.click('button:has-text("🐞 Reportar")');
+        await page.waitForTimeout(600);
+
+        const formulario = await page.evaluate(() => {
+            const cuerpo = document.getElementById('modal-body');
+            return {
+                hayTextarea: !!document.getElementById('reporte-descripcion'),
+                obligatorio: document.getElementById('reporte-descripcion')?.required,
+                contexto: document.getElementById('form-reporte-bug')?.dataset.contexto || '',
+                muestraLoQueEnvia: /datos técnicos/i.test(cuerpo.textContent)
+            };
+        });
+
+        igual('reporte: el botón abre el formulario', formulario.hayTextarea, true);
+        igual('reporte: la descripción es obligatoria', formulario.obligatorio, true);
+        igual('reporte: se enseña lo que se va a mandar', formulario.muestraLoQueEnvia, true);
+        verificar('reporte: el contexto lleva navegador y versión',
+            /Navegador:/.test(formulario.contexto) && /Versión:/.test(formulario.contexto),
+            formulario.contexto);
+        verificar('reporte: y cuántos registros hay',
+            /expedientes=\d+/.test(formulario.contexto), formulario.contexto);
+
+        // Lo importante: el contexto NO puede llevar datos de los expedientes.
+        // Son asuntos de clientes y no tienen por qué salir del navegador.
+        verificar('reporte: sin números de expediente ni nombres de las partes',
+            !/77\/2026/.test(formulario.contexto) && !/Pérez/.test(formulario.contexto) &&
+            !/Presentar pruebas/.test(formulario.contexto) && !/CANCUN/.test(formulario.contexto),
+            formulario.contexto);
+
+        // Se envía sin llegar a Google: se intercepta y se mira qué manda.
+        const envio = await page.evaluate(async () => {
+            const original = window.fetch;
+            let capturado = null;
+            window.fetch = (url, opciones) => {
+                capturado = { url, cuerpo: JSON.parse(opciones.body) };
+                return Promise.resolve(new Response('{"success":true}', { status: 200 }));
+            };
+            document.getElementById('reporte-descripcion').value = 'El botón X no responde';
+            document.getElementById('reporte-contacto').value = 'yo@ejemplo.mx';
+            try {
+                await enviarReporteBug(new Event('submit'));
+            } finally {
+                window.fetch = original;
+            }
+            return { capturado, cerrado: !document.getElementById('modal-overlay').classList.contains('active') };
+        });
+
+        verificar('reporte: se envía al script de Apps Script',
+            /script\.google\.com/.test(envio.capturado?.url || ''), envio.capturado?.url);
+        igual('reporte: con la acción correcta', envio.capturado?.cuerpo.action, 'reportar_bug');
+        igual('reporte: y el texto que se escribió',
+            envio.capturado?.cuerpo.descripcion, 'El botón X no responde');
+        igual('reporte: con el correo de contacto', envio.capturado?.cuerpo.contacto, 'yo@ejemplo.mx');
+        igual('reporte: al enviar se cierra el formulario', envio.cerrado, true);
+
+        // Si falla el envío, el texto no se pierde.
+        await page.evaluate(() => mostrarModalReporteBug());
+        await page.waitForTimeout(500);
+        const respaldo = await page.evaluate(async () => {
+            const original = window.fetch;
+            window.fetch = () => Promise.reject(new TypeError('Failed to fetch'));
+            document.getElementById('reporte-descripcion').value = 'no hay red';
+            try { await enviarReporteBug(new Event('submit')); } finally { window.fetch = original; }
+            const campo = document.getElementById('reporte-respaldo');
+            const enlace = document.querySelector('#modal-footer a[href^="mailto:"]');
+            return { texto: campo ? campo.value : null, destino: enlace ? enlace.getAttribute('href') : null };
+        });
+
+        verificar('reporte: si falla el envío, el texto sigue ahí',
+            /no hay red/.test(respaldo.texto || ''), respaldo.texto);
+        verificar('reporte: y se ofrece mandarlo al correo de soporte',
+            (respaldo.destino || '').startsWith('mailto:jorge_clemente@empirica.mx'), respaldo.destino);
+
+        await page.evaluate(() => cerrarModal());
+
         igual('la página no lanza errores de JavaScript', erroresPagina, []);
 
     } finally {
