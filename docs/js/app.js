@@ -335,28 +335,70 @@ function navegarA(pagina) {
     }
 }
 
+/** Quita el #expedientes/<id> de la url sin recargar ni dejar rastro. */
+function _olvidarEnlaceExpediente() {
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* file:// */ }
+}
+
 /**
- * Deep-link a un expediente: navega a la página de expedientes, hace
- * scroll a la tarjeta/fila y la resalta. Actualiza el hash de la URL
- * (#expedientes/<id>) para poder compartir/recargar el enlace.
+ * Deep-link a un expediente: navega a su lista, hace scroll a la tarjeta y la
+ * resalta. Deja el hash puesto para poder compartir o recargar el enlace.
+ *
+ * Cuando no sale bien, dos cosas importan tanto como el scroll:
+ *
+ * - Decir POR QUÉ. Antes soltaba "¿archivado o en otra vista?", que es el
+ *   programa encogiéndose de hombros: la respuesta está en la base de datos y
+ *   solo hacía falta mirarla. Ahora se mira, y si el expediente existe se abre
+ *   su detalle, que es a lo que venía el enlace.
+ * - Olvidar el enlace. El hash se queda en la url, así que un enlace roto se
+ *   volvía a disparar en CADA arranque y el mismo aviso salía para siempre.
  */
 async function mostrarExpediente(id) {
-    navegarA('expedientes');
-    try { history.replaceState(null, '', '#expedientes/' + id); } catch (e) { /* file:// */ }
-
-    // Dar tiempo a que la lista esté renderizada
-    let el = null;
-    for (let intento = 0; intento < 10 && !el; intento++) {
-        el = document.querySelector(`#page-expedientes [data-id="${id}"]`);
-        if (!el) await new Promise(r => setTimeout(r, 200));
+    let exp = null;
+    try {
+        exp = await obtenerExpediente(id);
+    } catch (e) {
+        Logger.error('No se pudo consultar el expediente del enlace:', e);
     }
-    if (!el) {
-        mostrarToast('El expediente no está visible en la lista actual (¿archivado o en otra vista?)', 'warning');
+
+    if (!exp || exp.activo === false) {
+        mostrarToast(`El expediente del enlace (#${id}) ya no existe.`, 'warning');
+        _olvidarEnlaceExpediente();
         return;
     }
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    el.classList.add('expediente-destacado');
-    setTimeout(() => el.classList.remove('expediente-destacado'), 2800);
+
+    const nombre = exp.numero || exp.nombre || `#${id}`;
+    const esPJF = exp.institucion === 'PJF';
+
+    navegarA(esPJF ? 'pjf' : 'expedientes');
+    try { history.replaceState(null, '', '#expedientes/' + id); } catch (e) { /* file:// */ }
+
+    // Con muchos expedientes la lista tarda en pintarse, así que se espera un
+    // poco más de lo que tardaba antes en rendirse.
+    const contenedor = esPJF ? '#page-pjf' : '#page-expedientes';
+    let el = null;
+    for (let intento = 0; intento < 20 && !el; intento++) {
+        el = document.querySelector(`${contenedor} [data-id="${id}"]`);
+        if (!el) await new Promise(r => setTimeout(r, 200));
+    }
+
+    if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('expediente-destacado');
+        setTimeout(() => el.classList.remove('expediente-destacado'), 2800);
+        return;
+    }
+
+    // Existe pero no está a la vista. Abrir su detalle es mejor que un aviso
+    // que no lleva a ninguna parte: el expediente se ve igual.
+    mostrarToast(exp.archivado
+        ? `${nombre} está archivado; se abre su detalle.`
+        : `${nombre} no está en la lista visible (¿hay algún filtro puesto?); se abre su detalle.`,
+        'info');
+
+    // Y se olvida el enlace: si no, esto se repetiría en cada arranque.
+    _olvidarEnlaceExpediente();
+    await verDetalleExpediente(id);
 }
 
 // Al cargar con #expedientes/<id> en la URL, abrir ese expediente

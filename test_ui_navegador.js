@@ -720,6 +720,81 @@ async function main() {
             /aistudio\.google\.com/.test(claveMala || ''), claveMala);
         igual('ia: ni el modelo guardado', prueba.modelo, 'EL-GUARDADO');
 
+        // ---- Enlaces #expedientes/<id> ----
+        // El aviso "no está visible en la lista actual (¿archivado o en otra
+        // vista?)" salía en cada arranque: el hash se quedaba en la url y el
+        // enlace roto se volvía a disparar para siempre.
+        await page.evaluate(() => navegarA('expedientes'));
+        await page.waitForTimeout(500);
+
+        const enlaceRoto = await page.evaluate(async () => {
+            history.replaceState(null, '', '#expedientes/999999');
+            const avisos = [];
+            const originalToast = window.mostrarToast;
+            window.mostrarToast = (m, t) => avisos.push({ m, t });
+            try { await mostrarExpediente(999999); } finally { window.mostrarToast = originalToast; }
+            return { avisos, hash: location.hash };
+        });
+
+        verificar('enlace: uno a un expediente inexistente lo dice claro',
+            /ya no existe/.test(enlaceRoto.avisos[0]?.m || ''), JSON.stringify(enlaceRoto.avisos));
+        verificar('enlace: sin encogerse de hombros con "¿archivado o en otra vista?"',
+            !/otra vista/.test(enlaceRoto.avisos[0]?.m || ''), enlaceRoto.avisos[0]?.m);
+        igual('enlace: y se olvida, para no repetirse en cada arranque',
+            enlaceRoto.hash, '');
+
+        // Uno archivado: existe, así que se abre su detalle en vez de dejarlo
+        // en un aviso que no lleva a ningún sitio.
+        const enlaceArchivado = await page.evaluate(async () => {
+            const id = await crearExpedienteCore({
+                numero: '55/2026', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN', institucion: 'TSJ' });
+            await archivarExpedienteDB(id, true, 'concluido', 'Archivo 2026');
+            await cargarExpedientes();
+            await new Promise(r => setTimeout(r, 400));
+
+            history.replaceState(null, '', '#expedientes/' + id);
+            const avisos = [];
+            const originalToast = window.mostrarToast;
+            window.mostrarToast = (m, t) => avisos.push({ m, t });
+            try { await mostrarExpediente(id); } finally { window.mostrarToast = originalToast; }
+
+            return {
+                avisos,
+                hash: location.hash,
+                detalleAbierto: document.getElementById('modal-overlay').classList.contains('active'),
+                tituloDetalle: document.getElementById('modal-titulo').textContent
+            };
+        });
+
+        verificar('enlace: uno archivado dice que está archivado',
+            /archivado/.test(enlaceArchivado.avisos[0]?.m || ''), JSON.stringify(enlaceArchivado.avisos));
+        igual('enlace: y abre su detalle igualmente', enlaceArchivado.detalleAbierto, true);
+        igual('enlace: con el expediente correcto', enlaceArchivado.tituloDetalle, '55/2026');
+        igual('enlace: el hash tampoco se queda', enlaceArchivado.hash, '');
+
+        await page.evaluate(() => cerrarModal());
+        await page.waitForTimeout(300);
+
+        // Uno que sí está en la lista: se resalta y el enlace SÍ se conserva,
+        // que para eso está —compartirlo o recargarlo.
+        const enlaceBueno = await page.evaluate(async () => {
+            const tarjeta = [...document.querySelectorAll('#page-expedientes .expediente-card')]
+                .find(c => c.textContent.includes('77/2026'));
+            const id = parseInt(tarjeta.dataset.id);
+            await mostrarExpediente(id);
+            return {
+                hash: location.hash,
+                resaltado: tarjeta.classList.contains('expediente-destacado'),
+                esperado: '#expedientes/' + id
+            };
+        });
+
+        igual('enlace: uno que sí está en la lista se resalta', enlaceBueno.resaltado, true);
+        igual('enlace: y se conserva para poder compartirlo',
+            enlaceBueno.hash, enlaceBueno.esperado);
+
+        await page.evaluate(() => { history.replaceState(null, '', location.pathname); });
+
         igual('la página no lanza errores de JavaScript', erroresPagina, []);
 
     } finally {
