@@ -2025,41 +2025,43 @@
 
             <div class="config-section">
                 <div class="header-with-help">
-                    <h3>🤖 Inteligencia Artificial (Groq)</h3>
+                    <h3>🤖 Inteligencia Artificial (Gemini)</h3>
                     <div class="tooltip-container">
                         <button class="help-btn" type="button">?</button>
                         <div class="tooltip-content tooltip-left">
-                            <h4>¿Cómo obtener tu API Key de Groq?</h4>
-                            <p><strong>Groq es GRATIS</strong> y muy rápido. Sigue estos pasos:</p>
+                            <h4>¿Cómo obtener tu API Key de Gemini?</h4>
+                            <p><strong>Google la da gratis.</strong> Sigue estos pasos:</p>
                             <ul>
-                                <li>Ve a <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a></li>
-                                <li>Crea una cuenta con Google o email</li>
-                                <li>Haz clic en "Create API Key"</li>
-                                <li>Copia la clave (empieza con <code>gsk_</code>)</li>
-                                <li>Pégala aquí y guarda</li>
+                                <li>Ve a <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a></li>
+                                <li>Entra con tu cuenta de Google</li>
+                                <li>Haz clic en "Crear clave de API"</li>
+                                <li>Copia la clave y pégala aquí</li>
+                                <li>Pulsa "Ver modelos" y elige uno</li>
                             </ul>
-                            <p>Usa la función "Probar Conexión" para verificar que funciona.</p>
+                            <p>Usa "Probar Conexión" para comprobar que funciona.</p>
                         </div>
                     </div>
                 </div>
-                <p class="section-desc">Analiza acuerdos automáticamente y extrae fechas, audiencias y notas importantes. <a href="https://console.groq.com/keys" target="_blank">Obtener API Key gratis</a></p>
+                <p class="section-desc">Analiza acuerdos automáticamente y extrae fechas, audiencias y notas importantes. <a href="https://aistudio.google.com/apikey" target="_blank">Obtener API Key gratis</a></p>
                 <form id="ai-config-form" onsubmit="guardarConfigIA(event)">
                     <div class="form-row">
                         <div class="form-group">
-                            <label>API Key de Groq</label>
-                            <input type="password" id="groq-api-key" placeholder="gsk_xxxxxxxxxxxxxxxx">
+                            <label>API Key de Gemini</label>
+                            <input type="password" id="ia-api-key" placeholder="AIza...">
                         </div>
                         <div class="form-group">
                             <label>Modelo</label>
-                            <select id="groq-model">
-                                <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Recomendado)</option>
-                                <option value="llama-3.1-8b-instant">Llama 3.1 8B (Más rápido)</option>
-                                <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
+                            <select id="ia-modelo">
+                                <option value="gemini-2.5-flash">gemini-2.5-flash</option>
                             </select>
+                            <p class="text-muted" style="font-size: 0.72rem; margin-top: 0.3rem;">
+                                Pulsa "Ver modelos" para traer los que tu clave puede usar hoy.
+                            </p>
                         </div>
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary">💾 Guardar</button>
+                        <button type="button" class="btn btn-secondary" onclick="cargarModelosIA()">📋 Ver modelos</button>
                         <button type="button" class="btn btn-secondary" onclick="probarIA()">🧪 Probar Conexión</button>
                     </div>
                 </form>

@@ -21,7 +21,7 @@
  * Requisitos: API Key de Groq configurada (la misma del Análisis IA).
  * Reconocimiento de voz: Web Speech API (Chrome/Edge/Safari). En
  * navegadores sin soporte (Firefox) se graba el audio y se transcribe
- * con Whisper vía Groq.
+ * con la propia IA cuando el navegador no reconoce la voz.
  *
  * Global expuesto: window.VOZ = { abrir, cerrar, ejecutar }
  */
@@ -33,8 +33,10 @@
     const TTS_KEY = 'voz_tts_activado';          // localStorage: respuestas habladas
     const RATE_KEY = 'voz_tts_velocidad';        // localStorage: velocidad de la voz
     const AUTO_KEY = 'voz_auto_escucha';         // localStorage: escuchar al abrir el panel
-    const MODELO_DEFAULT = 'llama-3.3-70b-versatile';
-    const WHISPER_MODEL = 'whisper-large-v3-turbo';
+    // El modelo ya no se elige aquí: lo lleva llamarIA(), que lo lee de la
+    // configuración y lo sustituye solo si el proveedor lo retira. Tener el
+    // nombre escrito en este archivo fue lo que dejó mudo al asistente cuando
+    // Groq retiró llama-3.3-70b-versatile.
     const MAX_TURNOS = 16;                        // tope de la conversación de slot-filling
 
     // Acciones que modifican datos → siempre piden confirmación.
@@ -131,7 +133,7 @@
     const Estado = {
         INACTIVO: 'inactivo',
         ESCUCHANDO: 'escuchando',       // Web Speech API activa
-        GRABANDO: 'grabando',           // MediaRecorder (fallback Whisper)
+        GRABANDO: 'grabando',           // MediaRecorder (se transcribe con la IA)
         PROCESANDO: 'procesando',
         ESPERANDO_DATO: 'esperando_dato',
         ESPERANDO_CONFIRMACION: 'esperando_confirmacion'
@@ -631,7 +633,7 @@
         setStatus('', false);
     }
 
-    // --- Fallback: grabar y transcribir con Whisper (Groq) ---
+    // --- Fallback: grabar y mandar el audio a la IA para transcribirlo ---
 
     function tipoAudioSoportado() {
         if (typeof MediaRecorder === 'undefined') return null;
@@ -665,7 +667,7 @@
                 estado = Estado.PROCESANDO;
                 setStatus('Transcribiendo audio…', false);
                 try {
-                    const texto = await transcribirConGroq(blob);
+                    const texto = await transcribirAudio(blob);
                     estado = Estado.INACTIVO;
                     if (texto) {
                         setStatus('', false);
@@ -708,25 +710,10 @@
         }
     }
 
-    async function transcribirConGroq(blob) {
+    async function transcribirAudio(blob) {
         const apiKey = await obtenerApiKey();
-        if (!apiKey) throw new Error('Configura tu API Key de Groq');
-        const ext = (blob.type.includes('mp4')) ? 'mp4' : (blob.type.includes('ogg')) ? 'ogg' : 'webm';
-        const fd = new FormData();
-        fd.append('file', blob, 'audio.' + ext);
-        fd.append('model', WHISPER_MODEL);
-        fd.append('language', 'es');
-        const resp = await fetchConTimeout('https://api.groq.com/openai/v1/audio/transcriptions', {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + apiKey },
-            body: fd
-        });
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.error?.message || 'Error en la transcripción');
-        }
-        const data = await resp.json();
-        return (data.text || '').trim();
+        if (!apiKey) throw new Error('Configura tu API Key de Gemini en Configuración');
+        return transcribirAudioIA(blob, 'español de México');
     }
 
     // ==================== ENTRADA DE TEXTO ====================
@@ -781,7 +768,7 @@
 
         try {
             const sistema = await construirPromptSistema();
-            const respuesta = await llamarGroq(sistema, conversacion);
+            const respuesta = await llamarModelo(sistema, conversacion);
             conversacion.push({ role: 'assistant', content: JSON.stringify(respuesta) });
             estado = Estado.INACTIVO;
             setStatus('', false);
@@ -1537,11 +1524,11 @@
         return 'Listo, estás en ' + pagina + '.';
     }
 
-    // ==================== LLM (GROQ) ====================
+    // ==================== LLM ====================
 
     async function obtenerApiKey() {
         try {
-            return (await obtenerConfig('groq_api_key')) || '';
+            return (await obtenerConfig('ia_api_key')) || '';
         } catch (e) {
             return '';
         }
@@ -1682,34 +1669,16 @@ REGLAS:
 - Nunca inventes ids de expedientes o eventos: solo usa los del catálogo/agenda. Si no está, usa expedienteRef.`;
     }
 
-    async function llamarGroq(sistema, historial) {
-        const apiKey = await obtenerApiKey();
-        const modelo = (await obtenerConfig('groq_model').catch(() => null)) || MODELO_DEFAULT;
+    async function llamarModelo(sistema, historial) {
+        // El prompt de sistema va aparte, en systemInstruction: Gemini no lo
+        // acepta como un turno más de la conversación.
+        const respuesta = await llamarIA(null, { sistema, historial, maxTokens: 1200 });
 
-        const response = await fetchConTimeout('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + apiKey
-            },
-            body: JSON.stringify({
-                model: modelo,
-                messages: [{ role: 'system', content: sistema }].concat(historial),
-                max_tokens: 1200,
-                temperature: 0.1
-            })
-        });
-
-        if (!response.ok) {
-            const error = await response.json().catch(() => ({}));
-            throw new Error(error.error?.message || 'Error en la API de Groq');
+        try {
+            return _extraerJSON(respuesta);
+        } catch (e) {
+            throw new Error('No entendí la instrucción, intenta expresarla de otra forma');
         }
-
-        const data = await response.json();
-        const contenido = data.choices?.[0]?.message?.content || '';
-        const jsonMatch = contenido.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) throw new Error('No entendí la instrucción, intenta expresarla de otra forma');
-        return JSON.parse(jsonMatch[0]);
     }
 
     // ==================== INIT ====================
