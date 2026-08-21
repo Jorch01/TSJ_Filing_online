@@ -5803,62 +5803,286 @@ function mostrarToast(mensaje, tipo = 'info') {
     }, 3000);
 }
 
-// ==================== INTEGRACIÓN CON IA (GROQ) ====================
+// ==================== INTEGRACIÓN CON IA (GEMINI) ====================
+//
+// Antes esto llamaba a Groq con "llama-3.3-70b-versatile" escrito en el
+// código. El día que Groq retiró ese modelo, el asistente dejó de funcionar y
+// hubo que tocar el código para revivirlo.
+//
+// Los proveedores retiran modelos constantemente —el propio gemini-2.5-flash
+// tiene fecha de apagado—, así que aquí el modelo no está clavado: se guarda
+// en la configuración, se puede elegir de la lista real que devuelve la API, y
+// si el guardado desaparece, la aplicación busca uno vivo y sigue sola.
+
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+
+// Solo se usa la primera vez, antes de que el usuario elija. Que esté aquí no
+// vuelve a ser un problema: si deja de existir, buscarModeloVivo() lo sustituye.
+const GEMINI_MODELO_POR_DEFECTO = 'gemini-2.5-flash';
+
+// Orden de preferencia al tener que elegir solos. Flash antes que Pro: el
+// análisis de un acuerdo no necesita el modelo caro, y en el plan gratuito
+// Flash admite bastantes más peticiones al día.
+const GEMINI_PREFERENCIAS = ['flash-lite', 'flash', 'pro'];
 
 let resultadosIAActuales = null;
 
 async function guardarConfigIA(event) {
     event.preventDefault();
 
-    const apiKey = document.getElementById('groq-api-key').value.trim();
-    const modelo = document.getElementById('groq-model').value;
-
-    await guardarConfig('groq_api_key', apiKey);
-    await guardarConfig('groq_model', modelo);
+    await guardarConfig('ia_api_key', document.getElementById('ia-api-key').value.trim());
+    await guardarConfig('ia_modelo', document.getElementById('ia-modelo').value.trim());
 
     mostrarToast('Configuración de IA guardada', 'success');
 }
 
 async function cargarConfigIA() {
-    const apiKey = await obtenerConfig('groq_api_key');
-    const modelo = await obtenerConfig('groq_model');
+    const apiKey = await obtenerConfig('ia_api_key');
+    const modelo = await obtenerConfig('ia_modelo');
+    const campoKey = document.getElementById('ia-api-key');
+    const campoModelo = document.getElementById('ia-modelo');
 
-    if (apiKey) document.getElementById('groq-api-key').value = apiKey;
-    if (modelo) document.getElementById('groq-model').value = modelo;
+    if (campoKey && apiKey) campoKey.value = apiKey;
+    if (campoModelo) _ponerOpcionModelo(campoModelo, modelo || GEMINI_MODELO_POR_DEFECTO);
+}
+
+/** Deja el select con ese modelo seleccionado, añadiéndolo si no estaba. */
+function _ponerOpcionModelo(select, modelo) {
+    if (!modelo) return;
+    if (![...select.options].some(o => o.value === modelo)) {
+        select.add(new Option(modelo, modelo));
+    }
+    select.value = modelo;
+}
+
+/**
+ * Los modelos que esta clave puede usar hoy, según la propia API.
+ *
+ * Es la única fuente fiable: una lista escrita a mano en el código envejece y
+ * acaba ofreciendo modelos que ya no existen, que es exactamente lo que rompió
+ * el asistente.
+ */
+async function listarModelosIA(apiKey) {
+    const respuesta = await fetch(`${GEMINI_BASE}/models?key=${encodeURIComponent(apiKey)}&pageSize=200`);
+    if (!respuesta.ok) {
+        const detalle = await respuesta.json().catch(() => ({}));
+        throw new Error(detalle.error?.message || `La API respondió ${respuesta.status}`);
+    }
+
+    const datos = await respuesta.json();
+    return (datos.models || [])
+        .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+        .map(m => String(m.name || '').replace(/^models\//, ''))
+        .filter(Boolean);
+}
+
+/** De una lista de modelos, el que mejor encaja con lo que hace esta app. */
+function _elegirModelo(modelos) {
+    for (const preferencia of GEMINI_PREFERENCIAS) {
+        const encontrado = modelos.find(m => m.includes(preferencia));
+        if (encontrado) return encontrado;
+    }
+    return modelos[0] || null;
+}
+
+/** Rellena el select de modelos con lo que la API diga que hay. */
+async function cargarModelosIA() {
+    const apiKey = document.getElementById('ia-api-key').value.trim();
+    if (!apiKey) {
+        mostrarToast('Escribe primero tu API Key', 'warning');
+        return;
+    }
+
+    const select = document.getElementById('ia-modelo');
+    const elegido = select.value;
+
+    try {
+        mostrarToast('Consultando modelos disponibles...', 'info');
+        const modelos = await listarModelosIA(apiKey);
+        if (!modelos.length) throw new Error('La API no devolvió ningún modelo utilizable');
+
+        select.innerHTML = '';
+        modelos.forEach(m => select.add(new Option(m, m)));
+        _ponerOpcionModelo(select, modelos.includes(elegido) ? elegido : _elegirModelo(modelos));
+
+        mostrarToast(`${modelos.length} modelos disponibles`, 'success');
+    } catch (error) {
+        mostrarToast('No se pudieron cargar los modelos: ' + error.message, 'error');
+    }
+}
+
+/**
+ * Busca un modelo que exista, lo guarda y lo devuelve.
+ *
+ * Se usa cuando el guardado ya no existe. Es lo que hace que la retirada de un
+ * modelo por parte de Google sea un contratiempo de un segundo en vez de una
+ * app rota hasta que alguien toque el código.
+ */
+async function buscarModeloVivo(apiKey, guardar = true) {
+    const modelos = await listarModelosIA(apiKey);
+    const elegido = _elegirModelo(modelos);
+    if (!elegido) throw new Error('Tu clave no tiene acceso a ningún modelo');
+
+    // Solo se guarda cuando el modelo que falló era el de la configuración. Si
+    // venía suelto —una prueba desde el formulario— no se toca lo guardado.
+    if (guardar) {
+        await guardarConfig('ia_modelo', elegido);
+        const select = document.getElementById('ia-modelo');
+        if (select) _ponerOpcionModelo(select, elegido);
+    }
+
+    return elegido;
+}
+
+/** ¿El error dice que el modelo no existe? Ese es el que sabemos arreglar. */
+function _esModeloInexistente(mensaje) {
+    return /not found|does not exist|no tiene acceso|is not supported/i.test(String(mensaje || ''));
+}
+
+/**
+ * Le manda un prompt al modelo y devuelve su respuesta en texto.
+ *
+ * Toda la aplicación pasa por aquí. Antes había tres copias de la misma
+ * llamada repartidas por el archivo, así que cambiar de proveedor —o de
+ * modelo— era cambiar la misma cosa en tres sitios y olvidarse de uno.
+ */
+async function llamarIA(prompt, opciones = {}) {
+    // Se pueden pasar clave y modelo a mano: es lo que usa "Probar conexión"
+    // para comprobar lo que hay escrito en pantalla sin llegar a guardarlo.
+    const apiKey = opciones.apiKey || await obtenerConfig('ia_api_key');
+    if (!apiKey) {
+        throw new Error('Configura tu API Key de Gemini en Configuración');
+    }
+
+    let modelo = opciones.modelo || await obtenerConfig('ia_modelo') || GEMINI_MODELO_POR_DEFECTO;
+
+    const cuerpo = {
+        contents: _contenidosGemini(prompt, opciones),
+        generationConfig: {
+            temperature: opciones.temperatura ?? 0.1,
+            maxOutputTokens: opciones.maxTokens ?? 2000
+        }
+    };
+    if (opciones.sistema) {
+        cuerpo.systemInstruction = { parts: [{ text: opciones.sistema }] };
+    }
+
+    const pedir = async (queModelo) => {
+        const respuesta = await fetch(
+            `${GEMINI_BASE}/models/${encodeURIComponent(queModelo)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cuerpo)
+            }
+        );
+
+        if (!respuesta.ok) {
+            const detalle = await respuesta.json().catch(() => ({}));
+            throw new Error(detalle.error?.message || `La API respondió ${respuesta.status}`);
+        }
+        return respuesta.json();
+    };
+
+    let datos;
+    try {
+        datos = await pedir(modelo);
+    } catch (error) {
+        if (!_esModeloInexistente(error.message)) throw error;
+
+        // El modelo guardado ya no existe: se busca uno vivo y se reintenta.
+        // Al usuario se le dice cuál, porque su asistente acaba de cambiar de
+        // motor y merece enterarse.
+        const anterior = modelo;
+        modelo = await buscarModeloVivo(apiKey, !opciones.modelo);
+        mostrarToast(`El modelo "${anterior}" ya no existe. Cambiado a "${modelo}".`, 'info');
+        datos = await pedir(modelo);
+    }
+
+    const texto = (datos.candidates?.[0]?.content?.parts || [])
+        .map(p => p.text || '').join('').trim();
+
+    if (!texto) {
+        const motivo = datos.candidates?.[0]?.finishReason || datos.promptFeedback?.blockReason;
+        throw new Error(motivo ? `La IA no devolvió texto (${motivo})` : 'La IA no devolvió texto');
+    }
+
+    return texto;
+}
+
+/**
+ * Los "contents" de la petición.
+ *
+ * Gemini llama "model" a lo que el resto del mundo llama "assistant", así que
+ * un historial copiado de la API de Groq hay que traducirlo o la conversación
+ * se le presenta al modelo como si la hubiera dicho toda el usuario.
+ */
+function _contenidosGemini(prompt, opciones) {
+    if (Array.isArray(opciones.historial) && opciones.historial.length) {
+        return opciones.historial.map(m => ({
+            role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
+            parts: [{ text: String(m.content ?? '') }]
+        }));
+    }
+
+    const partes = [];
+    if (prompt) partes.push({ text: prompt });
+    if (opciones.audio) {
+        partes.push({ inlineData: { mimeType: opciones.audio.mimeType, data: opciones.audio.datos } });
+    }
+    return [{ role: 'user', parts: partes }];
+}
+
+/**
+ * Pasa un audio a texto.
+ *
+ * Groq tenía un endpoint aparte para esto (Whisper); en Gemini el audio entra
+ * por la misma puerta que el texto, así que es una llamada normal con el audio
+ * metido en la petición.
+ */
+async function transcribirAudioIA(blob, idioma = 'español') {
+    const datos = await new Promise((resolver, rechazar) => {
+        const lector = new FileReader();
+        lector.onload = () => resolver(String(lector.result).split(',')[1] || '');
+        lector.onerror = () => rechazar(new Error('No se pudo leer el audio'));
+        lector.readAsDataURL(blob);
+    });
+
+    const texto = await llamarIA(
+        `Transcribe literalmente este audio en ${idioma}. ` +
+        'Responde solo con la transcripción, sin comillas ni comentarios.',
+        { audio: { mimeType: blob.type || 'audio/webm', datos }, maxTokens: 1000, temperatura: 0 }
+    );
+
+    return texto.trim();
+}
+
+/** El JSON que viene dentro de la respuesta de la IA, que suele traer adornos. */
+function _extraerJSON(texto) {
+    const limpio = texto.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    const bloque = limpio.match(/\{[\s\S]*\}/);
+    if (!bloque) throw new Error('No se pudo parsear la respuesta de la IA');
+    return JSON.parse(bloque[0]);
 }
 
 async function probarIA() {
-    const apiKey = document.getElementById('groq-api-key').value.trim();
+    const apiKey = document.getElementById('ia-api-key').value.trim();
+    const modelo = document.getElementById('ia-modelo').value.trim() || GEMINI_MODELO_POR_DEFECTO;
 
     if (!apiKey) {
-        mostrarToast('Ingresa tu API Key de Groq', 'warning');
+        mostrarToast('Ingresa tu API Key de Gemini', 'warning');
         return;
     }
 
     mostrarToast('Probando conexión...', 'info');
 
     try {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-                model: document.getElementById('groq-model').value,
-                messages: [{ role: 'user', content: 'Responde solo con: OK' }],
-                max_tokens: 10
-            })
-        });
-
-        if (response.ok) {
-            mostrarToast('✅ Conexión exitosa con Groq', 'success');
-        } else {
-            const error = await response.json();
-            mostrarToast('Error: ' + (error.error?.message || 'API Key inválida'), 'error');
-        }
+        // Con lo que hay escrito en pantalla, no con lo guardado: la gracia de
+        // "probar" es comprobar lo que estás a punto de guardar.
+        await llamarIA('Responde solo con: OK', { apiKey, modelo, maxTokens: 10 });
+        mostrarToast('✅ Conexión correcta con Gemini', 'success');
     } catch (error) {
-        mostrarToast('Error de conexión: ' + error.message, 'error');
+        mostrarToast('Error: ' + error.message, 'error');
     }
 }
 
@@ -5911,13 +6135,6 @@ function seleccionarImagenAlbum() {
 function capturarFotoAcuerdo() {
     document.getElementById('ia-imagen-camara').click();
 }
-
-// Modelos de visión disponibles en Groq (intentar en orden)
-const GROQ_VISION_MODELS = [
-    'llama-3.2-11b-vision-preview',
-    'llama-3.2-90b-vision-preview',
-    'llava-v1.5-7b-4096-preview'
-];
 
 // ==================== OCR CON TESSERACT.JS (NAVEGADOR) ====================
 
@@ -6137,8 +6354,7 @@ async function analizarAcuerdoConIA() {
     const texto = document.getElementById('ia-texto-acuerdo').value.trim();
     const expedienteSelect = document.getElementById('ia-expediente').value;
     const expedienteCustom = document.getElementById('ia-expediente-custom')?.value?.trim() || '';
-    const apiKey = await obtenerConfig('groq_api_key');
-    const modelo = await obtenerConfig('groq_model') || 'llama-3.3-70b-versatile';
+    const apiKey = await obtenerConfig('ia_api_key');
 
     // Determinar expediente: ID, personalizado, o ninguno
     let expedienteId = null;
@@ -6156,7 +6372,7 @@ async function analizarAcuerdoConIA() {
     }
 
     if (!apiKey) {
-        mostrarToast('Configura tu API Key de Groq en Configuración', 'warning');
+        mostrarToast('Configura tu API Key de Gemini en Configuración', 'warning');
         return;
     }
 
@@ -6203,35 +6419,7 @@ IMPORTANTE: Siempre intenta extraer el número de expediente del texto del acuer
 Si algún campo no tiene información, usa un array vacío [] o null según corresponda.`;
 
     try {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-                model: modelo,
-                messages: [{ role: 'user', content: prompt }],
-                max_tokens: 2000,
-                temperature: 0.1
-            })
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error?.message || 'Error en la API');
-        }
-
-        const data = await response.json();
-        const contenido = data.choices[0].message.content;
-
-        // Extraer JSON de la respuesta
-        const jsonMatch = contenido.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-            throw new Error('No se pudo parsear la respuesta de la IA');
-        }
-
-        const resultado = JSON.parse(jsonMatch[0]);
+        const resultado = _extraerJSON(await llamarIA(prompt));
         resultado.expedienteId = expedienteId ? parseInt(expedienteId) : null;
         resultado.expedienteTexto = expedienteTexto || null;
 
@@ -9028,8 +9216,7 @@ async function analizarAcuerdoConIAPJF() {
     const texto = document.getElementById('ia-texto-acuerdo-pjf').value.trim();
     const expedienteSelect = document.getElementById('iapjf-expediente').value;
     const expedienteCustom = document.getElementById('iapjf-expediente-custom')?.value?.trim() || '';
-    const apiKey = await obtenerConfig('groq_api_key');
-    const modelo = await obtenerConfig('groq_model') || 'llama-3.3-70b-versatile';
+    const apiKey = await obtenerConfig('ia_api_key');
 
     let expedienteId = null;
     let expedienteTexto = null;
@@ -9046,7 +9233,7 @@ async function analizarAcuerdoConIAPJF() {
     }
 
     if (!apiKey) {
-        mostrarToast('Configura tu API Key de Groq en Configuración', 'warning');
+        mostrarToast('Configura tu API Key de Gemini en Configuración', 'warning');
         return;
     }
 
@@ -9083,32 +9270,7 @@ IMPORTANTE: Siempre intenta extraer el número de expediente del texto. Busca pa
 Si algún campo no tiene información, usa un array vacío [] o null.`;
 
     try {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-                model: modelo,
-                messages: [{ role: 'user', content: prompt }],
-                max_tokens: 2000,
-                temperature: 0.1
-            })
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error?.message || 'Error en la API');
-        }
-
-        const data = await response.json();
-        const contenido = data.choices[0].message.content;
-
-        const jsonMatch = contenido.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) throw new Error('No se pudo parsear la respuesta de la IA');
-
-        const resultado = JSON.parse(jsonMatch[0]);
+        const resultado = _extraerJSON(await llamarIA(prompt));
         resultado.expedienteId = expedienteId ? parseInt(expedienteId) : null;
         resultado.expedienteTexto = expedienteTexto || null;
         resultado.institucion = 'PJF'; // Force PJF

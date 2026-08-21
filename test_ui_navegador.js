@@ -557,6 +557,146 @@ async function main() {
 
         await page.evaluate(() => cerrarModal());
 
+        // ---- Capa de IA (Gemini) ----
+        // Todo con la red simulada: no se llama a Google en una prueba.
+        const ia = await page.evaluate(async () => {
+            const resultados = {};
+
+            // Traducción del historial: Gemini llama "model" a lo que la API
+            // de Groq llamaba "assistant".
+            const contenidos = _contenidosGemini(null, { historial: [
+                { role: 'user', content: 'hola' },
+                { role: 'assistant', content: 'qué tal' }
+            ]});
+            resultados.roles = contenidos.map(c => c.role);
+            resultados.textos = contenidos.map(c => c.parts[0].text);
+
+            // Al tener que elegir solos, Flash antes que Pro.
+            resultados.elegido = _elegirModelo(['gemini-9.9-pro', 'gemini-9.9-flash']);
+            resultados.elegidoSinFlash = _elegirModelo(['gemini-9.9-pro']);
+
+            // El mensaje exacto que dio el fallo que rompió el asistente.
+            resultados.reconoceGroq = _esModeloInexistente(
+                'The model `llama-3.3-70b-versatile` does not exist or you do not have access to it.');
+            resultados.reconoceGemini = _esModeloInexistente(
+                'models/gemini-2.5-flash is not found for API version v1beta');
+            resultados.noConfundeOtros = _esModeloInexistente('Quota exceeded for this project');
+
+            // JSON con los adornos que suelen venir alrededor.
+            resultados.json = _extraerJSON('```json\n{"a":1}\n```');
+
+            return resultados;
+        });
+
+        igual('ia: el historial se traduce a los roles de Gemini', ia.roles, ['user', 'model']);
+        igual('ia: sin perder el texto', ia.textos, ['hola', 'qué tal']);
+        igual('ia: se prefiere Flash sobre Pro', ia.elegido, 'gemini-9.9-flash');
+        igual('ia: pero se coge Pro si es lo único', ia.elegidoSinFlash, 'gemini-9.9-pro');
+        igual('ia: reconoce el error que rompió el asistente', ia.reconoceGroq, true);
+        igual('ia: y el equivalente de Gemini', ia.reconoceGemini, true);
+        igual('ia: sin confundirlo con otros errores', ia.noConfundeOtros, false);
+        igual('ia: extrae el JSON de entre los adornos', ia.json, { a: 1 });
+
+        // La petición que se manda de verdad.
+        const peticion = await page.evaluate(async () => {
+            await guardarConfig('ia_api_key', 'CLAVE-DE-PRUEBA');
+            await guardarConfig('ia_modelo', 'gemini-de-prueba');
+
+            const original = window.fetch;
+            let capturada = null;
+            window.fetch = (url, opciones) => {
+                capturada = { url, cuerpo: JSON.parse(opciones.body) };
+                return Promise.resolve(new Response(JSON.stringify({
+                    candidates: [{ content: { parts: [{ text: 'OK' }] } }]
+                }), { status: 200 }));
+            };
+            let texto;
+            try { texto = await llamarIA('hola', { sistema: 'eres útil' }); }
+            finally { window.fetch = original; }
+            return { capturada, texto };
+        });
+
+        verificar('ia: llama al modelo configurado',
+            /models\/gemini-de-prueba:generateContent/.test(peticion.capturada.url), peticion.capturada.url);
+        verificar('ia: con la clave del usuario',
+            /key=CLAVE-DE-PRUEBA/.test(peticion.capturada.url), peticion.capturada.url);
+        igual('ia: el prompt de sistema va aparte, no como un turno más',
+            peticion.capturada.cuerpo.systemInstruction.parts[0].text, 'eres útil');
+        igual('ia: y devuelve el texto del modelo', peticion.texto, 'OK');
+
+        // ---- Lo que rompió el asistente no puede volver a romperlo ----
+        // Si el proveedor retira el modelo guardado, la app busca uno vivo,
+        // lo guarda y sigue, sin que nadie tenga que tocar el código.
+        const recuperacion = await page.evaluate(async () => {
+            await guardarConfig('ia_modelo', 'modelo-retirado');
+
+            const original = window.fetch;
+            const urls = [];
+            window.fetch = (url, opciones) => {
+                urls.push(url);
+                if (/\/models\?/.test(url)) {
+                    return Promise.resolve(new Response(JSON.stringify({ models: [
+                        { name: 'models/gemini-nuevo-pro', supportedGenerationMethods: ['generateContent'] },
+                        { name: 'models/gemini-nuevo-flash', supportedGenerationMethods: ['generateContent'] },
+                        { name: 'models/solo-embeddings', supportedGenerationMethods: ['embedContent'] }
+                    ]}), { status: 200 }));
+                }
+                if (/modelo-retirado/.test(url)) {
+                    return Promise.resolve(new Response(JSON.stringify({ error: {
+                        message: 'models/modelo-retirado is not found for API version v1beta'
+                    }}), { status: 404 }));
+                }
+                return Promise.resolve(new Response(JSON.stringify({
+                    candidates: [{ content: { parts: [{ text: 'respuesta buena' }] } }]
+                }), { status: 200 }));
+            };
+
+            let texto, error = null;
+            try { texto = await llamarIA('hola'); }
+            catch (e) { error = e.message; }
+            finally { window.fetch = original; }
+
+            return { texto, error, urls, guardado: await obtenerConfig('ia_modelo') };
+        });
+
+        igual('ia: si retiran el modelo, la respuesta llega igual',
+            recuperacion.texto, 'respuesta buena');
+        verificar('ia: preguntando a la API qué modelos quedan',
+            recuperacion.urls.some(u => /\/models\?/.test(u)), JSON.stringify(recuperacion.urls));
+        igual('ia: se queda con uno que existe y descarta el de embeddings',
+            recuperacion.guardado, 'gemini-nuevo-flash');
+        igual('ia: sin dar error al usuario', recuperacion.error, null);
+
+        // "Probar conexión" no debe guardar nada.
+        const prueba = await page.evaluate(async () => {
+            await guardarConfig('ia_api_key', 'LA-GUARDADA');
+            await guardarConfig('ia_modelo', 'EL-GUARDADO');
+            document.getElementById('ia-api-key').value = 'ESCRITA-EN-PANTALLA';
+            const select = document.getElementById('ia-modelo');
+            select.add(new Option('ESCRITO-EN-PANTALLA', 'ESCRITO-EN-PANTALLA'));
+            select.value = 'ESCRITO-EN-PANTALLA';
+
+            const original = window.fetch;
+            let urlUsada = null;
+            window.fetch = (url) => {
+                urlUsada = url;
+                return Promise.resolve(new Response(JSON.stringify({
+                    candidates: [{ content: { parts: [{ text: 'OK' }] } }]
+                }), { status: 200 }));
+            };
+            try { await probarIA(); } finally { window.fetch = original; }
+
+            return { urlUsada,
+                     key: await obtenerConfig('ia_api_key'),
+                     modelo: await obtenerConfig('ia_modelo') };
+        });
+
+        verificar('ia: probar usa lo escrito en pantalla',
+            /ESCRITO-EN-PANTALLA/.test(prueba.urlUsada) && /ESCRITA-EN-PANTALLA/.test(prueba.urlUsada),
+            prueba.urlUsada);
+        igual('ia: probar no pisa la clave guardada', prueba.key, 'LA-GUARDADA');
+        igual('ia: ni el modelo guardado', prueba.modelo, 'EL-GUARDADO');
+
         igual('la página no lanza errores de JavaScript', erroresPagina, []);
 
     } finally {
