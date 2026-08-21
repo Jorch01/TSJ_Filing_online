@@ -250,6 +250,14 @@ function procesarSolicitud(params) {
     resultado = { error: true, mensaje: error.message };
   }
 
+  // La hora del servidor va en TODAS las respuestas. Es el único reloj que
+  // comparten los dispositivos: con ella cada uno corrige el suyo antes de
+  // sellar los datos, y así una edición hecha más tarde no queda marcada como
+  // más antigua solo porque ese teléfono lleve la hora atrasada.
+  if (resultado && typeof resultado === 'object') {
+    resultado.servidorAhora = new Date().toISOString();
+  }
+
   return ContentService
     .createTextOutput(JSON.stringify(resultado))
     .setMimeType(ContentService.MimeType.JSON);

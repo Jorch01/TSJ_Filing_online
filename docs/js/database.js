@@ -8,6 +8,74 @@ const DB_VERSION = 6; // v6: agrega store de pendientes (tareas por expediente)
 
 let db = null;
 
+// ==================== RELOJ DE SINCRONIZACIÓN ====================
+//
+// Toda marca de tiempo que decide qué edición gana un conflicto sale de aquí,
+// no de new Date() a secas. Dos motivos, los dos vistos en la práctica:
+//
+// 1. Los relojes de los dispositivos no coinciden. Si el teléfono va tres
+//    minutos atrasado respecto al ordenador, una edición hecha DESPUÉS en el
+//    teléfono lleva una hora ANTERIOR y al fusionar pierde contra la más
+//    vieja: el usuario ve su último cambio deshacerse solo, sin ningún aviso.
+//    Por eso se aprende el desfase contra el reloj del servidor y se corrige.
+//
+// 2. Los relojes saltan hacia atrás. Un ajuste de hora del sistema puede hacer
+//    que dos ediciones seguidas en el MISMO dispositivo queden selladas en
+//    orden invertido. Por eso este reloj nunca retrocede: como mucho se queda
+//    quieto y avanza un milisegundo.
+
+const CLAVE_DESFASE_RELOJ = 'sync_desfase_reloj_ms';
+const CLAVE_ULTIMO_SELLO = 'sync_ultimo_sello_ms';
+
+let _desfaseReloj = 0;
+let _ultimoSello = 0;
+
+try {
+    _desfaseReloj = parseInt(localStorage.getItem(CLAVE_DESFASE_RELOJ), 10) || 0;
+    // El último sello sobrevive a recargar la página: si no, un reloj que saltó
+    // hacia atrás entre sesiones volvería a sellar en el pasado.
+    _ultimoSello = parseInt(localStorage.getItem(CLAVE_ULTIMO_SELLO), 10) || 0;
+} catch (e) {
+    _desfaseReloj = 0;
+    _ultimoSello = 0;
+}
+
+/**
+ * Aprende cuánto se desvía este dispositivo del reloj del servidor. La llama
+ * la sincronización con la hora que devuelve el Apps Script en cada respuesta.
+ */
+function ajustarRelojSync(horaServidorISO) {
+    const servidor = Date.parse(horaServidorISO);
+    if (!servidor) return _desfaseReloj;
+
+    const desfase = servidor - Date.now();
+
+    // Un par de segundos es el viaje de ida y vuelta de la petición, no un
+    // reloj mal puesto: corregir por eso solo añadiría ruido.
+    if (Math.abs(desfase - _desfaseReloj) < 2000) return _desfaseReloj;
+
+    _desfaseReloj = desfase;
+    try { localStorage.setItem(CLAVE_DESFASE_RELOJ, String(desfase)); } catch (e) { /* modo privado */ }
+
+    if (Math.abs(desfase) > 60000) {
+        console.warn('El reloj de este dispositivo va ' + Math.round(desfase / 1000) +
+                     's respecto al servidor. Las marcas de sincronización se corrigen, ' +
+                     'pero conviene poner la hora en automático.');
+    }
+    return _desfaseReloj;
+}
+
+/** La hora que se sella en los datos: corregida y monótona. */
+function ahoraSync() {
+    const t = Math.max(Date.now() + _desfaseReloj, _ultimoSello + 1);
+    _ultimoSello = t;
+    try { localStorage.setItem(CLAVE_ULTIMO_SELLO, String(t)); } catch (e) { /* modo privado */ }
+    return new Date(t).toISOString();
+}
+
+function desfaseRelojSync() { return _desfaseReloj; }
+
+
 // Inicializar base de datos
 function initDB() {
     return new Promise((resolve, reject) => {
@@ -106,7 +174,7 @@ async function agregarExpediente(expediente) {
         const transaction = db.transaction(['expedientes'], 'readwrite');
         const store = transaction.objectStore('expedientes');
 
-        const ahora = new Date().toISOString();
+        const ahora = ahoraSync();
         expediente.fechaCreacion = ahora;
         expediente.fechaActualizacion = ahora;
         expediente.activo = true;
@@ -177,7 +245,7 @@ async function archivarExpedienteDB(id, archivado, motivoArchivo, etiquetaArchiv
                 return;
             }
 
-            const ahora = new Date().toISOString();
+            const ahora = ahoraSync();
             if (archivado) {
                 expediente.archivado = true;
                 expediente.motivoArchivo = motivoArchivo || 'concluido';
@@ -238,7 +306,7 @@ async function actualizarExpediente(id, cambios) {
             }
         }
 
-        const ahora = new Date().toISOString();
+        const ahora = ahoraSync();
         // Actualizar timestamps por campo solo para los campos que cambiaron.
         // Esto permite que la sync por campo gane el conflicto correcto: si el
         // usuario solo cambió el comentario, otro dispositivo que cambió juzgado
@@ -383,6 +451,39 @@ async function agregarEliminados(eliminados) {
     });
 }
 
+/**
+ * Cuándo se tocó por última vez un registro, mirando TODO lo que lleva sellado.
+ *
+ * No basta con fechaActualizacion: la fusión por campo puede traer un valor
+ * más reciente de otro dispositivo sin que esa fecha se mueva.
+ */
+function ultimaEdicionDe(registro) {
+    let ultima = registro.fechaActualizacion || registro.fechaCreacion || '';
+    const sellos = registro._fieldTimestamps || {};
+    for (const campo of Object.keys(sellos)) {
+        if (sellos[campo] > ultima) ultima = sellos[campo];
+    }
+    return ultima;
+}
+
+/**
+ * ¿Manda este borrado sobre el registro que tengo?
+ *
+ * Solo si el borrado es POSTERIOR a la última edición. Antes se aplicaban
+ * todos sin mirar, y eso convertía un borrado viejo en una bomba: si un
+ * dispositivo borraba un expediente el lunes y otro —sin conexión— lo editaba
+ * el miércoles, al sincronizar el jueves ganaba el borrado del lunes y la
+ * edición del miércoles desaparecía sin dejar rastro.
+ *
+ * Al comparar fechas, los dos dispositivos llegan a la misma conclusión, así
+ * que la decisión es la misma en todos: o se borra en todos, o sobrevive en
+ * todos.
+ */
+function _borradoMandaSobre(fechaBorrado, registro) {
+    if (!fechaBorrado) return true;   // registro antiguo sin fecha: como antes
+    return !(ultimaEdicionDe(registro) > fechaBorrado);
+}
+
 // Aplicar eliminaciones remotas: eliminar expedientes, notas y eventos que están
 // en la lista de eliminados remotos. Las claves deben coincidir con las generadas
 // por registrarEliminacion() / claveNota() / claveEvento() / claveEliminacionExpediente().
@@ -390,11 +491,19 @@ async function aplicarEliminacionesRemotas(eliminadosRemotos) {
     if (!eliminadosRemotos || eliminadosRemotos.length === 0) return 0;
 
     let eliminadosCount = 0;
+    let rescatados = 0;
 
-    const clavesExpediente = new Set(eliminadosRemotos.filter(e => e.tipo === 'expediente').map(e => e.clave));
-    const clavesNota = new Set(eliminadosRemotos.filter(e => e.tipo === 'nota').map(e => e.clave));
-    const clavesEvento = new Set(eliminadosRemotos.filter(e => e.tipo === 'evento').map(e => e.clave));
-    const clavesPendiente = new Set(eliminadosRemotos.filter(e => e.tipo === 'pendiente').map(e => e.clave));
+    // Mapa clave → fecha del borrado. Antes era un Set: la fecha estaba en el
+    // registro pero no se miraba, y sin ella no se puede decidir quién es más
+    // reciente.
+    const porTipo = (tipo) => new Map(eliminadosRemotos
+        .filter(e => e.tipo === tipo)
+        .map(e => [e.clave, e.fecha || '']));
+
+    const clavesExpediente = porTipo('expediente');
+    const clavesNota = porTipo('nota');
+    const clavesEvento = porTipo('evento');
+    const clavesPendiente = porTipo('pendiente');
 
     // Expedientes
     if (clavesExpediente.size > 0) {
@@ -406,6 +515,10 @@ async function aplicarEliminacionesRemotas(eliminadosRemotos) {
             const clave = `exp|${numero}|${nombre}|${juzgado}`;
 
             if (clavesExpediente.has(clave)) {
+                if (!_borradoMandaSobre(clavesExpediente.get(clave), exp)) {
+                    rescatados++;
+                    continue;   // se editó después de borrarlo: la edición manda
+                }
                 await new Promise((resolve, reject) => {
                     const transaction = db.transaction(['expedientes'], 'readwrite');
                     const store = transaction.objectStore('expedientes');
@@ -428,6 +541,10 @@ async function aplicarEliminacionesRemotas(eliminadosRemotos) {
             const clave = `nota|${expedienteId}|${contenido}|${fecha}`;
 
             if (clavesNota.has(clave)) {
+                if (!_borradoMandaSobre(clavesNota.get(clave), nota)) {
+                    rescatados++;
+                    continue;   // se editó después de borrarlo: la edición manda
+                }
                 await new Promise((resolve, reject) => {
                     const transaction = db.transaction(['notas'], 'readwrite');
                     const store = transaction.objectStore('notas');
@@ -450,6 +567,10 @@ async function aplicarEliminacionesRemotas(eliminadosRemotos) {
             const clave = `evento|${titulo}|${fechaInicio}|${expedienteId}`;
 
             if (clavesEvento.has(clave)) {
+                if (!_borradoMandaSobre(clavesEvento.get(clave), evento)) {
+                    rescatados++;
+                    continue;   // se editó después de borrarlo: la edición manda
+                }
                 await new Promise((resolve, reject) => {
                     const transaction = db.transaction(['eventos'], 'readwrite');
                     const store = transaction.objectStore('eventos');
@@ -472,6 +593,10 @@ async function aplicarEliminacionesRemotas(eliminadosRemotos) {
             const clave = `pendiente|${expedienteId}|${titulo}|${fecha}`;
 
             if (clavesPendiente.has(clave)) {
+                if (!_borradoMandaSobre(clavesPendiente.get(clave), pendiente)) {
+                    rescatados++;
+                    continue;   // se editó después de borrarlo: la edición manda
+                }
                 await new Promise((resolve, reject) => {
                     const transaction = db.transaction(['pendientes'], 'readwrite');
                     const request = transaction.objectStore('pendientes').delete(p.id);
@@ -636,7 +761,7 @@ async function agregarCarpeta(carpeta) {
         const transaction = db.transaction(['carpetas'], 'readwrite');
         const store = transaction.objectStore('carpetas');
 
-        const ahora = new Date().toISOString();
+        const ahora = ahoraSync();
         carpeta.fechaCreacion = ahora;
         carpeta.fechaActualizacion = ahora;
         carpeta.archivada = !!carpeta.archivada;
@@ -700,7 +825,7 @@ async function actualizarCarpeta(id, cambios) {
             }
         }
 
-        const ahora = new Date().toISOString();
+        const ahora = ahoraSync();
         const fieldTimestamps = { ...(carpeta._fieldTimestamps || {}) };
         for (const key of Object.keys(camposModificados)) {
             fieldTimestamps[key] = ahora;
@@ -768,7 +893,7 @@ async function eliminarCarpeta(id, conExpedientes = false) {
 // _archivadoPorCarpeta=<id de la carpeta> para poder distinguirlos al desarchivar
 // y no resucitar expedientes que el usuario ya había archivado por su cuenta.
 async function archivarCarpeta(id, motivo, etiqueta) {
-    const ahora = new Date().toISOString();
+    const ahora = ahoraSync();
     await actualizarCarpeta(id, {
         archivada: true,
         motivoArchivo: motivo,
@@ -827,7 +952,7 @@ async function agregarNota(nota) {
         const transaction = db.transaction(['notas'], 'readwrite');
         const store = transaction.objectStore('notas');
 
-        const ahora = new Date().toISOString();
+        const ahora = ahoraSync();
         nota.fechaCreacion = ahora;
         nota.fechaActualizacion = ahora;
 
@@ -886,7 +1011,7 @@ async function actualizarNota(id, cambios) {
                 return;
             }
 
-            const ahora = new Date().toISOString();
+            const ahora = ahoraSync();
             // Marcar timestamp solo para campos que cambiaron, así el merge por
             // campo no pisa ediciones independientes hechas en otro dispositivo.
             const fieldTimestamps = { ...(nota._fieldTimestamps || {}) };
@@ -946,7 +1071,7 @@ async function agregarPendiente(pendiente) {
         const transaction = db.transaction(['pendientes'], 'readwrite');
         const store = transaction.objectStore('pendientes');
 
-        const ahora = new Date().toISOString();
+        const ahora = ahoraSync();
         pendiente.fechaCreacion = ahora;
         pendiente.fechaActualizacion = ahora;
         if (pendiente.completado === undefined) pendiente.completado = false;
@@ -1009,7 +1134,7 @@ async function actualizarPendiente(id, cambios) {
             const pendiente = getRequest.result;
             if (!pendiente) { reject(new Error('Pendiente no encontrado')); return; }
 
-            const ahora = new Date().toISOString();
+            const ahora = ahoraSync();
             const fieldTimestamps = { ...(pendiente._fieldTimestamps || {}) };
             for (const [key, value] of Object.entries(cambios)) {
                 if (key === '_fieldTimestamps' || key === 'id' || key === 'fechaActualizacion') continue;
@@ -1068,7 +1193,7 @@ async function agregarEvento(evento) {
         const transaction = db.transaction(['eventos'], 'readwrite');
         const store = transaction.objectStore('eventos');
 
-        const ahora = new Date().toISOString();
+        const ahora = ahoraSync();
         evento.fechaCreacion = ahora;
         evento.fechaActualizacion = ahora;
         evento.alertaEnviada = false;
@@ -1119,7 +1244,7 @@ async function actualizarEvento(id, cambios) {
                 return;
             }
 
-            const ahora = new Date().toISOString();
+            const ahora = ahoraSync();
             // Timestamp por campo solo para los que cambiaron — así la sync
             // por campo deja el cambio más reciente de cada lado sin pisarse.
             const fieldTimestamps = { ...(evento._fieldTimestamps || {}) };

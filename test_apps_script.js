@@ -310,6 +310,18 @@ try {
     igual('guarda el id de la constante', sinGuardar.SPREADSHEET_ID, ID_PRUEBA);
     igual('y la pestaña de la constante', sinGuardar.SHEET_NAME, 'Otra');
 
+    // ---------- La hora del servidor ----------
+    // Es el único reloj que comparten los dispositivos. Sin ella, el que lleve
+    // la hora atrasada sella sus ediciones en el pasado y las pierde al
+    // fusionar contra otras más viejas.
+    r = llamar({ action: 'obtener_sync', codigo: 'ABC123' });
+    verificar('toda respuesta trae la hora del servidor',
+        !!r.servidorAhora && !isNaN(Date.parse(r.servidorAhora)), JSON.stringify(r.servidorAhora));
+
+    r = llamar({ action: 'accion_que_no_existe' });
+    verificar('incluso cuando la acción no existe',
+        !!r.servidorAhora, JSON.stringify(r));
+
     // ---------- Reporte de errores ----------
     correosEnviados.length = 0;
 

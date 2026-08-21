@@ -527,6 +527,11 @@ async function descargarDatosRemotos() {
             throw new Error('Respuesta inválida del servidor');
         }
 
+        // Se corrige el reloj con el del servidor antes de tocar nada: esta es
+        // la primera respuesta de cada sincronización, así que a partir de aquí
+        // lo que se selle ya lleva la hora buena.
+        if (typeof ajustarRelojSync === 'function') ajustarRelojSync(resultado.servidorAhora);
+
         if (resultado.error) {
             throw new Error(resultado.mensaje || 'Error del servidor');
         }
@@ -600,6 +605,7 @@ async function respaldarYLimpiarSyncRemoto() {
         });
 
         const resultado = JSON.parse(await response.text());
+        if (typeof ajustarRelojSync === 'function') ajustarRelojSync(resultado.servidorAhora);
         if (!resultado.success) {
             return { error: resultado.mensaje || 'El servidor rechazó la petición' };
         }
@@ -671,6 +677,8 @@ async function subirDatosRemotos(datosCifrados, versionExpected) {
             throw new Error('Respuesta inválida del servidor');
         }
 
+        if (typeof ajustarRelojSync === 'function') ajustarRelojSync(resultado.servidorAhora);
+
         // Conflict no es un error fatal: el caller lo maneja re-fusionando.
         if (resultado.conflict) {
             return { success: false, conflict: true, version: resultado.version || null };
@@ -686,6 +694,38 @@ async function subirDatosRemotos(datosCifrados, versionExpected) {
     }
 }
 
+/**
+ * ¿Este registro queda fuera por un borrado?
+ *
+ * Solo si el borrado es POSTERIOR a su última edición. Antes bastaba con que
+ * la clave estuviera en la lista de borrados, de cualquier fecha: un borrado
+ * del lunes se comía una edición del miércoles hecha en otro dispositivo, y el
+ * usuario veía desaparecer trabajo sin ningún aviso.
+ *
+ * Se sigue aceptando un Set —ahí no hay fecha— para no romper a quien la llame
+ * a la antigua; en ese caso se comporta como antes.
+ */
+function _eliminadoGana(eliminados, clave, registro) {
+    if (!eliminados || !eliminados.has(clave)) return false;
+    if (typeof eliminados.get !== 'function') return true;
+
+    const fechaBorrado = eliminados.get(clave);
+    if (!fechaBorrado) return true;
+
+    return !(_ultimaEdicionDe(registro) > fechaBorrado);
+}
+
+/** La marca más reciente que lleva un registro, mire donde mire. */
+function _ultimaEdicionDe(registro) {
+    if (typeof ultimaEdicionDe === 'function') return ultimaEdicionDe(registro);
+    let ultima = (registro && (registro.fechaActualizacion || registro.fechaCreacion)) || '';
+    const sellos = (registro && registro._fieldTimestamps) || {};
+    for (const campo of Object.keys(sellos)) {
+        if (sellos[campo] > ultima) ultima = sellos[campo];
+    }
+    return ultima;
+}
+
 // Fusionar datos locales y remotos
 function fusionarDatos(local, remoto) {
     // Fusionar eliminados primero (unir ambas listas)
@@ -695,7 +735,10 @@ function fusionarDatos(local, remoto) {
     );
 
     // Crear set de claves eliminadas para filtrar
-    const clavesEliminadas = new Set(eliminadosFusionados.map(e => e.clave));
+    // Mapa clave → fecha del borrado, no un simple Set: sin la fecha no se
+    // puede saber si el borrado es anterior a la edición que tenemos delante,
+    // y un borrado viejo se llevaba por delante ediciones más nuevas.
+    const clavesEliminadas = new Map(eliminadosFusionados.map(e => [e.clave, e.fecha || '']));
 
     // Carpetas: fusión por nombre (dedup) + remap de carpetaId solo en expedientes
     // REMOTOS, antes de fusionarlos. Aplicar el remap post-fusión sería incorrecto
@@ -749,14 +792,14 @@ function _claveCarpeta(carpeta) {
 // Devuelve { carpetas, mapaRemap } donde mapaRemap es Map<idRemotoOriginal, idCanónico>.
 // IMPORTANTE: el mapaRemap aplica solo a los carpetaId de expedientes REMOTOS, nunca
 // a los locales. Los expedientes locales ya apuntan a ids locales canónicos.
-function fusionarCarpetas(locales, remotas, clavesEliminadas = new Set()) {
+function fusionarCarpetas(locales, remotas, clavesEliminadas = new Map()) {
     // Las eliminaciones de carpetas se registran por nombre normalizado
     // (ver registrarEliminacion en database.js, caso 'carpeta'), igual que
     // el dedup. Así, eliminar una carpeta en un dispositivo la elimina en
     // todos los demás aunque tengan distinto id local.
     const keyEliminacion = c => 'carpeta|' + _claveCarpeta(c);
-    const localesFiltradas = locales.filter(c => !clavesEliminadas.has(keyEliminacion(c)));
-    const remotasFiltradas = remotas.filter(c => !clavesEliminadas.has(keyEliminacion(c)));
+    const localesFiltradas = locales.filter(c => !_eliminadoGana(clavesEliminadas, keyEliminacion(c), c));
+    const remotasFiltradas = remotas.filter(c => !_eliminadoGana(clavesEliminadas, keyEliminacion(c), c));
 
     const mapaPorClave = new Map(); // claveNombre → carpeta canónica
     const mapaRemap = new Map();    // idRemotoOriginal → idCanónico
@@ -898,14 +941,14 @@ function _clavePendiente(p) {
 // Une pendientes locales y remotos. Gana el más reciente por campo, igual que
 // notas y eventos, para que marcar terminado en un dispositivo y editar el
 // texto en otro no se pisen.
-function fusionarPendientes(locales, remotos, clavesEliminadas = new Set()) {
+function fusionarPendientes(locales, remotos, clavesEliminadas = new Map()) {
     const mapa = new Map();
 
     // Locales primero como base, igual que en notas: una edición local
     // reciente gana sobre una versión remota más vieja del mismo campo.
     for (const p of [...locales, ...remotos]) {
         const clave = _clavePendiente(p);
-        if (clavesEliminadas.has(clave)) continue;
+        if (_eliminadoGana(clavesEliminadas, clave, p)) continue;
 
         const existente = mapa.get(clave);
         if (!existente) {
@@ -1233,12 +1276,12 @@ function claveEliminacionExpediente(exp) {
 }
 
 // Fusionar expedientes con detección inteligente de duplicados
-function fusionarExpedientes(locales, remotos, clavesEliminadas = new Set()) {
+function fusionarExpedientes(locales, remotos, clavesEliminadas = new Map()) {
     limpiarReporteFusion();
 
     // Filtrar expedientes que han sido eliminados
-    const localesFiltrados = locales.filter(exp => !clavesEliminadas.has(claveEliminacionExpediente(exp)));
-    const remotosFiltrados = remotos.filter(exp => !clavesEliminadas.has(claveEliminacionExpediente(exp)));
+    const localesFiltrados = locales.filter(exp => !_eliminadoGana(clavesEliminadas, claveEliminacionExpediente(exp), exp));
+    const remotosFiltrados = remotos.filter(exp => !_eliminadoGana(clavesEliminadas, claveEliminacionExpediente(exp), exp));
 
     // Locales primero: el expediente local es la base (exp1) en la fusión,
     // garantizando que los cambios locales recientes no se pierdan ante una versión remota más vieja.
@@ -1370,7 +1413,7 @@ function fusionarRegistroPorCampo(a, b, omitirKeys = new Set(['id', '_fieldTimes
 
 // Fusionar notas sin duplicar, con merge por campo, reasignación de
 // expedientes fusionados y filtrado de notas eliminadas remotamente.
-function fusionarNotas(locales, remotas, clavesEliminadas = new Set()) {
+function fusionarNotas(locales, remotas, clavesEliminadas = new Map()) {
     const mapa = new Map();
     const mapaReasignacion = crearMapaReasignacion();
 
@@ -1380,7 +1423,7 @@ function fusionarNotas(locales, remotas, clavesEliminadas = new Set()) {
 
     todasNotas.forEach(nota => {
         // Filtrar si está en la lista de eliminados
-        if (clavesEliminadas.has(claveEliminacionNota(nota))) return;
+        if (_eliminadoGana(clavesEliminadas, claveEliminacionNota(nota), nota)) return;
 
         // Reasignar expedienteId si el expediente fue fusionado
         let notaProcesada = { ...nota };
@@ -1410,14 +1453,14 @@ function fusionarNotas(locales, remotas, clavesEliminadas = new Set()) {
 
 // Fusionar eventos sin duplicar, con merge por campo, reasignación de
 // expedientes fusionados y filtrado de eventos eliminados remotamente.
-function fusionarEventos(locales, remotos, clavesEliminadas = new Set()) {
+function fusionarEventos(locales, remotos, clavesEliminadas = new Map()) {
     const mapa = new Map();
     const mapaReasignacion = crearMapaReasignacion();
 
     const todosEventos = [...locales, ...remotos];
 
     todosEventos.forEach(evento => {
-        if (clavesEliminadas.has(claveEliminacionEvento(evento))) return;
+        if (_eliminadoGana(clavesEliminadas, claveEliminacionEvento(evento), evento)) return;
 
         let eventoProcesado = { ...evento };
         if (evento.expedienteId && mapaReasignacion.has(evento.expedienteId)) {
