@@ -5816,6 +5816,26 @@ function mostrarToast(mensaje, tipo = 'info') {
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
+/**
+ * La clave va en una cabecera, nunca en la url.
+ *
+ * Con ?key=... la clave acaba en el historial del navegador, en el panel de
+ * red, en los registros de cualquier proxy y en cualquier captura de pantalla
+ * de la consola. Es la forma que Google recomienda, y además las claves
+ * nuevas con prefijo "AQ." se llevan mal con el parámetro de la url.
+ */
+function _cabecerasIA(apiKey) {
+    return { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey };
+}
+
+/** Error de la API con el código HTTP a cuestas, que hace falta para decidir. */
+async function _errorDeLaAPI(respuesta) {
+    const detalle = await respuesta.json().catch(() => ({}));
+    const error = new Error(detalle.error?.message || `La API respondió ${respuesta.status}`);
+    error.status = respuesta.status;
+    return error;
+}
+
 // Solo se usa la primera vez, antes de que el usuario elija. Que esté aquí no
 // vuelve a ser un problema: si deja de existir, buscarModeloVivo() lo sustituye.
 const GEMINI_MODELO_POR_DEFECTO = 'gemini-2.5-flash';
@@ -5863,10 +5883,15 @@ function _ponerOpcionModelo(select, modelo) {
  * el asistente.
  */
 async function listarModelosIA(apiKey) {
-    const respuesta = await fetch(`${GEMINI_BASE}/models?key=${encodeURIComponent(apiKey)}&pageSize=200`);
+    const respuesta = await fetch(`${GEMINI_BASE}/models?pageSize=200`,
+        { headers: _cabecerasIA(apiKey) });
     if (!respuesta.ok) {
-        const detalle = await respuesta.json().catch(() => ({}));
-        throw new Error(detalle.error?.message || `La API respondió ${respuesta.status}`);
+        const error = await _errorDeLaAPI(respuesta);
+        if (respuesta.status === 401 || respuesta.status === 403) {
+            throw new Error('Tu clave no fue aceptada. Comprueba que sea una clave de la API de ' +
+                            'Gemini creada en aistudio.google.com/apikey. (' + error.message + ')');
+        }
+        throw error;
     }
 
     const datos = await respuesta.json();
@@ -5934,8 +5959,16 @@ async function buscarModeloVivo(apiKey, guardar = true) {
     return elegido;
 }
 
-/** ¿El error dice que el modelo no existe? Ese es el que sabemos arreglar. */
-function _esModeloInexistente(mensaje) {
+/**
+ * ¿El fallo es "ese modelo no está ahí"? Es el único que sabemos arreglar solos.
+ *
+ * Se mira también el código HTTP: un 404 en la ruta del modelo significa
+ * exactamente eso, y hay respuestas que llegan sin cuerpo legible. Fiarse solo
+ * del texto dejó pasar el 404 que devolvió gemini-2.5-flash, y la recuperación
+ * automática —que existía justo para eso— no llegó a dispararse.
+ */
+function _esModeloInexistente(mensaje, status) {
+    if (status === 404) return true;
     return /not found|does not exist|no tiene acceso|is not supported/i.test(String(mensaje || ''));
 }
 
@@ -5969,18 +6002,15 @@ async function llamarIA(prompt, opciones = {}) {
 
     const pedir = async (queModelo) => {
         const respuesta = await fetch(
-            `${GEMINI_BASE}/models/${encodeURIComponent(queModelo)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+            `${GEMINI_BASE}/models/${encodeURIComponent(queModelo)}:generateContent`,
             {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: _cabecerasIA(apiKey),
                 body: JSON.stringify(cuerpo)
             }
         );
 
-        if (!respuesta.ok) {
-            const detalle = await respuesta.json().catch(() => ({}));
-            throw new Error(detalle.error?.message || `La API respondió ${respuesta.status}`);
-        }
+        if (!respuesta.ok) throw await _errorDeLaAPI(respuesta);
         return respuesta.json();
     };
 
@@ -5988,7 +6018,7 @@ async function llamarIA(prompt, opciones = {}) {
     try {
         datos = await pedir(modelo);
     } catch (error) {
-        if (!_esModeloInexistente(error.message)) throw error;
+        if (!_esModeloInexistente(error.message, error.status)) throw error;
 
         // El modelo guardado ya no existe: se busca uno vivo y se reintenta.
         // Al usuario se le dice cuál, porque su asistente acaba de cambiar de

@@ -605,7 +605,7 @@ async function main() {
             const original = window.fetch;
             let capturada = null;
             window.fetch = (url, opciones) => {
-                capturada = { url, cuerpo: JSON.parse(opciones.body) };
+                capturada = { url, cuerpo: JSON.parse(opciones.body), cabeceras: opciones.headers };
                 return Promise.resolve(new Response(JSON.stringify({
                     candidates: [{ content: { parts: [{ text: 'OK' }] } }]
                 }), { status: 200 }));
@@ -618,8 +618,10 @@ async function main() {
 
         verificar('ia: llama al modelo configurado',
             /models\/gemini-de-prueba:generateContent/.test(peticion.capturada.url), peticion.capturada.url);
-        verificar('ia: con la clave del usuario',
-            /key=CLAVE-DE-PRUEBA/.test(peticion.capturada.url), peticion.capturada.url);
+        igual('ia: la clave viaja en la cabecera',
+            peticion.capturada.cabeceras['x-goog-api-key'], 'CLAVE-DE-PRUEBA');
+        verificar('ia: y NUNCA en la url, que acaba en historiales y registros',
+            !/CLAVE-DE-PRUEBA/.test(peticion.capturada.url), peticion.capturada.url);
         igual('ia: el prompt de sistema va aparte, no como un turno más',
             peticion.capturada.cuerpo.systemInstruction.parts[0].text, 'eres útil');
         igual('ia: y devuelve el texto del modelo', peticion.texto, 'OK');
@@ -642,9 +644,10 @@ async function main() {
                     ]}), { status: 200 }));
                 }
                 if (/modelo-retirado/.test(url)) {
-                    return Promise.resolve(new Response(JSON.stringify({ error: {
-                        message: 'models/modelo-retirado is not found for API version v1beta'
-                    }}), { status: 404 }));
+                    // 404 con el cuerpo vacío: así llegó el que dejó al
+                    // asistente sin recuperarse. Fiarse solo del texto del
+                    // mensaje no bastaba.
+                    return Promise.resolve(new Response('', { status: 404 }));
                 }
                 return Promise.resolve(new Response(JSON.stringify({
                     candidates: [{ content: { parts: [{ text: 'respuesta buena' }] } }]
@@ -677,24 +680,44 @@ async function main() {
             select.value = 'ESCRITO-EN-PANTALLA';
 
             const original = window.fetch;
-            let urlUsada = null;
-            window.fetch = (url) => {
+            let urlUsada = null, cabecerasUsadas = null;
+            window.fetch = (url, opciones) => {
                 urlUsada = url;
+                cabecerasUsadas = (opciones || {}).headers || {};
                 return Promise.resolve(new Response(JSON.stringify({
                     candidates: [{ content: { parts: [{ text: 'OK' }] } }]
                 }), { status: 200 }));
             };
             try { await probarIA(); } finally { window.fetch = original; }
 
-            return { urlUsada,
+            return { urlUsada, cabecerasUsadas,
                      key: await obtenerConfig('ia_api_key'),
                      modelo: await obtenerConfig('ia_modelo') };
         });
 
-        verificar('ia: probar usa lo escrito en pantalla',
-            /ESCRITO-EN-PANTALLA/.test(prueba.urlUsada) && /ESCRITA-EN-PANTALLA/.test(prueba.urlUsada),
-            prueba.urlUsada);
+        verificar('ia: probar usa el modelo escrito en pantalla',
+            /ESCRITO-EN-PANTALLA/.test(prueba.urlUsada), prueba.urlUsada);
+        igual('ia: y la clave escrita en pantalla',
+            prueba.cabecerasUsadas['x-goog-api-key'], 'ESCRITA-EN-PANTALLA');
         igual('ia: probar no pisa la clave guardada', prueba.key, 'LA-GUARDADA');
+
+        // Una clave rechazada tiene que decirse como lo que es, no como
+        // "modelo no encontrado": son dos problemas con arreglos distintos.
+        const claveMala = await page.evaluate(async () => {
+            const original = window.fetch;
+            window.fetch = () => Promise.resolve(new Response(JSON.stringify({
+                error: { message: 'ACCESS_TOKEN_TYPE_UNSUPPORTED' } }), { status: 401 }));
+            let mensaje = null;
+            try { await listarModelosIA('CLAVE-QUE-NO-VALE'); }
+            catch (e) { mensaje = e.message; }
+            finally { window.fetch = original; }
+            return mensaje;
+        });
+
+        verificar('ia: una clave rechazada dice que el problema es la clave',
+            /clave no fue aceptada/.test(claveMala || ''), claveMala);
+        verificar('ia: y dónde se saca una buena',
+            /aistudio\.google\.com/.test(claveMala || ''), claveMala);
         igual('ia: ni el modelo guardado', prueba.modelo, 'EL-GUARDADO');
 
         igual('la página no lanza errores de JavaScript', erroresPagina, []);
