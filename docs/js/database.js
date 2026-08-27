@@ -567,7 +567,7 @@ async function aplicarEliminacionesRemotas(eliminadosRemotos) {
             const clave = `evento|${titulo}|${fechaInicio}|${expedienteId}`;
 
             if (clavesEvento.has(clave)) {
-                if (!_borradoMandaSobre(clavesEvento.get(clave), evento)) {
+                if (!_borradoMandaSobre(clavesEvento.get(clave), ev)) {
                     rescatados++;
                     continue;   // se editó después de borrarlo: la edición manda
                 }
@@ -593,7 +593,7 @@ async function aplicarEliminacionesRemotas(eliminadosRemotos) {
             const clave = `pendiente|${expedienteId}|${titulo}|${fecha}`;
 
             if (clavesPendiente.has(clave)) {
-                if (!_borradoMandaSobre(clavesPendiente.get(clave), pendiente)) {
+                if (!_borradoMandaSobre(clavesPendiente.get(clave), p)) {
                     rescatados++;
                     continue;   // se editó después de borrarlo: la edición manda
                 }

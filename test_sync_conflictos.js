@@ -94,6 +94,54 @@ function crearEntorno() {
     return { sandbox, almacen, correr: (expr) => vm.runInContext(expr, sandbox) };
 }
 
+// Entorno para ejecutar aplicarEliminacionesRemotas tal cual está: hace falta
+// una base falsa, porque las reglas de rescate se leen bien y aun así pueden
+// estar llamándose con una variable que no existe.
+function crearEntornoBorrados(datos) {
+    const borrados = { expedientes: [], notas: [], eventos: [], pendientes: [] };
+    const guardados = [];
+
+    const almacenPorNombre = {
+        expedientes: borrados.expedientes, notas: borrados.notas,
+        eventos: borrados.eventos, pendientes: borrados.pendientes
+    };
+
+    const sandbox = {
+        console: { log: () => {}, warn: () => {}, error: () => {} },
+        // IndexedDB mínima: solo se usa para borrar, y la petición responde en
+        // un microtask porque el código asigna onsuccess DESPUÉS de pedirla.
+        db: {
+            transaction: () => ({
+                objectStore: (nombre) => ({
+                    delete: (id) => {
+                        const req = {};
+                        Promise.resolve().then(() => {
+                            almacenPorNombre[nombre].push(id);
+                            if (req.onsuccess) req.onsuccess();
+                        });
+                        return req;
+                    }
+                })
+            })
+        },
+        obtenerExpedientes: async () => (datos.expedientes || []).slice(),
+        obtenerNotas: async () => (datos.notas || []).slice(),
+        obtenerEventos: async () => (datos.eventos || []).slice(),
+        obtenerPendientes: async () => (datos.pendientes || []).slice(),
+        agregarEliminados: async (lista) => { guardados.push(...lista); }
+    };
+    sandbox.window = sandbox;
+    vm.createContext(sandbox);
+
+    const fuenteDB = fs.readFileSync(DB, 'utf8');
+    for (const n of ['ultimaEdicionDe', '_borradoMandaSobre', 'aplicarEliminacionesRemotas']) {
+        vm.runInContext(extraerDeclaracion(fuenteDB, n, 'database.js'), sandbox,
+            { filename: `database.js:${n}` });
+    }
+
+    return { sandbox, borrados, guardados };
+}
+
 // ==================== UTILIDADES DE PRUEBA ====================
 
 let pasadas = 0, fallidas = 0;
@@ -111,6 +159,7 @@ function igual(descripcion, real, esperado) {
 
 // Una excepción no debe tumbar la ejecución: se anota y se sigue, para ver el
 // alcance real en vez de solo el primer tropiezo.
+(async () => {
 try {
 
 // ---------- 1. Relojes que no coinciden ----------
@@ -291,6 +340,72 @@ try {
         JSON.stringify(r2.comentario));
 }
 
+// ---------- 6. Aplicar borrados remotos, de los cuatro tipos ----------
+// Las reglas anteriores se prueban sueltas; esto ejecuta la función que las
+// usa. Sin esta prueba, un borrado remoto de un evento reventaba con
+// "evento is not defined" y se llevaba por delante la sincronización entera:
+// lo que venía del otro dispositivo no llegaba a aplicarse nunca.
+{
+    const registros = {
+        expedientes: [{
+            id: 1, numero: '123/2025', nombre: '', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN',
+            fechaCreacion: '2026-08-01T10:00:00.000Z', fechaActualizacion: '2026-08-10T10:00:00.000Z'
+        }],
+        notas: [{
+            id: 2, contenido: 'Recordar el plazo', expedienteId: 1,
+            fechaCreacion: '2026-08-01T10:00:00.000Z', fechaActualizacion: '2026-08-10T10:00:00.000Z'
+        }],
+        eventos: [{
+            id: 3, titulo: 'Audiencia', fechaInicio: '2026-09-01T09:00:00.000Z', expedienteId: 1,
+            fechaCreacion: '2026-08-01T10:00:00.000Z', fechaActualizacion: '2026-08-10T10:00:00.000Z'
+        }],
+        pendientes: [{
+            id: 4, titulo: 'Contestar', expedienteId: 1,
+            fechaCreacion: '2026-08-01T10:00:00.000Z', fechaActualizacion: '2026-08-10T10:00:00.000Z'
+        }]
+    };
+
+    const lapidas = (fecha) => [
+        { tipo: 'expediente', clave: 'exp|123/2025||juzgado primero civil cancun', fecha },
+        { tipo: 'nota', clave: 'nota|1|recordar el plazo|2026-08-01', fecha },
+        { tipo: 'evento', clave: 'evento|audiencia|2026-09-01T09:00:00.000Z|1', fecha },
+        { tipo: 'pendiente', clave: 'pendiente|1|contestar|2026-08-01', fecha }
+    ];
+
+    // --- Borrado POSTERIOR a la última edición: se aplica en los cuatro ---
+    const posterior = crearEntornoBorrados(registros);
+    const cuantos = await posterior.sandbox.aplicarEliminacionesRemotas(
+        lapidas('2026-08-20T09:00:00.000Z'));
+
+    igual('borrados: se aplican los cuatro tipos', cuantos, 4);
+    igual('borrados: cae el expediente', posterior.borrados.expedientes, [1]);
+    igual('borrados: cae la nota', posterior.borrados.notas, [2]);
+    igual('borrados: cae el evento', posterior.borrados.eventos, [3]);
+    igual('borrados: cae el pendiente', posterior.borrados.pendientes, [4]);
+    igual('borrados: la lápida se guarda para no resucitarlos',
+        posterior.guardados.length, 4);
+
+    // --- Borrado ANTERIOR a la última edición: se rescatan los cuatro ---
+    const anterior = crearEntornoBorrados(registros);
+    const ninguno = await anterior.sandbox.aplicarEliminacionesRemotas(
+        lapidas('2026-08-05T09:00:00.000Z'));
+
+    igual('rescate: no se borra nada', ninguno, 0);
+    igual('rescate: sobrevive el expediente', anterior.borrados.expedientes, []);
+    igual('rescate: sobrevive la nota', anterior.borrados.notas, []);
+    igual('rescate: sobrevive el evento', anterior.borrados.eventos, []);
+    igual('rescate: sobrevive el pendiente', anterior.borrados.pendientes, []);
+
+    // --- Una lápida que no coincide con nada no toca nada ---
+    const ajena = crearEntornoBorrados(registros);
+    igual('borrados: una lápida de otro registro no se lleva nada por delante',
+        await ajena.sandbox.aplicarEliminacionesRemotas([
+            { tipo: 'evento', clave: 'evento|otra cosa|2026-09-01T09:00:00.000Z|1',
+              fecha: '2026-08-20T09:00:00.000Z' }
+        ]), 0);
+    igual('borrados: y el evento propio sigue ahí', ajena.borrados.eventos, []);
+}
+
 } catch (e) {
     fallidas++;
     fallos.push('la prueba reventó — ' + e.message + '\n' + (e.stack || ''));
@@ -304,3 +419,4 @@ if (fallidas > 0) {
     process.exit(1);
 }
 console.log('✓ Una edición más nueva no la pisa ninguna más antigua.');
+})();
