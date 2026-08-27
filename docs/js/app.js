@@ -733,6 +733,18 @@ async function cargarCarpetasUI() {
         if (prev) ftPJF.value = prev;
     }
 
+    // Filtro de carpetas en Pendientes. Aquí "sin carpeta" no es una categoría
+    // más sino el trabajo por hacer —expedientes a los que falta etiquetarlos—,
+    // así que se nombra distinto que en el listado de expedientes.
+    const ftPend = document.getElementById('filtro-carpeta-pendiente');
+    if (ftPend) {
+        const prev = ftPend.value;
+        ftPend.innerHTML = '<option value="">Todas las carpetas</option>' +
+            '<option value="__sin__">⚠️ Expediente sin carpeta</option>' +
+            activas.map(c => `<option value="${c.id}">📁 ${escapeText(c.nombre)}</option>`).join('');
+        if (prev) ftPend.value = prev;
+    }
+
     // Select en el formulario de crear/editar expediente
     const formSelect = document.getElementById('expediente-carpeta');
     if (formSelect) {
@@ -1998,6 +2010,32 @@ function _nombreExpedientePendiente(pendiente) {
     return exp ? (exp.numero || exp.nombre || 'Expediente') : 'Expediente eliminado';
 }
 
+// ==================== PENDIENTES: CARPETA (ETIQUETA DE GESTIÓN) ====================
+// La carpeta es la etiqueta con la que se gestionan los expedientes de un mismo
+// caso. El pendiente no guarda una copia: la lee de su expediente, porque dos
+// copias acabarían contradiciéndose en cuanto una de las dos se moviera.
+
+// Carpeta del expediente al que cuelga el pendiente. null si no cuelga de
+// ninguno, si el expediente ya no está, si aún no tiene carpeta, o si la que
+// tiene apuntada ya se borró.
+function _carpetaDePendiente(pendiente) {
+    const exp = _expedienteDePendiente(pendiente);
+    if (!exp || exp.carpetaId == null) return null;
+    return (typeof obtenerCarpetasDeCache === 'function'
+        ? obtenerCarpetasDeCache() : []).find(c => c.id === exp.carpetaId) || null;
+}
+
+// Solo se exige carpeta cuando el pendiente cuelga de un expediente registrado
+// y localizable: en uno general o de referencia libre no hay expediente donde
+// guardarla, y si el expediente ya no está no se puede saber si le falta.
+function pendienteExigeCarpeta(pendiente) {
+    return !!(pendiente && pendiente.expedienteId != null && _expedienteDePendiente(pendiente));
+}
+
+function pendienteSinCarpeta(pendiente) {
+    return pendienteExigeCarpeta(pendiente) && !_carpetaDePendiente(pendiente);
+}
+
 // Todo el texto por el que se puede encontrar un expediente: número, nombre,
 // juzgado, partes, categoría, comentario y su carpeta.
 function textoBuscableExpediente(exp) {
@@ -2099,6 +2137,23 @@ function _chipPrioridadHTML(pendiente) {
                     title="Cambiar prioridad">${texto}</button>`;
 }
 
+// Etiqueta de carpeta del pendiente. Cuando el expediente no tiene ninguna, el
+// chip es el botón para ponérsela: así el hueco se ve y se arregla desde la
+// misma lista, sin tener que abrir el expediente.
+function _chipCarpetaPendienteHTML(p) {
+    if (!p || !pendienteExigeCarpeta(p)) return '';
+
+    const carpeta = _carpetaDePendiente(p);
+    if (carpeta) {
+        const color = colorCarpeta(carpeta);   // sanitizado a #RRGGBB
+        return `<span class="pendiente-carpeta" style="background:${color}22; border-color:${color}; color:${color};"
+                      title="Carpeta del expediente">🗂️ ${escapeText(carpeta.nombre || 'Carpeta')}</span>`;
+    }
+    return `<button type="button" class="pendiente-carpeta sin-carpeta"
+                    onclick="asignarCarpetaDesdePendiente(${p.id}, event)"
+                    title="El expediente de este pendiente no está en ninguna carpeta. Ponle una.">🗂️ Sin carpeta</button>`;
+}
+
 function _pendienteItemHTML(p, mostrarExpediente) {
     const venc = _etiquetaVencimientoPendiente(p);
     const vencido = venc.clase === 'vencido' && !p.completado;
@@ -2120,6 +2175,7 @@ function _pendienteItemHTML(p, mostrarExpediente) {
                 <div class="pendiente-meta">
                     ${_chipPrioridadHTML(p)}
                     ${mostrarExpediente ? `<span class="pendiente-expediente">📁 ${escapeText(_nombreExpedientePendiente(p))}</span>` : ''}
+                    ${mostrarExpediente ? _chipCarpetaPendienteHTML(p) : ''}
                     ${venc.texto ? `<span class="pendiente-fecha ${venc.clase}">📅 ${escapeText(venc.texto)}</span>` : ''}
                     ${p.completado && p.fechaCompletado ? `<span class="pendiente-hecho">✔️ ${formatearFecha(p.fechaCompletado)}</span>` : ''}
                 </div>
@@ -2163,11 +2219,18 @@ function renderizarPendientes() {
     const filtroExp = document.getElementById('filtro-expediente-pendiente')?.value || '';
     const estado = document.getElementById('filtro-estado-pendiente')?.value || 'abiertos';
     const filtroPrioridad = document.getElementById('filtro-prioridad-pendiente')?.value || '';
+    const filtroCarpeta = document.getElementById('filtro-carpeta-pendiente')?.value || '';
 
     const visibles = pendientesCache.filter(p => {
         if (estado === 'abiertos' && p.completado) return false;
         if (estado === 'completados' && !p.completado) return false;
         if (filtroExp && String(p.expedienteId ?? '') !== filtroExp) return false;
+        if (filtroCarpeta === '__sin__') {
+            if (!pendienteSinCarpeta(p)) return false;
+        } else if (filtroCarpeta) {
+            const carpeta = _carpetaDePendiente(p);
+            if (!carpeta || String(carpeta.id) !== filtroCarpeta) return false;
+        }
         if (filtroPrioridad === '__sin__') {
             if (PRIORIDADES_PENDIENTE[p.prioridad]) return false;
         } else if (filtroPrioridad && p.prioridad !== filtroPrioridad) {
@@ -2186,8 +2249,10 @@ function renderizarPendientes() {
 
     if (count) {
         const vencidos = visibles.filter(p => !p.completado && (diasParaPendiente(p) ?? 1) < 0).length;
+        const sinCarpeta = visibles.filter(p => !p.completado && pendienteSinCarpeta(p)).length;
         count.textContent = `${visibles.length} pendiente${visibles.length !== 1 ? 's' : ''}` +
-            (vencidos > 0 ? ` · ${vencidos} vencido${vencidos !== 1 ? 's' : ''}` : '');
+            (vencidos > 0 ? ` · ${vencidos} vencido${vencidos !== 1 ? 's' : ''}` : '') +
+            (sinCarpeta > 0 ? ` · ${sinCarpeta} sin carpeta` : '');
     }
 
     if (visibles.length === 0) {
@@ -2221,6 +2286,7 @@ function renderizarPendientes() {
                     📁 ${escapeText(g.titulo)}
                     ${g.subtitulo ? `<small>${escapeText(g.subtitulo)}</small>` : ''}
                 </div>
+                ${_chipCarpetaPendienteHTML(g.items[0])}
                 <span class="pendiente-grupo-conteo">${g.abiertos > 0 ? `${g.abiertos} por hacer` : 'al día'}${g.ocultos > 0 ? ` · ${g.ocultos} fuera del filtro` : ''}</span>
                 ${g.expedienteId != null ? `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation(); mostrarFormularioPendiente(null, ${g.expedienteId})" title="Agregar pendiente a este expediente">➕</button>` : ''}
             </div>
@@ -2357,6 +2423,8 @@ function seleccionarComboExpediente(valor) {
         const libre = document.getElementById('pendiente-expediente-custom');
         if (libre) libre.focus();
     }
+
+    sincronizarCarpetaPendiente(valor);
 }
 
 // Traduce lo que quedó escrito en el combo a una opción concreta. Se llama al
@@ -2568,12 +2636,189 @@ async function quitarFechaPendiente(id) {
     }
 }
 
+// ==================== PENDIENTES: SELECTOR DE CARPETA ====================
+// Lo comparten el formulario del pendiente y el atajo desde la lista. Los ids
+// se pasan como parámetro para que ambos usen la misma lógica sin chocar si los
+// dos llegaran a estar en pantalla.
+
+// La opción vacía solo aparece cuando el expediente todavía no tiene carpeta:
+// una vez puesta, ofrecer "sin carpeta" sería deshacer justo lo que este
+// formulario obliga a hacer. Para eso está la gestión de carpetas.
+function _opcionesCarpetaHTML(carpetaActual) {
+    const activas = (typeof obtenerCarpetasDeCache === 'function' ? obtenerCarpetasDeCache() : [])
+        .filter(c => !c.archivada)
+        .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+    const yaTiene = carpetaActual != null && activas.some(c => c.id === carpetaActual);
+
+    return (yaTiene ? '' : '<option value="">— Elige una carpeta —</option>') +
+        activas.map(c =>
+            `<option value="${c.id}"${c.id === carpetaActual ? ' selected' : ''}>📁 ${escapeText(c.nombre)}</option>`
+        ).join('') +
+        '<option value="__nueva__">➕ Crear carpeta nueva…</option>';
+}
+
+// Muestra u oculta los campos de la carpeta nueva según lo elegido.
+function alternarCarpetaNueva(idSelect, idGrupoNueva, idNueva) {
+    const select = document.getElementById(idSelect);
+    const grupo = document.getElementById(idGrupoNueva);
+    if (!select || !grupo) return;
+    const creando = select.value === '__nueva__';
+    grupo.style.display = creando ? 'block' : 'none';
+    if (creando) document.getElementById(idNueva)?.focus();
+}
+
+// Campos de un selector de carpeta, listos para insertar en cualquier modal.
+function _camposCarpetaHTML(idSelect, carpetaActual) {
+    const idGrupoNueva = idSelect + '-nueva-group';
+    const idNueva = idSelect + '-nueva';
+    const idColor = idSelect + '-nueva-color';
+    return `
+        <select id="${idSelect}" class="form-control"
+                onchange="alternarCarpetaNueva('${idSelect}', '${idGrupoNueva}', '${idNueva}')">${_opcionesCarpetaHTML(carpetaActual)}</select>
+        <div id="${idGrupoNueva}" style="display:none; margin-top:0.5rem;">
+            <div style="display:flex; gap:0.5rem; align-items:center;">
+                <input type="text" id="${idNueva}" class="form-control" style="flex:1;"
+                       placeholder="Nombre de la carpeta. Ej. Caso Pérez vs IMSS">
+                <input type="color" id="${idColor}" value="#3b82f6" title="Color de la carpeta"
+                       style="width:48px; height:38px; border:1px solid #ccc; border-radius:4px; padding:2px; cursor:pointer;">
+            </div>
+        </div>`;
+}
+
+// Traduce lo elegido a algo aplicable:
+//   { ok:true, carpetaId }        una carpeta que ya existe
+//   { ok:true, crear:{...} }      hay que crearla
+//   { ok:false, mensaje, foco }   falta decidir
+function _leerCarpetaElegida(idSelect) {
+    const select = document.getElementById(idSelect);
+    if (!select) return { ok: true };
+
+    if (select.value === '__nueva__') {
+        const idNueva = idSelect + '-nueva';
+        const nombre = document.getElementById(idNueva)?.value?.trim() || '';
+        if (!nombre) {
+            return { ok: false, mensaje: 'Escribe el nombre de la carpeta nueva', foco: idNueva };
+        }
+        // Si ya hay una carpeta con ese nombre se reutiliza en vez de rechazar:
+        // crear la duplicada sería peor, porque el sync acabaría fusionándolas
+        // y perdiendo el color o el comentario de una de las dos.
+        const clave = _claveNombreCarpetaLocal(nombre);
+        const existente = (typeof obtenerCarpetasDeCache === 'function' ? obtenerCarpetasDeCache() : [])
+            .find(c => _claveNombreCarpetaLocal(c.nombre) === clave);
+        if (existente) return { ok: true, carpetaId: existente.id };
+
+        const color = document.getElementById(idSelect + '-nueva-color')?.value || '#3b82f6';
+        return { ok: true, crear: { nombre, color } };
+    }
+
+    if (select.value === '') {
+        return {
+            ok: false,
+            foco: idSelect,
+            mensaje: 'Este expediente todavía no tiene carpeta. Elige una o crea una nueva para poder guardarlo.'
+        };
+    }
+    return { ok: true, carpetaId: parseInt(select.value, 10) };
+}
+
+// Crea la carpeta si hacía falta y la pone en el expediente. Devuelve el id de
+// la carpeta aplicada, o null si no había nada que aplicar.
+async function _aplicarCarpetaAExpediente(expedienteId, eleccion, carpetaActual) {
+    let carpetaId = eleccion.carpetaId;
+    if (eleccion.crear) {
+        carpetaId = await agregarCarpeta({
+            nombre: eleccion.crear.nombre, color: eleccion.crear.color, comentario: ''
+        });
+    }
+    if (carpetaId == null) return null;
+    if (carpetaId !== carpetaActual) {
+        await actualizarExpedienteCore(expedienteId, { carpetaId });
+    }
+    return carpetaId;
+}
+
+// El refresco del núcleo no toca el caché de carpetas, así que una carpeta
+// recién creada no saldría en los distintivos hasta recargar la página.
+async function _refrescarTrasCambioDeCarpeta() {
+    if (typeof cargarCarpetasUI === 'function') await cargarCarpetasUI();
+    if (typeof cargarPendientes === 'function') await cargarPendientes();
+    if (typeof cargarExpedientes === 'function') await cargarExpedientes();
+    if (typeof cargarExpedientesPJF === 'function') await cargarExpedientesPJF();
+}
+
+// ==================== PENDIENTES: ATAJO PARA ETIQUETAR ====================
+// Desde la lista, la etiqueta "Sin carpeta" abre esto: poner la carpeta que
+// falta sin tener que volver a guardar el pendiente entero.
+
+async function asignarCarpetaDesdePendiente(pendienteId, event) {
+    if (event) event.stopPropagation();
+
+    if (typeof refrescarCarpetasCache === 'function') {
+        await refrescarCarpetasCache().catch(() => {});
+    }
+    const pendiente = pendientesCache.find(x => x.id === pendienteId);
+    const exp = pendiente ? _expedienteDePendiente(pendiente) : null;
+    if (!exp) {
+        mostrarToast('El expediente de este pendiente ya no está disponible', 'warning');
+        return;
+    }
+
+    document.getElementById('modal-titulo').textContent = '🗂️ Carpeta del expediente';
+    document.getElementById('modal-body').innerHTML = `
+        <div style="padding:10px 0;">
+            <p style="margin:0 0 0.75rem; color:var(--text-secondary);">
+                <strong>${escapeText(exp.numero || exp.nombre || 'Expediente')}</strong> no está en ninguna carpeta.
+                Ponle una para que este pendiente y los demás del mismo caso queden agrupados.
+            </p>
+            <div class="form-group">
+                <label for="asignar-carpeta">Carpeta</label>
+                ${_camposCarpetaHTML('asignar-carpeta', exp.carpetaId != null ? exp.carpetaId : null)}
+            </div>
+        </div>`;
+    document.getElementById('modal-footer').innerHTML = `
+        <button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarCarpetaDesdePendiente(${exp.id})">💾 Guardar</button>`;
+    abrirModal();
+    setTimeout(() => document.getElementById('asignar-carpeta')?.focus(), 60);
+}
+
+async function guardarCarpetaDesdePendiente(expedienteId) {
+    const exp = expedientesCachePendientes.find(e => e.id === expedienteId);
+    if (!exp) {
+        mostrarToast('El expediente ya no está disponible', 'error');
+        return;
+    }
+
+    const eleccion = _leerCarpetaElegida('asignar-carpeta');
+    if (!eleccion.ok) {
+        mostrarToast(eleccion.mensaje, 'error');
+        document.getElementById(eleccion.foco)?.focus();
+        return;
+    }
+
+    try {
+        await enLoteCore(async () => {
+            await _aplicarCarpetaAExpediente(expedienteId, eleccion, exp.carpetaId != null ? exp.carpetaId : null);
+        });
+        await _refrescarTrasCambioDeCarpeta();
+        mostrarToast('Carpeta asignada al expediente', 'success');
+        cerrarModal();
+    } catch (error) {
+        mostrarToast('Error: ' + error.message, 'error');
+    }
+}
+
 // ==================== PENDIENTES: FORMULARIO ====================
 
 async function mostrarFormularioPendiente(id = null, expedienteIdPrefijado = null) {
     const pendiente = id ? await obtenerPendiente(id) : null;
     // Se relee por si la caché quedó atrás respecto a un expediente recién creado.
     expedientesCachePendientes = await obtenerExpedientes().catch(() => expedientesCachePendientes);
+    // Y las carpetas, porque de ellas sale la lista que hay que ofrecer y el
+    // saber si al expediente le falta una.
+    if (typeof refrescarCarpetasCache === 'function') {
+        await refrescarCarpetasCache().catch(() => {});
+    }
     comboExpedienteOpciones = _opcionesComboExpediente();
 
     const expedienteSel = pendiente
@@ -2631,6 +2876,11 @@ async function mostrarFormularioPendiente(id = null, expedienteIdPrefijado = nul
                 <input type="text" id="pendiente-expediente-custom" placeholder="Ej: 123/2025, Reunión cliente, etc."
                        value="${pendiente ? escapeText(pendiente.expedienteTexto || '') : ''}">
             </div>
+            <div class="form-group" id="pendiente-carpeta-group" style="display:none;">
+                <label for="pendiente-carpeta">Carpeta del expediente<span id="pendiente-carpeta-obligatoria" style="display:none;"> *</span></label>
+                <div id="pendiente-carpeta-campos"></div>
+                <small class="form-hint" id="pendiente-carpeta-hint"></small>
+            </div>
             <div class="form-group">
                 <label for="pendiente-titulo">¿Qué hay que hacer? *</label>
                 <input type="text" id="pendiente-titulo" placeholder="Ej: Presentar contestación de demanda" required
@@ -2658,6 +2908,9 @@ async function mostrarFormularioPendiente(id = null, expedienteIdPrefijado = nul
         <button class="btn btn-primary" onclick="document.getElementById('pendiente-form').requestSubmit()">💾 Guardar</button>
     `;
 
+    // La carpeta depende del expediente elegido, así que se pinta aparte.
+    sincronizarCarpetaPendiente(expedienteHuerfano ? '' : expedienteSel);
+
     abrirModal();
     // Si ya se sabe el expediente (se edita, o se creó desde su grupo), el
     // cursor va a lo que falta escribir; si no, al buscador de expediente.
@@ -2666,6 +2919,60 @@ async function mostrarFormularioPendiente(id = null, expedienteIdPrefijado = nul
         const foco = document.getElementById(yaHayExpediente ? 'pendiente-titulo' : 'pendiente-exp-buscar');
         if (foco) foco.focus();
     }, 60);
+}
+
+// Pone el campo de carpeta al día con el expediente elegido. Se llama al abrir
+// el formulario, al cambiar de expediente y al guardar —porque el expediente
+// también puede resolverse a partir de lo escrito, sin pasar por la lista—.
+// Devuelve el expediente al que quedó apuntando, o null si no hay ninguno:
+// ese null es justo el caso que no debe exigir carpeta.
+function sincronizarCarpetaPendiente(valorExpediente) {
+    const grupo = document.getElementById('pendiente-carpeta-group');
+    const campos = document.getElementById('pendiente-carpeta-campos');
+    if (!grupo || !campos) return null;
+
+    const valor = valorExpediente !== undefined && valorExpediente !== null
+        ? String(valorExpediente)
+        : (document.getElementById('pendiente-expediente')?.value || '');
+
+    // General ('') o referencia libre ('__custom__'): no hay expediente donde
+    // guardar la carpeta, así que ni se muestra ni se exige.
+    const expedienteId = /^\d+$/.test(valor) ? parseInt(valor, 10) : null;
+    const exp = expedienteId != null
+        ? expedientesCachePendientes.find(e => e.id === expedienteId)
+        : null;
+
+    if (!exp) {
+        grupo.style.display = 'none';
+        grupo.dataset.expediente = '';
+        return null;
+    }
+
+    const carpetaActual = exp.carpetaId != null ? exp.carpetaId : null;
+    // Solo se repuebla al cambiar de expediente: repintarlo en cada llamada
+    // borraría el nombre de la carpeta nueva que el usuario está escribiendo.
+    if (grupo.dataset.expediente !== String(expedienteId)) {
+        grupo.dataset.expediente = String(expedienteId);
+        campos.innerHTML = _camposCarpetaHTML('pendiente-carpeta', carpetaActual);
+    }
+    grupo.style.display = 'block';
+
+    // Una carpeta borrada deja el expediente apuntando a la nada: cuenta como
+    // que le falta, para que se vuelva a elegir en vez de arrastrar el hueco.
+    const falta = !(typeof obtenerCarpetasDeCache === 'function' ? obtenerCarpetasDeCache() : [])
+        .some(c => c.id === carpetaActual);
+
+    const asterisco = document.getElementById('pendiente-carpeta-obligatoria');
+    if (asterisco) asterisco.style.display = falta ? '' : 'none';
+
+    const hint = document.getElementById('pendiente-carpeta-hint');
+    if (hint) {
+        hint.className = falta ? 'form-hint aviso' : 'form-hint';
+        hint.textContent = falta
+            ? 'Este expediente todavía no está en ninguna carpeta. Elige una o crea una nueva: sin ella no se guarda el pendiente.'
+            : 'Es la carpeta del expediente. Si la cambias aquí, se mueve el expediente completo.';
+    }
+    return exp;
 }
 
 async function guardarPendiente(event) {
@@ -2707,6 +3014,22 @@ async function guardarPendiente(event) {
         expedienteId = parseInt(expedienteSelect);
     }
 
+    // La carpeta es la etiqueta con la que se gestionan los expedientes: un
+    // pendiente que cuelga de uno sin carpeta la exige aquí mismo, para que no
+    // queden casos sueltos. Uno general o de referencia libre no la pide: no
+    // hay expediente al que ponérsela. El expediente pudo resolverse a partir
+    // de lo escrito, así que primero se reajusta el campo al que quedó.
+    const expDeCarpeta = sincronizarCarpetaPendiente(expedienteId != null ? String(expedienteId) : '');
+    let eleccionCarpeta = null;
+    if (expDeCarpeta) {
+        eleccionCarpeta = _leerCarpetaElegida('pendiente-carpeta');
+        if (!eleccionCarpeta.ok) {
+            mostrarToast(eleccionCarpeta.mensaje, 'error');
+            document.getElementById(eleccionCarpeta.foco)?.focus();
+            return;
+        }
+    }
+
     const datos = {
         titulo,
         descripcion,
@@ -2717,13 +3040,23 @@ async function guardarPendiente(event) {
     };
 
     try {
-        if (id) {
-            await actualizarPendienteCore(parseInt(id), datos);
-            mostrarToast('Pendiente actualizado', 'success');
-        } else {
-            await crearPendienteCore(datos);
-            mostrarToast(datos.fechaLimite ? 'Pendiente creado y agendado' : 'Pendiente creado', 'success');
-        }
+        // Carpeta y pendiente van en el mismo lote: son un solo acto del
+        // usuario y deben subir a la nube y repintar una sola vez.
+        await enLoteCore(async () => {
+            if (expDeCarpeta) {
+                await _aplicarCarpetaAExpediente(
+                    expDeCarpeta.id, eleccionCarpeta,
+                    expDeCarpeta.carpetaId != null ? expDeCarpeta.carpetaId : null);
+            }
+            if (id) await actualizarPendienteCore(parseInt(id), datos);
+            else await crearPendienteCore(datos);
+        });
+        if (expDeCarpeta) await _refrescarTrasCambioDeCarpeta();
+
+        mostrarToast(
+            id ? 'Pendiente actualizado'
+               : (datos.fechaLimite ? 'Pendiente creado y agendado' : 'Pendiente creado'),
+            'success');
         cerrarModal();
     } catch (error) {
         mostrarToast('Error: ' + error.message, 'error');

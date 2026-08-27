@@ -4518,6 +4518,41 @@ textarea:focus {
 [data-theme="dark"] .pendiente-prioridad.prioridad-media { color: #ffd54f; }
 [data-theme="dark"] .pendiente-prioridad.prioridad-baja  { color: #90caf9; }
 
+/* Etiqueta de carpeta del pendiente. El color lo pone el inline style de la
+   carpeta; cuando falta, .sin-carpeta avisa y es el botón para ponerla. */
+.pendiente-carpeta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.05rem 0.45rem;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    max-width: 16rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+button.pendiente-carpeta { cursor: pointer; }
+
+.pendiente-carpeta.sin-carpeta {
+    background: rgba(230, 81, 0, 0.12);
+    border-color: rgba(230, 81, 0, 0.45);
+    color: #e65100;
+    border-style: dashed;
+}
+
+.pendiente-carpeta.sin-carpeta:hover {
+    background: rgba(230, 81, 0, 0.22);
+}
+
+[data-theme="dark"] .pendiente-carpeta.sin-carpeta { color: #ffb74d; }
+
+/* En el encabezado del grupo la etiqueta no debe empujar al conteo. */
+.pendiente-grupo-header .pendiente-carpeta { flex-shrink: 0; }
+
 /* Grupos por expediente */
 .pendiente-grupo {
     border: 1px solid var(--border-color);

@@ -700,6 +700,10 @@
                     <option value="baja">🔵 Baja</option>
                     <option value="__sin__">Sin prioridad</option>
                 </select>
+                <select id="filtro-carpeta-pendiente" onchange="renderizarPendientes()"
+                        title="Filtrar por la carpeta del expediente">
+                    <option value="">Todas las carpetas</option>
+                </select>
                 <label class="filtro-toggle" title="Agrupar los pendientes por expediente">
                     <input type="checkbox" id="agrupar-pendientes" checked onchange="toggleAgrupacionPendientes()">
                     <span>Agrupar por expediente</span>

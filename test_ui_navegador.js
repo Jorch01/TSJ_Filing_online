@@ -314,6 +314,73 @@ async function main() {
         verificar('selección: los eventos de los borrados se van con ellos',
             await page.evaluate(async () => (await obtenerEventos()).length) <= eventosAntes);
 
+        // ---- La carpeta del expediente se exige desde el pendiente ----
+        // El campo de carpeta se pinta al vuelo según el expediente elegido:
+        // con el DOM simulado de las pruebas de Node eso no se ve, y un
+        // selector que no llegue a existir pasaría por "no hace falta carpeta".
+        const expSinCarpeta = await page.evaluate(async () =>
+            (await obtenerExpedientes()).find(e => e.numero === '9/2025').id);
+
+        await page.evaluate(() => navegarA('pendientes'));
+        await page.waitForTimeout(600);
+        igual('carpeta: el pendiente de un expediente sin carpeta lo avisa',
+            await page.locator('.pendiente-carpeta.sin-carpeta').count() > 0, true);
+
+        await page.evaluate((id) => mostrarFormularioPendiente(null, id), expSinCarpeta);
+        await page.waitForTimeout(500);
+
+        igual('carpeta: el campo aparece al haber expediente',
+            await page.locator('#pendiente-carpeta-group').isVisible(), true);
+        igual('carpeta: se marca obligatoria',
+            (await page.locator('#pendiente-carpeta-obligatoria').textContent()).trim(), '*');
+
+        await page.fill('#pendiente-titulo', 'Presentar promoción');
+        await page.click('#modal-footer .btn-primary');
+        await page.waitForTimeout(700);
+
+        igual('carpeta: sin elegirla no se guarda el pendiente',
+            await page.evaluate(async () => (await obtenerPendientes()).length), 1);
+        igual('carpeta: el formulario sigue abierto para arreglarlo',
+            await page.locator('#pendiente-carpeta-group').isVisible(), true);
+
+        await page.selectOption('#pendiente-carpeta', '__nueva__');
+        await page.waitForTimeout(300);
+        igual('carpeta: "crear nueva" abre su campo',
+            await page.locator('#pendiente-carpeta-nueva').isVisible(), true);
+        await page.fill('#pendiente-carpeta-nueva', 'Caso desde el pendiente');
+        await page.click('#modal-footer .btn-primary');
+        await page.waitForTimeout(1200);
+
+        const trasCarpeta = await page.evaluate(async (id) => ({
+            pendientes: (await obtenerPendientes()).length,
+            carpetas: (await obtenerCarpetas()).map(c => c.nombre),
+            carpetaDelExpediente: (await obtenerExpediente(id)).carpetaId
+        }), expSinCarpeta);
+
+        igual('carpeta: con ella puesta, el pendiente se guarda', trasCarpeta.pendientes, 2);
+        verificar('carpeta: la carpeta nueva se crea',
+            trasCarpeta.carpetas.includes('Caso desde el pendiente'), JSON.stringify(trasCarpeta.carpetas));
+        verificar('carpeta: el expediente queda etiquetado',
+            trasCarpeta.carpetaDelExpediente != null, JSON.stringify(trasCarpeta));
+
+        await page.waitForTimeout(400);
+        igual('carpeta: ya no queda ningún aviso de "sin carpeta"',
+            await page.locator('.pendiente-carpeta.sin-carpeta').count(), 0);
+        igual('carpeta: la etiqueta se ve en la lista',
+            await page.locator('.pendiente-carpeta:has-text("Caso desde el pendiente")').count() > 0, true);
+
+        // Un pendiente general no tiene expediente al que ponerle carpeta, así
+        // que no debe pedirla: es la mitad de la regla que se olvida.
+        await page.evaluate(() => mostrarFormularioPendiente());
+        await page.waitForTimeout(500);
+        igual('carpeta: un pendiente general no la pide',
+            await page.locator('#pendiente-carpeta-group').isVisible(), false);
+        await page.fill('#pendiente-titulo', 'Llamar al cliente');
+        await page.click('#modal-footer .btn-primary');
+        await page.waitForTimeout(1000);
+        igual('carpeta: el pendiente general se guarda sin ella',
+            await page.evaluate(async () => (await obtenerPendientes()).length), 3);
+
         // ---- Anuncio de edictos ----
         // El sanitizador de anuncios convierte en "#" todo lo que no empiece
         // por http, así que un enlace mal formado se pierde en silencio.
@@ -808,7 +875,7 @@ async function main() {
         fallos.forEach(f => console.log('  ✗ ' + f));
         process.exit(1);
     }
-    console.log('✓ El botón de template descarga y el tooltip no lo tapa, en TSJ y en PJF.');
+    console.log('✓ La interfaz responde: template, pendientes y carpetas se comportan en un navegador de verdad.');
 }
 
 main().catch(e => { console.error(e); process.exit(1); });
