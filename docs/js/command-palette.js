@@ -88,18 +88,22 @@
 
     // Load data fresh
     try {
-      const [expedientes, notas, eventos, pendientes] = await Promise.all([
+      const [expedientes, notas, eventos, pendientes, carpetas] = await Promise.all([
         (typeof obtenerExpedientes === 'function') ? obtenerExpedientes() : Promise.resolve([]),
         (typeof obtenerNotas       === 'function') ? obtenerNotas()       : Promise.resolve([]),
         (typeof obtenerEventos     === 'function') ? obtenerEventos()     : Promise.resolve([]),
         (typeof obtenerPendientes  === 'function') ? obtenerPendientes()  : Promise.resolve([]),
+        (typeof obtenerCarpetas    === 'function') ? obtenerCarpetas()    : Promise.resolve([]),
       ]);
       datosCache = {
         expedientes: expedientes || [], notas: notas || [],
-        eventos: eventos || [], pendientes: pendientes || []
+        eventos: eventos || [], pendientes: pendientes || [],
+        // Nombre de la carpeta por id: el usuario busca por el nombre del caso
+        // ("Caso Pérez"), no por el número del expediente que tiene delante.
+        carpetas: new Map((carpetas || []).map(function (c) { return [c.id, c.nombre || '']; }))
       };
     } catch (err) {
-      datosCache = { expedientes: [], notas: [], eventos: [], pendientes: [] };
+      datosCache = { expedientes: [], notas: [], eventos: [], pendientes: [], carpetas: new Map() };
       console.warn('[CmdPalette] Error cargando datos', err);
     }
 
@@ -122,15 +126,22 @@
   }
 
   // ── Search & filter ────────────────────────────────────────────────────────
+  // Sin acentos a los dos lados: nadie escribe "Pérez" en un buscador, y el
+  // resto de la app ya busca así.
+  function normalizar(texto) {
+    return String(texto == null ? '' : texto)
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  }
+
   function matches(texto, query) {
     if (!texto) return false;
-    return String(texto).toLowerCase().includes(query);
+    return normalizar(texto).includes(query);
   }
 
   function buscar(query) {
     if (!datosCache) return [];
 
-    const q = query.toLowerCase().trim();
+    const q = normalizar(query);
     const resultados = [];
 
     // ── Expedientes ──
@@ -143,7 +154,8 @@
         matches(exp.juzgado,    q) ||
         matches(exp.actor,      q) ||
         matches(exp.demandado,  q) ||
-        matches(exp.comentario, q)
+        matches(exp.comentario, q) ||
+        matches(datosCache.carpetas.get(exp.carpetaId), q)
       ) {
         const esPJF = exp.institucion === 'PJF';
         resultados.push({
@@ -151,8 +163,10 @@
           icono:   esPJF ? '🏛️' : '📂',
           tipoLabel: esPJF ? 'PJF' : 'Expediente',
           titulo:  exp.numero || exp.nombre || '(sin número)',
-          subtitulo: [exp.actor, exp.demandado].filter(Boolean).join(' / ') ||
-                     exp.juzgado || '',
+          subtitulo: [
+            datosCache.carpetas.get(exp.carpetaId),
+            [exp.actor, exp.demandado].filter(Boolean).join(' / ') || exp.juzgado
+          ].filter(Boolean).join(' · '),
           id:      exp.id,
           accion:  esPJF ? 'expedientePJF' : 'expediente',
         });
