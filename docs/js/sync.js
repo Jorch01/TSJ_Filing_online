@@ -1023,41 +1023,29 @@ function normalizarTexto(texto) {
         .replace(/[^a-z0-9]/g, ''); // Solo alfanuméricos
 }
 
-// Normalizar número de expediente (extraer solo dígitos y año)
+// Normalizar número de expediente para comparar dos registros.
+//
+// Solo debe absorber diferencias de escritura del MISMO número —"0123/2025" y
+// "123/2025", con o sin espacios—. Antes extraía el primer grupo de dígitos y
+// el siguiente y tiraba el resto, así que "301/2025", "301/2025 BIS" y
+// "301/2025-II" daban todos "3012025" y la fusión los convertía en uno solo:
+// tres asuntos distintos del mismo caso acababan siendo uno.
+//
+// El anclaje (^...$) es lo que lo arregla: si el número trae algo más que
+// dígitos y una diagonal, no encaja en el patrón y se compara completo.
 function normalizarNumeroExpediente(numero) {
     if (!numero) return '';
-    // Extraer patrón común: números/año o números-año
-    const match = numero.match(/(\d+)[\/\-]?(\d{2,4})?/);
-    if (match) {
-        const num = match[1];
-        const year = match[2] || '';
-        return `${num}${year}`;
-    }
-    return numero.replace(/[^0-9]/g, '');
-}
+    const n = String(numero).trim().toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, '');
 
-// Calcular similitud entre dos strings (algoritmo de Dice coefficient)
-function calcularSimilitud(str1, str2) {
-    if (!str1 || !str2) return 0;
-    const s1 = normalizarTexto(str1);
-    const s2 = normalizarTexto(str2);
+    const m = n.match(/^0*(\d+)[\/\-](\d{2,4})$/);
+    if (m) return `${m[1]}/${m[2]}`;
 
-    if (s1 === s2) return 1;
-    if (s1.length < 2 || s2.length < 2) return 0;
+    // Un número suelto ("0123") se compara sin ceros a la izquierda.
+    if (/^0*\d+$/.test(n)) return n.replace(/^0+/, '') || '0';
 
-    const bigrams1 = new Set();
-    for (let i = 0; i < s1.length - 1; i++) {
-        bigrams1.add(s1.substring(i, i + 2));
-    }
-
-    let matches = 0;
-    for (let i = 0; i < s2.length - 1; i++) {
-        if (bigrams1.has(s2.substring(i, i + 2))) {
-            matches++;
-        }
-    }
-
-    return (2 * matches) / (s1.length - 1 + s2.length - 1);
+    return n;
 }
 
 // Detectar si dos expedientes son potencialmente duplicados
@@ -1084,22 +1072,12 @@ function sonExpedientesDuplicados(exp1, exp2) {
         return { esDuplicado: true, confianza: 0.9, razon: 'nombre_juzgado' };
     }
 
-    // Nombre muy similar (>85%) y mismo juzgado
-    if (nombre1 && nombre2 && juzgado1 === juzgado2) {
-        const similitud = calcularSimilitud(nombre1, nombre2);
-        if (similitud > 0.85) {
-            return { esDuplicado: true, confianza: similitud * 0.9, razon: 'nombre_similar' };
-        }
-    }
-
-    // Mismo número y nombre similar
-    if (num1 && num2 && num1 === num2) {
-        const similitudNombre = calcularSimilitud(nombre1, nombre2);
-        if (similitudNombre > 0.7) {
-            return { esDuplicado: true, confianza: 0.85, razon: 'numero_nombre_similar' };
-        }
-    }
-
+    // Aquí acaban las reglas. Antes había dos más que fusionaban por PARECIDO
+    // —nombres con más de 85% de similitud en el mismo juzgado, y mismo número
+    // con nombres parecidos—, y fusionar es destructivo: "Pérez vs IMSS" y
+    // "Pérez vs IMSS II" son dos asuntos y se convertían en uno. Para decidir
+    // que dos expedientes son el mismo hace falta que coincidan de verdad, no
+    // que se parezcan.
     return { esDuplicado: false, confianza: 0, razon: null };
 }
 
