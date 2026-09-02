@@ -1473,6 +1473,9 @@ function renderTarjetaExpedienteHTML(exp, opciones = {}) {
         if (showSearchBtn) {
             actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍 Buscar</button>`;
         }
+        if (institucion === 'TSJ' && urlEstradosExpediente(exp)) {
+            actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirEstradosExpediente(${exp.id}, event)" title="Abrir los estrados electrónicos del TSJ para este expediente">🌐 Estrados</button>`;
+        }
         actionsHTML += `<button class="btn btn-sm btn-info" onclick="verPendientesDeExpediente(${exp.id}, event)" title="Ver pendientes">✅</button>`;
         actionsHTML += `<button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>`;
         actionsHTML += `<button class="btn btn-sm btn-info" onclick="verTimelineExpediente(${exp.id}, event)" title="Ver timeline">📅</button>`;
@@ -1524,6 +1527,9 @@ function renderFilaExpedienteHTML(exp, opciones = {}) {
     let actionsHTML = '';
     if (showSearchBtn) {
         actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍</button>`;
+    }
+    if (institucion === 'TSJ' && urlEstradosExpediente(exp)) {
+        actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirEstradosExpediente(${exp.id}, event)" title="Estrados electrónicos del TSJ">🌐</button>`;
     }
     actionsHTML += `<button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>`;
     actionsHTML += `<button class="btn btn-sm btn-info" onclick="verTimelineExpediente(${exp.id}, event)" title="Timeline">📅</button>`;
@@ -4242,6 +4248,46 @@ async function generarURLsBusqueda() {
 
     urlsContainer.style.display = 'block';
     mostrarToast(`${seleccionados.length} URLs generadas`, 'success');
+}
+
+// ==================== ESTRADOS DE UN EXPEDIENTE ====================
+// Los estrados electrónicos son el tablero donde el TSJ publica los acuerdos.
+// La página de Búsqueda ya los abre en bloque; esto es el atajo de una fila,
+// que es como se consultan en el día a día: se abre el de un expediente y se
+// mira si hay algo nuevo.
+
+// URL de los estrados de este expediente, o null si no los tiene. Devuelve null
+// para los federales y para cualquier juzgado que no esté en el catálogo del
+// TSJ: sin id de juzgado no hay búsqueda que construir, y un botón que no
+// lleva a ninguna parte es peor que no tener botón.
+function urlEstradosExpediente(exp) {
+    if (!exp || typeof construirUrlBusqueda !== 'function') return null;
+    if ((exp.institucion || 'TSJ') !== 'TSJ') return null;
+
+    const valor = exp.numero || exp.nombre;
+    if (!valor || !exp.juzgado) return null;
+
+    return construirUrlBusqueda(exp.juzgado, exp.numero ? 'numero' : 'nombre', valor);
+}
+
+async function abrirEstradosExpediente(id, event) {
+    // La fila entera abre el detalle del expediente: sin esto, pulsar el botón
+    // abriría además el modal por detrás.
+    if (event) { event.stopPropagation(); event.preventDefault(); }
+
+    const exp = (await obtenerExpedientes()).find(e => e.id === id);
+    if (!exp) {
+        mostrarToast('El expediente ya no está disponible', 'warning');
+        return;
+    }
+
+    const url = urlEstradosExpediente(exp);
+    if (!url) {
+        mostrarToast(`No hay estrados del TSJ para "${exp.juzgado || 'un expediente sin juzgado'}"`, 'warning');
+        return;
+    }
+
+    abrirBusquedaPopup(url, exp.numero || exp.nombre);
 }
 
 // Abrir búsqueda en popup window
@@ -8230,8 +8276,12 @@ async function verDetalleExpediente(expedienteId) {
 
     const editarFn = exp.institucion === 'PJF' && typeof editarExpedientePJF === 'function'
         ? 'editarExpedientePJF' : 'editarExpediente';
+    const botonEstrados = urlEstradosExpediente(exp)
+        ? `<button class="btn btn-primary" onclick="abrirEstradosExpediente(${exp.id});" title="Abrir los estrados electrónicos del TSJ">🌐 Estrados</button>`
+        : '';
     document.getElementById('modal-footer').innerHTML = `
         <button class="btn btn-secondary" onclick="cerrarModal()">Cerrar</button>
+        ${botonEstrados}
         <button class="btn btn-info" onclick="cerrarModal(); verTimelineExpediente(${exp.id});">📜 Timeline</button>
         <button class="btn btn-primary" onclick="cerrarModal(); ${editarFn}(${exp.id});">✏️ Editar</button>
     `;
