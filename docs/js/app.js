@@ -1387,6 +1387,7 @@ function renderCardArchivado(exp) {
         <div class="expediente-footer">
             <span class="expediente-fecha">Creado: ${formatearFecha(exp.fechaCreacion)}</span>
             <div class="expediente-actions">
+                ${urlEstradosExpediente(exp) ? `<button class="btn btn-sm btn-primary" onclick="abrirEstradosExpediente(${exp.id}, event)" title="Estrados electrónicos del TSJ">🌐</button>` : ''}
                 <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
                 <button class="btn btn-sm btn-success" onclick="desarchivarExpediente(${exp.id}, event)" title="Restaurar">♻️</button>
                 <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
@@ -4275,7 +4276,16 @@ async function abrirEstradosExpediente(id, event) {
     // abriría además el modal por detrás.
     if (event) { event.stopPropagation(); event.preventDefault(); }
 
-    const exp = (await obtenerExpedientes()).find(e => e.id === id);
+    // También se busca en el archivo: obtenerExpedientes() solo trae los
+    // activos, y desde el archivo se consultan los estrados igual —un asunto
+    // concluido puede seguir teniendo publicaciones que revisar—.
+    const [activos, archivados] = await Promise.all([
+        obtenerExpedientes().catch(() => []),
+        typeof obtenerExpedientesArchivados === 'function'
+            ? obtenerExpedientesArchivados().catch(() => []) : Promise.resolve([])
+    ]);
+
+    const exp = activos.concat(archivados).find(e => e.id === id);
     if (!exp) {
         mostrarToast('El expediente ya no está disponible', 'warning');
         return;
