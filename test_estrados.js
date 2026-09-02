@@ -32,7 +32,7 @@ function extraerDeclaracion(fuente, nombre, archivo) {
     throw new Error(`Declaración incompleta de "${nombre}" en ${archivo}`);
 }
 
-function crearEntorno(expedientes) {
+function crearEntorno(expedientes, archivados) {
     const estado = { toasts: [], popups: [] };
 
     const sandbox = {
@@ -42,7 +42,9 @@ function crearEntorno(expedientes) {
         escapeText: (t) => String(t == null ? '' : t),
         formatearFecha: (f) => String(f || ''),
         mostrarToast: (mensaje, tipo) => { estado.toasts.push({ tipo, mensaje }); },
+        // Como en database.js: obtenerExpedientes() NO devuelve los archivados.
         obtenerExpedientes: async () => (expedientes || []).slice(),
+        obtenerExpedientesArchivados: async () => (archivados || []).slice(),
         // El popup real se sustituye por su registro: lo que importa es a dónde
         // apunta, no que se abra una ventana.
         abrirBusquedaPopup: (url, titulo) => { estado.popups.push({ url, titulo }); },
@@ -61,7 +63,8 @@ function crearEntorno(expedientes) {
 
     const app = fs.readFileSync(path.join(JS, 'app.js'), 'utf8');
     for (const n of ['urlEstradosExpediente', 'abrirEstradosExpediente',
-                     'renderTarjetaExpedienteHTML', 'renderFilaExpedienteHTML']) {
+                     'renderTarjetaExpedienteHTML', 'renderFilaExpedienteHTML',
+                     'renderCardArchivado']) {
         vm.runInContext(extraerDeclaracion(app, n, 'app.js'), sandbox, { filename: `app.js:${n}` });
     }
     return { sandbox, estado };
@@ -224,13 +227,43 @@ function pruebaSalaSegundaInstancia() {
         url);
 }
 
+// Un expediente archivado sigue teniendo estrados que consultar: un asunto
+// concluido puede tener publicaciones posteriores que revisar.
+const ARCHIVADO = { id: 8, numero: '555/2024', institucion: 'TSJ',
+                    juzgado: 'JUZGADO PRIMERO CIVIL CANCUN',
+                    archivado: true, motivoArchivo: 'concluido' };
+const ARCHIVADO_PJF = { id: 9, numero: '666/2024', institucion: 'PJF',
+                        juzgado: 'JUZGADO PRIMERO DE DISTRITO EN EL ESTADO DE QUINTANA ROO',
+                        archivado: true, motivoArchivo: 'concluido' };
+
+async function pruebaArchivo() {
+    const { sandbox, estado } = crearEntorno(TODOS, [ARCHIVADO, ARCHIVADO_PJF]);
+    const tieneBoton = (html) => /onclick="abrirEstradosExpediente\(/.test(html);
+
+    verificar('archivo: el expediente archivado del TSJ trae su botón',
+        tieneBoton(sandbox.renderCardArchivado(ARCHIVADO)));
+    verificar('archivo: el federal archivado no lo trae',
+        !tieneBoton(sandbox.renderCardArchivado(ARCHIVADO_PJF)));
+
+    // El fallo fácil: obtenerExpedientes() no devuelve los archivados, así que
+    // el botón se pintaría y al pulsarlo diría que el expediente no existe.
+    await sandbox.abrirEstradosExpediente(8, null);
+    igual('archivo: pulsarlo abre los estrados de verdad', estado.popups.length, 1);
+    igual('archivo: con la URL de ese expediente',
+        estado.popups[0].url, sandbox.urlEstradosExpediente(ARCHIVADO));
+    verificar('archivo: y sin decir que el expediente no está disponible',
+        !estado.toasts.some(t => /no está disponible/.test(t.mensaje)),
+        JSON.stringify(estado.toasts));
+}
+
 (async () => {
     const pruebas = [
         ['la URL de estrados', pruebaURL],
         ['cuándo no hay estrados', pruebaCuandoNoHayEstrados],
         ['el botón en la tarjeta y en la fila', pruebaBotonEnLaTarjetaYEnLaFila],
         ['abrir los estrados', pruebaAbrir],
-        ['salas de segunda instancia', pruebaSalaSegundaInstancia]
+        ['salas de segunda instancia', pruebaSalaSegundaInstancia],
+        ['expedientes archivados', pruebaArchivo]
     ];
     for (const [nombre, fn] of pruebas) {
         try { await fn(); }
