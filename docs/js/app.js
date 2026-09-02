@@ -678,14 +678,24 @@ function actualizarSelectExpedientes() {
 // Una carpeta puede mezclar instituciones (TSJ + PJF + OTRO).
 
 let _carpetasCache = null;
+let _carpetasPorId = new Map();
 
 async function refrescarCarpetasCache() {
     _carpetasCache = await obtenerCarpetas();
+    _carpetasPorId = new Map((_carpetasCache || []).map(c => [c.id, c]));
     return _carpetasCache;
 }
 
 function obtenerCarpetasDeCache() {
     return _carpetasCache || [];
+}
+
+// Carpeta por id, sin recorrer la lista. Los buscadores preguntan una vez por
+// expediente en cada tecla: con miles de expedientes, recorrerla entera cada
+// vez convierte el filtro en un cuello de botella.
+function carpetaDeCache(id) {
+    if (id === undefined || id === null) return null;
+    return _carpetasPorId.get(id) || null;
 }
 
 // Devuelve un color válido (#RRGGBB) o el default. Sanitiza el valor para evitar
@@ -1407,8 +1417,7 @@ function _labelInstitucionCorto(institucion) {
 // pertenece a una. Usa el caché de carpetas para no leer la DB en cada render.
 function _badgeCarpetaHTML(carpetaId) {
     if (carpetaId === undefined || carpetaId === null) return '';
-    const carpetas = obtenerCarpetasDeCache();
-    const carpeta = carpetas.find(c => c.id === carpetaId);
+    const carpeta = carpetaDeCache(carpetaId);
     if (!carpeta) return '';
     const color = colorCarpeta(carpeta); // sanitizado: #RRGGBB válido o default
     return `<span class="carpeta-badge" style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:10px; background:${color}22; border:1px solid ${color}; color:${color}; font-size:0.75rem; font-weight:500;" title="Carpeta: ${escapeText(carpeta.nombre || '')}">📁 ${escapeText(carpeta.nombre || '')}</span>`;
@@ -1538,19 +1547,18 @@ function renderFilaExpedienteHTML(exp, opciones = {}) {
 
 // Núcleo compartido de filtro de archivo (usado por TSJ y PJF)
 async function _filtrarArchivoComun({ listaId, countId, soloPJF, busquedaId, motivoId, mensajeSinResultados }) {
-    const busqueda = (document.getElementById(busquedaId)?.value || '').toLowerCase();
+    const busqueda = _normalizarBusqueda(document.getElementById(busquedaId)?.value || '');
     const motivo = document.getElementById(motivoId)?.value || '';
 
     let archivados = await obtenerExpedientesArchivados();
     if (soloPJF) archivados = archivados.filter(e => e.institucion === 'PJF');
 
     if (busqueda) {
+        // Un expediente archivado se encuentra por lo mismo que uno activo —su
+        // carpeta incluida— y además por el motivo con el que se archivó.
         archivados = archivados.filter(e =>
-            (e.numero && e.numero.toLowerCase().includes(busqueda)) ||
-            (e.nombre && e.nombre.toLowerCase().includes(busqueda)) ||
-            (e.juzgado && e.juzgado.toLowerCase().includes(busqueda)) ||
-            (e.comentario && e.comentario.toLowerCase().includes(busqueda)) ||
-            (e.etiquetaArchivo && e.etiquetaArchivo.toLowerCase().includes(busqueda))
+            expedienteCoincideBusqueda(e, busqueda) ||
+            _coincideTexto(e.etiquetaArchivo, busqueda)
         );
     }
 
@@ -1670,7 +1678,7 @@ window.filtrarExpedientesDebounced = filtrarExpedientesDebounced;
 window.filtrarExpedientesPJFDebounced = filtrarExpedientesPJFDebounced;
 
 async function filtrarExpedientes() {
-    const busqueda = document.getElementById('buscar-expediente').value.toLowerCase();
+    const busqueda = _normalizarBusqueda(document.getElementById('buscar-expediente').value);
     const categoria = document.getElementById('filtro-categoria').value;
     const carpetaFiltro = document.getElementById('filtro-carpeta')?.value || '';
 
@@ -1686,47 +1694,9 @@ async function filtrarExpedientes() {
     if (busqueda) {
         const { notasPorExp, historialPorExp, pendientesPorExp } = await obtenerIndiceBusqueda();
 
-        expedientes = expedientes.filter(e => {
-            // Búsqueda en campos directos del expediente
-            if ((e.numero && e.numero.toLowerCase().includes(busqueda)) ||
-                (e.nombre && e.nombre.toLowerCase().includes(busqueda)) ||
-                (e.juzgado && e.juzgado.toLowerCase().includes(busqueda)) ||
-                (e.comentario && e.comentario.toLowerCase().includes(busqueda)) ||
-                (e.categoria && e.categoria.toLowerCase().includes(busqueda))) {
-                return true;
-            }
-            // Búsqueda en notas del expediente
-            const notas = notasPorExp.get(e.id);
-            if (notas) {
-                for (const n of notas) {
-                    if ((n.titulo && n.titulo.toLowerCase().includes(busqueda)) ||
-                        (n.contenido && n.contenido.toLowerCase().includes(busqueda))) {
-                        return true;
-                    }
-                }
-            }
-            // Búsqueda en pendientes del expediente
-            const pendientes = pendientesPorExp.get(e.id);
-            if (pendientes) {
-                for (const p of pendientes) {
-                    if ((p.titulo && p.titulo.toLowerCase().includes(busqueda)) ||
-                        (p.descripcion && p.descripcion.toLowerCase().includes(busqueda))) {
-                        return true;
-                    }
-                }
-            }
-            // Búsqueda en historial/actualizaciones del expediente
-            const historial = historialPorExp.get(e.id);
-            if (historial) {
-                for (const h of historial) {
-                    if ((h.descripcion && h.descripcion.toLowerCase().includes(busqueda)) ||
-                        (h.detalle && h.detalle.toLowerCase().includes(busqueda))) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        });
+        expedientes = expedientes.filter(e =>
+            _expedienteEncajaEnBusqueda(e, busqueda,
+                { notasPorExp, historialPorExp, pendientesPorExp }));
     }
 
     if (categoria) {
@@ -2020,9 +1990,8 @@ function _nombreExpedientePendiente(pendiente) {
 // tiene apuntada ya se borró.
 function _carpetaDePendiente(pendiente) {
     const exp = _expedienteDePendiente(pendiente);
-    if (!exp || exp.carpetaId == null) return null;
-    return (typeof obtenerCarpetasDeCache === 'function'
-        ? obtenerCarpetasDeCache() : []).find(c => c.id === exp.carpetaId) || null;
+    if (!exp) return null;
+    return typeof carpetaDeCache === 'function' ? carpetaDeCache(exp.carpetaId) : null;
 }
 
 // Solo se exige carpeta cuando el pendiente cuelga de un expediente registrado
@@ -2039,12 +2008,51 @@ function pendienteSinCarpeta(pendiente) {
 // Todo el texto por el que se puede encontrar un expediente: número, nombre,
 // juzgado, partes, categoría, comentario y su carpeta.
 function textoBuscableExpediente(exp) {
-    const carpetas = typeof obtenerCarpetasDeCache === 'function' ? obtenerCarpetasDeCache() : [];
-    const carpeta = (carpetas.find(c => c.id === exp.carpetaId) || {}).nombre || '';
+    const carpeta = typeof carpetaDeCache === 'function'
+        ? (carpetaDeCache(exp.carpetaId) || {}).nombre || '' : '';
     return [
         exp.numero, exp.nombre, exp.juzgado, exp.categoria, exp.comentario,
         exp.actor, exp.demandado, exp.institucion, carpeta
     ].filter(Boolean).join(' ');
+}
+
+// ¿Encaja el expediente con lo que se escribió en un buscador? Un solo sitio
+// donde se decide. Antes cada buscador llevaba su lista de campos a mano y se
+// fueron separando: el de pendientes miraba nueve y el de expedientes cinco,
+// así que la carpeta —que es como el usuario llama a sus casos— se encontraba
+// en unos y en otros no.
+// La consulta debe venir ya pasada por _normalizarBusqueda.
+function expedienteCoincideBusqueda(exp, consulta) {
+    if (!consulta) return true;
+    return _normalizarBusqueda(textoBuscableExpediente(exp)).includes(consulta);
+}
+
+// Lo mismo para el texto suelto de lo que cuelga del expediente (notas,
+// pendientes, historial): buscar "Pérez" debe encontrar "perez".
+function _coincideTexto(texto, consulta) {
+    return !!texto && _normalizarBusqueda(texto).includes(consulta);
+}
+
+// Un expediente entra en los resultados por lo suyo —carpeta y partes
+// incluidas— o por lo que cuelga de él. Lo comparten las listas de TSJ y de
+// PJF, que antes llevaban dos copias del mismo filtro y por eso se arreglaba
+// una y se olvidaba la otra.
+function _expedienteEncajaEnBusqueda(exp, consulta, indice) {
+    if (expedienteCoincideBusqueda(exp, consulta)) return true;
+
+    const notas = indice.notasPorExp.get(exp.id);
+    if (notas && notas.some(n =>
+        _coincideTexto(n.titulo, consulta) || _coincideTexto(n.contenido, consulta))) return true;
+
+    const pendientes = indice.pendientesPorExp.get(exp.id);
+    if (pendientes && pendientes.some(p =>
+        _coincideTexto(p.titulo, consulta) || _coincideTexto(p.descripcion, consulta))) return true;
+
+    const historial = indice.historialPorExp.get(exp.id);
+    if (historial && historial.some(h =>
+        _coincideTexto(h.descripcion, consulta) || _coincideTexto(h.detalle, consulta))) return true;
+
+    return false;
 }
 
 function _normalizarBusqueda(s) {
@@ -3374,7 +3382,7 @@ function confirmarEliminarNota(id) {
 }
 
 async function filtrarNotas() {
-    const busqueda = document.getElementById('buscar-nota').value.toLowerCase();
+    const busqueda = _normalizarBusqueda(document.getElementById('buscar-nota').value);
     const filtroValue = document.getElementById('filtro-expediente-nota').value;
 
     let notas = await obtenerNotas();
@@ -3383,9 +3391,12 @@ async function filtrarNotas() {
 
     if (busqueda) {
         notas = notas.filter(n =>
-            n.titulo.toLowerCase().includes(busqueda) ||
-            (n.contenido && n.contenido.toLowerCase().includes(busqueda)) ||
-            (n.expedienteTexto && n.expedienteTexto.toLowerCase().includes(busqueda))
+            _coincideTexto(n.titulo, busqueda) ||
+            _coincideTexto(n.contenido, busqueda) ||
+            _coincideTexto(n.expedienteTexto, busqueda) ||
+            // Y por su expediente: buscar el nombre de un caso debe traer las
+            // notas de ese caso, igual que ya trae sus pendientes.
+            (expMap[n.expedienteId] && expedienteCoincideBusqueda(expMap[n.expedienteId], busqueda))
         );
     }
 
@@ -9236,7 +9247,7 @@ function aplicarVistaExpedientesPJF() {
 
 // PJF search/filter
 async function filtrarExpedientesPJF() {
-    const busqueda = (document.getElementById('buscar-expediente-pjf')?.value || '').toLowerCase();
+    const busqueda = _normalizarBusqueda(document.getElementById('buscar-expediente-pjf')?.value || '');
     const carpetaFiltro = document.getElementById('filtro-carpeta-pjf')?.value || '';
     const expedientes = await obtenerExpedientes();
     let pjfExps = expedientes.filter(e => e.institucion === 'PJF');
@@ -9251,43 +9262,9 @@ async function filtrarExpedientesPJF() {
     if (busqueda) {
         const { notasPorExp, historialPorExp, pendientesPorExp } = await obtenerIndiceBusqueda();
 
-        pjfExps = pjfExps.filter(e => {
-            if ((e.numero && e.numero.toLowerCase().includes(busqueda)) ||
-                (e.nombre && e.nombre.toLowerCase().includes(busqueda)) ||
-                (e.juzgado && e.juzgado.toLowerCase().includes(busqueda)) ||
-                (e.comentario && e.comentario.toLowerCase().includes(busqueda)) ||
-                (e.categoria && e.categoria.toLowerCase().includes(busqueda))) {
-                return true;
-            }
-            const notas = notasPorExp.get(e.id);
-            if (notas) {
-                for (const n of notas) {
-                    if ((n.titulo && n.titulo.toLowerCase().includes(busqueda)) ||
-                        (n.contenido && n.contenido.toLowerCase().includes(busqueda))) {
-                        return true;
-                    }
-                }
-            }
-            const pendientes = pendientesPorExp.get(e.id);
-            if (pendientes) {
-                for (const p of pendientes) {
-                    if ((p.titulo && p.titulo.toLowerCase().includes(busqueda)) ||
-                        (p.descripcion && p.descripcion.toLowerCase().includes(busqueda))) {
-                        return true;
-                    }
-                }
-            }
-            const historial = historialPorExp.get(e.id);
-            if (historial) {
-                for (const h of historial) {
-                    if ((h.descripcion && h.descripcion.toLowerCase().includes(busqueda)) ||
-                        (h.detalle && h.detalle.toLowerCase().includes(busqueda))) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        });
+        pjfExps = pjfExps.filter(e =>
+            _expedienteEncajaEnBusqueda(e, busqueda,
+                { notasPorExp, historialPorExp, pendientesPorExp }));
     }
 
     const lista = document.getElementById('lista-expedientes-pjf');

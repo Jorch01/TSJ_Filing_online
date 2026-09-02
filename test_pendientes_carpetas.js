@@ -162,8 +162,9 @@ function extraerDeclaracion(fuente, nombre, archivo) {
 
 // Las variables de módulo van primero: las funciones las leen al ejecutarse.
 const NECESARIO_DE_APP = [
-    '_carpetasCache', 'pendientesCache', 'expedientesCachePendientes', 'comboExpedienteOpciones',
-    'refrescarCarpetasCache', 'obtenerCarpetasDeCache', '_claveNombreCarpetaLocal', 'colorCarpeta',
+    '_carpetasCache', '_carpetasPorId', 'pendientesCache', 'expedientesCachePendientes',
+    'comboExpedienteOpciones', 'refrescarCarpetasCache', 'obtenerCarpetasDeCache', 'carpetaDeCache',
+    '_claveNombreCarpetaLocal', 'colorCarpeta',
     '_normalizarBusqueda', 'textoBuscableExpediente',
     '_expedienteDePendiente', '_nombreExpedientePendiente',
     '_carpetaDePendiente', 'pendienteExigeCarpeta', 'pendienteSinCarpeta', '_chipCarpetaPendienteHTML',
