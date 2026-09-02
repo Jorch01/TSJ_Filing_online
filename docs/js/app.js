@@ -421,10 +421,18 @@ async function cargarEstadisticas() {
 // ==================== EXPEDIENTES ====================
 
 async function cargarExpedientes() {
-    // Eliminar duplicados automáticamente
+    // Eliminar duplicados automáticamente. Se avisa siempre que se quite algo:
+    // este barrido corre en cada repintado —también tras crear o editar—, así
+    // que un borrado callado se vive como que la app pierde expedientes sola.
     const duplicadosEliminados = await eliminarExpedientesDuplicados();
-    if (duplicadosEliminados > 0) {
-        Logger.log(`Se eliminaron ${duplicadosEliminados} expediente(s) duplicado(s)`);
+    if (duplicadosEliminados.length > 0) {
+        const cuales = duplicadosEliminados.map(d => d.etiqueta).join(', ');
+        Logger.log(`Se eliminaron ${duplicadosEliminados.length} expediente(s) duplicado(s): ${cuales}`);
+        mostrarToast(
+            duplicadosEliminados.length === 1
+                ? `Se quitó una copia repetida de "${duplicadosEliminados[0].etiqueta}"`
+                : `Se quitaron ${duplicadosEliminados.length} expedientes repetidos: ${cuales}`,
+            'warning');
     }
 
     let expedientes = await obtenerExpedientes();

@@ -691,18 +691,56 @@ async function reasignarRegistrosDeExpediente(idOrigen, idDestino) {
     }
 }
 
+// Normaliza un dato del expediente para comparar identidad: sin acentos, sin
+// mayúsculas y sin espacios de más.
+function _normalizarIdentidadExpediente(valor) {
+    return String(valor == null ? '' : valor)
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Clave de identidad de un expediente para el barrido de duplicados.
+ *
+ * Dos registros son el mismo solo si coinciden en TODO lo que los identifica.
+ * Antes la clave era `(numero || nombre) | juzgado | categoria`, y eso mezclaba
+ * dos campos distintos: un asunto dado de alta por NOMBRE chocaba con otro,
+ * completamente distinto, cuyo NÚMERO era ese mismo texto. El barrido borraba
+ * uno de los dos sin avisar, así que al crear el tercer asunto de un caso
+ * desaparecía otro y siempre quedaban los mismos.
+ *
+ * La categoría no entra: se calcula a partir del juzgado, así que no distingue
+ * nada. La institución sí, porque un expediente del TSJ y uno federal son
+ * registros separados aunque compartan número.
+ */
+function _claveIdentidadExpediente(exp) {
+    return [
+        _normalizarIdentidadExpediente(exp.numero),
+        _normalizarIdentidadExpediente(exp.nombre),
+        _normalizarIdentidadExpediente(exp.juzgado),
+        _normalizarIdentidadExpediente(exp.institucion || 'TSJ')
+    ].join('|');
+}
+
+/**
+ * Quita los expedientes que están repetidos de forma literal, conservando el
+ * más completo. Devuelve la lista de lo que quitó —{ conservado, eliminado }—
+ * para que quien lo llame pueda decírselo al usuario: borrar un expediente en
+ * silencio se vive como que la app pierde asuntos.
+ */
 async function eliminarExpedientesDuplicados() {
     const expedientes = await obtenerExpedientes();
     const duplicadosAEliminar = [];
     const expedientesPorClave = new Map();
 
-    // Agrupar expedientes por clave (número/nombre + juzgado + categoría)
     for (const exp of expedientes) {
-        const identificador = (exp.numero || exp.nombre || '').toLowerCase().trim();
-        const juzgado = (exp.juzgado || '').toLowerCase().trim();
-        const categoria = (exp.categoria || 'general').toLowerCase().trim();
-        const clave = `${identificador}|${juzgado}|${categoria}`;
+        // Sin número ni nombre no hay forma de saber si dos registros son el
+        // mismo: se dejan en paz antes que borrar por una coincidencia de
+        // juzgado.
+        if (!_normalizarIdentidadExpediente(exp.numero) &&
+            !_normalizarIdentidadExpediente(exp.nombre)) continue;
 
+        const clave = _claveIdentidadExpediente(exp);
         if (!expedientesPorClave.has(clave)) {
             expedientesPorClave.set(clave, []);
         }
@@ -735,7 +773,11 @@ async function eliminarExpedientesDuplicados() {
 
             // El primero se mantiene, los demás son duplicados
             for (let i = 1; i < grupo.length; i++) {
-                duplicadosAEliminar.push({ id: grupo[i].id, sobreviviente: grupo[0].id });
+                duplicadosAEliminar.push({
+                    id: grupo[i].id,
+                    sobreviviente: grupo[0].id,
+                    etiqueta: grupo[i].numero || grupo[i].nombre || `#${grupo[i].id}`
+                });
             }
         }
     }
@@ -743,12 +785,14 @@ async function eliminarExpedientesDuplicados() {
     // Eliminar duplicados. Antes se traslada al superviviente lo que colgaba
     // del duplicado: si no, sus notas, eventos y pendientes quedan apuntando a
     // un expediente que ya no existe.
-    for (const { id, sobreviviente } of duplicadosAEliminar) {
+    const quitados = [];
+    for (const { id, sobreviviente, etiqueta } of duplicadosAEliminar) {
         await reasignarRegistrosDeExpediente(id, sobreviviente);
         await eliminarExpediente(id, true);
+        quitados.push({ etiqueta, sobreviviente });
     }
 
-    return duplicadosAEliminar.length;
+    return quitados;
 }
 
 // ==================== CARPETAS ====================
