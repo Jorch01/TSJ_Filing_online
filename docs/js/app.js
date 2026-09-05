@@ -8406,21 +8406,67 @@ async function contextoTecnicoReporte() {
     return lineas.join('\n');
 }
 
-async function mostrarModalReporteBug() {
-    const contexto = await contextoTecnicoReporte();
+// Cómo se presenta cada tipo de reporte. Un mismo formulario para los dos:
+// separar "sugerir" de "reportar" en dos botones obligaría a elegir antes de
+// saber qué se quiere escribir.
+const TIPOS_REPORTE = {
+    problema: {
+        titulo: '🐞 Reportar un problema',
+        intro: 'Cuéntame qué pasó y qué esperabas que pasara. Cuanto más concreto, antes lo puedo reproducir y arreglar.',
+        etiqueta: '¿Qué ha pasado?',
+        ejemplo: 'Ejemplo: al importar el template con 200 expedientes, los pendientes se crean pero no aparecen en el calendario. Uso Chrome en Windows.'
+    },
+    mejora: {
+        titulo: '💡 Sugerir una mejora',
+        intro: 'Cuéntame qué te gustaría poder hacer y en qué momento de tu trabajo lo necesitas. Con el "para qué" se diseña mucho mejor que con el "cómo".',
+        etiqueta: '¿Qué te gustaría poder hacer?',
+        ejemplo: 'Ejemplo: poder marcar un expediente como urgente y que salga primero en la lista, para revisarlos antes de salir al juzgado.'
+    }
+};
 
-    document.getElementById('modal-titulo').textContent = '🐞 Reportar un problema';
+function _aplicarTipoReporte(tipo) {
+    const info = TIPOS_REPORTE[tipo] || TIPOS_REPORTE.problema;
+    const titulo = document.getElementById('modal-titulo');
+    const intro = document.getElementById('reporte-intro');
+    const etiqueta = document.getElementById('reporte-etiqueta');
+    const texto = document.getElementById('reporte-descripcion');
+    const form = document.getElementById('form-reporte-bug');
+
+    if (titulo) titulo.textContent = info.titulo;
+    if (intro) intro.textContent = info.intro;
+    if (etiqueta) etiqueta.textContent = info.etiqueta;
+    if (texto) texto.placeholder = info.ejemplo;
+    if (form) form.dataset.tipo = tipo;
+}
+
+function cambiarTipoReporte(tipo) {
+    _aplicarTipoReporte(tipo);
+    document.querySelectorAll('.reporte-tipo-btn').forEach(b => {
+        b.classList.toggle('activo', b.dataset.tipo === tipo);
+    });
+    document.getElementById('reporte-descripcion')?.focus();
+}
+
+async function mostrarModalReporteBug(tipo = 'problema') {
+    const contexto = await contextoTecnicoReporte();
+    const info = TIPOS_REPORTE[tipo] || TIPOS_REPORTE.problema;
+
+    document.getElementById('modal-titulo').textContent = info.titulo;
     document.getElementById('modal-body').innerHTML = `
         <form id="form-reporte-bug" onsubmit="enviarReporteBug(event)">
-            <p style="margin-bottom: 1rem;">
-                Cuéntame qué pasó y qué esperabas que pasara. Cuanto más concreto,
-                antes lo puedo reproducir y arreglar.
-            </p>
+            <div class="reporte-tipo" role="group" aria-label="Tipo de reporte">
+                <button type="button" class="reporte-tipo-btn${tipo === 'mejora' ? ' activo' : ''}"
+                        data-tipo="mejora" onclick="cambiarTipoReporte('mejora')">💡 Una mejora</button>
+                <button type="button" class="reporte-tipo-btn${tipo === 'problema' ? ' activo' : ''}"
+                        data-tipo="problema" onclick="cambiarTipoReporte('problema')">🐞 Un problema</button>
+            </div>
+
+            <p id="reporte-intro" style="margin-bottom: 1rem;">${escapeText(info.intro)}</p>
 
             <div class="form-group">
-                <label for="reporte-descripcion">¿Qué ha pasado?</label>
+                <label for="reporte-descripcion" id="reporte-etiqueta">${escapeText(info.etiqueta)}</label>
                 <textarea id="reporte-descripcion" rows="7" required maxlength="5000"
-                          placeholder="Ejemplo: al importar el template con 200 expedientes, los pendientes se crean pero no aparecen en el calendario. Uso Chrome en Windows."></textarea>
+                          placeholder="${escapeText(info.ejemplo)}"></textarea>
             </div>
 
             <div class="form-group">
@@ -8446,9 +8492,12 @@ async function mostrarModalReporteBug() {
 
     // El contexto se guarda ya calculado: recalcularlo al enviar daría un
     // retrato distinto del que el usuario vio y aceptó mandar.
-    document.getElementById('form-reporte-bug').dataset.contexto = contexto;
+    const formulario = document.getElementById('form-reporte-bug');
+    formulario.dataset.contexto = contexto;
+    formulario.dataset.tipo = tipo;
 
     abrirModal();
+    setTimeout(() => document.getElementById('reporte-descripcion')?.focus(), 60);
 }
 
 async function enviarReporteBug(event) {
@@ -8458,11 +8507,18 @@ async function enviarReporteBug(event) {
     const descripcion = document.getElementById('reporte-descripcion').value.trim();
     const contacto = document.getElementById('reporte-contacto').value.trim();
     const contexto = formulario.dataset.contexto || '';
+    const tipo = formulario.dataset.tipo === 'mejora' ? 'mejora' : 'problema';
 
     if (!descripcion) {
-        mostrarToast('Escribe qué ha pasado antes de enviar', 'error');
+        mostrarToast(tipo === 'mejora'
+            ? 'Escribe qué te gustaría poder hacer'
+            : 'Escribe qué ha pasado antes de enviar', 'error');
         return;
     }
+
+    // El tipo va también dentro del texto: así se distingue en la hoja sin
+    // tener que volver a desplegar el Apps Script para leer un campo nuevo.
+    const descripcionConTipo = (tipo === 'mejora' ? '[MEJORA] ' : '[PROBLEMA] ') + descripcion;
 
     const boton = document.getElementById('btn-enviar-reporte');
     boton.disabled = true;
@@ -8474,7 +8530,8 @@ async function enviarReporteBug(event) {
         const respuesta = await fetchConReintentos(PREMIUM_CONFIG.apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ action: 'reportar_bug', descripcion, contacto, contexto }),
+            body: JSON.stringify({ action: 'reportar_bug', tipo,
+                                   descripcion: descripcionConTipo, contacto, contexto }),
             timeout: 20000
         }, 1);
 
@@ -8482,12 +8539,14 @@ async function enviarReporteBug(event) {
         if (!resultado.success) throw new Error(resultado.mensaje || 'El servidor rechazó el reporte');
 
         cerrarModal();
-        mostrarToast('Reporte enviado. Gracias por avisar.', 'success');
+        mostrarToast(tipo === 'mejora'
+            ? 'Sugerencia enviada. Gracias por proponerla.'
+            : 'Reporte enviado. Gracias por avisar.', 'success');
     } catch (error) {
         // El reporte no se pierde: se ofrece mandarlo por correo normal, con
         // todo ya escrito. Perder lo que alguien acaba de redactar por un fallo
         // de red sería la peor forma de estrenar el formulario de fallos.
-        mostrarRespaldoReporteBug(descripcion, contexto, error.message);
+        mostrarRespaldoReporteBug(descripcionConTipo, contexto, error.message);
     } finally {
         boton.disabled = false;
         boton.textContent = 'Enviar reporte';

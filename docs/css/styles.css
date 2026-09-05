@@ -3997,6 +3997,73 @@ textarea:focus {
 /* ============================================================
    ASISTENTE DE VOZ (botón flotante + panel)
    ============================================================ */
+/* Sugerir una mejora / reportar un problema. Discreto a propósito: se apila
+   encima del micrófono, más pequeño y apagado, para estar siempre a mano sin
+   competir con el asistente ni tapar contenido. */
+#fab-feedback {
+    position: fixed;
+    right: 1.25rem;
+    bottom: calc(1.5rem + 56px + 0.6rem + env(safe-area-inset-bottom, 0px));
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px solid var(--border-color, #dee2e6);
+    background: var(--bg-primary, #fff);
+    color: var(--text-secondary, #6c757d);
+    font-size: 1.05rem;
+    line-height: 1;
+    cursor: pointer;
+    z-index: 1140;              /* por debajo del micrófono, que es el principal */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.55;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    transition: opacity 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+#fab-feedback:hover,
+#fab-feedback:focus-visible {
+    opacity: 1;
+    transform: scale(1.08);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+
+@media (max-width: 768px) {
+    #fab-feedback {
+        right: 1rem;
+        bottom: calc(1.25rem + 56px + 0.5rem + env(safe-area-inset-bottom, 0px));
+    }
+}
+
+/* Elegir entre mejora y problema dentro del mismo formulario */
+.reporte-tipo {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+}
+
+.reporte-tipo-btn {
+    flex: 1;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--border-color, #dee2e6);
+    border-radius: var(--radius, 8px);
+    background: var(--bg-secondary, #f6f6f6);
+    color: var(--text-secondary, #6c757d);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.reporte-tipo-btn:hover { filter: brightness(0.97); }
+
+.reporte-tipo-btn.activo {
+    background: var(--primary, #366092);
+    border-color: var(--primary, #366092);
+    color: #fff;
+}
+
 #voz-fab {
     position: fixed;
     right: 1.25rem;
