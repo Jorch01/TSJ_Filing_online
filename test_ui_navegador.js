@@ -381,6 +381,56 @@ async function main() {
         igual('carpeta: el pendiente general se guarda sin ella',
             await page.evaluate(async () => (await obtenerPendientes()).length), 3);
 
+        // ---- Botón flotante de mejoras y fallos ----
+        // Vive fuera de las secciones para estar en todas; eso solo se puede
+        // comprobar navegando de verdad, y hay otro flotante (el micrófono)
+        // con el que no debe chocar.
+        const seccionesFAB = ['inicio', 'expedientes', 'calendario', 'pendientes',
+                              'notas', 'busqueda', 'pjf', 'config'];
+        const sinBoton = [];
+        for (const seccion of seccionesFAB) {
+            await page.evaluate(s => navegarA(s), seccion);
+            await page.waitForTimeout(200);
+            if (!(await page.locator('#fab-feedback').isVisible().catch(() => false))) {
+                sinBoton.push(seccion);
+            }
+        }
+        igual('feedback: el botón se ve en todas las secciones', sinBoton, []);
+
+        const cajaFB = await page.locator('#fab-feedback').boundingBox().catch(() => null);
+        const cajaVoz = await page.locator('#voz-fab').boundingBox().catch(() => null);
+        verificar('feedback: no se solapa con el micrófono del asistente',
+            !seSolapan(cajaFB, cajaVoz),
+            `feedback ${JSON.stringify(cajaFB)} vs voz ${JSON.stringify(cajaVoz)}`);
+        verificar('feedback: queda dentro de la pantalla',
+            !!cajaFB && cajaFB.y >= 0 && cajaFB.x >= 0, JSON.stringify(cajaFB));
+
+        // Un solo formulario para las dos cosas: se abre en "mejora" y se
+        // puede cambiar sin perder lo escrito.
+        await page.click('#fab-feedback');
+        await page.waitForTimeout(500);
+        igual('feedback: abre como sugerencia de mejora',
+            (await page.locator('#modal-titulo').textContent()).trim(), '💡 Sugerir una mejora');
+
+        await page.fill('#reporte-descripcion', 'texto que no se debe perder');
+        await page.click('.reporte-tipo-btn[data-tipo="problema"]');
+        await page.waitForTimeout(300);
+        igual('feedback: cambia a reporte de problema',
+            (await page.locator('#modal-titulo').textContent()).trim(), '🐞 Reportar un problema');
+        igual('feedback: cambiar de tipo no borra lo escrito',
+            await page.inputValue('#reporte-descripcion'), 'texto que no se debe perder');
+
+        const contextoFB = await page.locator('#modal-body pre').textContent();
+        verificar('feedback: adjunta la sección donde estaba el usuario',
+            /Sección abierta:/.test(contextoFB), contextoFB.slice(0, 120));
+        verificar('feedback: adjunta si la licencia es premium o gratuita',
+            /Licencia:/.test(contextoFB), contextoFB.slice(0, 120));
+        verificar('feedback: adjunta cuántos registros hay',
+            /Registros:/.test(contextoFB), contextoFB.slice(0, 200));
+
+        await page.evaluate(() => cerrarModal());
+        await page.waitForTimeout(300);
+
         // ---- Anuncio de edictos ----
         // El sanitizador de anuncios convierte en "#" todo lo que no empiece
         // por http, así que un enlace mal formado se pierde en silencio.
@@ -599,8 +649,16 @@ async function main() {
         verificar('reporte: se envía al script de Apps Script',
             /script\.google\.com/.test(envio.capturado?.url || ''), envio.capturado?.url);
         igual('reporte: con la acción correcta', envio.capturado?.cuerpo.action, 'reportar_bug');
-        igual('reporte: y el texto que se escribió',
-            envio.capturado?.cuerpo.descripcion, 'El botón X no responde');
+        verificar('reporte: y el texto que se escribió',
+            (envio.capturado?.cuerpo.descripcion || '').includes('El botón X no responde'),
+            envio.capturado?.cuerpo.descripcion);
+        // El tipo va marcado dentro del texto: así se distingue una mejora de
+        // un fallo en la hoja sin volver a desplegar el Apps Script.
+        verificar('reporte: el texto dice de qué tipo es',
+            /^\[(PROBLEMA|MEJORA)\] /.test(envio.capturado?.cuerpo.descripcion || ''),
+            envio.capturado?.cuerpo.descripcion);
+        igual('reporte: y el tipo viaja también en su propio campo',
+            envio.capturado?.cuerpo.tipo, 'problema');
         igual('reporte: con el correo de contacto', envio.capturado?.cuerpo.contacto, 'yo@ejemplo.mx');
         igual('reporte: al enviar se cierra el formulario', envio.cerrado, true);
 
