@@ -1396,6 +1396,7 @@ function renderCardArchivado(exp) {
             <span class="expediente-fecha">Creado: ${formatearFecha(exp.fechaCreacion)}</span>
             <div class="expediente-actions">
                 ${urlEstradosExpediente(exp) ? `<button class="btn btn-sm btn-primary" onclick="abrirEstradosExpediente(${exp.id}, event)" title="Estrados electrónicos del TSJ">🌐</button>` : ''}
+                ${_puedeBuscarEnPJF(exp, exp.institucion || 'TSJ') ? `<button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Publicaciones en el portal del PJF">🔍</button>` : ''}
                 <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
                 <button class="btn btn-sm btn-success" onclick="desarchivarExpediente(${exp.id}, event)" title="Restaurar">♻️</button>
                 <button class="btn btn-sm btn-danger" onclick="confirmarEliminarExpediente(${exp.id}, event)">🗑️</button>
@@ -1438,16 +1439,24 @@ function _badgeCarpetaHTML(carpetaId) {
 //   draggable: muestra drag-handle y atributo draggable. Default false.
 //   orden: número para data-orden (cuando se permite reordenar).
 //   selectable / selected: modo selección PJF.
-//   showSearchBtn: incluye botón "🔍 Buscar en PJF".
 //   editarFn / eliminarFn: nombre de la función JS a invocar.
 //   categoriaDefault: texto cuando exp.categoria está vacío.
+// ¿Este expediente se puede consultar en el portal del PJF? Lo decide el
+// expediente, no quién lo pinta. Antes era una opción del llamador y solo la
+// pasaban las listas de la sección PJF, así que el mismo expediente federal
+// tenía el botón allí y no en Expedientes.
+// Sin número no hay búsqueda que hacer, así que tampoco se ofrece: un botón
+// que no lleva a ninguna parte es peor que no tener botón.
+function _puedeBuscarEnPJF(exp, institucion) {
+    return institucion === 'PJF' && !!(exp && exp.numero);
+}
+
 function renderTarjetaExpedienteHTML(exp, opciones = {}) {
     const institucion = opciones.institucion || exp.institucion || 'TSJ';
     const draggable = !!opciones.draggable;
     const orden = opciones.orden;
     const selectable = !!opciones.selectable;
     const selected = !!opciones.selected;
-    const showSearchBtn = !!opciones.showSearchBtn;
     const editarFn = opciones.editarFn || 'editarExpediente';
     const eliminarFn = opciones.eliminarFn || 'confirmarEliminarExpediente';
     const categoriaDefault = opciones.categoriaDefault || (institucion === 'PJF' ? 'PJF Federal' : 'General');
@@ -1479,8 +1488,8 @@ function renderTarjetaExpedienteHTML(exp, opciones = {}) {
 
     let actionsHTML = '';
     if (!selectable) {
-        if (showSearchBtn) {
-            actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍 Buscar</button>`;
+        if (_puedeBuscarEnPJF(exp, institucion)) {
+            actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Ver las publicaciones de este expediente en el portal del PJF">🔍 Buscar</button>`;
         }
         if (institucion === 'TSJ' && urlEstradosExpediente(exp)) {
             actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirEstradosExpediente(${exp.id}, event)" title="Abrir los estrados electrónicos del TSJ para este expediente">🌐 Estrados</button>`;
@@ -1520,13 +1529,11 @@ function renderTarjetaExpedienteHTML(exp, opciones = {}) {
 // opciones:
 //   institucion: igual que en tarjeta.
 //   showInstColumn: incluir columna de institución (TSJ la usa, PJF no — todas son PJF).
-//   showSearchBtn: incluir botón "🔍 Buscar en PJF".
 //   editarFn / eliminarFn: función JS a invocar.
 //   categoriaDefault.
 function renderFilaExpedienteHTML(exp, opciones = {}) {
     const institucion = opciones.institucion || exp.institucion || 'TSJ';
     const showInstColumn = opciones.showInstColumn !== false;
-    const showSearchBtn = !!opciones.showSearchBtn;
     const editarFn = opciones.editarFn || 'editarExpediente';
     const eliminarFn = opciones.eliminarFn || 'confirmarEliminarExpediente';
     const categoriaDefault = opciones.categoriaDefault || (institucion === 'PJF' ? 'PJF Federal' : 'General');
@@ -1534,8 +1541,8 @@ function renderFilaExpedienteHTML(exp, opciones = {}) {
     const instCell = showInstColumn ? `<td>${_labelInstitucionCorto(institucion)}</td>` : '';
 
     let actionsHTML = '';
-    if (showSearchBtn) {
-        actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Buscar en PJF">🔍</button>`;
+    if (_puedeBuscarEnPJF(exp, institucion)) {
+        actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Publicaciones en el portal del PJF">🔍</button>`;
     }
     if (institucion === 'TSJ' && urlEstradosExpediente(exp)) {
         actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirEstradosExpediente(${exp.id}, event)" title="Estrados electrónicos del TSJ">🌐</button>`;
@@ -9103,7 +9110,6 @@ async function cargarExpedientesPJF() {
             orden: exp.orden || index,
             selectable: !!modoSeleccionPJF,
             selected: expedientesPJFSeleccionados.has(exp.id),
-            showSearchBtn: true,
             editarFn: 'editarExpedientePJF',
             eliminarFn: 'confirmarEliminarExpedientePJF'
         })
@@ -9116,7 +9122,6 @@ async function cargarExpedientesPJF() {
             renderFilaExpedienteHTML(exp, {
                 institucion: 'PJF',
                 showInstColumn: false,
-                showSearchBtn: true,
                 editarFn: 'editarExpedientePJF',
                 eliminarFn: 'confirmarEliminarExpedientePJF'
             })
@@ -9222,8 +9227,15 @@ async function abrirBusquedaPJFGuardado(id, event) {
     // Asegurar catálogos cargados para resolver orgId por nombre
     await cargarCatalogosPJF();
 
-    const expedientes = await obtenerExpedientes();
-    const exp = expedientes.find(e => e.id === id);
+    // También se busca en el archivo: obtenerExpedientes() solo trae los
+    // activos, y un asunto concluido puede seguir teniendo publicaciones.
+    const [activos, archivados] = await Promise.all([
+        obtenerExpedientes().catch(() => []),
+        typeof obtenerExpedientesArchivados === 'function'
+            ? obtenerExpedientesArchivados().catch(() => []) : Promise.resolve([])
+    ]);
+
+    const exp = activos.concat(archivados).find(e => e.id === id);
     if (!exp || !exp.numero) {
         mostrarToast('Este expediente no tiene número registrado', 'warning');
         return;
@@ -9417,7 +9429,6 @@ async function filtrarExpedientesPJF() {
                     renderFilaExpedienteHTML(exp, {
                         institucion: 'PJF',
                         showInstColumn: false,
-                        showSearchBtn: true,
                         editarFn: 'editarExpedientePJF',
                         eliminarFn: 'confirmarEliminarExpedientePJF'
                     })
@@ -9429,7 +9440,6 @@ async function filtrarExpedientesPJF() {
                     institucion: 'PJF',
                     draggable: true,
                     orden: exp.orden || index,
-                    showSearchBtn: true,
                     editarFn: 'editarExpedientePJF',
                     eliminarFn: 'confirmarEliminarExpedientePJF'
                 })
