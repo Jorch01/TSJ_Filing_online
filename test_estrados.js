@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Pruebas del atajo a los estrados electrónicos de un expediente.
+ * Pruebas de los atajos para consultar un expediente en su tribunal:
+ * estrados del TSJ y portal del PJF.
  *
  *   node test_estrados.js
  *
@@ -63,8 +64,8 @@ function crearEntorno(expedientes, archivados) {
 
     const app = fs.readFileSync(path.join(JS, 'app.js'), 'utf8');
     for (const n of ['urlEstradosExpediente', 'abrirEstradosExpediente',
-                     'renderTarjetaExpedienteHTML', 'renderFilaExpedienteHTML',
-                     'renderCardArchivado']) {
+                     '_puedeBuscarEnPJF', 'renderTarjetaExpedienteHTML',
+                     'renderFilaExpedienteHTML', 'renderCardArchivado']) {
         vm.runInContext(extraerDeclaracion(app, n, 'app.js'), sandbox, { filename: `app.js:${n}` });
     }
     return { sandbox, estado };
@@ -256,6 +257,76 @@ async function pruebaArchivo() {
         JSON.stringify(estado.toasts));
 }
 
+// ==================== EL BOTÓN DEL PORTAL DEL PJF ====================
+// Un expediente federal se consulta en el portal del PJF, igual que uno del
+// TSJ en estrados. El botón salía solo si el llamador pasaba showSearchBtn, y
+// solo lo pasaban las listas de la sección PJF: en Expedientes —que muestra
+// todo junto— el mismo expediente aparecía sin él.
+
+const PJF_CON_NUMERO = { id: 10, numero: '777/2025', institucion: 'PJF',
+                         juzgado: 'JUZGADO PRIMERO DE DISTRITO EN EL ESTADO DE QUINTANA ROO' };
+const PJF_SIN_NUMERO = { id: 11, nombre: 'Amparo de Pérez', institucion: 'PJF',
+                         juzgado: 'JUZGADO SEGUNDO DE DISTRITO EN EL ESTADO DE QUINTANA ROO' };
+const OTRA_AUTORIDAD = { id: 12, numero: 'FGE/QROO/CAN/08/200/2026', institucion: 'OTRO',
+                         juzgado: 'Fiscalía Especializada Cancún' };
+
+function pruebaBotonPJF() {
+    const { sandbox } = crearEntorno([], []);
+    const tienePJF = (html) => /onclick="abrirBusquedaPJFGuardado\(/.test(html);
+
+    // El criterio, suelto.
+    igual('PJF: un federal con número se puede consultar',
+        sandbox._puedeBuscarEnPJF(PJF_CON_NUMERO, 'PJF'), true);
+    igual('PJF: sin número no hay búsqueda que hacer',
+        sandbox._puedeBuscarEnPJF(PJF_SIN_NUMERO, 'PJF'), false);
+    igual('PJF: uno del TSJ no se consulta en el portal federal',
+        sandbox._puedeBuscarEnPJF(TSJ, 'TSJ'), false);
+    igual('PJF: ni uno de otra autoridad',
+        sandbox._puedeBuscarEnPJF(OTRA_AUTORIDAD, 'OTRO'), false);
+
+    // EL FALLO: la lista de Expedientes pinta sin pasar ninguna opción, y así
+    // el botón tiene que salir igual.
+    verificar('Expedientes: el federal trae su botón aunque no se pase opción alguna',
+        tienePJF(sandbox.renderTarjetaExpedienteHTML(PJF_CON_NUMERO)));
+    verificar('Expedientes: y también en la vista de tabla',
+        tienePJF(sandbox.renderFilaExpedienteHTML(PJF_CON_NUMERO)));
+
+    // La sección PJF pinta con institucion: 'PJF'; debe dar lo mismo.
+    verificar('sección PJF: sigue trayéndolo',
+        tienePJF(sandbox.renderTarjetaExpedienteHTML(PJF_CON_NUMERO, { institucion: 'PJF' })));
+    igual('las dos listas pintan las mismas acciones para el mismo expediente',
+        sandbox.renderTarjetaExpedienteHTML(PJF_CON_NUMERO, { institucion: 'PJF' })
+            .includes('abrirBusquedaPJFGuardado'),
+        sandbox.renderTarjetaExpedienteHTML(PJF_CON_NUMERO)
+            .includes('abrirBusquedaPJFGuardado'));
+
+    verificar('un federal sin número no lo trae',
+        !tienePJF(sandbox.renderTarjetaExpedienteHTML(PJF_SIN_NUMERO)));
+    verificar('uno del TSJ no lo trae',
+        !tienePJF(sandbox.renderTarjetaExpedienteHTML(TSJ)));
+    verificar('uno de otra autoridad tampoco',
+        !tienePJF(sandbox.renderTarjetaExpedienteHTML(OTRA_AUTORIDAD)));
+    verificar('en modo selección no salen acciones',
+        !tienePJF(sandbox.renderTarjetaExpedienteHTML(PJF_CON_NUMERO, { selectable: true })));
+
+    // Cada expediente lleva el botón de SU tribunal, nunca los dos.
+    const htmlPJF = sandbox.renderTarjetaExpedienteHTML(PJF_CON_NUMERO);
+    verificar('el federal no ofrece estrados del TSJ',
+        !/abrirEstradosExpediente\(/.test(htmlPJF));
+    const htmlTSJ = sandbox.renderTarjetaExpedienteHTML(TSJ);
+    verificar('el del TSJ no ofrece el portal federal', !tienePJF(htmlTSJ));
+
+    // Y en el archivo, con el mismo criterio.
+    verificar('archivo: un federal archivado lo trae',
+        tienePJF(sandbox.renderCardArchivado({ ...PJF_CON_NUMERO, archivado: true })));
+    verificar('archivo: uno sin número no',
+        !tienePJF(sandbox.renderCardArchivado({ ...PJF_SIN_NUMERO, archivado: true })));
+
+    // El clic debe frenarse: la tarjeta entera abre el detalle.
+    verificar('el botón recibe el evento para poder frenarlo',
+        /abrirBusquedaPJFGuardado\(10, event\)/.test(htmlPJF), htmlPJF);
+}
+
 (async () => {
     const pruebas = [
         ['la URL de estrados', pruebaURL],
@@ -263,7 +334,8 @@ async function pruebaArchivo() {
         ['el botón en la tarjeta y en la fila', pruebaBotonEnLaTarjetaYEnLaFila],
         ['abrir los estrados', pruebaAbrir],
         ['salas de segunda instancia', pruebaSalaSegundaInstancia],
-        ['expedientes archivados', pruebaArchivo]
+        ['expedientes archivados', pruebaArchivo],
+        ['el botón del portal del PJF', pruebaBotonPJF]
     ];
     for (const [nombre, fn] of pruebas) {
         try { await fn(); }
@@ -277,5 +349,5 @@ async function pruebaArchivo() {
         console.log('');
         process.exit(1);
     }
-    console.log('  ✓ El atajo a estrados abre lo que debe, y solo cuando existe.\n');
+    console.log('  ✓ Cada expediente ofrece la consulta de su tribunal, y solo si existe.\n');
 })();
