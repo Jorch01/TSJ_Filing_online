@@ -57,6 +57,10 @@
     const RE_SI = /^\s*(si|confirmo|confirmar|confirmado|dale|adelante|correcto|asi es|ok|okey|hazlo|procede)\b/;
     const RE_NO = /^\s*(no|cancela|cancelar|cancelado|deten|olvidalo|mejor no|espera|por favor no|por favor cancela)\b/;
 
+    // Cuántos órganos del PJF se abren de una vez como mucho. Por encima de
+    // esto el navegador bloquea las ventanas y el resultado es inservible.
+    const MAX_ORGANOS_PJF = 12;
+
     const EJEMPLOS = [
         'Agenda audiencia del expediente 123/2025 el jueves a las 10',
         'Busca el 456/2024 en estrados del TSJ',
@@ -107,7 +111,9 @@
                 'Busca a María López por nombre en todos los juzgados',
                 'Consulta el amparo indirecto 55/2025 en el Juzgado Segundo de Distrito de Cancún',
                 'Abre el estrado del amparo directo 486/2026 del primer tribunal colegiado del 27 circuito',
-                'Ábreme los estrados del amparo en revisión 12/2026 del segundo colegiado del XXVII circuito'
+                'Ábreme los estrados del amparo en revisión 12/2026 del segundo colegiado del XXVII circuito',
+                'Busca el amparo directo 486/2026 en los tres colegiados del 27 circuito',
+                'Busca el amparo directo 100/2026 en los colegiados del 27 y del 28 circuito'
             ]
         },
         {
@@ -798,7 +804,9 @@
 
         // 2) Acción destructiva o múltiples popups → confirmar
         const multiPopupTSJ = accion === 'buscar_tsj' && !p.juzgado;
-        if (ACCIONES_MUTANTES.has(accion) || multiPopupTSJ) {
+        // Varios órganos federales = varias ventanas: se confirma, como en el TSJ.
+        const multiPopupPJF = accion === 'buscar_pjf' && Array.isArray(p.organismos) && p.organismos.length > 0;
+        if (ACCIONES_MUTANTES.has(accion) || multiPopupTSJ || multiPopupPJF) {
             accionPendiente = r;
             estado = Estado.ESPERANDO_CONFIRMACION;
             mostrarConfirmacion(r.resumen || 'Ejecutar: ' + accion);
@@ -1504,24 +1512,77 @@
             return `Abrí la consulta del expediente ${numero} en el portal del PJF.`;
         }
 
-        // Organismo dictado por nombre → resolver contra el catálogo PJF
-        if (p.organismo && typeof buscarOrganismoPJF === 'function' && typeof construirURLPJF === 'function') {
+        // Órganos dictados por nombre → resolver contra el catálogo PJF.
+        // Pueden ser varios, del mismo circuito o de circuitos distintos, y
+        // cada referencia puede además abarcar varios órganos por sí sola:
+        // "los colegiados del 27" son los tres.
+        const refsOrganos = Array.isArray(p.organismos) && p.organismos.length
+            ? p.organismos.map(x => String(x || '').trim()).filter(Boolean)
+            : (p.organismo ? [String(p.organismo).trim()] : []);
+
+        if (refsOrganos.length && typeof buscarOrganismosPJF === 'function' && typeof construirURLPJF === 'function') {
             if (typeof asegurarCatalogosPJF === 'function') await asegurarCatalogosPJF();
-            const org = buscarOrganismoPJF(p.organismo);
-            if (org) {
-                if (!numero) throw new Error('Falta el número de expediente para consultar en el PJF');
-                const ta = p.tipoAsunto ? buscarTipoAsuntoPJF(org, p.tipoAsunto) : null;
-                if (ta) {
-                    const url = construirURLPJF(org.id, ta.id, numero, 0);
-                    window.open(url, 'pjf_expediente', 'width=1024,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no');
-                    return `Abrí la consulta del ${numero} (${ta.nombre}) en ${org.nombre}.`;
+
+            const organos = [];
+            const vistos = new Set();
+            const sinResolver = [];
+            for (const ref of refsOrganos) {
+                const encontrados = buscarOrganismosPJF(ref) || [];
+                if (!encontrados.length) { sinResolver.push(ref); continue; }
+                for (const o of encontrados) {
+                    if (!vistos.has(o.id)) { vistos.add(o.id); organos.push(o); }
                 }
-                const tipos = (typeof tiposAsuntoDeOrgano === 'function' ? tiposAsuntoDeOrgano(org) : [])
-                    .map(t => t.nombre).slice(0, 12).join(', ');
-                throw new Error(`Identifiqué el órgano "${org.nombre}" pero no el tipo de asunto. ` +
-                    (tipos ? `Los válidos son: ${tipos}. ` : '') + 'Repite indicando el tipo de asunto.');
             }
-            // Si el órgano no se resolvió, caer al plan B de abajo
+
+            if (organos.length) {
+                if (!numero) throw new Error('Falta el número de expediente para consultar en el PJF');
+
+                // Abrir treinta ventanas no ayuda a nadie y el navegador las
+                // bloquea igual: mejor decir cuántas salieron y que acote.
+                if (organos.length > MAX_ORGANOS_PJF) {
+                    throw ErrorAviso(`Eso abarca ${organos.length} órganos (${organos.slice(0, 3).map(o => o.nombre).join('; ')}...). ` +
+                        `Son demasiadas ventanas: acota el circuito o dime cuáles.`);
+                }
+
+                // El tipo de asunto se resuelve por órgano: "amparo directo" no
+                // existe en todos los tipos de órgano.
+                const aAbrir = [];
+                const sinTipo = [];
+                for (const org of organos) {
+                    const ta = p.tipoAsunto ? buscarTipoAsuntoPJF(org, p.tipoAsunto) : null;
+                    if (ta) aAbrir.push({ org, ta });
+                    else sinTipo.push(org);
+                }
+
+                if (!aAbrir.length) {
+                    const tipos = (typeof tiposAsuntoDeOrgano === 'function' ? tiposAsuntoDeOrgano(organos[0]) : [])
+                        .map(t => t.nombre).slice(0, 12).join(', ');
+                    throw new Error(`Identifiqué ${organos.length === 1 ? `el órgano "${organos[0].nombre}"` : `${organos.length} órganos`} pero no el tipo de asunto. ` +
+                        (tipos ? `Los válidos son: ${tipos}. ` : '') + 'Repite indicando el tipo de asunto.');
+                }
+
+                let espera = 0;
+                for (const { org, ta } of aAbrir) {
+                    const url = construirURLPJF(org.id, ta.id, numero, 0);
+                    setTimeout(() => {
+                        window.open(url, 'pjf_' + org.id,
+                            'width=1024,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no');
+                    }, espera);
+                    espera += 600;   // el navegador bloquea las ráfagas
+                }
+
+                const avisos = [];
+                if (sinTipo.length) avisos.push(`${sinTipo.length} sin ese tipo de asunto`);
+                if (sinResolver.length) avisos.push(`no identifiqué "${sinResolver.join('", "')}"`);
+                const cola = avisos.length ? ` (${avisos.join('; ')})` : '';
+
+                if (aAbrir.length === 1) {
+                    return `Abrí la consulta del ${numero} (${aAbrir[0].ta.nombre}) en ${aAbrir[0].org.nombre}.${cola}`;
+                }
+                return `Abriendo el ${numero} en ${aAbrir.length} órganos: ` +
+                    aAbrir.map(x => x.org.nombre).join('; ') + `.${cola} Permite las ventanas emergentes.`;
+            }
+            // Si ningún órgano se resolvió, caer al plan B de abajo
         }
 
         // Sin organismo resuelto: llevar a la página PJF con el número precargado
@@ -1669,16 +1730,23 @@ ACCIONES DISPONIBLES y sus parámetros:
 12. "buscar_local": {consulta} — buscar en el catálogo local del usuario ("busca mis expedientes de divorcio", "¿tengo algo de Juan Pérez?", "qué tengo del 123"). Pasa la consulta TAL CUAL la dijo; la app la interpreta y ordena por relevancia.
 13. "buscar_tsj": {valor, tipoBusqueda:"numero"|"nombre", juzgado:nombre exacto de la lista o null, ambito:"todos"|"primera"|"segunda" o null, expedienteId:número o null, expedienteRef:texto o null}
     - ESTRADOS DEL TSJ DE QUINTANA ROO (tribunal del estado). Si el usuario menciona un expediente de su catálogo, usa el juzgado guardado de ese expediente. Si no especifica juzgado, deja juzgado=null y usa ambito (default "todos"; abre muchas ventanas).
-14. "buscar_pjf": {expedienteId:número o null, expedienteRef:texto o null, numero:texto o null, organismo:texto o null, tipoAsunto:texto o null}
+14. "buscar_pjf": {expedienteId:número o null, expedienteRef:texto o null, numero:texto o null, organismo:texto o null, organismos:[textos] o null, tipoAsunto:texto o null}
     - ESTRADOS / LISTA DE ACUERDOS DEL PODER JUDICIAL DE LA FEDERACIÓN. Si el expediente está en el catálogo con tienePJF=true, usa su id.
     - Si el usuario dicta el órgano federal, pásalo TAL CUAL en "organismo" y el tipo de asunto tal como lo diga en "tipoAsunto"; la app los resuelve contra el catálogo oficial. Los ordinales dan igual: "27 circuito", "vigésimo séptimo circuito" y "XXVII circuito" valen los tres.
     - El número del asunto va SIEMPRE en "numero", aunque no esté dado de alta.
+    - VARIOS ÓRGANOS A LA VEZ: usa "organismos" (lista) en cuanto el usuario quiera más de uno; deja "organismo" en null. Sirve para el mismo circuito o para circuitos distintos.
+      · Enumerados: "en el primer y segundo colegiado del 27" → organismos:["primer tribunal colegiado del 27 circuito","segundo tribunal colegiado del 27 circuito"].
+      · En bloque: "en todos los colegiados del 27" → organismos:["tribunales colegiados del 27 circuito"]. Una sola entrada genérica ya abarca todos los de ese circuito; no los enumeres tú.
+      · Circuitos distintos: "en los colegiados del 27 y del 28" → organismos:["tribunales colegiados del 27 circuito","tribunales colegiados del 28 circuito"].
+      · Mezclados: "en los juzgados de distrito de Quintana Roo y en el primer colegiado del 27" → organismos:["juzgados de distrito en quintana roo","primer tribunal colegiado del 27 circuito"].
+      Copia cada referencia TAL CUAL la dice el usuario. No inventes nombres oficiales ni cuentes cuántos órganos hay: de eso se encarga la app.
 
 CÓMO DECIDIR ENTRE ESTRADOS DEL TSJ Y DEL PJF (importante):
 - "Estrados", "estrado", "lista de acuerdos", "publicaciones", "boletín" NO deciden nada por sí solos: las dos instituciones publican así. Lo que decide es el ÓRGANO o la institución que se mencione.
 - Van a "buscar_pjf" (federal): PJF, "federal", tribunal colegiado, tribunal unitario, juzgado de distrito, centro auxiliar, plenos de circuito, cualquier mención de "circuito", y los asuntos amparo directo, amparo indirecto, amparo en revisión, queja, revisión fiscal.
 - Van a "buscar_tsj" (estatal): TSJ, TSJQROO, "el tribunal del estado", juzgados civiles/familiares/penales/mercantiles/orales de Quintana Roo, salas del tribunal superior, juicios ordinarios, sucesorios, divorcios.
 - Ejemplo: "abre el estrado del amparo directo 486/2026 del primer tribunal colegiado del 27 circuito del pjf" → buscar_pjf con numero="486/2026", organismo="primer tribunal colegiado del 27 circuito", tipoAsunto="amparo directo".
+- Ejemplo con varios: "busca el amparo directo 486/2026 en los tres colegiados del 27 circuito" → buscar_pjf con numero="486/2026", organismos=["tribunales colegiados del 27 circuito"], tipoAsunto="amparo directo".
 - Ejemplo: "ábreme los estrados del 123/2025 del juzgado primero civil de Cancún" → buscar_tsj con valor="123/2025", juzgado el de la lista.
 - NO hace falta que el asunto esté en el catálogo del usuario: si dicta el órgano y el número, manda esos datos y deja expedienteId y expedienteRef en null. Solo usa expedienteRef cuando se refiera a algo SUYO sin dar el órgano ("abre los estrados de lo de Ramírez").
 15. "navegar": {pagina:"inicio"|"expedientes"|"calendario"|"pendientes"|"notas"|"busqueda"|"pjf"|"impi"|"config"}

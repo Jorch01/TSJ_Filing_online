@@ -416,6 +416,14 @@ function normalizarTextoPJF(s) {
 
 var PJF_STOPWORDS = { de: 1, del: 1, la: 1, las: 1, el: 1, los: 1, en: 1, y: 1, con: 1, para: 1 };
 
+// "tribunales colegiados" debe encajar con "Tribunal Colegiado": el catálogo
+// está en singular y las peticiones de varios órganos vienen en plural.
+function _singularPJF(token) {
+    if (/[a-z]{4,}es$/.test(token)) return token.slice(0, -2);
+    if (/[a-z]{3,}s$/.test(token)) return token.slice(0, -1);
+    return token;
+}
+
 function tokensPJF(texto) {
     return normalizarTextoPJF(texto).split(/[^a-z0-9]+/)
         .filter(function (t) { return t && !PJF_STOPWORDS[t]; });
@@ -518,10 +526,18 @@ function _ordinalOrganoPJF(canonico) {
  * empate devuelve el de nombre más corto (el más específico).
  * Retorna el objeto órgano o null.
  */
-function buscarOrganismoPJF(texto) {
+/**
+ * TODOS los órganos que encajan con lo dictado, del más específico al menos.
+ *
+ * Existe porque una misma frase puede querer decir uno o varios: "el primer
+ * colegiado del 27" es uno solo, y "los colegiados del 27 circuito" son
+ * todos los de ese circuito. Lo decide la propia frase —cuanto más concreta,
+ * menos resultados— sin necesidad de una bandera aparte.
+ */
+function buscarOrganismosPJF(texto) {
     var consulta = canonizarOrdinalesPJF(texto);
     var tokens = tokensPJF(consulta);
-    if (!tokens.length || !pjfOrganismos.length) return null;
+    if (!tokens.length || !pjfOrganismos.length) return [];
 
     // Si el usuario dijo de qué circuito y qué número de órgano, se exigen:
     // abrir el tribunal equivocado es peor que no abrir ninguno.
@@ -544,19 +560,43 @@ function buscarOrganismoPJF(texto) {
             // el Segundo Tribunal Colegiado acaba abriendo el del Primero.
             var encaja = /^\d+$/.test(tokens[j])
                 ? palabras.indexOf(tokens[j]) !== -1
-                : blob.indexOf(tokens[j]) !== -1;
+                : blob.indexOf(tokens[j]) !== -1 || blob.indexOf(_singularPJF(tokens[j])) !== -1;
             if (!encaja) { ok = false; break; }
         }
-        if (ok && (circuitoPedido !== null || ordinalPedido !== null)) {
+        // El ordinal del órgano solo se puede exigir cuando se dijo la palabra
+        // "circuito": sin ella no hay forma de saber si "los colegiados del 27"
+        // pide el órgano 27 o el circuito 27. En ese caso basta con que el
+        // número aparezca como palabra entera, que ya discrimina.
+        if (ok && circuitoPedido !== null) {
             var suyo = canonizarOrdinalesPJF(o.nombre + ' ' + o.circuito);
-            if (circuitoPedido !== null && _numeroCircuitoPJF(suyo) !== circuitoPedido) ok = false;
+            if (_numeroCircuitoPJF(suyo) !== circuitoPedido) ok = false;
             if (ok && ordinalPedido !== null && _ordinalOrganoPJF(suyo) !== ordinalPedido) ok = false;
         }
         if (ok) candidatos.push(o);
     }
-    if (!candidatos.length) return null;
-    candidatos.sort(function (a, b) { return a.nombre.length - b.nombre.length; });
-    return candidatos[0];
+    if (!candidatos.length) return [];
+
+    // Por número de órgano (Primero, Segundo, Tercero...) y, a igualdad, el de
+    // nombre más corto, que es el más específico.
+    candidatos.sort(function (a, b) {
+        var oa = _ordinalOrganoPJF(canonizarOrdinalesPJF(a.nombre + ' ' + a.circuito));
+        var ob = _ordinalOrganoPJF(canonizarOrdinalesPJF(b.nombre + ' ' + b.circuito));
+        if (oa !== ob) return (oa === null ? 999 : oa) - (ob === null ? 999 : ob);
+        return a.nombre.length - b.nombre.length;
+    });
+
+    // Todos del mismo tipo que el mejor. No es cosmético: los tipos de asunto
+    // dependen del tipo de órgano, así que "amparo directo" no significa lo
+    // mismo en un Tribunal Colegiado de Circuito que en uno de Apelación, y
+    // una Oficina de Correspondencia no es un tribunal donde buscar nada.
+    var tipo = candidatos[0].tipoOrganismoId;
+    return candidatos.filter(function (o) { return o.tipoOrganismoId === tipo; });
+}
+
+/** El órgano que mejor encaja, o null. Atajo sobre buscarOrganismosPJF(). */
+function buscarOrganismoPJF(texto) {
+    var lista = buscarOrganismosPJF(texto);
+    return lista.length ? lista[0] : null;
 }
 
 /**
