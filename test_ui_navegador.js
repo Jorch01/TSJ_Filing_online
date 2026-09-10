@@ -20,6 +20,12 @@ let chromium;
 try {
     ({ chromium } = require('playwright'));
 } catch (e) {
+    // En CI omitirlas sería un verde falso: el candado daría por buenas 135
+    // comprobaciones que no llegaron a ejecutarse.
+    if (process.env.CI) {
+        console.error('✗ Playwright no está instalado y estamos en CI. Instálalo antes de correr esto.');
+        process.exit(1);
+    }
     console.log('⚠ Playwright no está instalado; se omiten las pruebas de navegador.');
     console.log('  Para ejecutarlas:  npm install playwright');
     process.exit(0);
@@ -136,11 +142,37 @@ async function probarBotonTemplate(page, zona, indice) {
     }
 }
 
+/**
+ * Abre Chromium venga de donde venga. En CI lo instala Playwright y su ruta
+ * por omisión funciona; en un contenedor con los navegadores preinstalados la
+ * versión suele no coincidir con la del paquete npm y hay que buscarla. Antes
+ * había una ruta fija, que servía en un sitio y fallaba en el otro.
+ */
+async function abrirChromium() {
+    if (process.env.CHROMIUM_PATH) {
+        return chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
+    }
+    try {
+        return await chromium.launch();
+    } catch (e) {
+        const base = process.env.PLAYWRIGHT_BROWSERS_PATH;
+        if (!base || !fs.existsSync(base)) throw e;
+
+        // Cualquier chromium instalado sirve para estas pruebas.
+        for (const dir of fs.readdirSync(base)) {
+            if (!/^chromium/.test(dir)) continue;
+            for (const rel of ['chrome-linux/chrome', 'chrome-headless-shell-linux64/chrome-headless-shell']) {
+                const ruta = path.join(base, dir, rel);
+                if (fs.existsSync(ruta)) return chromium.launch({ executablePath: ruta });
+            }
+        }
+        throw e;
+    }
+}
+
 async function main() {
     const servidor = await servidorEstatico(PUERTO);
-    const navegador = await chromium.launch({
-        executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
-    });
+    const navegador = await abrirChromium();
     const contexto = await navegador.newContext({ acceptDownloads: true, viewport: { width: 1400, height: 900 } });
     const page = await contexto.newPage();
 

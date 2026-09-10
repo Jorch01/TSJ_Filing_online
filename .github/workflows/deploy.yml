@@ -1,8 +1,11 @@
 name: Deploy to GitHub Pages
 
+# Las pruebas corren en cada push y en cada pull request; publicar solo ocurre
+# si pasaron. Antes se publicaba directo: 661 comprobaciones escritas y ninguna
+# se ejecutaba, así que un fallo llegaba a producción sin que nadie lo viera.
 on:
-  push:
-    branches: ['main', 'master']
+  push:              # cualquier rama: las pruebas corren siempre, se publique o no
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -10,12 +13,60 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
-
 jobs:
+  pruebas:
+    name: Pruebas
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Un error de sintaxis en app.js deja la app en blanco. Es lo más barato
+      # de comprobar, así que va primero.
+      - name: Comprobar que el JavaScript compila
+        run: |
+          for f in docs/js/*.js docs/proxy/*.js test_*.js; do
+            node --check "$f" || { echo "✗ $f no compila"; exit 1; }
+          done
+          echo "✓ Todos los archivos compilan"
+
+      # Segundos, sin dependencias. Si algo falla aquí no vale la pena seguir.
+      - name: Pruebas de lógica
+        run: |
+          fallidas=0
+          for t in test_*.js; do
+            [ "$t" = "test_ui_navegador.js" ] && continue
+            echo "── $t"
+            node "$t" || fallidas=1
+          done
+          [ "$fallidas" -eq 0 ] || { echo "✗ Hay pruebas en rojo"; exit 1; }
+
+      # Estas abren Chromium de verdad: ven lo que el DOM simulado no puede
+      # (un botón tapado, un modal que no se pinta, un selector que no existe).
+      - name: Instalar Chromium
+        run: npm install --no-save playwright && npx playwright install --with-deps chromium
+
+      - name: Pruebas de interfaz
+        env:
+          CI: 'true'   # sin esto, si faltara Playwright se saltarían en silencio
+        run: node test_ui_navegador.js
+
   deploy:
+    name: Publicar
+    needs: pruebas          # ← el candado: sin pruebas en verde no se publica
+    # Solo desde la rama principal. En una rama de trabajo o en un pull request
+    # las pruebas corren igual, pero no se toca el sitio.
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    # La concurrencia va aquí y no arriba: si estuviera a nivel de workflow, las
+    # pruebas de una rama harían cola detrás de las de otra sin necesidad.
+    concurrency:
+      group: "pages"
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
