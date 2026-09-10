@@ -156,7 +156,10 @@ function cargarCodigoReal(sandbox) {
 
     // De pjf-search.js solo los ayudantes de texto (el resto toca la red y el DOM).
     const pjf = fs.readFileSync(path.join(JS, 'pjf-search.js'), 'utf8');
-    for (const n of ['normalizarTextoPJF', 'PJF_STOPWORDS', 'tokensPJF', 'buscarOrganismoPJF']) {
+    for (const n of ['normalizarTextoPJF', 'PJF_STOPWORDS', 'tokensPJF',
+                     'PJF_ORDINAL_UNIDAD', 'PJF_ORDINAL_DECENA', 'PJF_ORDINAL_SUELTO',
+                     'PJF_ROMANOS', '_romanoANumero', 'canonizarOrdinalesPJF',
+                     '_numeroCircuitoPJF', '_ordinalOrganoPJF', 'buscarOrganismoPJF']) {
         vm.runInContext(extraerDeclaracion(pjf, n, 'pjf-search.js'), sandbox, { filename: `pjf-search.js:${n}` });
     }
 
