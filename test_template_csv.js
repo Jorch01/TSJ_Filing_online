@@ -154,14 +154,11 @@ function cargarCodigoReal(sandbox) {
         vm.runInContext(fs.readFileSync(path.join(JS, archivo), 'utf8'), sandbox, { filename: archivo });
     }
 
-    // De pjf-search.js solo los ayudantes de texto (el resto toca la red y el DOM).
-    const pjf = fs.readFileSync(path.join(JS, 'pjf-search.js'), 'utf8');
-    for (const n of ['normalizarTextoPJF', 'PJF_STOPWORDS', 'tokensPJF',
-                     'PJF_ORDINAL_UNIDAD', 'PJF_ORDINAL_DECENA', 'PJF_ORDINAL_SUELTO',
-                     'PJF_ROMANOS', '_romanoANumero', 'canonizarOrdinalesPJF',
-                     '_numeroCircuitoPJF', '_ordinalOrganoPJF', 'buscarOrganismoPJF']) {
-        vm.runInContext(extraerDeclaracion(pjf, n, 'pjf-search.js'), sandbox, { filename: `pjf-search.js:${n}` });
-    }
+    // pjf-search.js entero: no tiene efectos al cargarse, y mantener a mano la
+    // lista de funciones sueltas se rompía cada vez que una ganaba una
+    // dependencia nueva.
+    vm.runInContext(fs.readFileSync(path.join(JS, 'pjf-search.js'), 'utf8'),
+        sandbox, { filename: 'pjf-search.js' });
 
     // De app.js, el subsistema del template (cargarlo entero arrastraría media app).
     const app = fs.readFileSync(path.join(JS, 'app.js'), 'utf8');

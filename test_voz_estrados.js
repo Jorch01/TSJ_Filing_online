@@ -65,23 +65,18 @@ function crearEntorno() {
             return estado.resolverDevuelve;
         },
         asegurarCatalogosPJF: async () => true,
-        construirURLPJF: (orgId, tipoId, numero) =>
-            `https://www.dgej.cjf.gob.mx/consulta?org=${orgId}&tipo=${tipoId}&exp=${encodeURIComponent(numero)}`,
         ErrorAviso: (m) => { const e = new Error(m); e._esAviso = true; return e; },
         ErrorEleccion: (m) => { const e = new Error(m); e._esEleccion = true; return e; }
     };
     sandbox.window = sandbox;
     vm.createContext(sandbox);
 
-    // Resolutores reales del PJF.
-    const pjf = fs.readFileSync(path.join(JS, 'pjf-search.js'), 'utf8');
-    for (const n of ['normalizarTextoPJF', 'PJF_STOPWORDS', 'tokensPJF',
-                     'PJF_ORDINAL_UNIDAD', 'PJF_ORDINAL_DECENA', 'PJF_ORDINAL_SUELTO', 'PJF_ROMANOS',
-                     '_romanoANumero', 'canonizarOrdinalesPJF',
-                     '_numeroCircuitoPJF', '_ordinalOrganoPJF',
-                     'buscarOrganismoPJF', 'buscarTipoAsuntoPJF', 'tiposAsuntoDeOrgano']) {
-        vm.runInContext(extraer(pjf, n, 'pjf-search.js'), sandbox, { filename: `pjf-search.js:${n}` });
-    }
+    // pjf-search.js entero. Extraer funciones sueltas obligaba a mantener una
+    // lista a mano y se rompía en cuanto una de ellas ganaba una dependencia;
+    // el archivo no hace nada al cargarse, así que cargarlo completo prueba lo
+    // que se despliega y no una selección.
+    vm.runInContext(fs.readFileSync(path.join(JS, 'pjf-search.js'), 'utf8'),
+        sandbox, { filename: 'pjf-search.js' });
 
     // Catálogo oficial, montado igual que lo monta cargarCatalogosPJF().
     const porTipo = {};
@@ -104,8 +99,11 @@ function crearEntorno() {
         })))};
          pjfTiposOrgano = ${JSON.stringify(porTipo)};`, sandbox);
 
-    // La acción del asistente, tal cual está escrita.
+    // La acción del asistente, tal cual está escrita, con la constante que usa.
     const voz = fs.readFileSync(path.join(JS, 'voice-assistant.js'), 'utf8');
+    const tope = /^[ \t]*const MAX_ORGANOS_PJF = \d+;/m.exec(voz);
+    if (!tope) throw new Error('No se encontró MAX_ORGANOS_PJF (¿se renombró?)');
+    vm.runInContext(tope[0].trim(), sandbox, { filename: 'voice-assistant.js:MAX_ORGANOS_PJF' });
     vm.runInContext(extraerIndentado(voz, 'accBuscarPJF', 'voice-assistant.js'),
         sandbox, { filename: 'voice-assistant.js:accBuscarPJF' });
 
@@ -226,9 +224,9 @@ async function pruebaAccion() {
         (estado.ventanas[0]?.url || '').includes(encodeURIComponent('486/2026')),
         estado.ventanas[0]?.url);
     verificar('acción: con el órgano correcto (462)',
-        /org=462(&|$)/.test(estado.ventanas[0]?.url || ''), estado.ventanas[0]?.url);
+        /[?&]organismo=462(&|$)/.test(estado.ventanas[0]?.url || ''), estado.ventanas[0]?.url);
     verificar('acción: y con "Amparo Directo" (tipo 10)',
-        /tipo=10(&|$)/.test(estado.ventanas[0]?.url || ''), estado.ventanas[0]?.url);
+        /[?&]tipoasunto=10(&|$)/.test(estado.ventanas[0]?.url || ''), estado.ventanas[0]?.url);
     verificar('acción: lo dice en la respuesta', /486\/2026/.test(respuesta || ''), respuesta);
     igual('acción: no hizo falta desviar a la página del PJF', estado.navegado, []);
 
@@ -256,7 +254,130 @@ async function pruebaAccion() {
     await d.sandbox.accBuscarPJF({ expedienteRef: 'el 99' });
     igual('acción: un expediente ya registrado abre directo', d.estado.ventanas.length, 1);
     verificar('acción: con sus datos guardados',
-        /org=462.*tipo=10/.test(d.estado.ventanas[0]?.url || ''), d.estado.ventanas[0]?.url);
+        /[?&]organismo=462(&|$)/.test(d.estado.ventanas[0]?.url || '') &&
+        /[?&]tipoasunto=10(&|$)/.test(d.estado.ventanas[0]?.url || ''), d.estado.ventanas[0]?.url);
+}
+
+// ==================== VARIOS ÓRGANOS A LA VEZ ====================
+// Buscar el mismo asunto en los tres colegiados de un circuito, o en dos
+// circuitos distintos, es trabajo de todos los días: el amparo se turna a uno
+// de ellos y hasta que no se publica no se sabe a cuál.
+
+function pruebaExpansion() {
+    const { sandbox } = crearEntorno();
+    const ids = (t) => sandbox.buscarOrganismosPJF(t).map(o => o.id);
+
+    // Una frase concreta es uno solo; una genérica, todos los de ese circuito.
+    igual('expansión: nombrar uno devuelve uno',
+        ids('primer tribunal colegiado del 27 circuito'), [462]);
+    igual('expansión: "tribunales colegiados del 27" son los tres',
+        ids('tribunales colegiados del 27 circuito'), [462, 944, 1319]);
+    igual('expansión: en plural coloquial, los mismos',
+        ids('los colegiados del 27'), [462, 944, 1319]);
+    igual('expansión: y vienen en orden (Primero, Segundo, Tercero)',
+        ids('tribunales colegiados del 27 circuito'), [462, 944, 1319]);
+
+    // Otro circuito da otros órganos, sin mezclarse.
+    const c28 = ids('tribunales colegiados del 28 circuito');
+    verificar('expansión: otro circuito devuelve los suyos', c28.length >= 2, JSON.stringify(c28));
+    verificar('expansión: y ninguno del 27 se cuela',
+        c28.every(id => ![462, 944, 1319].includes(id)), JSON.stringify(c28));
+
+    // Solo tribunales: ni oficinas administrativas ni otro tipo de órgano.
+    const nombres = sandbox.buscarOrganismosPJF('tribunales colegiados del 27 circuito').map(o => o.nombre);
+    verificar('expansión: no se cuela la Oficina de Correspondencia Común',
+        !nombres.some(n => /Oficina de Correspondencia/i.test(n)), JSON.stringify(nombres));
+    verificar('expansión: ni un Tribunal Colegiado de Apelación, que es otro tipo',
+        !nombres.some(n => /de Apelación/i.test(n)), JSON.stringify(nombres));
+    const tipos = new Set(sandbox.buscarOrganismosPJF('juzgados de distrito en quintana roo')
+        .map(o => o.tipoOrganismoId));
+    igual('expansión: todos los devueltos son del mismo tipo de órgano', tipos.size, 1);
+}
+
+async function pruebaVariosOrganos() {
+    // Los tres colegiados del 27, con un asunto que no está dado de alta.
+    const { sandbox, estado } = crearEntorno();
+    estado.resolverLanza = sandbox.ErrorAviso('No encontré ningún expediente');
+
+    const r = await sandbox.accBuscarPJF({
+        numero: '486/2026',
+        organismos: ['tribunales colegiados del 27 circuito'],
+        tipoAsunto: 'amparo directo'
+    });
+
+    igual('varios: se abre una ventana por tribunal', estado.ventanas.length, 3);
+    igual('varios: y cada una en su propio hueco',
+        new Set(estado.ventanas.map(v => v.nombre)).size, 3);
+    verificar('varios: todas con el mismo número',
+        estado.ventanas.every(v => v.url.includes(encodeURIComponent('486/2026'))),
+        JSON.stringify(estado.ventanas.map(v => v.url)));
+    igual('varios: a los tres órganos del circuito',
+        estado.ventanas.map(v => Number(/[?&]organismo=(\d+)/.exec(v.url)[1])).sort((a, b) => a - b),
+        [462, 944, 1319]);
+    verificar('varios: la respuesta dice en cuántos buscó', /3 órganos/.test(r || ''), r);
+
+    // Dos circuitos distintos en la misma orden.
+    const dos = crearEntorno();
+    dos.estado.resolverLanza = dos.sandbox.ErrorAviso('no está');
+    await dos.sandbox.accBuscarPJF({
+        numero: '100/2026',
+        organismos: ['tribunales colegiados del 27 circuito', 'tribunales colegiados del 28 circuito'],
+        tipoAsunto: 'amparo directo'
+    });
+    verificar('varios: dos circuitos abren los de ambos',
+        dos.estado.ventanas.length >= 5, String(dos.estado.ventanas.length));
+
+    // Enumerados a mano, sin repetir si se solapan.
+    const enum_ = crearEntorno();
+    enum_.estado.resolverLanza = enum_.sandbox.ErrorAviso('no está');
+    await enum_.sandbox.accBuscarPJF({
+        numero: '7/2026',
+        organismos: ['primer tribunal colegiado del 27 circuito',
+                     'segundo tribunal colegiado del 27 circuito',
+                     'los colegiados del 27'],
+        tipoAsunto: 'amparo directo'
+    });
+    igual('varios: un órgano repetido no abre dos ventanas', enum_.estado.ventanas.length, 3);
+
+    // Una referencia que no existe no tumba las que sí.
+    const mixto = crearEntorno();
+    mixto.estado.resolverLanza = mixto.sandbox.ErrorAviso('no está');
+    const rm = await mixto.sandbox.accBuscarPJF({
+        numero: '8/2026',
+        organismos: ['primer tribunal colegiado del 27 circuito', 'tribunal inventado del circuito 99'],
+        tipoAsunto: 'amparo directo'
+    });
+    igual('varios: lo que sí se identificó se abre igual', mixto.estado.ventanas.length, 1);
+    verificar('varios: y se avisa de lo que no se identificó',
+        /no identifiqué/.test(rm || ''), rm);
+
+    // Demasiados: mejor decirlo que abrir treinta ventanas que el navegador bloquea.
+    const muchos = crearEntorno();
+    muchos.estado.resolverLanza = muchos.sandbox.ErrorAviso('no está');
+    let aviso = null;
+    try {
+        await muchos.sandbox.accBuscarPJF({
+            numero: '9/2026',
+            organismos: ['juzgados de distrito'],
+            tipoAsunto: 'amparo indirecto'
+        });
+    } catch (e) { aviso = e; }
+    verificar('varios: por encima del tope no se abre nada',
+        muchos.estado.ventanas.length === 0, String(muchos.estado.ventanas.length));
+    verificar('varios: y se explica por qué', aviso && /demasiadas ventanas/i.test(aviso.message),
+        aviso && aviso.message);
+
+    // Un solo órgano sigue funcionando igual que antes.
+    const uno = crearEntorno();
+    uno.estado.resolverLanza = uno.sandbox.ErrorAviso('no está');
+    const ru = await uno.sandbox.accBuscarPJF({
+        numero: '486/2026',
+        organismo: 'primer tribunal colegiado del 27 circuito',
+        tipoAsunto: 'amparo directo'
+    });
+    igual('varios: con "organismo" en singular se abre una sola', uno.estado.ventanas.length, 1);
+    verificar('varios: y la respuesta nombra el tribunal',
+        /Primer Tribunal Colegiado/.test(ru || ''), ru);
 }
 
 // ==================== LAS INSTRUCCIONES AL MODELO ====================
@@ -278,6 +399,12 @@ function pruebaInstrucciones() {
         /NO hace falta que el asunto esté en el catálogo/.test(voz));
     verificar('prompt: hay un ejemplo con la orden completa',
         /amparo directo 486\/2026 del primer tribunal colegiado del 27 circuito/.test(voz));
+    verificar('prompt: se explica cómo pedir varios órganos',
+        /VARIOS ÓRGANOS A LA VEZ/.test(voz));
+    verificar('prompt: con ejemplo de circuitos distintos',
+        /colegiados del 27 y del 28/.test(voz));
+    verificar('prompt: y se le dice que no enumere él los órganos',
+        /no los enumeres tú/i.test(voz));
 }
 
 (async () => {
@@ -286,6 +413,8 @@ function pruebaInstrucciones() {
         ['resolver el órgano', pruebaOrgano],
         ['tipo de asunto', pruebaTipoAsunto],
         ['la acción del asistente', pruebaAccion],
+        ['expandir a varios órganos', pruebaExpansion],
+        ['abrir varios a la vez', pruebaVariosOrganos],
         ['las instrucciones al modelo', pruebaInstrucciones]
     ];
     for (const [nombre, fn] of pruebas) {
