@@ -60,6 +60,7 @@
     const EJEMPLOS = [
         'Agenda audiencia del expediente 123/2025 el jueves a las 10',
         'Busca el 456/2024 en estrados del TSJ',
+        'Abre el estrado del amparo directo 486/2026 del primer tribunal colegiado del 27 circuito',
         'Agrega nota al expediente de Juan Pérez: llamar al perito',
         '¿Qué audiencias tengo esta semana?',
         'Cambia el comentario del expediente 78/2025 a "pendiente de sentencia"'
@@ -104,7 +105,9 @@
                 'Busca el 456/2024 en estrados del TSJ',
                 'Busca 789/2025 en todas las salas de segunda instancia',
                 'Busca a María López por nombre en todos los juzgados',
-                'Consulta el amparo indirecto 55/2025 en el Juzgado Segundo de Distrito de Cancún'
+                'Consulta el amparo indirecto 55/2025 en el Juzgado Segundo de Distrito de Cancún',
+                'Abre el estrado del amparo directo 486/2026 del primer tribunal colegiado del 27 circuito',
+                'Ábreme los estrados del amparo en revisión 12/2026 del segundo colegiado del XXVII circuito'
             ]
         },
         {
@@ -1429,7 +1432,14 @@
         // Si mencionó un expediente, se usa su juzgado y su número en vez de
         // abrir una ventana por cada juzgado del estado.
         if (!p.juzgado && (p.expedienteId != null || p.expedienteRef)) {
-            const expTSJ = await resolverExpedienteDeParametros(p, 'buscar_tsj');
+            let expTSJ = null;
+            try {
+                expTSJ = await resolverExpedienteDeParametros(p, 'buscar_tsj');
+            } catch (e) {
+                // Igual que en el PJF: un estrado se consulta muchas veces de
+                // un asunto que todavía no está registrado.
+                if (e._esEleccion || !p.valor) throw e;
+            }
             if (expTSJ) {
                 if (expTSJ.juzgado) p = { ...p, juzgado: expTSJ.juzgado };
                 if (!p.valor && expTSJ.numero) p = { ...p, valor: expTSJ.numero, tipoBusqueda: 'numero' };
@@ -1474,7 +1484,18 @@
 
     async function accBuscarPJF(p) {
         // Aquí la referencia también sirve: "busca en el PJF lo de Ramírez".
-        const exp = await resolverExpedienteDeParametros(p, 'buscar_pjf');
+        // Pero estas consultas se hacen sobre todo con asuntos que NO están
+        // dados de alta —para eso se dicta el órgano—, así que no encontrarlo
+        // en el catálogo no puede abortar la acción: antes cortaba aquí y el
+        // órgano dictado no llegaba a usarse nunca.
+        let exp = null;
+        try {
+            exp = await resolverExpedienteDeParametros(p, 'buscar_pjf');
+        } catch (e) {
+            // Elegir entre varios candidatos sí es útil y se respeta. Lo que no
+            // vale es rendirse teniendo el órgano o el número que dictó.
+            if (e._esEleccion || !(p.organismo || p.numero)) throw e;
+        }
         const numero = (exp && exp.numero) || p.numero || '';
 
         if (exp && exp.pjfOrgId && exp.pjfTipoAsunto && numero && typeof construirURLPJF === 'function') {
@@ -1647,10 +1668,19 @@ ACCIONES DISPONIBLES y sus parámetros:
 11. "deshacer": {} — revierte la última acción hecha por el asistente ("deshaz lo último", "revierte eso").
 12. "buscar_local": {consulta} — buscar en el catálogo local del usuario ("busca mis expedientes de divorcio", "¿tengo algo de Juan Pérez?", "qué tengo del 123"). Pasa la consulta TAL CUAL la dijo; la app la interpreta y ordena por relevancia.
 13. "buscar_tsj": {valor, tipoBusqueda:"numero"|"nombre", juzgado:nombre exacto de la lista o null, ambito:"todos"|"primera"|"segunda" o null, expedienteId:número o null, expedienteRef:texto o null}
-    - Busca en los estrados en línea del TSJ Quintana Roo. Si el usuario menciona un expediente de su catálogo, usa el juzgado guardado de ese expediente. Si no especifica juzgado, deja juzgado=null y usa ambito (default "todos"; abre muchas ventanas).
+    - ESTRADOS DEL TSJ DE QUINTANA ROO (tribunal del estado). Si el usuario menciona un expediente de su catálogo, usa el juzgado guardado de ese expediente. Si no especifica juzgado, deja juzgado=null y usa ambito (default "todos"; abre muchas ventanas).
 14. "buscar_pjf": {expedienteId:número o null, expedienteRef:texto o null, numero:texto o null, organismo:texto o null, tipoAsunto:texto o null}
-    - Consulta en el portal del Poder Judicial de la Federación. Si el expediente está en el catálogo con tienePJF=true, usa su id.
-    - Si el usuario dicta el órgano federal ("Juzgado Segundo de Distrito de Cancún", "Tribunal Colegiado del Vigésimo Séptimo Circuito"), pásalo TAL CUAL en "organismo" y el tipo de asunto tal como lo diga ("amparo indirecto", "juicio de amparo") en "tipoAsunto"; la app los resuelve contra el catálogo oficial.
+    - ESTRADOS / LISTA DE ACUERDOS DEL PODER JUDICIAL DE LA FEDERACIÓN. Si el expediente está en el catálogo con tienePJF=true, usa su id.
+    - Si el usuario dicta el órgano federal, pásalo TAL CUAL en "organismo" y el tipo de asunto tal como lo diga en "tipoAsunto"; la app los resuelve contra el catálogo oficial. Los ordinales dan igual: "27 circuito", "vigésimo séptimo circuito" y "XXVII circuito" valen los tres.
+    - El número del asunto va SIEMPRE en "numero", aunque no esté dado de alta.
+
+CÓMO DECIDIR ENTRE ESTRADOS DEL TSJ Y DEL PJF (importante):
+- "Estrados", "estrado", "lista de acuerdos", "publicaciones", "boletín" NO deciden nada por sí solos: las dos instituciones publican así. Lo que decide es el ÓRGANO o la institución que se mencione.
+- Van a "buscar_pjf" (federal): PJF, "federal", tribunal colegiado, tribunal unitario, juzgado de distrito, centro auxiliar, plenos de circuito, cualquier mención de "circuito", y los asuntos amparo directo, amparo indirecto, amparo en revisión, queja, revisión fiscal.
+- Van a "buscar_tsj" (estatal): TSJ, TSJQROO, "el tribunal del estado", juzgados civiles/familiares/penales/mercantiles/orales de Quintana Roo, salas del tribunal superior, juicios ordinarios, sucesorios, divorcios.
+- Ejemplo: "abre el estrado del amparo directo 486/2026 del primer tribunal colegiado del 27 circuito del pjf" → buscar_pjf con numero="486/2026", organismo="primer tribunal colegiado del 27 circuito", tipoAsunto="amparo directo".
+- Ejemplo: "ábreme los estrados del 123/2025 del juzgado primero civil de Cancún" → buscar_tsj con valor="123/2025", juzgado el de la lista.
+- NO hace falta que el asunto esté en el catálogo del usuario: si dicta el órgano y el número, manda esos datos y deja expedienteId y expedienteRef en null. Solo usa expedienteRef cuando se refiera a algo SUYO sin dar el órgano ("abre los estrados de lo de Ramírez").
 15. "navegar": {pagina:"inicio"|"expedientes"|"calendario"|"pendientes"|"notas"|"busqueda"|"pjf"|"impi"|"config"}
 16. "responder": para preguntas generales, saludos o cuando ninguna acción aplica. Usa el campo "respuesta".
 

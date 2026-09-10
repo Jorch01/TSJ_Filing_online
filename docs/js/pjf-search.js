@@ -421,6 +421,96 @@ function tokensPJF(texto) {
         .filter(function (t) { return t && !PJF_STOPWORDS[t]; });
 }
 
+// Los circuitos y los órganos se numeran con ordinales escritos ("Primer
+// Tribunal Colegiado del Vigésimo Séptimo Circuito"), pero nadie los dicta así:
+// se dice "el primer colegiado del 27". El id interno del circuito tampoco
+// ayuda —el Vigésimo Séptimo es el circuitoId 54—, así que el número solo
+// existe dentro del ordinal escrito. Esto lo traduce a dígitos por los dos
+// lados, que es lo que hacía que la misma orden funcionara unas veces y otras
+// no, según cómo la escribiera el modelo.
+var PJF_ORDINAL_UNIDAD = {
+    primer: 1, primero: 1, primera: 1, segundo: 2, segunda: 2, tercer: 3,
+    tercero: 3, tercera: 3, cuarto: 4, cuarta: 4, quinto: 5, quinta: 5,
+    sexto: 6, sexta: 6, septimo: 7, septima: 7, octavo: 8, octava: 8,
+    noveno: 9, novena: 9
+};
+var PJF_ORDINAL_DECENA = { decimo: 10, decima: 10, vigesimo: 20, vigesima: 20, trigesimo: 30, trigesima: 30 };
+var PJF_ORDINAL_SUELTO = { undecimo: 11, undecima: 11, duodecimo: 12, duodecima: 12 };
+var PJF_ROMANOS = { i: 1, v: 5, x: 10, l: 50, c: 100, d: 500, m: 1000 };
+
+function _romanoANumero(token) {
+    // Solo dos letras o más: una "i" suelta casi nunca es un número romano.
+    if (!/^[ivxlcdm]{2,}$/.test(token)) return null;
+    var total = 0;
+    for (var i = 0; i < token.length; i++) {
+        var v = PJF_ROMANOS[token[i]];
+        var siguiente = PJF_ROMANOS[token[i + 1]];
+        total += (siguiente && siguiente > v) ? -v : v;
+    }
+    return total > 0 && total <= 40 ? total : null;
+}
+
+/**
+ * Devuelve el texto con los ordinales escritos y los números romanos pasados a
+ * dígitos: "vigésimo séptimo" → "27", "XXVII" → "27", "primer" → "1".
+ * Se aplica igual a lo que dicta el usuario y al nombre del catálogo, para que
+ * los dos lados hablen el mismo idioma.
+ */
+function canonizarOrdinalesPJF(texto) {
+    var tokens = normalizarTextoPJF(texto).split(/([^a-z0-9]+)/);
+    var salida = [];
+
+    for (var i = 0; i < tokens.length; i++) {
+        var t = tokens[i];
+        if (!/^[a-z0-9]+$/.test(t)) { salida.push(t); continue; }
+
+        if (PJF_ORDINAL_SUELTO[t] !== undefined) { salida.push(String(PJF_ORDINAL_SUELTO[t])); continue; }
+
+        if (PJF_ORDINAL_DECENA[t] !== undefined) {
+            // "vigésimo séptimo" es un solo número; "vigésimo circuito" es 20.
+            var siguiente = null, saltar = 0;
+            for (var j = i + 1; j < tokens.length; j++) {
+                if (/^[a-z0-9]+$/.test(tokens[j])) { siguiente = tokens[j]; saltar = j - i; break; }
+                if (!/^\s+$/.test(tokens[j])) break;
+            }
+            if (siguiente && PJF_ORDINAL_UNIDAD[siguiente] !== undefined) {
+                salida.push(String(PJF_ORDINAL_DECENA[t] + PJF_ORDINAL_UNIDAD[siguiente]));
+                i += saltar;
+                continue;
+            }
+            salida.push(String(PJF_ORDINAL_DECENA[t]));
+            continue;
+        }
+
+        if (PJF_ORDINAL_UNIDAD[t] !== undefined) { salida.push(String(PJF_ORDINAL_UNIDAD[t])); continue; }
+
+        var romano = _romanoANumero(t);
+        salida.push(romano !== null ? String(romano) : t);
+    }
+    return salida.join('');
+}
+
+// Con los ordinales en dígitos, una bolsa de palabras ya no basta: "primer
+// tribunal colegiado del segundo circuito" y "segundo tribunal colegiado del
+// primer circuito" llevan los mismos tokens y son órganos de estados
+// distintos. Estas dos funciones separan qué número es de quién.
+
+/** El número que acompaña a la palabra "circuito" ("...del 27 circuito" → 27). */
+function _numeroCircuitoPJF(canonico) {
+    var m = /(\d+)\s+circuito/.exec(canonico);
+    return m ? Number(m[1]) : null;
+}
+
+/** El ordinal del propio órgano: el primer número que no es el del circuito. */
+function _ordinalOrganoPJF(canonico) {
+    var circuito = _numeroCircuitoPJF(canonico);
+    var numeros = (canonico.match(/\d+/g) || []).map(Number);
+    for (var i = 0; i < numeros.length; i++) {
+        if (numeros[i] !== circuito) return numeros[i];
+    }
+    return null;
+}
+
 /**
  * Busca un organismo del PJF por nombre aproximado (incluye ciudad/estado).
  * Devuelve el órgano con más tokens coincidentes; exige que TODOS los
@@ -429,16 +519,38 @@ function tokensPJF(texto) {
  * Retorna el objeto órgano o null.
  */
 function buscarOrganismoPJF(texto) {
-    var tokens = tokensPJF(texto);
+    var consulta = canonizarOrdinalesPJF(texto);
+    var tokens = tokensPJF(consulta);
     if (!tokens.length || !pjfOrganismos.length) return null;
+
+    // Si el usuario dijo de qué circuito y qué número de órgano, se exigen:
+    // abrir el tribunal equivocado es peor que no abrir ninguno.
+    var circuitoPedido = _numeroCircuitoPJF(consulta);
+    var ordinalPedido = _ordinalOrganoPJF(consulta);
 
     var candidatos = [];
     for (var i = 0; i < pjfOrganismos.length; i++) {
         var o = pjfOrganismos[i];
-        var blob = normalizarTextoPJF(o.nombre + ' ' + o.ciudad + ' ' + o.estado + ' ' + o.circuito);
+        var crudo = o.nombre + ' ' + o.ciudad + ' ' + o.estado + ' ' + o.circuito;
+        // El blob lleva el texto tal cual Y con los ordinales en dígitos: así
+        // encajan tanto "vigésimo séptimo" como "27" y como "XXVII".
+        var blob = normalizarTextoPJF(crudo) + ' ' + canonizarOrdinalesPJF(crudo);
+        var palabras = blob.split(/[^a-z0-9]+/);
         var ok = true;
         for (var j = 0; j < tokens.length; j++) {
-            if (blob.indexOf(tokens[j]) === -1) { ok = false; break; }
+            // Las palabras se buscan como subcadena, que perdona plurales y
+            // terminaciones. Los números NO: exigen la palabra entera, porque
+            // si no el "2" de "segundo" encaja dentro del "27" del circuito y
+            // el Segundo Tribunal Colegiado acaba abriendo el del Primero.
+            var encaja = /^\d+$/.test(tokens[j])
+                ? palabras.indexOf(tokens[j]) !== -1
+                : blob.indexOf(tokens[j]) !== -1;
+            if (!encaja) { ok = false; break; }
+        }
+        if (ok && (circuitoPedido !== null || ordinalPedido !== null)) {
+            var suyo = canonizarOrdinalesPJF(o.nombre + ' ' + o.circuito);
+            if (circuitoPedido !== null && _numeroCircuitoPJF(suyo) !== circuitoPedido) ok = false;
+            if (ok && ordinalPedido !== null && _ordinalOrganoPJF(suyo) !== ordinalPedido) ok = false;
         }
         if (ok) candidatos.push(o);
     }
