@@ -13,8 +13,10 @@
  * que un cliente antiguo —que solo manda "datos"— siga funcionando.
  */
 
-const fs = require('fs'), vm = require('vm');
-const GS = '/home/user/TSJ_Filing_online/docs/google-apps-script/codigo.gs';
+const fs = require('fs'), vm = require('vm'), path = require('path');
+// Relativo al propio archivo: una ruta absoluta solo funciona en la máquina
+// donde se escribió, y en cualquier otra —CI incluida— la prueba ni arranca.
+const GS = path.join(__dirname, 'docs', 'google-apps-script', 'codigo.gs');
 
 // --- Hoja de cálculo simulada ---
 function crearHoja(filas) {
