@@ -181,6 +181,30 @@ async function inicializarApp() {
     if (typeof cargarCarpetasUI === 'function') {
         try { await cargarCarpetasUI(); } catch (e) { console.warn('No se cargaron carpetas:', e); }
     }
+
+    // Antes de pintar nada: todo pendiente con fecha debe estar agendado. Se
+    // repasa aquí porque un pendiente puede haber entrado por un camino que no
+    // crea su evento (un respaldo importado, lo que bajó de otro dispositivo,
+    // o de una versión anterior a este vínculo), y así el calendario ya sale
+    // completo en el primer pintado, sin repintarse a medias después.
+    if (typeof sincronizarPendientesConCalendarioCore === 'function') {
+        try {
+            const repaso = await sincronizarPendientesConCalendarioCore();
+            // Si aparecen fechas nuevas en el calendario, se dice: ver surgir
+            // eventos que uno no puso deja pensando que la app inventa cosas.
+            // Solo pasa la primera vez, porque después ya no hay nada que
+            // recoger.
+            if (repaso.creados > 0) {
+                mostrarToast(repaso.creados === 1
+                    ? 'Se agendó 1 pendiente que tenía fecha y no estaba en el calendario'
+                    : `Se agendaron ${repaso.creados} pendientes que tenían fecha y no estaban en el calendario`,
+                    'info');
+            }
+        } catch (e) {
+            console.warn('No se pudo repasar el calendario de los pendientes:', e);
+        }
+    }
+
     await cargarEstadisticas();
     // Los pendientes van antes que los expedientes: la tarjeta de cada
     // expediente pinta cuántos tiene por hacer leyendo pendientesCache, así
@@ -406,6 +430,219 @@ window.addEventListener('load', () => {
     const m = (location.hash || '').match(/^#expedientes\/(\d+)$/);
     if (m) setTimeout(() => mostrarExpediente(parseInt(m[1])), 900);
 });
+
+// ==================== BÚSQUEDA RÁPIDA DE EXPEDIENTES (INICIO, SOLO MÓVIL) ====================
+// En el teléfono, abrir un expediente costaba tres pasos —menú, Expedientes,
+// buscar— y es lo que más se hace en el día. Este buscador vive arriba del
+// panel de inicio, así que está a la vista nada más abrir la app.
+//
+// Solo existe en móvil, y de eso se encarga el CSS (.busqueda-rapida está
+// oculta fuera de la media query de 768px): en escritorio el menú ya está a la
+// vista y además hay Ctrl+K. Al estar oculta, nada de esto llega a ejecutarse
+// allí, porque todo arranca desde el propio campo.
+//
+// Se busca con buscarExpedientesPorReferencia, el mismo motor que usa el
+// asistente de voz: entiende "123" por "0123/2025", ignora acentos y también
+// encuentra por juzgado, partes o carpeta. Los archivados salen marcados, que
+// es mejor que decir "no existe" sobre algo que sí está.
+
+const BUSQUEDA_RAPIDA_MAX = 8;
+
+let _busquedaRapidaTimer = null;
+let _busquedaRapidaResultados = [];
+// Cada consulta lleva turno: si una respuesta llega tarde, se descarta en vez
+// de pisar en pantalla lo que se buscó después.
+let _busquedaRapidaTurno = 0;
+
+function _elBusquedaRapida(sufijo) {
+    return document.getElementById('busqueda-rapida-' + sufijo);
+}
+
+function _actualizarBotonLimpiarBusquedaRapida() {
+    const input = _elBusquedaRapida('input');
+    const boton = _elBusquedaRapida('limpiar');
+    if (boton) boton.style.display = input && input.value ? 'flex' : 'none';
+}
+
+function buscarRapidoDebounced() {
+    // La ✕ no espera al debounce: aparece en cuanto hay algo escrito.
+    _actualizarBotonLimpiarBusquedaRapida();
+    clearTimeout(_busquedaRapidaTimer);
+    _busquedaRapidaTimer = setTimeout(() => buscarRapido(), 180);
+}
+
+/** Cierra el desplegable sin tocar lo escrito. */
+function cerrarResultadosBusquedaRapida() {
+    clearTimeout(_busquedaRapidaTimer);
+    _busquedaRapidaTurno++;              // descarta lo que venga en camino
+    _busquedaRapidaResultados = [];
+    const panel = _elBusquedaRapida('resultados');
+    if (panel) {
+        panel.hidden = true;
+        panel.innerHTML = '';
+    }
+}
+
+function limpiarBusquedaRapida() {
+    const input = _elBusquedaRapida('input');
+    if (input) {
+        input.value = '';
+        input.focus();
+    }
+    cerrarResultadosBusquedaRapida();
+    _actualizarBotonLimpiarBusquedaRapida();
+}
+
+/** Al volver al campo con algo escrito, se recupera la lista que ya estaba. */
+function reabrirBusquedaRapida() {
+    const input = _elBusquedaRapida('input');
+    const panel = _elBusquedaRapida('resultados');
+    if (!input || !panel || !input.value.trim()) return;
+    if (panel.hidden) buscarRapido();
+}
+
+async function buscarRapido() {
+    const input = _elBusquedaRapida('input');
+    const panel = _elBusquedaRapida('resultados');
+    if (!input || !panel) return;
+
+    const consulta = input.value.trim();
+    _actualizarBotonLimpiarBusquedaRapida();
+
+    if (!consulta) {
+        cerrarResultadosBusquedaRapida();
+        return;
+    }
+
+    const turno = ++_busquedaRapidaTurno;
+
+    let candidatos = [];
+    try {
+        candidatos = typeof buscarExpedientesPorReferencia === 'function'
+            ? await buscarExpedientesPorReferencia(consulta, { incluirArchivados: true })
+            : [];
+    } catch (e) {
+        Logger.error('Falló la búsqueda rápida:', e);
+    }
+
+    if (turno !== _busquedaRapidaTurno) return;   // llegó tarde
+
+    _busquedaRapidaResultados = candidatos.slice(0, BUSQUEDA_RAPIDA_MAX);
+    const ocultos = candidatos.length - _busquedaRapidaResultados.length;
+
+    if (_busquedaRapidaResultados.length === 0) {
+        panel.innerHTML =
+            `<p class="busqueda-rapida-vacio">Ningún expediente coincide con ` +
+            `<strong>${escapeText(consulta)}</strong>.</p>`;
+    } else {
+        panel.innerHTML =
+            _busquedaRapidaResultados.map(_filaBusquedaRapidaHTML).join('') +
+            (ocultos > 0
+                ? `<button type="button" class="busqueda-rapida-mas" onclick="verTodosDesdeBusquedaRapida()">
+                       y ${ocultos} más — verlos en Expedientes
+                   </button>`
+                : '');
+    }
+
+    panel.hidden = false;
+}
+
+function _filaBusquedaRapidaHTML(candidato) {
+    const exp = candidato.expediente;
+    const titulo = exp.numero || exp.nombre || 'Expediente';
+
+    // Lo que distingue a un expediente de otro cuando el número se parece:
+    // de qué caso es (la carpeta) y quiénes son las partes.
+    const carpeta = typeof carpetaDeCache === 'function' ? carpetaDeCache(exp.carpetaId) : null;
+    const partes = [exp.actor, exp.demandado].filter(Boolean).join(' vs ');
+    const detalle = [carpeta ? carpeta.nombre : '', partes || exp.juzgado || '']
+        .filter(Boolean).join(' · ');
+
+    const abiertos = typeof pendientesAbiertosDeExpediente === 'function'
+        ? pendientesAbiertosDeExpediente(exp.id) : 0;
+    const icono = exp.institucion === 'PJF' ? '🏛️' : (exp.institucion === 'OTRO' ? '📋' : '📂');
+
+    return `
+        <button type="button" class="busqueda-rapida-item" role="option"
+                onclick="abrirDesdeBusquedaRapida(${exp.id})">
+            <span class="bri-icono" aria-hidden="true">${icono}</span>
+            <span class="bri-texto">
+                <span class="bri-titulo">${escapeText(titulo)}</span>
+                ${detalle ? `<span class="bri-detalle">${escapeText(detalle)}</span>` : ''}
+            </span>
+            <span class="bri-marcas">
+                ${candidato.archivado ? '<span class="bri-chip archivado">Archivado</span>' : ''}
+                ${abiertos ? `<span class="bri-chip pendientes" title="${abiertos} pendiente(s) por hacer">✅ ${abiertos}</span>` : ''}
+            </span>
+        </button>`;
+}
+
+/**
+ * Abre el expediente elegido. Se muestra su ficha —datos, pendientes y fechas
+ * del calendario— en vez de saltar a la lista: en el móvil eso es lo que se
+ * viene a ver, y evita tener que buscarlo otra vez entre las tarjetas.
+ */
+async function abrirDesdeBusquedaRapida(id) {
+    const input = _elBusquedaRapida('input');
+    if (input) input.blur();          // baja el teclado antes de abrir la ficha
+    cerrarResultadosBusquedaRapida();
+
+    if (typeof verDetalleExpediente === 'function') {
+        await verDetalleExpediente(id);
+    }
+}
+
+/** Salida para cuando la consulta es amplia: la lista completa, con sus filtros. */
+function verTodosDesdeBusquedaRapida() {
+    const input = _elBusquedaRapida('input');
+    const consulta = input ? input.value.trim() : '';
+    if (input) input.blur();
+    cerrarResultadosBusquedaRapida();
+
+    navegarA('expedientes');
+    const campo = document.getElementById('buscar-expediente');
+    if (campo) {
+        campo.value = consulta;
+        filtrarExpedientes();
+    }
+}
+
+function tecladoBusquedaRapida(event) {
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        limpiarBusquedaRapida();
+        return;
+    }
+    if (event.key === 'Enter') {
+        // El teclado del móvil trae "buscar", no flechas: entrar abre el primer
+        // resultado, que con una consulta concreta es siempre el que se quería.
+        event.preventDefault();
+        if (_busquedaRapidaResultados.length > 0) {
+            abrirDesdeBusquedaRapida(_busquedaRapidaResultados[0].expediente.id);
+        } else {
+            buscarRapido();
+        }
+    }
+}
+
+// Tocar fuera cierra el desplegable; si no, se queda tapando el panel de
+// inicio hasta que se vacíe el campo. Este oyente ve TODOS los clics de la
+// app, así que sale por donde entró en cuanto no hay nada abierto —que es
+// casi siempre, y en escritorio, siempre—.
+document.addEventListener('click', (e) => {
+    const panel = document.getElementById('busqueda-rapida-resultados');
+    if (!panel || panel.hidden) return;
+    const caja = document.getElementById('busqueda-rapida');
+    if (caja && !caja.contains(e.target)) cerrarResultadosBusquedaRapida();
+});
+
+window.buscarRapidoDebounced = buscarRapidoDebounced;
+window.buscarRapido = buscarRapido;
+window.limpiarBusquedaRapida = limpiarBusquedaRapida;
+window.reabrirBusquedaRapida = reabrirBusquedaRapida;
+window.abrirDesdeBusquedaRapida = abrirDesdeBusquedaRapida;
+window.verTodosDesdeBusquedaRapida = verTodosDesdeBusquedaRapida;
+window.tecladoBusquedaRapida = tecladoBusquedaRapida;
 
 // ==================== ESTADÍSTICAS ====================
 
@@ -2930,7 +3167,7 @@ async function mostrarFormularioPendiente(id = null, expedienteIdPrefijado = nul
                     <input type="datetime-local" id="pendiente-fecha" value="${valorFecha}">
                 </div>
             </div>
-            <small class="form-hint">Con fecha, el pendiente aparece en el calendario y te avisa. Sin ella, es solo una tarea del expediente.</small>
+            <small class="form-hint">Con fecha, el pendiente se agenda solo en el calendario y te avisa. Si le pones hora, se agenda a esa hora; si la dejas en 00:00, como día completo. Sin fecha, es solo una tarea del expediente.</small>
         </form>
     `;
     document.getElementById('modal-footer').innerHTML = `
@@ -3005,6 +3242,21 @@ function sincronizarCarpetaPendiente(valorExpediente) {
     return exp;
 }
 
+/**
+ * ¿La fecha límite que se escribió lleva hora, o marca el día entero?
+ *
+ * El <input type="datetime-local"> SIEMPRE devuelve hora, así que un pendiente
+ * "para el 20" llegaba aquí como "2026-09-20T00:00" y se agendaba como una
+ * cita a medianoche. Las 00:00 se leen como lo que quiere decir quien las
+ * deja: el día, sin hora concreta.
+ *
+ * @param {string} valor Valor crudo del input ("YYYY-MM-DDTHH:MM").
+ */
+function _pendienteFechaTieneHora(valor) {
+    const hora = (String(valor || '').split('T')[1] || '').slice(0, 5);
+    return !!hora && hora !== '00:00';
+}
+
 async function guardarPendiente(event) {
     event.preventDefault();
 
@@ -3066,7 +3318,9 @@ async function guardarPendiente(event) {
         prioridad,
         expedienteId,
         expedienteTexto,
-        fechaLimite: fecha ? new Date(fecha).toISOString() : null
+        fechaLimite: fecha ? new Date(fecha).toISOString() : null,
+        // Con hora, al calendario a su hora; sin ella, como día completo.
+        todoElDia: !_pendienteFechaTieneHora(fecha)
     };
 
     try {
@@ -4860,9 +5114,19 @@ async function importarDatos(event) {
             };
 
             await importarTodosDatos(datosAImportar, true);
+
+            // Un respaldo puede traer pendientes con fecha cuyo evento no vino
+            // (respaldos anteriores no lo guardaban vinculado): se repasa para
+            // que ninguna fecha se quede fuera del calendario al restaurar.
+            if (typeof sincronizarPendientesConCalendarioCore === 'function') {
+                try { await sincronizarPendientesConCalendarioCore(); }
+                catch (e) { console.warn('No se pudo repasar el calendario de los pendientes:', e); }
+            }
+
             await cargarExpedientes();
             await cargarNotas();
             await cargarEventos();
+            if (typeof cargarPendientes === 'function') await cargarPendientes();
             await cargarEstadisticas();
             renderizarCalendario();
 

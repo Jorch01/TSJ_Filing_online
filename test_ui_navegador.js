@@ -952,6 +952,238 @@ async function main() {
 
         await page.evaluate(() => { history.replaceState(null, '', location.pathname); });
 
+        // ---- Un pendiente con hora se agenda A SU HORA ----
+        // El <input type="datetime-local"> siempre devuelve hora, y el
+        // formulario no la pasaba: todo pendiente acababa en el calendario
+        // como "todo el día", también el que se puso para las 11:45.
+        await page.evaluate(() => navegarA('pendientes'));
+        await page.waitForTimeout(400);
+        await page.evaluate(() => mostrarFormularioPendiente());
+        await page.waitForTimeout(400);
+        await page.fill('#pendiente-titulo', 'Audiencia con hora');
+        await page.fill('#pendiente-fecha', '2027-06-15T11:45');
+        await page.evaluate(() => document.getElementById('pendiente-form').requestSubmit());
+        await page.waitForTimeout(700);
+
+        const conHora = await page.evaluate(async () => {
+            const ev = (await obtenerEventos()).find(e => e.titulo === 'Audiencia con hora');
+            const p = (await obtenerPendientes()).find(x => x.titulo === 'Audiencia con hora');
+            if (!ev || !p) return null;
+            const f = new Date(ev.fechaInicio);
+            return {
+                todoElDia: ev.todoElDia,
+                hora: f.getHours(), minutos: f.getMinutes(),
+                vinculado: p.eventoId === ev.id,
+                deVuelta: ev.pendienteId === p.id
+            };
+        });
+
+        verificar('pendiente con hora: se agenda en el calendario', !!conHora, 'no se creó el evento');
+        igual('pendiente con hora: NO se agenda como día completo', conHora && conHora.todoElDia, false);
+        igual('pendiente con hora: se agenda a las 11:45',
+            conHora && [conHora.hora, conHora.minutos], [11, 45]);
+        igual('pendiente con hora: queda vinculado a su evento', conHora && conHora.vinculado, true);
+        igual('pendiente con hora: y el evento sabe de quién es', conHora && conHora.deVuelta, true);
+
+        // Y el mismo formulario sin hora sigue agendando el día entero.
+        await page.evaluate(() => mostrarFormularioPendiente());
+        await page.waitForTimeout(400);
+        await page.fill('#pendiente-titulo', 'Vence el plazo');
+        await page.fill('#pendiente-fecha', '2027-06-16T00:00');
+        await page.evaluate(() => document.getElementById('pendiente-form').requestSubmit());
+        await page.waitForTimeout(700);
+
+        const sinHora = await page.evaluate(async () =>
+            (await obtenerEventos()).find(e => e.titulo === 'Vence el plazo') || null);
+        igual('pendiente sin hora: se agenda como día completo',
+            sinHora && sinHora.todoElDia, true);
+
+        // ---- Ninguna fecha se queda fuera del calendario ----
+        // Un pendiente puede entrar a la base sin pasar por el formulario (un
+        // respaldo importado, lo que baja de otro dispositivo). El repaso del
+        // arranque tiene que recogerlo.
+        const rescatado = await page.evaluate(async () => {
+            const id = await agregarPendiente({
+                titulo: 'Llegó de un respaldo',
+                fechaLimite: new Date(2027, 6, 8, 0, 0).toISOString(),
+                completado: false,
+                eventoId: null
+            });
+            const antes = (await obtenerEventos()).some(e => e.titulo === 'Llegó de un respaldo');
+            const resumen = await sincronizarPendientesConCalendarioCore();
+            const ev = (await obtenerEventos()).find(e => e.titulo === 'Llegó de un respaldo');
+            const p = (await obtenerPendiente(id));
+
+            // Repasar otra vez no puede duplicarlo.
+            await sincronizarPendientesConCalendarioCore();
+            const cuantos = (await obtenerEventos())
+                .filter(e => e.titulo === 'Llegó de un respaldo').length;
+
+            return { antes, creados: resumen.creados, agendado: !!ev, vinculado: p.eventoId === (ev || {}).id, cuantos };
+        });
+
+        igual('rescate: sin repaso no estaba en el calendario', rescatado.antes, false);
+        igual('rescate: el repaso lo agenda', rescatado.creados >= 1, true);
+        igual('rescate: y aparece en el calendario', rescatado.agendado, true);
+        igual('rescate: con su vínculo puesto', rescatado.vinculado, true);
+        igual('rescate: repasar dos veces no lo duplica', rescatado.cuantos, 1);
+
+        // ---- Búsqueda rápida de expedientes en Inicio (SOLO MÓVIL) ----
+        // En escritorio no debe aparecer: ahí el menú está a la vista y hay
+        // Ctrl+K. Si se colara, ocuparía sitio en el panel sin aportar nada.
+        await page.evaluate(() => navegarA('inicio'));
+        await page.waitForTimeout(400);
+
+        igual('rápida: en escritorio no se ve',
+            await page.locator('#busqueda-rapida').isVisible(), false);
+
+        // A partir de aquí, un teléfono.
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.waitForTimeout(400);
+
+        igual('rápida: en el móvil sí se ve',
+            await page.locator('#busqueda-rapida-input').isVisible(), true);
+
+        // "Visible al abrir" quiere decir sin tener que bajar: si cae por
+        // debajo del primer pantallazo, no sirve de nada.
+        const caja = await page.locator('#busqueda-rapida-input').boundingBox();
+        verificar('rápida: está a la vista sin bajar la página',
+            caja && caja.y >= 0 && caja.y < 844, JSON.stringify(caja));
+
+        // Buscar por número, aunque se escriba solo la parte de antes del año.
+        await page.fill('#busqueda-rapida-input', '77');
+        await page.waitForTimeout(500);
+
+        const porNumero = await page.evaluate(() => ({
+            abierto: !document.getElementById('busqueda-rapida-resultados').hidden,
+            titulos: [...document.querySelectorAll('.busqueda-rapida-item .bri-titulo')]
+                .map(e => e.textContent.trim())
+        }));
+        igual('rápida: buscar "77" abre resultados', porNumero.abierto, true);
+        verificar('rápida: y encuentra el 77/2026 sin escribir el año',
+            porNumero.titulos.includes('77/2026'), JSON.stringify(porNumero.titulos));
+
+        // Por una parte del expediente, no solo por el número.
+        await page.fill('#busqueda-rapida-input', 'perez');
+        await page.waitForTimeout(500);
+        const porParte = await page.evaluate(() =>
+            [...document.querySelectorAll('.busqueda-rapida-item .bri-titulo')].map(e => e.textContent.trim()));
+        verificar('rápida: encuentra por el nombre de la parte, y sin acentos',
+            porParte.includes('77/2026'), JSON.stringify(porParte));
+
+        // Tocar un resultado abre su ficha: es a lo que se venía.
+        await page.click('.busqueda-rapida-item');
+        await page.waitForTimeout(700);
+        const fichaAbierta = await page.evaluate(() => ({
+            abierta: document.getElementById('modal-overlay').classList.contains('active'),
+            titulo: document.getElementById('modal-titulo').textContent,
+            panelCerrado: document.getElementById('busqueda-rapida-resultados').hidden
+        }));
+        igual('rápida: tocar el resultado abre la ficha del expediente', fichaAbierta.abierta, true);
+        igual('rápida: y es la del expediente que se tocó', fichaAbierta.titulo, '77/2026');
+        igual('rápida: el desplegable se cierra al abrirla', fichaAbierta.panelCerrado, true);
+
+        await page.evaluate(() => cerrarModal());
+        await page.waitForTimeout(300);
+
+        // Un archivado se ofrece igual, pero marcado: decir "no existe" sobre
+        // algo que sí está es peor que ofrecerlo con su etiqueta.
+        await page.fill('#busqueda-rapida-input', '55/2026');
+        await page.waitForTimeout(500);
+        const archivado = await page.evaluate(() => {
+            const item = document.querySelector('.busqueda-rapida-item');
+            return item ? { texto: item.textContent, chip: !!item.querySelector('.bri-chip.archivado') } : null;
+        });
+        verificar('rápida: un expediente archivado también sale',
+            archivado && /55\/2026/.test(archivado.texto), JSON.stringify(archivado));
+        igual('rápida: y sale marcado como archivado', archivado && archivado.chip, true);
+
+        // Lo que no existe se dice, no se deja el desplegable en blanco.
+        await page.fill('#busqueda-rapida-input', 'zzzzzz');
+        await page.waitForTimeout(500);
+        const sinNada = await page.evaluate(() => ({
+            abierto: !document.getElementById('busqueda-rapida-resultados').hidden,
+            texto: (document.querySelector('.busqueda-rapida-vacio') || {}).textContent || ''
+        }));
+        igual('rápida: sin resultados el desplegable sigue abierto', sinNada.abierto, true);
+        verificar('rápida: y lo dice con la consulta delante',
+            /zzzzzz/.test(sinNada.texto), sinNada.texto);
+
+        // La ✕ limpia y cierra.
+        igual('rápida: con texto aparece la ✕',
+            await page.locator('#busqueda-rapida-limpiar').isVisible(), true);
+        await page.click('#busqueda-rapida-limpiar');
+        await page.waitForTimeout(300);
+        const limpio = await page.evaluate(() => ({
+            valor: document.getElementById('busqueda-rapida-input').value,
+            cerrado: document.getElementById('busqueda-rapida-resultados').hidden
+        }));
+        igual('rápida: la ✕ vacía el campo', limpio.valor, '');
+        igual('rápida: y cierra el desplegable', limpio.cerrado, true);
+
+        // El teclado del móvil trae "buscar": entrar abre el primer resultado.
+        await page.fill('#busqueda-rapida-input', '88');
+        await page.waitForTimeout(500);
+        await page.press('#busqueda-rapida-input', 'Enter');
+        await page.waitForTimeout(700);
+        const conEnter = await page.evaluate(() => ({
+            abierta: document.getElementById('modal-overlay').classList.contains('active'),
+            titulo: document.getElementById('modal-titulo').textContent
+        }));
+        igual('rápida: entrar abre el primer resultado', conEnter.abierta, true);
+        igual('rápida: y es el que se buscaba', conEnter.titulo, '88/2026');
+
+        await page.evaluate(() => { cerrarModal(); limpiarBusquedaRapida(); });
+        await page.waitForTimeout(300);
+
+        // Con una consulta amplia no caben todos: hay que poder llegar a la
+        // lista completa en vez de quedarse con los primeros ocho.
+        await page.evaluate(async () => {
+            for (let i = 1; i <= 10; i++) {
+                await crearExpedienteCore({
+                    numero: `${600 + i}/2026`, institucion: 'TSJ',
+                    juzgado: 'JUZGADO PRIMERO CIVIL CANCUN',
+                    comentario: 'asuntoamplio'
+                });
+            }
+            await cargarExpedientes();
+        });
+        await page.fill('#busqueda-rapida-input', 'asuntoamplio');
+        await page.waitForTimeout(600);
+
+        const conMuchos = await page.evaluate(() => ({
+            mostrados: document.querySelectorAll('.busqueda-rapida-item').length,
+            hayMas: !!document.querySelector('.busqueda-rapida-mas'),
+            textoMas: (document.querySelector('.busqueda-rapida-mas') || {}).textContent || ''
+        }));
+        igual('rápida: no vuelca la lista entera en el desplegable', conMuchos.mostrados, 8);
+        igual('rápida: y avisa de los que no caben', conMuchos.hayMas, true);
+        verificar('rápida: diciendo cuántos faltan', /2 más/.test(conMuchos.textoMas), conMuchos.textoMas);
+
+        await page.click('.busqueda-rapida-mas');
+        await page.waitForTimeout(700);
+        const enLaLista = await page.evaluate(() => ({
+            pagina: document.querySelector('.page.active').id,
+            filtro: document.getElementById('buscar-expediente').value,
+            encontrados: document.querySelectorAll('#lista-expedientes .expediente-card').length
+        }));
+        igual('rápida: "ver los demás" lleva a Expedientes', enLaLista.pagina, 'page-expedientes');
+        igual('rápida: con la búsqueda ya puesta', enLaLista.filtro, 'asuntoamplio');
+        igual('rápida: y la lista filtrada, con los diez', enLaLista.encontrados, 10);
+
+        await page.evaluate(() => {
+            document.getElementById('buscar-expediente').value = '';
+            filtrarExpedientes();
+            navegarA('inicio');
+        });
+        await page.waitForTimeout(500);
+
+        // De vuelta al escritorio: sigue sin aparecer.
+        await page.setViewportSize({ width: 1400, height: 900 });
+        await page.waitForTimeout(400);
+        igual('rápida: al volver al escritorio se esconde otra vez',
+            await page.locator('#busqueda-rapida').isVisible(), false);
+
         igual('la página no lanza errores de JavaScript', erroresPagina, []);
 
     } finally {

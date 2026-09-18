@@ -196,6 +196,33 @@
                 <p class="subtitle">Bienvenido al Sistema de Gestión de Expedientes</p>
             </div>
 
+            <!-- Búsqueda rápida de expedientes. SOLO SE VE EN MÓVIL: el CSS la
+                 deja oculta y la muestra a partir de .busqueda-rapida dentro de
+                 la media query de 768px. En el teléfono, llegar a un expediente
+                 costaba menú → Expedientes → buscar; aquí está nada más abrir.
+                 En escritorio no hace falta: el menú está a la vista y existe
+                 Ctrl+K. -->
+            <div class="busqueda-rapida" id="busqueda-rapida">
+                <div class="busqueda-rapida-campo">
+                    <span class="busqueda-rapida-icono" aria-hidden="true">🔍</span>
+                    <input type="text" id="busqueda-rapida-input"
+                           placeholder="Buscar expediente…"
+                           autocomplete="off" autocorrect="off" autocapitalize="off"
+                           spellcheck="false" inputmode="search" enterkeyhint="search"
+                           aria-label="Buscar expediente"
+                           aria-controls="busqueda-rapida-resultados"
+                           oninput="buscarRapidoDebounced()"
+                           onfocus="reabrirBusquedaRapida()"
+                           onkeydown="tecladoBusquedaRapida(event)">
+                    <button type="button" class="busqueda-rapida-limpiar"
+                            id="busqueda-rapida-limpiar" style="display:none;"
+                            onclick="limpiarBusquedaRapida()"
+                            aria-label="Limpiar la búsqueda">✕</button>
+                </div>
+                <div class="busqueda-rapida-resultados" id="busqueda-rapida-resultados"
+                     role="listbox" aria-label="Expedientes encontrados" hidden></div>
+            </div>
+
             <!-- Banner de anuncios (solo usuarios gratuitos) -->
             <div class="ad-banner ad-banner-top" id="ad-banner-dashboard" style="display: none;">
                 <div class="ad-content">

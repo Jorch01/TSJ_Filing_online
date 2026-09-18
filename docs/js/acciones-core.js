@@ -322,6 +322,20 @@ function _corePendienteDescripcionEvento(datos) {
 }
 
 /**
+ * ¿El pendiente marca un día entero o una hora concreta? El dato se guarda
+ * desde que existe el vínculo con el calendario, pero los pendientes antiguos
+ * —y los que llegan de un respaldo viejo— no lo traen, y ahí se deduce de la
+ * propia fecha: las 00:00 son un día señalado ("para el 20"), no una cita a
+ * medianoche.
+ */
+function _corePendienteEsTodoElDia(pendiente) {
+    if (typeof pendiente.todoElDia === 'boolean') return pendiente.todoElDia;
+    const d = new Date(pendiente.fechaLimite);
+    if (isNaN(d.getTime())) return true;
+    return d.getHours() === 0 && d.getMinutes() === 0;
+}
+
+/**
  * Crea, actualiza o elimina el evento de calendario que refleja un pendiente,
  * según tenga o no fecha límite. Devuelve el eventoId resultante (o null).
  * Nunca propaga errores: que falle el calendario no debe impedir guardar el
@@ -340,7 +354,7 @@ async function _corePendienteSincronizarEvento(pendiente, eventoIdActual) {
             titulo: pendiente.titulo,
             tipo: CORE_TIPO_EVENTO_PENDIENTE,
             fechaInicio: pendiente.fechaLimite,
-            todoElDia: !!pendiente.todoElDia,
+            todoElDia: _corePendienteEsTodoElDia(pendiente),
             expedienteId: pendiente.expedienteId != null ? pendiente.expedienteId : null,
             expedienteTexto: pendiente.expedienteTexto || null,
             descripcion: _corePendienteDescripcionEvento(pendiente),
@@ -464,6 +478,116 @@ async function eliminarPendienteCore(id) {
     await _coreRefrescarUI();
     await _coreSincronizar();
     return actual;
+}
+
+/**
+ * Repasa TODOS los pendientes y deja el calendario al día: el que tiene fecha
+ * y sigue abierto debe estar agendado, y el que ya se terminó no debe seguir
+ * ocupando sitio.
+ *
+ * Dar de alta un pendiente ya crea su evento, pero hay caminos por los que uno
+ * entra a la base sin pasar por ahí y su fecha se quedaba solo en la lista de
+ * pendientes, sin llegar nunca al calendario:
+ *
+ *   - Pendientes de antes de que existiera el vínculo con el calendario.
+ *   - Los de un respaldo importado (el evento llegaba suelto, sin vínculo).
+ *   - Los que bajan de otro dispositivo si su evento no vino en el mismo lote.
+ *   - Aquellos cuyo evento se borró a mano desde el calendario.
+ *
+ * Es conservadora a propósito: crea lo que falta y reengancha lo que ya
+ * existía, pero NO reescribe un evento que está puesto, porque pudo ajustarse
+ * a mano desde el calendario y esto no es quién para deshacerlo.
+ *
+ * No propaga errores: es una puesta a punto de fondo, y que falle no puede
+ * tumbar el arranque ni una sincronización.
+ *
+ * @param {{sincronizar?: boolean}} [opciones] sincronizar:false no dispara la
+ *        subida a la nube al terminar. Lo usa el propio sync, que ya está en
+ *        mitad de una vuelta y sube lo repasado en esa misma vuelta; llamarla
+ *        desde dentro solo chocaría con el sync en curso.
+ * @returns {Promise<{creados:number, revinculados:number, retirados:number}>}
+ */
+async function sincronizarPendientesConCalendarioCore(opciones = {}) {
+    const resumen = { creados: 0, revinculados: 0, retirados: 0 };
+    // El resumen cuenta lo que se ve en el calendario; esto cuenta TODO lo que
+    // se tocó en la base, vínculos sueltos incluidos, que también hay que
+    // repintar y subir.
+    let cambios = 0;
+    if (typeof obtenerPendientes !== 'function' || typeof obtenerEventos !== 'function') {
+        return resumen;
+    }
+
+    let pendientes, eventos;
+    try {
+        [pendientes, eventos] = await Promise.all([obtenerPendientes(), obtenerEventos()]);
+    } catch (e) {
+        console.error('[CORE] No se pudo repasar el calendario de los pendientes:', e);
+        return resumen;
+    }
+
+    const eventosPorId = new Map((eventos || []).map(e => [e.id, e]));
+    // Espejos que siguen en el calendario pero cuyo pendiente perdió el vínculo.
+    // Sin esto, la pasada crearía un evento nuevo al lado del que ya estaba y
+    // el usuario acabaría viendo la misma fecha dos veces.
+    const espejoPorPendiente = new Map();
+    for (const e of eventos || []) {
+        if (e.pendienteId != null && !espejoPorPendiente.has(e.pendienteId)) {
+            espejoPorPendiente.set(e.pendienteId, e);
+        }
+    }
+
+    try {
+        await _coreEnLoteEjecutar(async () => {
+            for (const p of pendientes || []) {
+                const debeEstarAgendado = !!p.fechaLimite && !p.completado;
+                const agendado = p.eventoId != null ? eventosPorId.get(p.eventoId) : null;
+
+                if (debeEstarAgendado) {
+                    if (agendado) continue;   // ya está en el calendario
+
+                    const huerfano = espejoPorPendiente.get(p.id);
+                    if (huerfano) {
+                        await actualizarPendiente(p.id, { eventoId: huerfano.id }).catch(() => {});
+                        resumen.revinculados++;
+                        cambios++;
+                        continue;
+                    }
+
+                    const eventoId = await _corePendienteSincronizarEvento(p, null);
+                    if (eventoId) {
+                        await actualizarPendiente(p.id, { eventoId }).catch(() => {});
+                        await actualizarEvento(eventoId, { pendienteId: p.id }).catch(() => {});
+                        resumen.creados++;
+                        cambios++;
+                    }
+                } else if (agendado) {
+                    // Terminado o sin fecha: su espejo ya no representa nada.
+                    //
+                    // Pero solo se borra lo que es DEMOSTRABLEMENTE su espejo,
+                    // es decir, lo que apunta de vuelta al pendiente. Un
+                    // eventoId heredado de un respaldo viejo puede haber caído
+                    // sobre el id de una audiencia real, y borrarla no tiene
+                    // vuelta atrás; deshacer el vínculo sí. Ante la duda, se
+                    // suelta el vínculo y el evento se queda.
+                    if (agendado.pendienteId === p.id) {
+                        await eliminarEventoCore(agendado.id).catch(() => {});
+                        resumen.retirados++;
+                    }
+                    await actualizarPendiente(p.id, { eventoId: null }).catch(() => {});
+                    cambios++;
+                }
+            }
+        });
+    } catch (e) {
+        console.error('[CORE] Error repasando el calendario de los pendientes:', e);
+    }
+
+    // Solo se molesta a la UI y a la nube si de verdad cambió algo.
+    if (cambios > 0) {
+        await _coreRefrescarUI();
+        if (opciones.sincronizar !== false) await _coreSincronizar();
+    }
+    return resumen;
 }
 
 // ==================== RESOLUCIÓN DE REFERENCIAS A EXPEDIENTES ====================

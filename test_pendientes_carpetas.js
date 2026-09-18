@@ -172,7 +172,7 @@ const NECESARIO_DE_APP = [
     '_opcionesCarpetaHTML', 'alternarCarpetaNueva', '_camposCarpetaHTML', '_leerCarpetaElegida',
     '_aplicarCarpetaAExpediente', '_refrescarTrasCambioDeCarpeta',
     'asignarCarpetaDesdePendiente', 'guardarCarpetaDesdePendiente',
-    'sincronizarCarpetaPendiente', 'guardarPendiente'
+    'sincronizarCarpetaPendiente', '_pendienteFechaTieneHora', 'guardarPendiente'
 ];
 
 function cargarCodigoReal(sandbox) {
