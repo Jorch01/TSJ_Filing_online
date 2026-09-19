@@ -1448,21 +1448,36 @@ async function importarTodosDatos(datos, sobrescribir = false) {
         await agregarNota(remapearExpediente(nota));
     }
 
-    // Importar eventos
+    // Importar eventos. Cada uno recibe un id nuevo, así que se anota la
+    // traducción: los pendientes con fecha apuntan al suyo y hay que poder
+    // rehacer ese vínculo con los ids de aquí.
+    const mapaEventos = new Map();
     for (const evento of datos.eventos || []) {
+        const idOriginal = evento.id;
         delete evento.id;
-        // El vínculo con un pendiente se rehace más abajo, con ids nuevos.
+        // El pendiente al que espeja aún no existe; se reengancha más abajo.
         delete evento.pendienteId;
-        await agregarEvento(remapearExpediente(evento));
+        const nuevoId = await agregarEvento(remapearExpediente(evento));
+        if (idOriginal !== undefined && idOriginal !== null) {
+            mapaEventos.set(idOriginal, nuevoId);
+        }
     }
 
-    // Importar pendientes. El vínculo con el calendario (eventoId) apunta a
-    // ids del origen que aquí ya no existen, así que se descarta: el pendiente
-    // conserva su fecha límite y se puede volver a vincular al editarlo.
+    // Importar pendientes. Un pendiente con fecha lleva un evento espejo en el
+    // calendario; ese vínculo se traduce a los ids nuevos en vez de tirarlo.
+    // Tirándolo, el respaldo se restauraba a medias: el evento quedaba suelto
+    // en el calendario y el pendiente, sin nada agendado, hasta que alguien lo
+    // editara a mano.
     for (const pendiente of datos.pendientes || []) {
         delete pendiente.id;
-        delete pendiente.eventoId;
-        await agregarPendiente(remapearExpediente(pendiente));
+        const eventoOriginal = pendiente.eventoId;
+        pendiente.eventoId = mapaEventos.has(eventoOriginal)
+            ? mapaEventos.get(eventoOriginal)
+            : null;
+        const nuevoId = await agregarPendiente(remapearExpediente(pendiente));
+        if (pendiente.eventoId != null) {
+            await actualizarEvento(pendiente.eventoId, { pendienteId: nuevoId }).catch(() => {});
+        }
     }
 
     // Importar búsquedas guardadas SIGA

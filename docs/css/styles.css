@@ -4995,3 +4995,184 @@ table th {
 /* La tarjeta y la fila abren el detalle, así que deben parecer pulsables. */
 .expediente-card:not(.selection-mode) { cursor: pointer; }
 .expedientes-table tbody tr[data-id] { cursor: pointer; }
+
+/* ==================== BÚSQUEDA RÁPIDA DE EXPEDIENTES (SOLO MÓVIL) ====================
+   Vive arriba del panel de inicio para tener el buscador a mano nada más abrir
+   la app. En escritorio no aparece —ahí el menú está a la vista y existe
+   Ctrl+K—, así que todo lo visible de este bloque cuelga de la media query.
+   Fuera de ella el contenedor está oculto, y con él no se dispara nada de su
+   JavaScript: todo arranca desde el propio campo. */
+
+.busqueda-rapida { display: none; }
+
+@media (max-width: 768px) {
+    .busqueda-rapida {
+        display: block;
+        position: sticky;
+        /* Justo debajo de la cabecera, que también es sticky y mide 60px. */
+        top: 60px;
+        z-index: 20;
+        /* Se sale del padding del main para ocupar el ancho completo: así la
+           barra se lee como parte de la cabecera y no como una tarjeta suelta. */
+        margin: -1rem -1rem 1.25rem;
+        padding: 0.65rem 1rem;
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .busqueda-rapida-campo {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0 0.75rem;
+        background: var(--bg-primary);
+        border: 1px solid var(--border-fuerte);
+        border-radius: var(--radius-full);
+        box-shadow: var(--shadow-sm);
+    }
+
+    .busqueda-rapida-campo:focus-within {
+        border-color: var(--primary);
+        box-shadow: var(--shadow-anillo);
+    }
+
+    .busqueda-rapida-icono { font-size: 0.95rem; opacity: 0.7; }
+
+    .busqueda-rapida-campo input {
+        flex: 1 1 auto;
+        min-width: 0;
+        border: none;
+        background: none;
+        color: var(--text-primary);
+        /* 16px justos: por debajo de eso, iOS hace zoom al enfocar el campo y
+           deja la app descuadrada. */
+        font-size: 16px;
+        padding: 0.7rem 0;
+        outline: none;
+        /* El anillo de foco lo pinta la píldora entera (:focus-within). Sin
+           esto, el input añadía el suyo por la regla general de formularios y
+           salían dos anillos, uno dentro del otro. */
+        box-shadow: none;
+    }
+
+    .busqueda-rapida-limpiar {
+        flex: 0 0 auto;
+        display: none;             /* el JS lo muestra cuando hay texto */
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: none;
+        border-radius: var(--radius-full);
+        background: var(--bg-tertiary);
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        cursor: pointer;
+    }
+
+    /* El desplegable flota sobre el panel: así el contenido de abajo no da
+       saltos cada vez que cambian los resultados. */
+    .busqueda-rapida-resultados {
+        position: absolute;
+        left: 1rem;
+        right: 1rem;
+        margin-top: 0.4rem;
+        max-height: 60vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow-md);
+        z-index: 21;
+    }
+
+    .busqueda-rapida-resultados[hidden] { display: none; }
+
+    .busqueda-rapida-item {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        width: 100%;
+        padding: 0.7rem 0.85rem;
+        border: none;
+        border-bottom: 1px solid var(--border-color);
+        background: none;
+        color: inherit;
+        text-align: left;
+        font: inherit;
+        cursor: pointer;
+    }
+
+    .busqueda-rapida-item:last-child { border-bottom: none; }
+    .busqueda-rapida-item:active { background: var(--primary-suave); }
+
+    .bri-icono { flex: 0 0 auto; font-size: 1.05rem; }
+
+    .bri-texto {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.1rem;
+    }
+
+    .bri-titulo {
+        font-size: 0.92rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .bri-detalle {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .bri-marcas {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+    }
+
+    .bri-chip {
+        padding: 0.12rem 0.45rem;
+        border-radius: var(--radius-full);
+        font-size: 0.65rem;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .bri-chip.archivado { background: var(--bg-tertiary); color: var(--text-secondary); }
+    .bri-chip.pendientes { background: var(--primary-suave); color: var(--primary-dark); }
+
+    .busqueda-rapida-vacio {
+        margin: 0;
+        padding: 0.9rem;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+
+    .busqueda-rapida-mas {
+        display: block;
+        width: 100%;
+        padding: 0.7rem 0.85rem;
+        border: none;
+        border-top: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        color: var(--primary);
+        font: inherit;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-align: center;
+        cursor: pointer;
+    }
+}

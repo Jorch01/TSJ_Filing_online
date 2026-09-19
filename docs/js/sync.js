@@ -290,6 +290,22 @@ async function _intentoSincronizar() {
         datosFinales = fusionarDatos(datosLocalesActualizados, datosRemotos);
         await aplicarDatosLocalmente(datosFinales);
 
+        // Lo fusionado puede traer un pendiente con fecha cuyo evento no vino
+        // en el mismo lote. Se agenda AQUÍ, antes de decidir qué se sube, para
+        // que el evento nuevo viaje en esta misma vuelta; hacerlo después lo
+        // dejaría esperando a la siguiente sincronización.
+        if (typeof sincronizarPendientesConCalendarioCore === 'function') {
+            try {
+                const repaso = await sincronizarPendientesConCalendarioCore({ sincronizar: false });
+                if (repaso && (repaso.creados || repaso.revinculados || repaso.retirados)) {
+                    datosFinales = await obtenerTodosLosDatos();
+                    datosFinales.metadata = datosLocales.metadata;
+                }
+            } catch (e) {
+                console.warn('No se pudo repasar el calendario de los pendientes:', e);
+            }
+        }
+
         huboDuplicados = reporteFusionDuplicados.expedientesFusionados.length > 0;
     } else {
         datosFinales = datosLocalesActualizados;
