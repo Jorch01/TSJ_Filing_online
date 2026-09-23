@@ -1,8 +1,8 @@
 {
-  "generado": "2026-02-25T16:40:25.033Z",
+  "generado": "2026-09-23T03:39:53.705Z",
   "resumen": {
-    "totalOrganos": 1195,
-    "totalTiposAsunto": 56,
+    "totalOrganos": 1202,
+    "totalTiposAsunto": 60,
     "totalRelaciones": 82
   },
   "tiposAsunto": [
@@ -25,35 +25,104 @@
       "id": 6,
       "nombre": "Procedimientos Federales Penales en Segunda Instancia",
       "tiposProcedimiento": [
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {}
+        {
+          "id": 276,
+          "nombre": "Apelación"
+        },
+        {
+          "id": 979,
+          "nombre": "Conflicto competencial entre jueces"
+        },
+        {
+          "id": 980,
+          "nombre": "Conflicto de acumulación"
+        },
+        {
+          "id": 981,
+          "nombre": "Conflicto de acumulación entre jueces"
+        },
+        {
+          "id": 1214,
+          "nombre": "Denegada apelación"
+        },
+        {
+          "id": 1715,
+          "nombre": "Impedimento"
+        },
+        {
+          "id": 1719,
+          "nombre": "Impedimento (excusa)"
+        },
+        {
+          "id": 1720,
+          "nombre": "Impedimento (recusación)"
+        },
+        {
+          "id": 2670,
+          "nombre": "Otro"
+        },
+        {
+          "id": 3042,
+          "nombre": "Queja"
+        },
+        {
+          "id": 4258,
+          "nombre": "Sumario"
+        }
       ]
     },
     {
       "id": 9,
       "nombre": "Procedimientos Federales Administrativos y Civiles en Segunda Instancia",
       "tiposProcedimiento": [
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {}
+        {
+          "id": 276,
+          "nombre": "Apelación"
+        },
+        {
+          "id": 976,
+          "nombre": "Conflicto competencial"
+        },
+        {
+          "id": 979,
+          "nombre": "Conflicto competencial entre jueces"
+        },
+        {
+          "id": 980,
+          "nombre": "Conflicto de acumulación"
+        },
+        {
+          "id": 981,
+          "nombre": "Conflicto de acumulación entre jueces"
+        },
+        {
+          "id": 1214,
+          "nombre": "Denegada apelación"
+        },
+        {
+          "id": 1715,
+          "nombre": "Impedimento"
+        },
+        {
+          "id": 1719,
+          "nombre": "Impedimento (excusa)"
+        },
+        {
+          "id": 1720,
+          "nombre": "Impedimento (recusación)"
+        },
+        {
+          "id": 2670,
+          "nombre": "Otro"
+        },
+        {
+          "id": 3042,
+          "nombre": "Queja"
+        },
+        {
+          "id": 4258,
+          "nombre": "Sumario"
+        }
       ]
     },
     {
@@ -100,19 +169,58 @@
       "id": 18,
       "nombre": "Medidas Precautorias",
       "tiposProcedimiento": [
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {}
+        {
+          "id": 318,
+          "nombre": "Arraigo"
+        },
+        {
+          "id": 384,
+          "nombre": "Aseguramiento"
+        },
+        {
+          "id": 11896,
+          "nombre": "Autorización para requerir a concesionarios"
+        },
+        {
+          "id": 686,
+          "nombre": "Cateo"
+        },
+        {
+          "id": 11894,
+          "nombre": "Embargo precautorio"
+        },
+        {
+          "id": 12864,
+          "nombre": "Exhumación de cadáveres (Art. 252 CNPP)"
+        },
+        {
+          "id": 12865,
+          "nombre": "Inmovilización de cuentas y/o valores sistema financiero (Art. 138 CNPP)"
+        },
+        {
+          "id": 12882,
+          "nombre": "Intervención de comunicaciones privadas y correspondencia"
+        },
+        {
+          "id": 2996,
+          "nombre": "Prohibición de abandono de demarcación geográfica"
+        },
+        {
+          "id": 12866,
+          "nombre": "Reconocimiento o examen físico de persona (Art. 252 CNPP)"
+        },
+        {
+          "id": 12883,
+          "nombre": "Restablecimiento de las cosas al estado previo (Art. 111 CNPP)"
+        },
+        {
+          "id": 11895,
+          "nombre": "Solicitud de información"
+        },
+        {
+          "id": 12867,
+          "nombre": "Toma de muestra: fluido corporal, vello/cabello, extracción de sangre u otros análogos (Art. 252 CNPP)"
+        }
       ]
     },
     {
@@ -156,6 +264,11 @@
       "tiposProcedimiento": []
     },
     {
+      "id": 29,
+      "nombre": "Amparo contra leyes",
+      "tiposProcedimiento": []
+    },
+    {
       "id": 44,
       "nombre": "Comunicaciones Oficiales Enviadas",
       "tiposProcedimiento": []
@@ -163,6 +276,11 @@
     {
       "id": 45,
       "nombre": "Comunicaciones Oficiales Recibidas",
+      "tiposProcedimiento": []
+    },
+    {
+      "id": 46,
+      "nombre": "Concursos Mercantiles",
       "tiposProcedimiento": []
     },
     {
@@ -174,11 +292,26 @@
       "id": 67,
       "nombre": "Ejecución de Penas",
       "tiposProcedimiento": [
-        {},
-        {},
-        {},
-        {},
-        {}
+        {
+          "id": 16822,
+          "nombre": "Solicitud de inicio de Procedimiento de Ejecución (SIPE)"
+        },
+        {
+          "id": 16823,
+          "nombre": "Incidente - Solicitud de Modificación de la Pena (SM)"
+        },
+        {
+          "id": 16824,
+          "nombre": "Incidente - Solicitud de Duración de la Pena (SD)"
+        },
+        {
+          "id": 16825,
+          "nombre": "Incidente - Solicitud de Extinción de la Pena (SE)"
+        },
+        {
+          "id": 16826,
+          "nombre": "Incidente - Solicitud de Reparación del Daño (RD)"
+        }
       ]
     },
     {
@@ -195,12 +328,30 @@
       "id": 74,
       "nombre": "Proceso Penal Acusatorio",
       "tiposProcedimiento": [
-        {},
-        {},
-        {},
-        {},
-        {},
-        {}
+        {
+          "id": 702,
+          "nombre": "Causa penal"
+        },
+        {
+          "id": 17937,
+          "nombre": "Declaratoria de Abandono"
+        },
+        {
+          "id": 14363,
+          "nombre": "Impugnación a las determinaciones del Ministerio Público"
+        },
+        {
+          "id": 14753,
+          "nombre": "Medidas Cautelares"
+        },
+        {
+          "id": 13956,
+          "nombre": "Proceso de ejecución"
+        },
+        {
+          "id": 13852,
+          "nombre": "Técnicas de investigación"
+        }
       ]
     },
     {
@@ -272,35 +423,104 @@
       "id": 125,
       "nombre": "Procedimientos federales penales en segunda instancia.",
       "tiposProcedimiento": [
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {}
+        {
+          "id": 22800,
+          "nombre": "Apelación"
+        },
+        {
+          "id": 22805,
+          "nombre": "Conflicto competencial entre jueces"
+        },
+        {
+          "id": 22808,
+          "nombre": "Conflicto de acumulación"
+        },
+        {
+          "id": 22806,
+          "nombre": "Conflicto de acumulación entre jueces"
+        },
+        {
+          "id": 22801,
+          "nombre": "Denegada apelación"
+        },
+        {
+          "id": 22809,
+          "nombre": "Impedimento"
+        },
+        {
+          "id": 22802,
+          "nombre": "Impedimento (excusa)"
+        },
+        {
+          "id": 22803,
+          "nombre": "Impedimento (recusación)"
+        },
+        {
+          "id": 22810,
+          "nombre": "Otro"
+        },
+        {
+          "id": 22804,
+          "nombre": "Queja"
+        },
+        {
+          "id": 22807,
+          "nombre": "Sumario"
+        }
       ]
     },
     {
       "id": 126,
       "nombre": "Procedimientos federales administrativos y civiles en segunda instancia.",
       "tiposProcedimiento": [
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {},
-        {}
+        {
+          "id": 22450,
+          "nombre": "Apelación"
+        },
+        {
+          "id": 22459,
+          "nombre": "Conflicto competencial"
+        },
+        {
+          "id": 22455,
+          "nombre": "Conflicto competencial entre jueces"
+        },
+        {
+          "id": 22460,
+          "nombre": "Conflicto de acumulación"
+        },
+        {
+          "id": 22456,
+          "nombre": "Conflicto de acumulación entre jueces"
+        },
+        {
+          "id": 22451,
+          "nombre": "Denegada apelación"
+        },
+        {
+          "id": 22461,
+          "nombre": "Impedimento"
+        },
+        {
+          "id": 22452,
+          "nombre": "Impedimento (excusa)"
+        },
+        {
+          "id": 22453,
+          "nombre": "Impedimento (recusación)"
+        },
+        {
+          "id": 22457,
+          "nombre": "Otro"
+        },
+        {
+          "id": 22454,
+          "nombre": "Queja"
+        },
+        {
+          "id": 22458,
+          "nombre": "Sumario"
+        }
       ]
     },
     {
@@ -329,6 +549,16 @@
       "tiposProcedimiento": []
     },
     {
+      "id": 132,
+      "nombre": "Varios Jurisdiccional",
+      "tiposProcedimiento": []
+    },
+    {
+      "id": 133,
+      "nombre": "Varios Administrativo",
+      "tiposProcedimiento": []
+    },
+    {
       "id": 134,
       "nombre": "Procedimiento Ordinario.",
       "tiposProcedimiento": []
@@ -347,8 +577,14 @@
       "id": 137,
       "nombre": "Investigación de Responsabilidades Administrativas",
       "tiposProcedimiento": [
-        {},
-        {}
+        {
+          "id": 25060,
+          "nombre": "Administrativo"
+        },
+        {
+          "id": 25059,
+          "nombre": "Jurisdiccional"
+        }
       ]
     },
     {
@@ -390,8 +626,24 @@
           "nombre": "Comunicaciones Oficiales Recibidas"
         },
         {
+          "id": 46,
+          "nombre": "Concursos Mercantiles"
+        },
+        {
           "id": 71,
           "nombre": "Denuncia por Incumplimiento de la Declaratoria General de Inconstitucionalidad"
+        },
+        {
+          "id": 67,
+          "nombre": "Ejecución de Penas"
+        },
+        {
+          "id": 58,
+          "nombre": "Extinción de Dominio"
+        },
+        {
+          "id": 68,
+          "nombre": "Juicio Oral Mercantil"
         },
         {
           "id": 19,
@@ -415,6 +667,10 @@
         {
           "id": 10,
           "nombre": "Amparo Directo"
+        },
+        {
+          "id": 29,
+          "nombre": "Amparo contra leyes"
         },
         {
           "id": 11,
@@ -475,6 +731,14 @@
         {
           "id": 27,
           "nombre": "Varios"
+        },
+        {
+          "id": 133,
+          "nombre": "Varios Administrativo"
+        },
+        {
+          "id": 132,
+          "nombre": "Varios Jurisdiccional"
         }
       ]
     },
@@ -548,6 +812,17 @@
       ]
     },
     {
+      "TipoOrganismoId": 346,
+      "TipoOrganismo": "CEFERESO",
+      "MateriaOrganismoId": 9,
+      "tiposAsunto": [
+        {
+          "id": 27,
+          "nombre": "Varios"
+        }
+      ]
+    },
+    {
       "TipoOrganismoId": 65,
       "TipoOrganismo": "Centro de Justicia Penal Federal",
       "MateriaOrganismoId": 9,
@@ -573,12 +848,6 @@
           "nombre": "Varios"
         }
       ]
-    },
-    {
-      "TipoOrganismoId": 346,
-      "TipoOrganismo": "CEFERESO",
-      "MateriaOrganismoId": 9,
-      "tiposAsunto": []
     },
     {
       "TipoOrganismoId": 199,
@@ -738,6 +1007,10 @@
       "MateriaOrganismoId": 23,
       "tiposAsunto": [
         {
+          "id": 1,
+          "nombre": "Amparo Indirecto"
+        },
+        {
           "id": 44,
           "nombre": "Comunicaciones Oficiales Enviadas"
         },
@@ -746,8 +1019,16 @@
           "nombre": "Comunicaciones Oficiales Recibidas"
         },
         {
+          "id": 46,
+          "nombre": "Concursos Mercantiles"
+        },
+        {
           "id": 71,
           "nombre": "Denuncia por Incumplimiento de la Declaratoria General de Inconstitucionalidad"
+        },
+        {
+          "id": 58,
+          "nombre": "Extinción de Dominio"
         },
         {
           "id": 68,
@@ -768,10 +1049,6 @@
       "TipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
       "MateriaOrganismoId": 30,
       "tiposAsunto": [
-        {
-          "id": 1,
-          "nombre": "Amparo Indirecto"
-        },
         {
           "id": 1,
           "nombre": "Amparo Indirecto"
@@ -903,6 +1180,10 @@
           "nombre": "Denuncia por Incumplimiento de la Declaratoria General de Inconstitucionalidad"
         },
         {
+          "id": 67,
+          "nombre": "Ejecución de Penas"
+        },
+        {
           "id": 19,
           "nombre": "Procedimientos de Extradición"
         },
@@ -988,21 +1269,6 @@
       ]
     },
     {
-      "TipoOrganismoId": 9,
-      "TipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
-      "MateriaOrganismoId": 27,
-      "tiposAsunto": [
-        {
-          "id": 21,
-          "nombre": "Control de Personal"
-        },
-        {
-          "id": 27,
-          "nombre": "Varios"
-        }
-      ]
-    },
-    {
       "TipoOrganismoId": 4,
       "TipoOrganismo": "Tribunal Colegiado de Circuito",
       "MateriaOrganismoId": 27,
@@ -1074,6 +1340,21 @@
       ]
     },
     {
+      "TipoOrganismoId": 9,
+      "TipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
+      "MateriaOrganismoId": 27,
+      "tiposAsunto": [
+        {
+          "id": 21,
+          "nombre": "Control de Personal"
+        },
+        {
+          "id": 27,
+          "nombre": "Varios"
+        }
+      ]
+    },
+    {
       "TipoOrganismoId": 7,
       "TipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
       "MateriaOrganismoId": 31,
@@ -1112,6 +1393,10 @@
         {
           "id": 71,
           "nombre": "Denuncia por Incumplimiento de la Declaratoria General de Inconstitucionalidad"
+        },
+        {
+          "id": 67,
+          "nombre": "Ejecución de Penas"
         },
         {
           "id": 19,
@@ -1231,8 +1516,20 @@
           "nombre": "Comunicaciones Oficiales Recibidas"
         },
         {
+          "id": 46,
+          "nombre": "Concursos Mercantiles"
+        },
+        {
           "id": 71,
           "nombre": "Denuncia por Incumplimiento de la Declaratoria General de Inconstitucionalidad"
+        },
+        {
+          "id": 67,
+          "nombre": "Ejecución de Penas"
+        },
+        {
+          "id": 68,
+          "nombre": "Juicio Oral Mercantil"
         },
         {
           "id": 19,
@@ -1254,6 +1551,14 @@
       "MateriaOrganismoId": 1,
       "tiposAsunto": [
         {
+          "id": 10,
+          "nombre": "Amparo Directo"
+        },
+        {
+          "id": 1,
+          "nombre": "Amparo Indirecto"
+        },
+        {
           "id": 21,
           "nombre": "Control de Personal"
         },
@@ -1269,8 +1574,20 @@
       "MateriaOrganismoId": 1,
       "tiposAsunto": [
         {
+          "id": 10,
+          "nombre": "Amparo Directo"
+        },
+        {
+          "id": 1,
+          "nombre": "Amparo Indirecto"
+        },
+        {
           "id": 21,
           "nombre": "Control de Personal"
+        },
+        {
+          "id": 77,
+          "nombre": "Mecanismos Alternativos de Solución de Controversias en Materia Penal"
         },
         {
           "id": 27,
@@ -1335,8 +1652,8 @@
       ]
     },
     {
-      "TipoOrganismoId": 9,
-      "TipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
+      "TipoOrganismoId": 7,
+      "TipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
       "MateriaOrganismoId": 5,
       "tiposAsunto": [
         {
@@ -1350,8 +1667,8 @@
       ]
     },
     {
-      "TipoOrganismoId": 7,
-      "TipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
+      "TipoOrganismoId": 9,
+      "TipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
       "MateriaOrganismoId": 5,
       "tiposAsunto": [
         {
@@ -1388,6 +1705,14 @@
         {
           "id": 71,
           "nombre": "Denuncia por Incumplimiento de la Declaratoria General de Inconstitucionalidad"
+        },
+        {
+          "id": 67,
+          "nombre": "Ejecución de Penas"
+        },
+        {
+          "id": 68,
+          "nombre": "Juicio Oral Mercantil"
         },
         {
           "id": 19,
@@ -1537,21 +1862,6 @@
       ]
     },
     {
-      "TipoOrganismoId": 7,
-      "TipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
-      "MateriaOrganismoId": 7,
-      "tiposAsunto": [
-        {
-          "id": 21,
-          "nombre": "Control de Personal"
-        },
-        {
-          "id": 27,
-          "nombre": "Varios"
-        }
-      ]
-    },
-    {
       "TipoOrganismoId": 9,
       "TipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
       "MateriaOrganismoId": 7,
@@ -1588,8 +1898,16 @@
           "nombre": "Comunicaciones Oficiales Recibidas"
         },
         {
+          "id": 46,
+          "nombre": "Concursos Mercantiles"
+        },
+        {
           "id": 71,
           "nombre": "Denuncia por Incumplimiento de la Declaratoria General de Inconstitucionalidad"
+        },
+        {
+          "id": 67,
+          "nombre": "Ejecución de Penas"
         },
         {
           "id": 19,
@@ -1599,6 +1917,32 @@
           "id": 4,
           "nombre": "Procesos Civiles o Administrativos"
         },
+        {
+          "id": 27,
+          "nombre": "Varios"
+        }
+      ]
+    },
+    {
+      "TipoOrganismoId": 7,
+      "TipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
+      "MateriaOrganismoId": 7,
+      "tiposAsunto": [
+        {
+          "id": 21,
+          "nombre": "Control de Personal"
+        },
+        {
+          "id": 27,
+          "nombre": "Varios"
+        }
+      ]
+    },
+    {
+      "TipoOrganismoId": 73,
+      "TipoOrganismo": "Institución Pública de Plataforma de Interconexion",
+      "MateriaOrganismoId": 8,
+      "tiposAsunto": [
         {
           "id": 27,
           "nombre": "Varios"
@@ -1646,10 +1990,56 @@
       ]
     },
     {
-      "TipoOrganismoId": 73,
-      "TipoOrganismo": "Institución Pública de Plataforma de Interconexion",
+      "TipoOrganismoId": 352,
+      "TipoOrganismo": "Unidad de Investigación de Responsabilidades Administrativas consulta",
       "MateriaOrganismoId": 8,
+      "tiposAsunto": []
+    },
+    {
+      "TipoOrganismoId": 2,
+      "TipoOrganismo": "Juzgado de Distrito",
+      "MateriaOrganismoId": 9,
       "tiposAsunto": [
+        {
+          "id": 1,
+          "nombre": "Amparo Indirecto"
+        },
+        {
+          "id": 2,
+          "nombre": "Causa Penal"
+        },
+        {
+          "id": 44,
+          "nombre": "Comunicaciones Oficiales Enviadas"
+        },
+        {
+          "id": 45,
+          "nombre": "Comunicaciones Oficiales Recibidas"
+        },
+        {
+          "id": 46,
+          "nombre": "Concursos Mercantiles"
+        },
+        {
+          "id": 71,
+          "nombre": "Denuncia por Incumplimiento de la Declaratoria General de Inconstitucionalidad"
+        },
+        {
+          "id": 67,
+          "nombre": "Ejecución de Penas"
+        },
+        {
+          "id": 18,
+          "nombre": "Medidas Precautorias"
+        },
+        {
+          "id": 19,
+          "nombre": "Procedimientos de Extradición"
+        },
+        {
+          "id": 4,
+          "nombre": "Procesos Civiles o Administrativos"
+        },
         {
           "id": 27,
           "nombre": "Varios"
@@ -1657,16 +2047,100 @@
       ]
     },
     {
-      "TipoOrganismoId": 352,
-      "TipoOrganismo": "Unidad de Investigación de Responsabilidades Administrativas consulta",
-      "MateriaOrganismoId": 8,
-      "tiposAsunto": []
+      "TipoOrganismoId": 7,
+      "TipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
+      "MateriaOrganismoId": 9,
+      "tiposAsunto": [
+        {
+          "id": 21,
+          "nombre": "Control de Personal"
+        },
+        {
+          "id": 27,
+          "nombre": "Varios"
+        }
+      ]
     },
     {
-      "TipoOrganismoId": 29,
-      "TipoOrganismo": "Tribunal Colegiado Auxiliar",
-      "MateriaOrganismoId": 8,
+      "TipoOrganismoId": 9,
+      "TipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
+      "MateriaOrganismoId": 9,
       "tiposAsunto": [
+        {
+          "id": 21,
+          "nombre": "Control de Personal"
+        },
+        {
+          "id": 27,
+          "nombre": "Varios"
+        }
+      ]
+    },
+    {
+      "TipoOrganismoId": 4,
+      "TipoOrganismo": "Tribunal Colegiado de Circuito",
+      "MateriaOrganismoId": 9,
+      "tiposAsunto": [
+        {
+          "id": 10,
+          "nombre": "Amparo Directo"
+        },
+        {
+          "id": 11,
+          "nombre": "Amparo en revisión"
+        },
+        {
+          "id": 44,
+          "nombre": "Comunicaciones Oficiales Enviadas"
+        },
+        {
+          "id": 45,
+          "nombre": "Comunicaciones Oficiales Recibidas"
+        },
+        {
+          "id": 12,
+          "nombre": "Conflictos Competenciales"
+        },
+        {
+          "id": 17,
+          "nombre": "Conflictos de Acumulación"
+        },
+        {
+          "id": 13,
+          "nombre": "Impedimento"
+        },
+        {
+          "id": 23,
+          "nombre": "Incidentes de Inejecución"
+        },
+        {
+          "id": 25,
+          "nombre": "Inconformidades"
+        },
+        {
+          "id": 15,
+          "nombre": "Queja"
+        },
+        {
+          "id": 20,
+          "nombre": "Reclamaciones"
+        },
+        {
+          "id": 26,
+          "nombre": "Reconocimiento de Inocencia"
+        },
+        {
+          "id": 24,
+          "nombre": "Repetición del Acto Reclamado"
+        },
+        {
+          "id": 14,
+          "nombre": "Revisión Contenciosa Administrativa"
+        },
+        {
+          "id": 16,
+          "nombre": "Revisión Fiscal"
+        },
         {
           "id": 27,
           "nombre": "Varios"
@@ -1748,150 +2222,6 @@
       ]
     },
     {
-      "TipoOrganismoId": 2,
-      "TipoOrganismo": "Juzgado de Distrito",
-      "MateriaOrganismoId": 9,
-      "tiposAsunto": [
-        {
-          "id": 1,
-          "nombre": "Amparo Indirecto"
-        },
-        {
-          "id": 2,
-          "nombre": "Causa Penal"
-        },
-        {
-          "id": 44,
-          "nombre": "Comunicaciones Oficiales Enviadas"
-        },
-        {
-          "id": 45,
-          "nombre": "Comunicaciones Oficiales Recibidas"
-        },
-        {
-          "id": 71,
-          "nombre": "Denuncia por Incumplimiento de la Declaratoria General de Inconstitucionalidad"
-        },
-        {
-          "id": 67,
-          "nombre": "Ejecución de Penas"
-        },
-        {
-          "id": 19,
-          "nombre": "Procedimientos de Extradición"
-        },
-        {
-          "id": 4,
-          "nombre": "Procesos Civiles o Administrativos"
-        },
-        {
-          "id": 27,
-          "nombre": "Varios"
-        }
-      ]
-    },
-    {
-      "TipoOrganismoId": 7,
-      "TipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
-      "MateriaOrganismoId": 9,
-      "tiposAsunto": [
-        {
-          "id": 21,
-          "nombre": "Control de Personal"
-        },
-        {
-          "id": 27,
-          "nombre": "Varios"
-        }
-      ]
-    },
-    {
-      "TipoOrganismoId": 4,
-      "TipoOrganismo": "Tribunal Colegiado de Circuito",
-      "MateriaOrganismoId": 9,
-      "tiposAsunto": [
-        {
-          "id": 10,
-          "nombre": "Amparo Directo"
-        },
-        {
-          "id": 11,
-          "nombre": "Amparo en revisión"
-        },
-        {
-          "id": 44,
-          "nombre": "Comunicaciones Oficiales Enviadas"
-        },
-        {
-          "id": 45,
-          "nombre": "Comunicaciones Oficiales Recibidas"
-        },
-        {
-          "id": 12,
-          "nombre": "Conflictos Competenciales"
-        },
-        {
-          "id": 17,
-          "nombre": "Conflictos de Acumulación"
-        },
-        {
-          "id": 13,
-          "nombre": "Impedimento"
-        },
-        {
-          "id": 23,
-          "nombre": "Incidentes de Inejecución"
-        },
-        {
-          "id": 25,
-          "nombre": "Inconformidades"
-        },
-        {
-          "id": 15,
-          "nombre": "Queja"
-        },
-        {
-          "id": 20,
-          "nombre": "Reclamaciones"
-        },
-        {
-          "id": 26,
-          "nombre": "Reconocimiento de Inocencia"
-        },
-        {
-          "id": 24,
-          "nombre": "Repetición del Acto Reclamado"
-        },
-        {
-          "id": 14,
-          "nombre": "Revisión Contenciosa Administrativa"
-        },
-        {
-          "id": 16,
-          "nombre": "Revisión Fiscal"
-        },
-        {
-          "id": 27,
-          "nombre": "Varios"
-        }
-      ]
-    },
-    {
-      "TipoOrganismoId": 9,
-      "TipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
-      "MateriaOrganismoId": 9,
-      "tiposAsunto": [
-        {
-          "id": 21,
-          "nombre": "Control de Personal"
-        },
-        {
-          "id": 27,
-          "nombre": "Varios"
-        }
-      ]
-    },
-    {
       "TipoOrganismoId": 347,
       "TipoOrganismo": "SIDAM",
       "MateriaOrganismoId": 9,
@@ -1954,6 +2284,10 @@
           "nombre": "Denuncia por Incumplimiento de la Declaratoria General de Inconstitucionalidad"
         },
         {
+          "id": 67,
+          "nombre": "Ejecución de Penas"
+        },
+        {
           "id": 19,
           "nombre": "Procedimientos de Extradición"
         },
@@ -1972,10 +2306,6 @@
       "TipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
       "MateriaOrganismoId": 23,
       "tiposAsunto": [
-        {
-          "id": 1,
-          "nombre": "Amparo Indirecto"
-        },
         {
           "id": 1,
           "nombre": "Amparo Indirecto"
@@ -2011,6 +2341,37 @@
       ]
     },
     {
+      "TipoOrganismoId": 342,
+      "TipoOrganismo": "Pleno Regional",
+      "MateriaOrganismoId": 25,
+      "tiposAsunto": [
+        {
+          "id": 44,
+          "nombre": "Comunicaciones Oficiales Enviadas"
+        },
+        {
+          "id": 45,
+          "nombre": "Comunicaciones Oficiales Recibidas"
+        },
+        {
+          "id": 131,
+          "nombre": "Conflictos Competenciales."
+        },
+        {
+          "id": 129,
+          "nombre": "Contradicción de Criterios"
+        },
+        {
+          "id": 130,
+          "nombre": "Solicitud de Declaratoria General de Inconstitucionalidad"
+        },
+        {
+          "id": 27,
+          "nombre": "Varios"
+        }
+      ]
+    },
+    {
       "TipoOrganismoId": 2,
       "TipoOrganismo": "Juzgado de Distrito",
       "MateriaOrganismoId": 25,
@@ -2034,6 +2395,10 @@
         {
           "id": 71,
           "nombre": "Denuncia por Incumplimiento de la Declaratoria General de Inconstitucionalidad"
+        },
+        {
+          "id": 67,
+          "nombre": "Ejecución de Penas"
         },
         {
           "id": 19,
@@ -2121,21 +2486,6 @@
       ]
     },
     {
-      "TipoOrganismoId": 7,
-      "TipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
-      "MateriaOrganismoId": 25,
-      "tiposAsunto": [
-        {
-          "id": 21,
-          "nombre": "Control de Personal"
-        },
-        {
-          "id": 27,
-          "nombre": "Varios"
-        }
-      ]
-    },
-    {
       "TipoOrganismoId": 9,
       "TipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
       "MateriaOrganismoId": 25,
@@ -2151,29 +2501,13 @@
       ]
     },
     {
-      "TipoOrganismoId": 342,
-      "TipoOrganismo": "Pleno Regional",
+      "TipoOrganismoId": 7,
+      "TipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
       "MateriaOrganismoId": 25,
       "tiposAsunto": [
         {
-          "id": 44,
-          "nombre": "Comunicaciones Oficiales Enviadas"
-        },
-        {
-          "id": 45,
-          "nombre": "Comunicaciones Oficiales Recibidas"
-        },
-        {
-          "id": 131,
-          "nombre": "Conflictos Competenciales."
-        },
-        {
-          "id": 129,
-          "nombre": "Contradicción de Criterios"
-        },
-        {
-          "id": 130,
-          "nombre": "Solicitud de Declaratoria General de Inconstitucionalidad"
+          "id": 21,
+          "nombre": "Control de Personal"
         },
         {
           "id": 27,
@@ -2338,6 +2672,17 @@
       ]
     },
     {
+      "TipoOrganismoId": 29,
+      "TipoOrganismo": "Tribunal Colegiado Auxiliar",
+      "MateriaOrganismoId": 8,
+      "tiposAsunto": [
+        {
+          "id": 27,
+          "nombre": "Varios"
+        }
+      ]
+    },
+    {
       "TipoOrganismoId": 4,
       "TipoOrganismo": "Tribunal Colegiado de Circuito",
       "MateriaOrganismoId": 14,
@@ -2418,22 +2763,6 @@
           "nombre": "Amparo Indirecto"
         },
         {
-          "id": 1,
-          "nombre": "Amparo Indirecto"
-        },
-        {
-          "id": 1,
-          "nombre": "Amparo Indirecto"
-        },
-        {
-          "id": 44,
-          "nombre": "Comunicaciones Oficiales Enviadas"
-        },
-        {
-          "id": 44,
-          "nombre": "Comunicaciones Oficiales Enviadas"
-        },
-        {
           "id": 44,
           "nombre": "Comunicaciones Oficiales Enviadas"
         },
@@ -2442,32 +2771,8 @@
           "nombre": "Comunicaciones Oficiales Recibidas"
         },
         {
-          "id": 45,
-          "nombre": "Comunicaciones Oficiales Recibidas"
-        },
-        {
-          "id": 45,
-          "nombre": "Comunicaciones Oficiales Recibidas"
-        },
-        {
           "id": 9,
           "nombre": "Procedimientos Federales Administrativos y Civiles en Segunda Instancia"
-        },
-        {
-          "id": 9,
-          "nombre": "Procedimientos Federales Administrativos y Civiles en Segunda Instancia"
-        },
-        {
-          "id": 9,
-          "nombre": "Procedimientos Federales Administrativos y Civiles en Segunda Instancia"
-        },
-        {
-          "id": 6,
-          "nombre": "Procedimientos Federales Penales en Segunda Instancia"
-        },
-        {
-          "id": 6,
-          "nombre": "Procedimientos Federales Penales en Segunda Instancia"
         },
         {
           "id": 6,
@@ -2476,14 +2781,6 @@
         {
           "id": 109,
           "nombre": "Reconocimiento de Inocencia y Anulación de Sentencia"
-        },
-        {
-          "id": 27,
-          "nombre": "Varios"
-        },
-        {
-          "id": 27,
-          "nombre": "Varios"
         },
         {
           "id": 27,
@@ -2596,6 +2893,10 @@
           "nombre": "Denuncia por Incumplimiento de la Declaratoria General de Inconstitucionalidad"
         },
         {
+          "id": 67,
+          "nombre": "Ejecución de Penas"
+        },
+        {
           "id": 19,
           "nombre": "Procedimientos de Extradición"
         },
@@ -2751,6 +3052,10 @@
           "nombre": "Denuncia por Incumplimiento de la Declaratoria General de Inconstitucionalidad"
         },
         {
+          "id": 67,
+          "nombre": "Ejecución de Penas"
+        },
+        {
           "id": 19,
           "nombre": "Procedimientos de Extradición"
         },
@@ -2803,6 +3108,10 @@
         {
           "id": 71,
           "nombre": "Denuncia por Incumplimiento de la Declaratoria General de Inconstitucionalidad"
+        },
+        {
+          "id": 67,
+          "nombre": "Ejecución de Penas"
         },
         {
           "id": 19,
@@ -2874,6 +3183,10 @@
           "nombre": "Denuncia por Incumplimiento de la Declaratoria General de Inconstitucionalidad"
         },
         {
+          "id": 67,
+          "nombre": "Ejecución de Penas"
+        },
+        {
           "id": 19,
           "nombre": "Procedimientos de Extradición"
         },
@@ -2926,6 +3239,10 @@
         {
           "id": 71,
           "nombre": "Denuncia por Incumplimiento de la Declaratoria General de Inconstitucionalidad"
+        },
+        {
+          "id": 67,
+          "nombre": "Ejecución de Penas"
         },
         {
           "id": 19,
@@ -3052,10 +3369,10 @@
       "ciudad": "Aguascalientes"
     },
     {
-      "id": 1555,
-      "nombre": "Juzgado Cuarto de Distrito en el Estado de Aguascalientes",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
+      "id": 3447,
+      "nombre": "Cuarto Tribunal Colegiado del Trigésimo Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 8,
       "circuitoId": 30,
       "circuito": "TRIGÉSIMO CIRCUITO",
@@ -3064,10 +3381,10 @@
       "ciudad": "Aguascalientes"
     },
     {
-      "id": 3447,
-      "nombre": "Cuarto Tribunal Colegiado del Trigésimo Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 1555,
+      "nombre": "Juzgado Cuarto de Distrito en el Estado de Aguascalientes",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 8,
       "circuitoId": 30,
       "circuito": "TRIGÉSIMO CIRCUITO",
@@ -3112,18 +3429,6 @@
       "ciudad": "Aguascalientes"
     },
     {
-      "id": 1518,
-      "nombre": "Centro de Justicia Penal Federal en el Estado de Aguascalientes, con residencia en la ciudad del mismo nombre",
-      "tipoOrganismoId": 65,
-      "tipoOrganismo": "Centro de Justicia Penal Federal",
-      "materiaId": 9,
-      "circuitoId": 30,
-      "circuito": "TRIGÉSIMO CIRCUITO",
-      "estadoId": 1,
-      "estado": "Aguascalientes",
-      "ciudad": "Aguascalientes"
-    },
-    {
       "id": 4481,
       "nombre": "OJ SINC AGUASCALIENTES PRUEBA",
       "tipoOrganismoId": 346,
@@ -3131,6 +3436,18 @@
       "materiaId": 9,
       "circuitoId": 167,
       "circuito": "CEFERESO",
+      "estadoId": 1,
+      "estado": "Aguascalientes",
+      "ciudad": "Aguascalientes"
+    },
+    {
+      "id": 1518,
+      "nombre": "Centro de Justicia Penal Federal en el Estado de Aguascalientes, con residencia en la ciudad del mismo nombre",
+      "tipoOrganismoId": 65,
+      "tipoOrganismo": "Centro de Justicia Penal Federal",
+      "materiaId": 9,
+      "circuitoId": 30,
+      "circuito": "TRIGÉSIMO CIRCUITO",
       "estadoId": 1,
       "estado": "Aguascalientes",
       "ciudad": "Aguascalientes"
@@ -3172,6 +3489,18 @@
       "ciudad": "Tijuana"
     },
     {
+      "id": 4360,
+      "nombre": "Tribunal Colegiado de Apelación del Decimoquinto Circuito, con residencia en Tijuana",
+      "tipoOrganismoId": 340,
+      "tipoOrganismo": "Tribunal Colegiado de Apelación",
+      "materiaId": 8,
+      "circuitoId": 42,
+      "circuito": "DÉCIMO QUINTO CIRCUITO",
+      "estadoId": 2,
+      "estado": "Baja California",
+      "ciudad": "Tijuana"
+    },
+    {
       "id": 291,
       "nombre": "Primer Tribunal Colegiado del Décimo Quinto Circuito",
       "tipoOrganismoId": 4,
@@ -3194,18 +3523,6 @@
       "estadoId": 2,
       "estado": "Baja California",
       "ciudad": "Mexicali"
-    },
-    {
-      "id": 4360,
-      "nombre": "Tribunal Colegiado de Apelación del Decimoquinto Circuito, con residencia en Tijuana",
-      "tipoOrganismoId": 340,
-      "tipoOrganismo": "Tribunal Colegiado de Apelación",
-      "materiaId": 8,
-      "circuitoId": 42,
-      "circuito": "DÉCIMO QUINTO CIRCUITO",
-      "estadoId": 2,
-      "estado": "Baja California",
-      "ciudad": "Tijuana"
     },
     {
       "id": 294,
@@ -3412,6 +3729,18 @@
       "ciudad": "Tijuana"
     },
     {
+      "id": 3886,
+      "nombre": "Juzgado Decimoquinto de Distrito en el Estado de Baja California, con residencia en Tijuana",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 8,
+      "circuitoId": 42,
+      "circuito": "DÉCIMO QUINTO CIRCUITO",
+      "estadoId": 2,
+      "estado": "Baja California",
+      "ciudad": "Tijuana"
+    },
+    {
       "id": 882,
       "nombre": "Oficina de Correspondencia Común de Tribunales Colegiados del Décimo Quinto Circuito",
       "tipoOrganismoId": 9,
@@ -3446,18 +3775,6 @@
       "estadoId": 2,
       "estado": "Baja California",
       "ciudad": "Ensenada"
-    },
-    {
-      "id": 3886,
-      "nombre": "Juzgado Decimoquinto de Distrito en el Estado de Baja California, con residencia en Tijuana",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
-      "materiaId": 8,
-      "circuitoId": 42,
-      "circuito": "DÉCIMO QUINTO CIRCUITO",
-      "estadoId": 2,
-      "estado": "Baja California",
-      "ciudad": "Tijuana"
     },
     {
       "id": 3887,
@@ -3628,30 +3945,6 @@
       "ciudad": "Tijuana"
     },
     {
-      "id": 408,
-      "nombre": "Primer Tribunal Colegiado del Vigésimo Sexto Circuito, con residencia en La Paz, Baja California Sur",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
-      "materiaId": 8,
-      "circuitoId": 55,
-      "circuito": "VIGÉSIMO SEXTO CIRCUITO",
-      "estadoId": 3,
-      "estado": "Baja California Sur",
-      "ciudad": "La Paz"
-    },
-    {
-      "id": 410,
-      "nombre": "Juzgado Primero de Distrito en el Estado de Baja California Sur",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
-      "materiaId": 8,
-      "circuitoId": 55,
-      "circuito": "VIGÉSIMO SEXTO CIRCUITO",
-      "estadoId": 3,
-      "estado": "Baja California Sur",
-      "ciudad": "La Paz"
-    },
-    {
       "id": 4371,
       "nombre": "Tribunal Colegiado de Apelación del Vigésimo Sexto Circuito, con residencia en La Paz",
       "tipoOrganismoId": 340,
@@ -3680,6 +3973,30 @@
       "nombre": "Segundo Tribunal Colegiado del Vigésimo Sexto Circuito, con residencia en La Paz, Baja California Sur",
       "tipoOrganismoId": 4,
       "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "materiaId": 8,
+      "circuitoId": 55,
+      "circuito": "VIGÉSIMO SEXTO CIRCUITO",
+      "estadoId": 3,
+      "estado": "Baja California Sur",
+      "ciudad": "La Paz"
+    },
+    {
+      "id": 408,
+      "nombre": "Primer Tribunal Colegiado del Vigésimo Sexto Circuito, con residencia en La Paz, Baja California Sur",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "materiaId": 8,
+      "circuitoId": 55,
+      "circuito": "VIGÉSIMO SEXTO CIRCUITO",
+      "estadoId": 3,
+      "estado": "Baja California Sur",
+      "ciudad": "La Paz"
+    },
+    {
+      "id": 410,
+      "nombre": "Juzgado Primero de Distrito en el Estado de Baja California Sur",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 8,
       "circuitoId": 55,
       "circuito": "VIGÉSIMO SEXTO CIRCUITO",
@@ -3748,6 +4065,18 @@
       "ciudad": "La Paz"
     },
     {
+      "id": 285,
+      "nombre": "Juzgado Primero de Distrito en el Estado de Campeche",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 8,
+      "circuitoId": 47,
+      "circuito": "TRIGÉSIMO PRIMER CIRCUITO",
+      "estadoId": 4,
+      "estado": "Campeche",
+      "ciudad": "Campeche"
+    },
+    {
       "id": 881,
       "nombre": "Oficina de Correspondencia Común de Juzgados de Distrito en el Estado de Campeche con residencia en Campeche",
       "tipoOrganismoId": 7,
@@ -3782,18 +4111,6 @@
       "estadoId": 4,
       "estado": "Campeche",
       "ciudad": "San Francisco de Campeche"
-    },
-    {
-      "id": 285,
-      "nombre": "Juzgado Primero de Distrito en el Estado de Campeche",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
-      "materiaId": 8,
-      "circuitoId": 47,
-      "circuito": "TRIGÉSIMO PRIMER CIRCUITO",
-      "estadoId": 4,
-      "estado": "Campeche",
-      "ciudad": "Campeche"
     },
     {
       "id": 288,
@@ -4132,10 +4449,10 @@
       "ciudad": "Tuxtla Gutiérrez"
     },
     {
-      "id": 1539,
-      "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados en Materia Penal y Civil del Vigésimo Circuito, con residencia Tuxtla Gutierrez, Chiapas",
-      "tipoOrganismoId": 9,
-      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
+      "id": 1536,
+      "nombre": "Primer Tribunal Colegiado en Materias Penal y Civil del Vigésimo Circuito, con residencia en Tuxtla Gutiérrez, Chiapas",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 27,
       "circuitoId": 20,
       "circuito": "VIGÉSIMO CIRCUITO",
@@ -4144,10 +4461,10 @@
       "ciudad": "Tuxtla Gutiérrez"
     },
     {
-      "id": 1536,
-      "nombre": "Primer Tribunal Colegiado en Materias Penal y Civil del Vigésimo Circuito, con residencia en Tuxtla Gutiérrez, Chiapas",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 1539,
+      "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados en Materia Penal y Civil del Vigésimo Circuito, con residencia Tuxtla Gutierrez, Chiapas",
+      "tipoOrganismoId": 9,
+      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
       "materiaId": 27,
       "circuitoId": 20,
       "circuito": "VIGÉSIMO CIRCUITO",
@@ -4240,6 +4557,30 @@
       "ciudad": "Tuxtla Gutiérrez"
     },
     {
+      "id": 4362,
+      "nombre": "Tribunal Colegiado de Apelación del Decimoséptimo Circuito, con residencia en Chihuahua",
+      "tipoOrganismoId": 340,
+      "tipoOrganismo": "Tribunal Colegiado de Apelación",
+      "materiaId": 8,
+      "circuitoId": 44,
+      "circuito": "DÉCIMO SÉPTIMO CIRCUITO",
+      "estadoId": 6,
+      "estado": "Chihuahua",
+      "ciudad": "Chihuahua"
+    },
+    {
+      "id": 4399,
+      "nombre": "Tribunal Colegiado de Apelación del Decimoséptimo Circuito, con residencia en Ciudad Juárez",
+      "tipoOrganismoId": 340,
+      "tipoOrganismo": "Tribunal Colegiado de Apelación",
+      "materiaId": 8,
+      "circuitoId": 44,
+      "circuito": "DÉCIMO SÉPTIMO CIRCUITO",
+      "estadoId": 6,
+      "estado": "Chihuahua",
+      "ciudad": "Ciudad Juárez"
+    },
+    {
       "id": 325,
       "nombre": "Juzgado Primero de Distrito en el Estado de Chihuahua",
       "tipoOrganismoId": 2,
@@ -4268,30 +4609,6 @@
       "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados del Decimoséptimo Circuito, con residencia en Ciudad Juárez, Chihuahua",
       "tipoOrganismoId": 9,
       "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
-      "materiaId": 8,
-      "circuitoId": 44,
-      "circuito": "DÉCIMO SÉPTIMO CIRCUITO",
-      "estadoId": 6,
-      "estado": "Chihuahua",
-      "ciudad": "Ciudad Juárez"
-    },
-    {
-      "id": 4362,
-      "nombre": "Tribunal Colegiado de Apelación del Decimoséptimo Circuito, con residencia en Chihuahua",
-      "tipoOrganismoId": 340,
-      "tipoOrganismo": "Tribunal Colegiado de Apelación",
-      "materiaId": 8,
-      "circuitoId": 44,
-      "circuito": "DÉCIMO SÉPTIMO CIRCUITO",
-      "estadoId": 6,
-      "estado": "Chihuahua",
-      "ciudad": "Chihuahua"
-    },
-    {
-      "id": 4399,
-      "nombre": "Tribunal Colegiado de Apelación del Decimoséptimo Circuito, con residencia en Ciudad Juárez",
-      "tipoOrganismoId": 340,
-      "tipoOrganismo": "Tribunal Colegiado de Apelación",
       "materiaId": 8,
       "circuitoId": 44,
       "circuito": "DÉCIMO SÉPTIMO CIRCUITO",
@@ -4720,6 +5037,18 @@
       "ciudad": "México"
     },
     {
+      "id": 1619,
+      "nombre": "Oficina de Correspondencia Común para los Juzgados de Distrito en Materia Administrativa P(Unión OCC)",
+      "tipoOrganismoId": 7,
+      "tipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
+      "materiaId": 1,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
       "id": 2084,
       "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados en Materia Civil del Primer Circuito Prueba",
       "tipoOrganismoId": 9,
@@ -4736,18 +5065,6 @@
       "nombre": "Instituto Federal de Defensoría Pública",
       "tipoOrganismoId": 188,
       "tipoOrganismo": "Instituto Federal de Defensoría Pública",
-      "materiaId": 1,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 1619,
-      "nombre": "Oficina de Correspondencia Común para los Juzgados de Distrito en Materia Administrativa P(Unión OCC)",
-      "tipoOrganismoId": 7,
-      "tipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
       "materiaId": 1,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -4960,10 +5277,10 @@
       "ciudad": "México"
     },
     {
-      "id": 61,
-      "nombre": "Séptimo Tribunal Colegiado en Materia Administrativa del Primer Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 64,
+      "nombre": "Juzgado Séptimo de Distrito en Materia Administrativa en la Ciudad de México",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 1,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -4972,10 +5289,10 @@
       "ciudad": "México"
     },
     {
-      "id": 64,
-      "nombre": "Juzgado Séptimo de Distrito en Materia Administrativa en la Ciudad de México",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
+      "id": 61,
+      "nombre": "Séptimo Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 1,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -5056,10 +5373,10 @@
       "ciudad": "México"
     },
     {
-      "id": 576,
-      "nombre": "Juzgado Décimo Primero de Distrito en Materia Administrativa en la Ciudad de México",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
+      "id": 84,
+      "nombre": "Décimo Primer Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 1,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -5068,10 +5385,10 @@
       "ciudad": "México"
     },
     {
-      "id": 84,
-      "nombre": "Décimo Primer Tribunal Colegiado en Materia Administrativa del Primer Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 576,
+      "nombre": "Juzgado Décimo Primero de Distrito en Materia Administrativa en la Ciudad de México",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 1,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -5128,18 +5445,6 @@
       "ciudad": "México"
     },
     {
-      "id": 733,
-      "nombre": "Juzgado Décimo Cuarto de Distrito en Materia Administrativa en la Ciudad de México",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
-      "materiaId": 1,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
       "id": 586,
       "nombre": "Décimo Cuarto Tribunal Colegiado en Materia Administrativa del Primer Circuito",
       "tipoOrganismoId": 4,
@@ -5152,10 +5457,10 @@
       "ciudad": "México"
     },
     {
-      "id": 708,
-      "nombre": "Décimo Quinto Tribunal Colegiado en Materia Administrativa del Primer Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 733,
+      "nombre": "Juzgado Décimo Cuarto de Distrito en Materia Administrativa en la Ciudad de México",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 1,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -5176,10 +5481,10 @@
       "ciudad": "México"
     },
     {
-      "id": 735,
-      "nombre": "Juzgado Décimo Sexto de Distrito en Materia Administrativa en la Ciudad de México",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
+      "id": 708,
+      "nombre": "Décimo Quinto Tribunal Colegiado en Materia Administrativa del Primer Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 1,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -5192,6 +5497,18 @@
       "nombre": "Decimosexto Tribunal Colegiado en Materia Administrativa del Primer Circuito",
       "tipoOrganismoId": 4,
       "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "materiaId": 1,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 735,
+      "nombre": "Juzgado Décimo Sexto de Distrito en Materia Administrativa en la Ciudad de México",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 1,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -5320,10 +5637,10 @@
       "ciudad": "México"
     },
     {
-      "id": 806,
-      "nombre": "Oficina de Correspondencia Común de Tribunales Colegiados en Materia Civil del Primer Circuito",
-      "tipoOrganismoId": 9,
-      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
+      "id": 811,
+      "nombre": "Oficina de Correspondencia Común de Juzgados de Distrito en Materia Civil en la Ciudad de México",
+      "tipoOrganismoId": 7,
+      "tipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
       "materiaId": 5,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -5332,10 +5649,10 @@
       "ciudad": "México"
     },
     {
-      "id": 811,
-      "nombre": "Oficina de Correspondencia Común de Juzgados de Distrito en Materia Civil en la Ciudad de México",
-      "tipoOrganismoId": 7,
-      "tipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
+      "id": 806,
+      "nombre": "Oficina de Correspondencia Común de Tribunales Colegiados en Materia Civil del Primer Circuito",
+      "tipoOrganismoId": 9,
+      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
       "materiaId": 5,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -5560,18 +5877,6 @@
       "ciudad": "México"
     },
     {
-      "id": 83,
-      "nombre": "Juzgado Décimo de Distrito en Materia Civil en la Ciudad de México",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
-      "materiaId": 5,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
       "id": 80,
       "nombre": "Décimo Tribunal Colegiado en Materia Civil del Primer Circuito",
       "tipoOrganismoId": 4,
@@ -5584,8 +5889,8 @@
       "ciudad": "México"
     },
     {
-      "id": 87,
-      "nombre": "Juzgado Décimo Primero de Distrito en Materia Civil en la Ciudad de México",
+      "id": 83,
+      "nombre": "Juzgado Décimo de Distrito en Materia Civil en la Ciudad de México",
       "tipoOrganismoId": 2,
       "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 5,
@@ -5608,10 +5913,10 @@
       "ciudad": "México"
     },
     {
-      "id": 89,
-      "nombre": "Décimo Segundo Tribunal Colegiado en Materia Civil del Primer Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 87,
+      "nombre": "Juzgado Décimo Primero de Distrito en Materia Civil en la Ciudad de México",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 5,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -5624,6 +5929,18 @@
       "nombre": "Juzgado Décimo Segundo de Distrito en Materia Civil en la Ciudad de México",
       "tipoOrganismoId": 2,
       "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 5,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 89,
+      "nombre": "Décimo Segundo Tribunal Colegiado en Materia Civil del Primer Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 5,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -5656,10 +5973,10 @@
       "ciudad": "México"
     },
     {
-      "id": 498,
-      "nombre": "Décimo Cuarto Tribunal Colegiado en Materia Civil del Primer Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 1424,
+      "nombre": "Juzgado Decimocuarto de Distrito en Materia Civil en la Ciudad de México",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 5,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -5668,10 +5985,10 @@
       "ciudad": "México"
     },
     {
-      "id": 1424,
-      "nombre": "Juzgado Decimocuarto de Distrito en Materia Civil en la Ciudad de México",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
+      "id": 498,
+      "nombre": "Décimo Cuarto Tribunal Colegiado en Materia Civil del Primer Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 5,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -5704,6 +6021,30 @@
       "ciudad": "México"
     },
     {
+      "id": 6326,
+      "nombre": "Pleno Regional Pruebas DGIPDI",
+      "tipoOrganismoId": 342,
+      "tipoOrganismo": "Pleno Regional",
+      "materiaId": 6,
+      "circuitoId": 164,
+      "circuito": "Región Centro-Norte",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 4612,
+      "nombre": "Pleno Regional en Materias Administrativa y Civil de la Región Centro-Sur, con residencia en la Ciudad de México.",
+      "tipoOrganismoId": 342,
+      "tipoOrganismo": "Pleno Regional",
+      "materiaId": 6,
+      "circuitoId": 165,
+      "circuito": "Región Centro-Sur",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
       "id": 4382,
       "nombre": "PLENO REGIONAL PRUEBAS1",
       "tipoOrganismoId": 342,
@@ -5723,18 +6064,6 @@
       "materiaId": 6,
       "circuitoId": 164,
       "circuito": "Región Centro-Norte",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 4612,
-      "nombre": "Pleno Regional en Materias Administrativa y Civil de la Región Centro-Sur, con residencia en la Ciudad de México.",
-      "tipoOrganismoId": 342,
-      "tipoOrganismo": "Pleno Regional",
-      "materiaId": 6,
-      "circuitoId": 165,
-      "circuito": "Región Centro-Sur",
       "estadoId": 9,
       "estado": "Ciudad de México",
       "ciudad": "México"
@@ -5764,30 +6093,6 @@
       "ciudad": "México"
     },
     {
-      "id": 812,
-      "nombre": "Oficina de Correspondencia Común de Juzgados de Distrito en Materia de Trabajo en la Ciudad de México",
-      "tipoOrganismoId": 7,
-      "tipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
-      "materiaId": 7,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 930,
-      "nombre": "Comisión de Conflictos Laborales del Poder Judicial de la Federación",
-      "tipoOrganismoId": 14,
-      "tipoOrganismo": "Comisión de Conflictos Laborales del Poder Judicial de la Federación",
-      "materiaId": 7,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
       "id": 807,
       "nombre": "Oficina de Correspondencia Común de Tribunales Colegiados en Materia del Trabajo del Primer Circuito",
       "tipoOrganismoId": 9,
@@ -5804,6 +6109,30 @@
       "nombre": "Juzgado Primero de Distrito en Materia de Trabajo en la Ciudad de México",
       "tipoOrganismoId": 2,
       "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 7,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 812,
+      "nombre": "Oficina de Correspondencia Común de Juzgados de Distrito en Materia de Trabajo en la Ciudad de México",
+      "tipoOrganismoId": 7,
+      "tipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
+      "materiaId": 7,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 930,
+      "nombre": "Comisión de Conflictos Laborales del Poder Judicial de la Federación",
+      "tipoOrganismoId": 14,
+      "tipoOrganismo": "Comisión de Conflictos Laborales del Poder Judicial de la Federación",
       "materiaId": 7,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -5860,10 +6189,10 @@
       "ciudad": "México"
     },
     {
-      "id": 652,
-      "nombre": "Juzgado Cuarto de Distrito en Materia de Trabajo en la Ciudad de México",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
+      "id": 38,
+      "nombre": "Cuarto Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 7,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -5872,10 +6201,10 @@
       "ciudad": "México"
     },
     {
-      "id": 38,
-      "nombre": "Cuarto Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 652,
+      "nombre": "Juzgado Cuarto de Distrito en Materia de Trabajo en la Ciudad de México",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 7,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -5908,18 +6237,6 @@
       "ciudad": "México"
     },
     {
-      "id": 55,
-      "nombre": "Sexto Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
-      "materiaId": 7,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
       "id": 935,
       "nombre": "Juzgado Sexto de Distrito en Materia de Trabajo en la Ciudad de México",
       "tipoOrganismoId": 2,
@@ -5932,10 +6249,10 @@
       "ciudad": "México"
     },
     {
-      "id": 1425,
-      "nombre": "Juzgado Séptimo de Distrito en Materia de Trabajo en la Ciudad de México",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
+      "id": 55,
+      "nombre": "Sexto Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 7,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -5956,10 +6273,10 @@
       "ciudad": "México"
     },
     {
-      "id": 69,
-      "nombre": "Octavo Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 1425,
+      "nombre": "Juzgado Séptimo de Distrito en Materia de Trabajo en la Ciudad de México",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 7,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -5980,10 +6297,10 @@
       "ciudad": "México"
     },
     {
-      "id": 1427,
-      "nombre": "Juzgado Noveno de Distrito en Materia de Trabajo en la Ciudad de México",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
+      "id": 69,
+      "nombre": "Octavo Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 7,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -5996,6 +6313,18 @@
       "nombre": "Noveno Tribunal Colegiado en Materia de Trabajo del Primer Circuito",
       "tipoOrganismoId": 4,
       "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "materiaId": 7,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 1427,
+      "nombre": "Juzgado Noveno de Distrito en Materia de Trabajo en la Ciudad de México",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 7,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -6088,6 +6417,18 @@
       "ciudad": "México"
     },
     {
+      "id": 28709,
+      "nombre": "Seguridad de Pruebas",
+      "tipoOrganismoId": 73,
+      "tipoOrganismo": "Institución Pública de Plataforma de Interconexion",
+      "materiaId": 8,
+      "circuitoId": 120,
+      "circuito": "Federal",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
       "id": 1580,
       "nombre": "Dirección General de Tecnologías de la Información",
       "tipoOrganismoId": 41,
@@ -6107,18 +6448,6 @@
       "materiaId": 8,
       "circuitoId": 120,
       "circuito": "Federal",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 1372,
-      "nombre": "Primer Tribunal Colegiado de Circuito del Centro Auxiliar de la Primera Región, en su carácter de ordinario",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
-      "materiaId": 8,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
       "estadoId": 9,
       "estado": "Ciudad de México",
       "ciudad": "México"
@@ -6167,6 +6496,42 @@
       "materiaId": 8,
       "circuitoId": 120,
       "circuito": "Federal",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 6323,
+      "nombre": "Juzgado de Distrito Pruebas DGIPDI",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 8,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 6324,
+      "nombre": "Tribunal Colegiado de Apelación Pruebas DGIPDI",
+      "tipoOrganismoId": 340,
+      "tipoOrganismo": "Tribunal Colegiado de Apelación",
+      "materiaId": 8,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 6325,
+      "nombre": "Tribunal Colegiado de Circuito Pruebas DGIPDI",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "materiaId": 8,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
       "estadoId": 9,
       "estado": "Ciudad de México",
       "ciudad": "México"
@@ -6388,6 +6753,30 @@
       "ciudad": "México"
     },
     {
+      "id": 1372,
+      "nombre": "Primer Tribunal Colegiado de Circuito del Centro Auxiliar de la Primera Región, en su carácter de ordinario",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "materiaId": 8,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 15001,
+      "nombre": "Institución Pública de Plataforma de Interconexión con 5 digitos",
+      "tipoOrganismoId": 73,
+      "tipoOrganismo": "Institución Pública de Plataforma de Interconexion",
+      "materiaId": 8,
+      "circuitoId": 120,
+      "circuito": "Federal",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
       "id": 4378,
       "nombre": "Tribunal Colegiado de Apelación_Pruebas2",
       "tipoOrganismoId": 340,
@@ -6448,22 +6837,106 @@
       "ciudad": "México"
     },
     {
-      "id": 1161,
-      "nombre": "Cuarto Tribunal Colegiado de Circuito del Centro Auxiliar de la Primera Región",
-      "tipoOrganismoId": 29,
-      "tipoOrganismo": "Tribunal Colegiado Auxiliar",
-      "materiaId": 8,
-      "circuitoId": 57,
-      "circuito": "PRIMERA REGIÓN (D.F.)",
+      "id": 1475,
+      "nombre": "Centro de Justicia Penal Federal para pruebas de nuevos Desarrollos",
+      "tipoOrganismoId": 65,
+      "tipoOrganismo": "Centro de Justicia Penal Federal",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
       "estadoId": 9,
       "estado": "Ciudad de México",
       "ciudad": "México"
     },
     {
-      "id": 3977,
-      "nombre": "Centro de Justicia Penal Federal para Pruebas 2",
+      "id": 1480,
+      "nombre": "Centro de Justicia Penal Federal para Pruebas 1 (DF) ",
       "tipoOrganismoId": 65,
       "tipoOrganismo": "Centro de Justicia Penal Federal",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 1483,
+      "nombre": "Centro de Justicia Penal Federal para Presentación 1 (DF)",
+      "tipoOrganismoId": 65,
+      "tipoOrganismo": "Centro de Justicia Penal Federal",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 1504,
+      "nombre": "Centro de Justicia Penal Federal en la Ciudad de México, Reclusorio Norte",
+      "tipoOrganismoId": 65,
+      "tipoOrganismo": "Centro de Justicia Penal Federal",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 1194,
+      "nombre": "Juzgado Primero de Distrito Especializado en Ejecución de Penas",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 1197,
+      "nombre": "Oficina de Correspondencia Común de los Juzgados de Distrito Especializados en Ejecución de Penas",
+      "tipoOrganismoId": 7,
+      "tipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 804,
+      "nombre": "Oficina de Correspondencia Común de Tribunales Colegiados en Materia Penal del Primer Circuito",
+      "tipoOrganismoId": 9,
+      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 762,
+      "nombre": "Juzgado Primero de Distrito en Materia Penal en la Ciudad de México",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 7,
+      "nombre": "Primer Tribunal Colegiado en Materia Penal del Primer Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 9,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -6520,78 +6993,6 @@
       "ciudad": "México"
     },
     {
-      "id": 1194,
-      "nombre": "Juzgado Primero de Distrito Especializado en Ejecución de Penas",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 1475,
-      "nombre": "Centro de Justicia Penal Federal para pruebas de nuevos Desarrollos",
-      "tipoOrganismoId": 65,
-      "tipoOrganismo": "Centro de Justicia Penal Federal",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 1480,
-      "nombre": "Centro de Justicia Penal Federal para Pruebas 1 (DF) ",
-      "tipoOrganismoId": 65,
-      "tipoOrganismo": "Centro de Justicia Penal Federal",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 1483,
-      "nombre": "Centro de Justicia Penal Federal para Presentación 1 (DF)",
-      "tipoOrganismoId": 65,
-      "tipoOrganismo": "Centro de Justicia Penal Federal",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 1504,
-      "nombre": "Centro de Justicia Penal Federal en la Ciudad de México, Reclusorio Norte",
-      "tipoOrganismoId": 65,
-      "tipoOrganismo": "Centro de Justicia Penal Federal",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 1197,
-      "nombre": "Oficina de Correspondencia Común de los Juzgados de Distrito Especializados en Ejecución de Penas",
-      "tipoOrganismoId": 7,
-      "tipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
       "id": 2316,
       "nombre": "Juez Primero de Control del Centro Nacional de Justicia Especializado en Control de Técnicas de Investigación, Arraigo e Intervención de Comunicaciones, con residencia en la Ciudad de México",
       "tipoOrganismoId": 2,
@@ -6604,34 +7005,10 @@
       "ciudad": "México"
     },
     {
-      "id": 7,
-      "nombre": "Primer Tribunal Colegiado en Materia Penal del Primer Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 762,
-      "nombre": "Juzgado Primero de Distrito en Materia Penal en la Ciudad de México",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 804,
-      "nombre": "Oficina de Correspondencia Común de Tribunales Colegiados en Materia Penal del Primer Circuito",
-      "tipoOrganismoId": 9,
-      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
+      "id": 3977,
+      "nombre": "Centro de Justicia Penal Federal para Pruebas 2",
+      "tipoOrganismoId": 65,
+      "tipoOrganismo": "Centro de Justicia Penal Federal",
       "materiaId": 9,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -6664,22 +7041,10 @@
       "ciudad": "México"
     },
     {
-      "id": 763,
-      "nombre": "Juzgado Segundo de Distrito en Materia Penal en la Ciudad de México",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 18,
-      "nombre": "Segundo Tribunal Colegiado en Materia Penal del Primer Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 6327,
+      "nombre": "Centro de Justicia Penal Federal Pruebas DGIPDI",
+      "tipoOrganismoId": 65,
+      "tipoOrganismo": "Centro de Justicia Penal Federal",
       "materiaId": 9,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -6690,42 +7055,6 @@
     {
       "id": 2317,
       "nombre": "Juez Segundo de Control del Centro Nacional de Justicia Especializado en Control de Técnicas de Investigación, Arraigo e Intervención de Comunicaciones, con residencia en la Ciudad de México",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 1492,
-      "nombre": "Centro de Justicia Penal Federal para Presentación 2 (DF) ",
-      "tipoOrganismoId": 65,
-      "tipoOrganismo": "Centro de Justicia Penal Federal",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 1505,
-      "nombre": "Centro de Justicia Penal Federal en la Ciudad de México, Reclusorio Oriente",
-      "tipoOrganismoId": 65,
-      "tipoOrganismo": "Centro de Justicia Penal Federal",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 1195,
-      "nombre": "Juzgado Segundo de Distrito Especializado en Ejecución de Penas",
       "tipoOrganismoId": 2,
       "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 9,
@@ -6760,8 +7089,68 @@
       "ciudad": "México"
     },
     {
-      "id": 2083,
-      "nombre": "Tercer Centro de Justicia Penal Federal Pruebas de Instituto",
+      "id": 18,
+      "nombre": "Segundo Tribunal Colegiado en Materia Penal del Primer Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 763,
+      "nombre": "Juzgado Segundo de Distrito en Materia Penal en la Ciudad de México",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 1195,
+      "nombre": "Juzgado Segundo de Distrito Especializado en Ejecución de Penas",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 1505,
+      "nombre": "Centro de Justicia Penal Federal en la Ciudad de México, Reclusorio Oriente",
+      "tipoOrganismoId": 65,
+      "tipoOrganismo": "Centro de Justicia Penal Federal",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 1492,
+      "nombre": "Centro de Justicia Penal Federal para Presentación 2 (DF) ",
+      "tipoOrganismoId": 65,
+      "tipoOrganismo": "Centro de Justicia Penal Federal",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 1506,
+      "nombre": "Centro de Justicia Penal Federal en la Ciudad de México, Reclusorio Sur",
       "tipoOrganismoId": 65,
       "tipoOrganismo": "Centro de Justicia Penal Federal",
       "materiaId": 9,
@@ -6784,20 +7173,8 @@
       "ciudad": "México"
     },
     {
-      "id": 1506,
-      "nombre": "Centro de Justicia Penal Federal en la Ciudad de México, Reclusorio Sur",
-      "tipoOrganismoId": 65,
-      "tipoOrganismo": "Centro de Justicia Penal Federal",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 2318,
-      "nombre": "Juez Tercero de Control del Centro Nacional de Justicia Especializado en Control de Técnicas de Investigación, Arraigo e Intervención de Comunicaciones, con residencia en la Ciudad de México",
+      "id": 764,
+      "nombre": "Juzgado Tercero de Distrito en Materia Penal en la Ciudad de México",
       "tipoOrganismoId": 2,
       "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 9,
@@ -6820,10 +7197,10 @@
       "ciudad": "México"
     },
     {
-      "id": 764,
-      "nombre": "Juzgado Tercero de Distrito en Materia Penal en la Ciudad de México",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
+      "id": 2083,
+      "nombre": "Tercer Centro de Justicia Penal Federal Pruebas de Instituto",
+      "tipoOrganismoId": 65,
+      "tipoOrganismo": "Centro de Justicia Penal Federal",
       "materiaId": 9,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -6832,22 +7209,10 @@
       "ciudad": "México"
     },
     {
-      "id": 765,
-      "nombre": "Juzgado Cuarto de Distrito en Materia Penal en la Ciudad de México",
+      "id": 2318,
+      "nombre": "Juez Tercero de Control del Centro Nacional de Justicia Especializado en Control de Técnicas de Investigación, Arraigo e Intervención de Comunicaciones, con residencia en la Ciudad de México",
       "tipoOrganismoId": 2,
       "tipoOrganismo": "Juzgado de Distrito",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 39,
-      "nombre": "Cuarto Tribunal Colegiado en Materia Penal del Primer Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 9,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -6872,6 +7237,54 @@
       "nombre": "Juzgado Cuarto de Distrito Especializado en Ejecución de Penas",
       "tipoOrganismoId": 2,
       "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 39,
+      "nombre": "Cuarto Tribunal Colegiado en Materia Penal del Primer Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 765,
+      "nombre": "Juzgado Cuarto de Distrito en Materia Penal en la Ciudad de México",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 766,
+      "nombre": "Juzgado Quinto de Distrito en Materia Penal en la Ciudad de México",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 48,
+      "nombre": "Quinto Tribunal Colegiado en Materia Penal del Primer Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 9,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -6916,54 +7329,6 @@
       "ciudad": "México"
     },
     {
-      "id": 48,
-      "nombre": "Quinto Tribunal Colegiado en Materia Penal del Primer Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 766,
-      "nombre": "Juzgado Quinto de Distrito en Materia Penal en la Ciudad de México",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 767,
-      "nombre": "Juzgado Sexto de Distrito en Materia Penal en la Ciudad de México",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 56,
-      "nombre": "Sexto Tribunal Colegiado en Materia Penal del Primer Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
       "id": 2321,
       "nombre": "Juez Sexto de Control del Centro Nacional de Justicia Especializado en Control de Técnicas de Investigación, Arraigo e Intervención de Comunicaciones, con residencia en la Ciudad de México",
       "tipoOrganismoId": 2,
@@ -6988,8 +7353,32 @@
       "ciudad": "México"
     },
     {
-      "id": 3444,
-      "nombre": "Juez Séptimo de Control del Centro Nacional de Justicia Especializado en Control de Técnicas de Investigación, Arraigo e Intervención de Comunicaciones, con residencia en la Ciudad de México",
+      "id": 56,
+      "nombre": "Sexto Tribunal Colegiado en Materia Penal del Primer Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 767,
+      "nombre": "Juzgado Sexto de Distrito en Materia Penal en la Ciudad de México",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 768,
+      "nombre": "Juzgado Séptimo de Distrito en Materia Penal en la Ciudad de México",
       "tipoOrganismoId": 2,
       "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 9,
@@ -7012,8 +7401,8 @@
       "ciudad": "México"
     },
     {
-      "id": 768,
-      "nombre": "Juzgado Séptimo de Distrito en Materia Penal en la Ciudad de México",
+      "id": 3444,
+      "nombre": "Juez Séptimo de Control del Centro Nacional de Justicia Especializado en Control de Técnicas de Investigación, Arraigo e Intervención de Comunicaciones, con residencia en la Ciudad de México",
       "tipoOrganismoId": 2,
       "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 9,
@@ -7024,8 +7413,8 @@
       "ciudad": "México"
     },
     {
-      "id": 769,
-      "nombre": "Juzgado Octavo de Distrito en Materia Penal en la Ciudad de México",
+      "id": 3445,
+      "nombre": "Juez Octavo de Control del Centro Nacional de Justicia Especializado en Control de Técnicas de Investigación, Arraigo e Intervención de Comunicaciones, con residencia en la Ciudad de México",
       "tipoOrganismoId": 2,
       "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 9,
@@ -7048,8 +7437,8 @@
       "ciudad": "México"
     },
     {
-      "id": 3445,
-      "nombre": "Juez Octavo de Control del Centro Nacional de Justicia Especializado en Control de Técnicas de Investigación, Arraigo e Intervención de Comunicaciones, con residencia en la Ciudad de México",
+      "id": 769,
+      "nombre": "Juzgado Octavo de Distrito en Materia Penal en la Ciudad de México",
       "tipoOrganismoId": 2,
       "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 9,
@@ -7060,8 +7449,8 @@
       "ciudad": "México"
     },
     {
-      "id": 4009,
-      "nombre": "Juez Noveno de Control del Centro Nacional de Justicia Especializado en Control de Técnicas de Investigación, Arraigo e Intervención de Comunicaciones, con residencia en la Ciudad de México",
+      "id": 770,
+      "nombre": "Juzgado Noveno de Distrito en Materia Penal en la Ciudad de México",
       "tipoOrganismoId": 2,
       "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 9,
@@ -7084,20 +7473,8 @@
       "ciudad": "México"
     },
     {
-      "id": 770,
-      "nombre": "Juzgado Noveno de Distrito en Materia Penal en la Ciudad de México",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
-      "materiaId": 9,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 771,
-      "nombre": "Juzgado Décimo de Distrito en Materia Penal en la Ciudad de México",
+      "id": 4009,
+      "nombre": "Juez Noveno de Control del Centro Nacional de Justicia Especializado en Control de Técnicas de Investigación, Arraigo e Intervención de Comunicaciones, con residencia en la Ciudad de México",
       "tipoOrganismoId": 2,
       "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 9,
@@ -7124,6 +7501,18 @@
       "nombre": "Décimo Tribunal Colegiado en Materia Penal del Primer Circuito.",
       "tipoOrganismoId": 4,
       "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "materiaId": 9,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 771,
+      "nombre": "Juzgado Décimo de Distrito en Materia Penal en la Ciudad de México",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 9,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -7276,18 +7665,6 @@
       "ciudad": "México"
     },
     {
-      "id": 4157,
-      "nombre": "Juzgado Primero de Distrito en Materia de Concursos Mercantiles, con residencia en la Ciudad de México y jurisdicción en toda la República Mexicana",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
-      "materiaId": 23,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
       "id": 4002,
       "nombre": "Juzgado Primero de Distrito en Materia de Extinción de Dominio con Competencia en la República Mexicana y Especializado en Juicios Orales Mercantiles en el Primer Circuito",
       "tipoOrganismoId": 2,
@@ -7312,8 +7689,8 @@
       "ciudad": "México"
     },
     {
-      "id": 4003,
-      "nombre": "Juzgado Segundo de Distrito en Materia de Extinción de Dominio con Competencia en la República Mexicana y Especializado en Juicios Orales Mercantiles en el Primer Circuito",
+      "id": 4157,
+      "nombre": "Juzgado Primero de Distrito en Materia de Concursos Mercantiles, con residencia en la Ciudad de México y jurisdicción en toda la República Mexicana",
       "tipoOrganismoId": 2,
       "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 23,
@@ -7326,6 +7703,18 @@
     {
       "id": 4158,
       "nombre": "Juzgado Segundo de Distrito en Materia de Concursos Mercantiles, con residencia en la Ciudad de México y jurisdicción en toda la República Mexicana",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 23,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 4003,
+      "nombre": "Juzgado Segundo de Distrito en Materia de Extinción de Dominio con Competencia en la República Mexicana y Especializado en Juicios Orales Mercantiles en el Primer Circuito",
       "tipoOrganismoId": 2,
       "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 23,
@@ -7384,6 +7773,30 @@
       "ciudad": "México"
     },
     {
+      "id": 4393,
+      "nombre": "Pleno Regional Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones",
+      "tipoOrganismoId": 342,
+      "tipoOrganismo": "Pleno Regional",
+      "materiaId": 25,
+      "circuitoId": 166,
+      "circuito": "Pleno Regional Especializado CERYT",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 4384,
+      "nombre": "PLENO REGIONAL PRUEBAS3",
+      "tipoOrganismoId": 342,
+      "tipoOrganismo": "Pleno Regional",
+      "materiaId": 25,
+      "circuitoId": 166,
+      "circuito": "Pleno Regional Especializado CERYT",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
       "id": 1301,
       "nombre": "Juzgado Primero de Distrito en Materia Administrativa, Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones, con residencia en la Ciudad de México y Jurisdicción en toda la República",
       "tipoOrganismoId": 2,
@@ -7400,6 +7813,18 @@
       "nombre": "Primer Tribunal Colegiado de Circuito en Materia Administrativa, Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones, con residencia en la Ciudad de México y Jurisdicción en toda la República",
       "tipoOrganismoId": 4,
       "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "materiaId": 25,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 1540,
+      "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados de Circuito del Centro Auxiliar de la Primera Región con residencia en la Ciudad de México, y jurisdicción en toda la República",
+      "tipoOrganismoId": 9,
+      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
       "materiaId": 25,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
@@ -7439,42 +7864,6 @@
       "materiaId": 25,
       "circuitoId": 1,
       "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 1540,
-      "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados de Circuito del Centro Auxiliar de la Primera Región con residencia en la Ciudad de México, y jurisdicción en toda la República",
-      "tipoOrganismoId": 9,
-      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
-      "materiaId": 25,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 4393,
-      "nombre": "Pleno Regional Especializado en Competencia Económica, Radiodifusión y Telecomunicaciones",
-      "tipoOrganismoId": 342,
-      "tipoOrganismo": "Pleno Regional",
-      "materiaId": 25,
-      "circuitoId": 166,
-      "circuito": "Pleno Regional Especializado CERYT",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 4384,
-      "nombre": "PLENO REGIONAL PRUEBAS3",
-      "tipoOrganismoId": 342,
-      "tipoOrganismo": "Pleno Regional",
-      "materiaId": 25,
-      "circuitoId": 166,
-      "circuito": "Pleno Regional Especializado CERYT",
       "estadoId": 9,
       "estado": "Ciudad de México",
       "ciudad": "México"
@@ -7636,30 +8025,6 @@
       "ciudad": "México"
     },
     {
-      "id": 6171,
-      "nombre": "Segundo Tribunal de Justicia Laboral Pruebas -CDMX",
-      "tipoOrganismoId": 199,
-      "tipoOrganismo": "Tribunales Laborales",
-      "materiaId": 33,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
-      "id": 6172,
-      "nombre": "Tercer Tribunal de Justicia Laboral Pruebas -CDMX",
-      "tipoOrganismoId": 199,
-      "tipoOrganismo": "Tribunales Laborales",
-      "materiaId": 33,
-      "circuitoId": 1,
-      "circuito": "PRIMER CIRCUITO",
-      "estadoId": 9,
-      "estado": "Ciudad de México",
-      "ciudad": "México"
-    },
-    {
       "id": 5608,
       "nombre": "Canoa Migración",
       "tipoOrganismoId": 199,
@@ -7674,6 +8039,42 @@
     {
       "id": 4569,
       "nombre": "Tribunal de Justicia Laboral Pruebas -SEPLE",
+      "tipoOrganismoId": 199,
+      "tipoOrganismo": "Tribunales Laborales",
+      "materiaId": 33,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 6328,
+      "nombre": "Tribunal de Justicia Laboral - Prueba DGIPDI",
+      "tipoOrganismoId": 199,
+      "tipoOrganismo": "Tribunales Laborales",
+      "materiaId": 33,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 6171,
+      "nombre": "Segundo Tribunal de Justicia Laboral Pruebas -CDMX",
+      "tipoOrganismoId": 199,
+      "tipoOrganismo": "Tribunales Laborales",
+      "materiaId": 33,
+      "circuitoId": 1,
+      "circuito": "PRIMER CIRCUITO",
+      "estadoId": 9,
+      "estado": "Ciudad de México",
+      "ciudad": "México"
+    },
+    {
+      "id": 6172,
+      "nombre": "Tercer Tribunal de Justicia Laboral Pruebas -CDMX",
       "tipoOrganismoId": 199,
       "tipoOrganismo": "Tribunales Laborales",
       "materiaId": 33,
@@ -8140,10 +8541,10 @@
       "ciudad": "Ramos Arizpe"
     },
     {
-      "id": 1352,
-      "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados en Materias Civil y de Trabajo del Octavo Circuito",
-      "tipoOrganismoId": 9,
-      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
+      "id": 1144,
+      "nombre": "Primer Tribunal Colegiado en Materias Civil y de Trabajo del Octavo Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 12,
       "circuitoId": 8,
       "circuito": "OCTAVO CIRCUITO",
@@ -8152,10 +8553,10 @@
       "ciudad": "Torreón"
     },
     {
-      "id": 1144,
-      "nombre": "Primer Tribunal Colegiado en Materias Civil y de Trabajo del Octavo Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 1352,
+      "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados en Materias Civil y de Trabajo del Octavo Circuito",
+      "tipoOrganismoId": 9,
+      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
       "materiaId": 12,
       "circuitoId": 8,
       "circuito": "OCTAVO CIRCUITO",
@@ -8392,30 +8793,6 @@
       "ciudad": "Colima"
     },
     {
-      "id": 4339,
-      "nombre": "Órgano de Pruebas- Tribunal Colegiado de Circuito 2",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
-      "materiaId": 8,
-      "circuitoId": 109,
-      "circuito": "TRIGÉSIMO SEGUNDO CIRCUITO",
-      "estadoId": 8,
-      "estado": "Colima",
-      "ciudad": "Colima"
-    },
-    {
-      "id": 4377,
-      "nombre": "Tribunal Colegiado de Apelación del Trigésimo Segundo Circuito, con residencia en Colima",
-      "tipoOrganismoId": 340,
-      "tipoOrganismo": "Tribunal Colegiado de Apelación",
-      "materiaId": 8,
-      "circuitoId": 109,
-      "circuito": "TRIGÉSIMO SEGUNDO CIRCUITO",
-      "estadoId": 8,
-      "estado": "Colima",
-      "ciudad": "Colima"
-    },
-    {
       "id": 829,
       "nombre": "Oficina de Correspondencia Común de Juzgados de Distrito en el Estado de Colima, con Residencia en Colima",
       "tipoOrganismoId": 7,
@@ -8480,6 +8857,30 @@
       "nombre": "Juzgado Primero de Distrito en el Estado de Colima",
       "tipoOrganismoId": 2,
       "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 8,
+      "circuitoId": 109,
+      "circuito": "TRIGÉSIMO SEGUNDO CIRCUITO",
+      "estadoId": 8,
+      "estado": "Colima",
+      "ciudad": "Colima"
+    },
+    {
+      "id": 4339,
+      "nombre": "Órgano de Pruebas- Tribunal Colegiado de Circuito 2",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "materiaId": 8,
+      "circuitoId": 109,
+      "circuito": "TRIGÉSIMO SEGUNDO CIRCUITO",
+      "estadoId": 8,
+      "estado": "Colima",
+      "ciudad": "Colima"
+    },
+    {
+      "id": 4377,
+      "nombre": "Tribunal Colegiado de Apelación del Trigésimo Segundo Circuito, con residencia en Colima",
+      "tipoOrganismoId": 340,
+      "tipoOrganismo": "Tribunal Colegiado de Apelación",
       "materiaId": 8,
       "circuitoId": 109,
       "circuito": "TRIGÉSIMO SEGUNDO CIRCUITO",
@@ -8620,10 +9021,10 @@
       "ciudad": "Durango"
     },
     {
-      "id": 406,
-      "nombre": "Juzgado Segundo de Distrito en el Estado de Durango",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
+      "id": 1478,
+      "nombre": "Segundo Tribunal Colegiado del Vigésimo Quinto Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 8,
       "circuitoId": 52,
       "circuito": "VIGÉSIMO QUINTO CIRCUITO",
@@ -8632,10 +9033,10 @@
       "ciudad": "Durango"
     },
     {
-      "id": 1478,
-      "nombre": "Segundo Tribunal Colegiado del Vigésimo Quinto Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 406,
+      "nombre": "Juzgado Segundo de Distrito en el Estado de Durango",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 8,
       "circuitoId": 52,
       "circuito": "VIGÉSIMO QUINTO CIRCUITO",
@@ -8692,16 +9093,16 @@
       "ciudad": "Gómez Palacio"
     },
     {
-      "id": 4442,
-      "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Durango, con sede en Durango",
-      "tipoOrganismoId": 199,
-      "tipoOrganismo": "Tribunales Laborales",
-      "materiaId": 33,
+      "id": 6298,
+      "nombre": "CENTRO FEDERAL DE REINSERCIÓN SOCIAL NÚMERO 7 \"NOR-NOROESTE\"",
+      "tipoOrganismoId": 346,
+      "tipoOrganismo": "CEFERESO",
+      "materiaId": 9,
       "circuitoId": 52,
       "circuito": "VIGÉSIMO QUINTO CIRCUITO",
       "estadoId": 10,
       "estado": "Durango",
-      "ciudad": "Durango"
+      "ciudad": "Guadalupe Victoria"
     },
     {
       "id": 3991,
@@ -8718,6 +9119,18 @@
     {
       "id": 4127,
       "nombre": "Tribunal de Justicia Laboral Prueba, Escuela Federal de Formación Judicial",
+      "tipoOrganismoId": 199,
+      "tipoOrganismo": "Tribunales Laborales",
+      "materiaId": 33,
+      "circuitoId": 52,
+      "circuito": "VIGÉSIMO QUINTO CIRCUITO",
+      "estadoId": 10,
+      "estado": "Durango",
+      "ciudad": "Durango"
+    },
+    {
+      "id": 4442,
+      "nombre": "Primer Tribunal Laboral Federal de asuntos individuales en el Estado de Durango, con sede en Durango",
       "tipoOrganismoId": 199,
       "tipoOrganismo": "Tribunales Laborales",
       "materiaId": 33,
@@ -8932,10 +9345,10 @@
       "ciudad": "Toluca"
     },
     {
-      "id": 4347,
-      "nombre": "Tribunal Colegiado de Apelación del Segundo Circuito, con residencia en Nezahualcóyotl",
-      "tipoOrganismoId": 340,
-      "tipoOrganismo": "Tribunal Colegiado de Apelación",
+      "id": 1272,
+      "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados del Segundo Circuito, con residencia en Nezahualcóyotl, Estado de México ",
+      "tipoOrganismoId": 9,
+      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
       "materiaId": 8,
       "circuitoId": 2,
       "circuito": "SEGUNDO CIRCUITO",
@@ -8954,18 +9367,6 @@
       "estadoId": 11,
       "estado": "Estado de México",
       "ciudad": "Toluca"
-    },
-    {
-      "id": 1272,
-      "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados del Segundo Circuito, con residencia en Nezahualcóyotl, Estado de México ",
-      "tipoOrganismoId": 9,
-      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
-      "materiaId": 8,
-      "circuitoId": 2,
-      "circuito": "SEGUNDO CIRCUITO",
-      "estadoId": 11,
-      "estado": "Estado de México",
-      "ciudad": "Ciudad Nezahualcóyotl"
     },
     {
       "id": 1150,
@@ -8990,6 +9391,18 @@
       "estadoId": 11,
       "estado": "Estado de México",
       "ciudad": "Naucalpan de Juárez"
+    },
+    {
+      "id": 4347,
+      "nombre": "Tribunal Colegiado de Apelación del Segundo Circuito, con residencia en Nezahualcóyotl",
+      "tipoOrganismoId": 340,
+      "tipoOrganismo": "Tribunal Colegiado de Apelación",
+      "materiaId": 8,
+      "circuitoId": 2,
+      "circuito": "SEGUNDO CIRCUITO",
+      "estadoId": 11,
+      "estado": "Estado de México",
+      "ciudad": "Ciudad Nezahualcóyotl"
     },
     {
       "id": 107,
@@ -9364,18 +9777,6 @@
       "ciudad": "Toluca"
     },
     {
-      "id": 3824,
-      "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de México, con residencia en Toluca",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
-      "materiaId": 23,
-      "circuitoId": 2,
-      "circuito": "SEGUNDO CIRCUITO",
-      "estadoId": 11,
-      "estado": "Estado de México",
-      "ciudad": "Toluca"
-    },
-    {
       "id": 2741,
       "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de México, con residencia en Naucalpan de Juárez",
       "tipoOrganismoId": 2,
@@ -9386,6 +9787,18 @@
       "estadoId": 11,
       "estado": "Estado de México",
       "ciudad": "Naucalpan de Juárez"
+    },
+    {
+      "id": 3824,
+      "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de México, con residencia en Toluca",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 23,
+      "circuitoId": 2,
+      "circuito": "SEGUNDO CIRCUITO",
+      "estadoId": 11,
+      "estado": "Estado de México",
+      "ciudad": "Toluca"
     },
     {
       "id": 5852,
@@ -10024,10 +10437,10 @@
       "ciudad": "Guanajuato"
     },
     {
-      "id": 1485,
-      "nombre": "Centro de Justicia Penal Federal en el Estado de Guanajuato, con residencia en la ciudad del mismo nombre",
-      "tipoOrganismoId": 65,
-      "tipoOrganismo": "Centro de Justicia Penal Federal",
+      "id": 1892,
+      "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados en Materia Penal del Decimosexto Circuito",
+      "tipoOrganismoId": 9,
+      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
       "materiaId": 9,
       "circuitoId": 45,
       "circuito": "DÉCIMO SEXTO CIRCUITO",
@@ -10048,10 +10461,10 @@
       "ciudad": "Guanajuato"
     },
     {
-      "id": 1892,
-      "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados en Materia Penal del Decimosexto Circuito",
-      "tipoOrganismoId": 9,
-      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
+      "id": 1485,
+      "nombre": "Centro de Justicia Penal Federal en el Estado de Guanajuato, con residencia en la ciudad del mismo nombre",
+      "tipoOrganismoId": 65,
+      "tipoOrganismo": "Centro de Justicia Penal Federal",
       "materiaId": 9,
       "circuitoId": 45,
       "circuito": "DÉCIMO SEXTO CIRCUITO",
@@ -11140,10 +11553,10 @@
       "ciudad": "Zapopan"
     },
     {
-      "id": 5762,
-      "nombre": "Juzgado Sexto de Distrito en Materia de Trabajo en el Estado de Jalisco, con residencia en Zapopan",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
+      "id": 3997,
+      "nombre": "Sexto Tribunal Colegiado en Materia de Trabajo del Tercer Circuito, con residencia en Zapopan, Jalisco",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 7,
       "circuitoId": 3,
       "circuito": "TERCER CIRCUITO",
@@ -11152,10 +11565,10 @@
       "ciudad": "Zapopan"
     },
     {
-      "id": 3997,
-      "nombre": "Sexto Tribunal Colegiado en Materia de Trabajo del Tercer Circuito, con residencia en Zapopan, Jalisco",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 5762,
+      "nombre": "Juzgado Sexto de Distrito en Materia de Trabajo en el Estado de Jalisco, con residencia en Zapopan",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 7,
       "circuitoId": 3,
       "circuito": "TERCER CIRCUITO",
@@ -11224,6 +11637,18 @@
       "ciudad": "Zapopan"
     },
     {
+      "id": 5765,
+      "nombre": "Juzgado Primero de Distrito en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 9,
+      "circuitoId": 3,
+      "circuito": "TERCER CIRCUITO",
+      "estadoId": 15,
+      "estado": "Jalisco",
+      "ciudad": "Puente Grande"
+    },
+    {
       "id": 1512,
       "nombre": "Centro de Justicia Penal Federal en el Estado de Jalisco, con residencia en Puente Grande",
       "tipoOrganismoId": 65,
@@ -11248,16 +11673,16 @@
       "ciudad": "Zapopan"
     },
     {
-      "id": 5765,
-      "nombre": "Juzgado Primero de Distrito en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
+      "id": 130,
+      "nombre": "Segundo Tribunal Colegiado en Materia Penal del Tercer Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 9,
       "circuitoId": 3,
       "circuito": "TERCER CIRCUITO",
       "estadoId": 15,
       "estado": "Jalisco",
-      "ciudad": "Puente Grande"
+      "ciudad": "Zapopan"
     },
     {
       "id": 5766,
@@ -11272,16 +11697,16 @@
       "ciudad": "Puente Grande"
     },
     {
-      "id": 130,
-      "nombre": "Segundo Tribunal Colegiado en Materia Penal del Tercer Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 5767,
+      "nombre": "Juzgado Tercero de Distrito en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 9,
       "circuitoId": 3,
       "circuito": "TERCER CIRCUITO",
       "estadoId": 15,
       "estado": "Jalisco",
-      "ciudad": "Zapopan"
+      "ciudad": "Puente Grande"
     },
     {
       "id": 1258,
@@ -11306,18 +11731,6 @@
       "estadoId": 15,
       "estado": "Jalisco",
       "ciudad": "Zapopan"
-    },
-    {
-      "id": 5767,
-      "nombre": "Juzgado Tercero de Distrito en Materia Penal en el Estado de Jalisco, con residencia en Puente Grande",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
-      "materiaId": 9,
-      "circuitoId": 3,
-      "circuito": "TERCER CIRCUITO",
-      "estadoId": 15,
-      "estado": "Jalisco",
-      "ciudad": "Puente Grande"
     },
     {
       "id": 5768,
@@ -11632,10 +12045,10 @@
       "ciudad": "Morelia"
     },
     {
-      "id": 243,
-      "nombre": "Juzgado Primero de Distrito en el Estado de Michoacán",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
+      "id": 4356,
+      "nombre": "Tribunal Colegiado de Apelación del Decimoprimer, Circuito, con residencia en Morelia",
+      "tipoOrganismoId": 340,
+      "tipoOrganismo": "Tribunal Colegiado de Apelación",
       "materiaId": 8,
       "circuitoId": 41,
       "circuito": "DÉCIMO PRIMER CIRCUITO",
@@ -11644,10 +12057,10 @@
       "ciudad": "Morelia"
     },
     {
-      "id": 4356,
-      "nombre": "Tribunal Colegiado de Apelación del Decimoprimer, Circuito, con residencia en Morelia",
-      "tipoOrganismoId": 340,
-      "tipoOrganismo": "Tribunal Colegiado de Apelación",
+      "id": 243,
+      "nombre": "Juzgado Primero de Distrito en el Estado de Michoacán",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 8,
       "circuitoId": 41,
       "circuito": "DÉCIMO PRIMER CIRCUITO",
@@ -11776,10 +12189,10 @@
       "ciudad": "Morelia"
     },
     {
-      "id": 1043,
-      "nombre": "Tribunal Colegiado en Materia Penal del Decimoprimer Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 1513,
+      "nombre": "Centro de Justicia Penal Federal en el Estado de Michoacán, con residencia en Morelia",
+      "tipoOrganismoId": 65,
+      "tipoOrganismo": "Centro de Justicia Penal Federal",
       "materiaId": 9,
       "circuitoId": 41,
       "circuito": "DÉCIMO PRIMER CIRCUITO",
@@ -11788,10 +12201,10 @@
       "ciudad": "Morelia"
     },
     {
-      "id": 1513,
-      "nombre": "Centro de Justicia Penal Federal en el Estado de Michoacán, con residencia en Morelia",
-      "tipoOrganismoId": 65,
-      "tipoOrganismo": "Centro de Justicia Penal Federal",
+      "id": 1043,
+      "nombre": "Tribunal Colegiado en Materia Penal del Decimoprimer Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 9,
       "circuitoId": 41,
       "circuito": "DÉCIMO PRIMER CIRCUITO",
@@ -11896,18 +12309,6 @@
       "ciudad": "Cuernavaca"
     },
     {
-      "id": 4363,
-      "nombre": "Tribunal Colegiado de Apelación del Decimoctavo Circuito, con residencia en Xochitepec, Morelos",
-      "tipoOrganismoId": 340,
-      "tipoOrganismo": "Tribunal Colegiado de Apelación",
-      "materiaId": 8,
-      "circuitoId": 40,
-      "circuito": "DÉCIMO OCTAVO CIRCUITO",
-      "estadoId": 17,
-      "estado": "Morelos",
-      "ciudad": "Xochitepec"
-    },
-    {
       "id": 338,
       "nombre": "Juzgado Primero de Distrito en el Estado de Morelos",
       "tipoOrganismoId": 2,
@@ -11918,6 +12319,18 @@
       "estadoId": 17,
       "estado": "Morelos",
       "ciudad": "Cuernavaca"
+    },
+    {
+      "id": 4363,
+      "nombre": "Tribunal Colegiado de Apelación del Decimoctavo Circuito, con residencia en Xochitepec, Morelos",
+      "tipoOrganismoId": 340,
+      "tipoOrganismo": "Tribunal Colegiado de Apelación",
+      "materiaId": 8,
+      "circuitoId": 40,
+      "circuito": "DÉCIMO OCTAVO CIRCUITO",
+      "estadoId": 17,
+      "estado": "Morelos",
+      "ciudad": "Xochitepec"
     },
     {
       "id": 340,
@@ -12208,6 +12621,18 @@
       "ciudad": "Tepic"
     },
     {
+      "id": 1497,
+      "nombre": "Centro de Justicia Penal Federal en el Estado de Nayarit, con residencia en Tepic",
+      "tipoOrganismoId": 65,
+      "tipoOrganismo": "Centro de Justicia Penal Federal",
+      "materiaId": 9,
+      "circuitoId": 48,
+      "circuito": "VIGÉSIMO CUARTO CIRCUITO",
+      "estadoId": 18,
+      "estado": "Nayarit",
+      "ciudad": "Tepic"
+    },
+    {
       "id": 1083,
       "nombre": "Juzgado Primero de Distrito en Materia Penal en el Estado de Nayarit",
       "tipoOrganismoId": 2,
@@ -12224,18 +12649,6 @@
       "nombre": "Oficina de Correspondencia Común de los Juzgados de Distrito en Materia Penal en el Estado de Nayarit, con residencia en Tepic",
       "tipoOrganismoId": 7,
       "tipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
-      "materiaId": 9,
-      "circuitoId": 48,
-      "circuito": "VIGÉSIMO CUARTO CIRCUITO",
-      "estadoId": 18,
-      "estado": "Nayarit",
-      "ciudad": "Tepic"
-    },
-    {
-      "id": 1497,
-      "nombre": "Centro de Justicia Penal Federal en el Estado de Nayarit, con residencia en Tepic",
-      "tipoOrganismoId": 65,
-      "tipoOrganismo": "Centro de Justicia Penal Federal",
       "materiaId": 9,
       "circuitoId": 48,
       "circuito": "VIGÉSIMO CUARTO CIRCUITO",
@@ -12412,18 +12825,6 @@
       "ciudad": "Monterrey"
     },
     {
-      "id": 647,
-      "nombre": "Tercer Tribunal Colegiado en Materia Administrativa del Cuarto Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
-      "materiaId": 1,
-      "circuitoId": 4,
-      "circuito": "CUARTO CIRCUITO",
-      "estadoId": 19,
-      "estado": "Nuevo León",
-      "ciudad": "Monterrey"
-    },
-    {
       "id": 2425,
       "nombre": "Juzgado Tercero de Distrito en Materia Administrativa en el Estado de Nuevo León ",
       "tipoOrganismoId": 2,
@@ -12436,10 +12837,22 @@
       "ciudad": "Monterrey"
     },
     {
-      "id": 4236,
-      "nombre": "Juzgado Cuarto de Distrito en Materia Administrativa en el Estado de Nuevo León",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
+      "id": 647,
+      "nombre": "Tercer Tribunal Colegiado en Materia Administrativa del Cuarto Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "materiaId": 1,
+      "circuitoId": 4,
+      "circuito": "CUARTO CIRCUITO",
+      "estadoId": 19,
+      "estado": "Nuevo León",
+      "ciudad": "Monterrey"
+    },
+    {
+      "id": 836,
+      "nombre": "Oficina de Correspondencia Común de Juzgados de Distrito en Materia Administrativa en el Estado de Nuevo León, con Residencia en Monterrey",
+      "tipoOrganismoId": 7,
+      "tipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
       "materiaId": 1,
       "circuitoId": 4,
       "circuito": "CUARTO CIRCUITO",
@@ -12460,10 +12873,10 @@
       "ciudad": "Monterrey"
     },
     {
-      "id": 836,
-      "nombre": "Oficina de Correspondencia Común de Juzgados de Distrito en Materia Administrativa en el Estado de Nuevo León, con Residencia en Monterrey",
-      "tipoOrganismoId": 7,
-      "tipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
+      "id": 4236,
+      "nombre": "Juzgado Cuarto de Distrito en Materia Administrativa en el Estado de Nuevo León",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 1,
       "circuitoId": 4,
       "circuito": "CUARTO CIRCUITO",
@@ -12976,10 +13389,10 @@
       "ciudad": "Oaxaca"
     },
     {
-      "id": 273,
-      "nombre": "Juzgado Primero de Distrito en el Estado de Oaxaca",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
+      "id": 4358,
+      "nombre": "Tribunal Colegiado de Apelación del Decimotercer Circuito, con residencia en San Bartolo Coyotepec",
+      "tipoOrganismoId": 340,
+      "tipoOrganismo": "Tribunal Colegiado de Apelación",
       "materiaId": 8,
       "circuitoId": 46,
       "circuito": "DÉCIMO TERCER CIRCUITO",
@@ -12988,10 +13401,10 @@
       "ciudad": "San Bartolo Coyotepec"
     },
     {
-      "id": 4358,
-      "nombre": "Tribunal Colegiado de Apelación del Decimotercer Circuito, con residencia en San Bartolo Coyotepec",
-      "tipoOrganismoId": 340,
-      "tipoOrganismo": "Tribunal Colegiado de Apelación",
+      "id": 273,
+      "nombre": "Juzgado Primero de Distrito en el Estado de Oaxaca",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 8,
       "circuitoId": 46,
       "circuito": "DÉCIMO TERCER CIRCUITO",
@@ -13144,18 +13557,6 @@
       "ciudad": "San Bartolo Coyotepec"
     },
     {
-      "id": 1500,
-      "nombre": "Centro de Justicia Penal Federal en el Estado de Oaxaca, con residencia en San Bartolo Coyotepec",
-      "tipoOrganismoId": 65,
-      "tipoOrganismo": "Centro de Justicia Penal Federal",
-      "materiaId": 9,
-      "circuitoId": 46,
-      "circuito": "DÉCIMO TERCER CIRCUITO",
-      "estadoId": 20,
-      "estado": "Oaxaca",
-      "ciudad": "San Bartolo Coyotepec"
-    },
-    {
       "id": 5861,
       "nombre": "CENTRO FEDERAL DE READAPTACIÓN SOCIAL (CEFERESO) NO. 13 \"CPS-OAXACA\"",
       "tipoOrganismoId": 346,
@@ -13168,11 +13569,11 @@
       "ciudad": "Oaxaca"
     },
     {
-      "id": 3860,
-      "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados en Materia Penal y de Trabajo del Decimotercer Circuito",
-      "tipoOrganismoId": 9,
-      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
-      "materiaId": 14,
+      "id": 1500,
+      "nombre": "Centro de Justicia Penal Federal en el Estado de Oaxaca, con residencia en San Bartolo Coyotepec",
+      "tipoOrganismoId": 65,
+      "tipoOrganismo": "Centro de Justicia Penal Federal",
+      "materiaId": 9,
       "circuitoId": 46,
       "circuito": "DÉCIMO TERCER CIRCUITO",
       "estadoId": 20,
@@ -13184,6 +13585,18 @@
       "nombre": "Primer Tribunal Colegiado en Materias Penal y de Trabajo del Decimotercer Circuito, con residencia en San Bartolo Coyotepec, Oaxaca",
       "tipoOrganismoId": 4,
       "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "materiaId": 14,
+      "circuitoId": 46,
+      "circuito": "DÉCIMO TERCER CIRCUITO",
+      "estadoId": 20,
+      "estado": "Oaxaca",
+      "ciudad": "San Bartolo Coyotepec"
+    },
+    {
+      "id": 3860,
+      "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados en Materia Penal y de Trabajo del Decimotercer Circuito",
+      "tipoOrganismoId": 9,
+      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
       "materiaId": 14,
       "circuitoId": 46,
       "circuito": "DÉCIMO TERCER CIRCUITO",
@@ -13408,10 +13821,10 @@
       "ciudad": "San Andrés Cholula"
     },
     {
-      "id": 184,
-      "nombre": "Primer Tribunal Colegiado en Materia de Trabajo del Sexto Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 1347,
+      "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados en Materia de Trabajo del Sexto Circuito",
+      "tipoOrganismoId": 9,
+      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
       "materiaId": 7,
       "circuitoId": 6,
       "circuito": "SEXTO CIRCUITO",
@@ -13420,10 +13833,10 @@
       "ciudad": "Puebla"
     },
     {
-      "id": 1347,
-      "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados en Materia de Trabajo del Sexto Circuito",
-      "tipoOrganismoId": 9,
-      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
+      "id": 184,
+      "nombre": "Primer Tribunal Colegiado en Materia de Trabajo del Sexto Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 7,
       "circuitoId": 6,
       "circuito": "SEXTO CIRCUITO",
@@ -13444,30 +13857,6 @@
       "ciudad": "Puebla"
     },
     {
-      "id": 983,
-      "nombre": "Primer Tribunal Colegiado de Circuito del Centro Auxiliar de la Segunda Región",
-      "tipoOrganismoId": 29,
-      "tipoOrganismo": "Tribunal Colegiado Auxiliar",
-      "materiaId": 8,
-      "circuitoId": 33,
-      "circuito": "SEGUNDA REGIÓN",
-      "estadoId": 21,
-      "estado": "Puebla",
-      "ciudad": "San Andrés Cholula"
-    },
-    {
-      "id": 1294,
-      "nombre": "Primer Tribunal Colegiado de Circuito del Centro Auxiliar de la Segunda Región, en su carácter de Ordinario",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
-      "materiaId": 8,
-      "circuitoId": 6,
-      "circuito": "SEXTO CIRCUITO",
-      "estadoId": 21,
-      "estado": "Puebla",
-      "ciudad": "San Andrés Cholula"
-    },
-    {
       "id": 4351,
       "nombre": "Tribunal Colegiado de Apelación del Sexto Circuito, con residencia en San Andrés Cholula",
       "tipoOrganismoId": 340,
@@ -13480,13 +13869,13 @@
       "ciudad": "San Andrés Cholula"
     },
     {
-      "id": 1295,
-      "nombre": "Segundo Tribunal Colegiado de Circuito del Centro Auxiliar de la Segunda Región, en su carácter de Ordinario",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 983,
+      "nombre": "Primer Tribunal Colegiado de Circuito del Centro Auxiliar de la Segunda Región",
+      "tipoOrganismoId": 29,
+      "tipoOrganismo": "Tribunal Colegiado Auxiliar",
       "materiaId": 8,
-      "circuitoId": 6,
-      "circuito": "SEXTO CIRCUITO",
+      "circuitoId": 33,
+      "circuito": "SEGUNDA REGIÓN",
       "estadoId": 21,
       "estado": "Puebla",
       "ciudad": "San Andrés Cholula"
@@ -13564,10 +13953,10 @@
       "ciudad": "San Andrés Cholula"
     },
     {
-      "id": 1464,
-      "nombre": "Oficina de Correspondencia Común de Juzgados de Distrito en Materias de Amparo Civil, Administrativa y de Trabajo y Juicios Federales en el Estado de Puebla",
-      "tipoOrganismoId": 7,
-      "tipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
+      "id": 1447,
+      "nombre": "Juzgado Primero de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y de Juicios Federales en el Estado de Puebla",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 16,
       "circuitoId": 6,
       "circuito": "SEXTO CIRCUITO",
@@ -13576,10 +13965,10 @@
       "ciudad": "San Andrés Cholula"
     },
     {
-      "id": 1447,
-      "nombre": "Juzgado Primero de Distrito en Materia de Amparo Civil, Administrativa y de Trabajo y de Juicios Federales en el Estado de Puebla",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
+      "id": 1464,
+      "nombre": "Oficina de Correspondencia Común de Juzgados de Distrito en Materias de Amparo Civil, Administrativa y de Trabajo y Juicios Federales en el Estado de Puebla",
+      "tipoOrganismoId": 7,
+      "tipoOrganismo": "Oficina de Correspondencia Común (Juzgados de Distrito)",
       "materiaId": 16,
       "circuitoId": 6,
       "circuito": "SEXTO CIRCUITO",
@@ -14320,6 +14709,18 @@
       "ciudad": "San Luis Potosí"
     },
     {
+      "id": 4354,
+      "nombre": "Tribunal Colegiado de Apelación del Noveno Circuito, con residencia en San Luis Potosí, San Luis Potosí",
+      "tipoOrganismoId": 340,
+      "tipoOrganismo": "Tribunal Colegiado de Apelación",
+      "materiaId": 8,
+      "circuitoId": 9,
+      "circuito": "NOVENO CIRCUITO",
+      "estadoId": 24,
+      "estado": "San Luis Potosí",
+      "ciudad": "San Luis Potosí"
+    },
+    {
       "id": 226,
       "nombre": "Juzgado Primero de Distrito en el Estado de San Luis Potosí",
       "tipoOrganismoId": 2,
@@ -14342,18 +14743,6 @@
       "estadoId": 24,
       "estado": "San Luis Potosí",
       "ciudad": "Ciudad Valles"
-    },
-    {
-      "id": 4354,
-      "nombre": "Tribunal Colegiado de Apelación del Noveno Circuito, con residencia en San Luis Potosí, San Luis Potosí",
-      "tipoOrganismoId": 340,
-      "tipoOrganismo": "Tribunal Colegiado de Apelación",
-      "materiaId": 8,
-      "circuitoId": 9,
-      "circuito": "NOVENO CIRCUITO",
-      "estadoId": 24,
-      "estado": "San Luis Potosí",
-      "ciudad": "San Luis Potosí"
     },
     {
       "id": 228,
@@ -14608,6 +14997,18 @@
       "ciudad": "Mazatlán"
     },
     {
+      "id": 4357,
+      "nombre": "Tribunal Colegiado de Apelación del Decimosegundo Circuito, con residencia en Culiacán",
+      "tipoOrganismoId": 340,
+      "tipoOrganismo": "Tribunal Colegiado de Apelación",
+      "materiaId": 8,
+      "circuitoId": 43,
+      "circuito": "DÉCIMO SEGUNDO CIRCUITO",
+      "estadoId": 25,
+      "estado": "Sinaloa",
+      "ciudad": "Culiacán"
+    },
+    {
       "id": 1027,
       "nombre": "Juzgado Primero de Distrito del Centro Auxiliar de la Quinta Región, con residencia en Culiacán, Sinaloa",
       "tipoOrganismoId": 11,
@@ -14624,18 +15025,6 @@
       "nombre": "Juzgado Primero de Distrito en el Estado de Sinaloa",
       "tipoOrganismoId": 2,
       "tipoOrganismo": "Juzgado de Distrito",
-      "materiaId": 8,
-      "circuitoId": 43,
-      "circuito": "DÉCIMO SEGUNDO CIRCUITO",
-      "estadoId": 25,
-      "estado": "Sinaloa",
-      "ciudad": "Culiacán"
-    },
-    {
-      "id": 4357,
-      "nombre": "Tribunal Colegiado de Apelación del Decimosegundo Circuito, con residencia en Culiacán",
-      "tipoOrganismoId": 340,
-      "tipoOrganismo": "Tribunal Colegiado de Apelación",
       "materiaId": 8,
       "circuitoId": 43,
       "circuito": "DÉCIMO SEGUNDO CIRCUITO",
@@ -14836,18 +15225,6 @@
       "ciudad": "Los Mochis"
     },
     {
-      "id": 1524,
-      "nombre": "Centro de Justicia Penal Federal en el Estado de Sinaloa, con residencia en Culiacán",
-      "tipoOrganismoId": 65,
-      "tipoOrganismo": "Centro de Justicia Penal Federal",
-      "materiaId": 9,
-      "circuitoId": 43,
-      "circuito": "DÉCIMO SEGUNDO CIRCUITO",
-      "estadoId": 25,
-      "estado": "Sinaloa",
-      "ciudad": "Culiacán"
-    },
-    {
       "id": 4395,
       "nombre": "Tribunal Colegiado en Materia Penal del Décimo Segundo Circuito, con residencia en Culiacán, Sinaloa",
       "tipoOrganismoId": 4,
@@ -14870,6 +15247,30 @@
       "estadoId": 25,
       "estado": "Sinaloa",
       "ciudad": "Los Mochis"
+    },
+    {
+      "id": 6299,
+      "nombre": "CENTRO FEDERAL DE REINSERCIÓN SOCIAL NÚMERO 8 \"NOR-PONIENTE\"",
+      "tipoOrganismoId": 346,
+      "tipoOrganismo": "CEFERESO",
+      "materiaId": 9,
+      "circuitoId": 43,
+      "circuito": "DÉCIMO SEGUNDO CIRCUITO",
+      "estadoId": 25,
+      "estado": "Sinaloa",
+      "ciudad": "Guasave"
+    },
+    {
+      "id": 1524,
+      "nombre": "Centro de Justicia Penal Federal en el Estado de Sinaloa, con residencia en Culiacán",
+      "tipoOrganismoId": 65,
+      "tipoOrganismo": "Centro de Justicia Penal Federal",
+      "materiaId": 9,
+      "circuitoId": 43,
+      "circuito": "DÉCIMO SEGUNDO CIRCUITO",
+      "estadoId": 25,
+      "estado": "Sinaloa",
+      "ciudad": "Culiacán"
     },
     {
       "id": 4144,
@@ -15112,10 +15513,10 @@
       "ciudad": "Hermosillo"
     },
     {
-      "id": 5863,
-      "nombre": "CENTRO FEDERAL DE READAPTACIÓN SOCIAL NO. 11 \"CPS SONORA\"",
-      "tipoOrganismoId": 346,
-      "tipoOrganismo": "CEFERESO",
+      "id": 1530,
+      "nombre": "Centro de Justicia Penal Federal en el Estado de Sonora, con residencia en Hermosillo",
+      "tipoOrganismoId": 65,
+      "tipoOrganismo": "Centro de Justicia Penal Federal",
       "materiaId": 9,
       "circuitoId": 5,
       "circuito": "QUINTO CIRCUITO",
@@ -15124,10 +15525,10 @@
       "ciudad": "Hermosillo"
     },
     {
-      "id": 1530,
-      "nombre": "Centro de Justicia Penal Federal en el Estado de Sonora, con residencia en Hermosillo",
-      "tipoOrganismoId": 65,
-      "tipoOrganismo": "Centro de Justicia Penal Federal",
+      "id": 5863,
+      "nombre": "CENTRO FEDERAL DE READAPTACIÓN SOCIAL NO. 11 \"CPS SONORA\"",
+      "tipoOrganismoId": 346,
+      "tipoOrganismo": "CEFERESO",
       "materiaId": 9,
       "circuitoId": 5,
       "circuito": "QUINTO CIRCUITO",
@@ -15640,6 +16041,18 @@
       "ciudad": "Ciudad Victoria"
     },
     {
+      "id": 4364,
+      "nombre": "Tribunal Colegiado de Apelación del Decimonoveno Circuito, con residencia en Matamoros, Tamaulipas",
+      "tipoOrganismoId": 340,
+      "tipoOrganismo": "Tribunal Colegiado de Apelación",
+      "materiaId": 8,
+      "circuitoId": 39,
+      "circuito": "DÉCIMO NOVENO CIRCUITO",
+      "estadoId": 28,
+      "estado": "Tamaulipas",
+      "ciudad": "Matamoros"
+    },
+    {
       "id": 345,
       "nombre": "Juzgado Primero de Distrito en el Estado de Tamaulipas",
       "tipoOrganismoId": 2,
@@ -15674,18 +16087,6 @@
       "estadoId": 28,
       "estado": "Tamaulipas",
       "ciudad": "Reynosa"
-    },
-    {
-      "id": 4364,
-      "nombre": "Tribunal Colegiado de Apelación del Decimonoveno Circuito, con residencia en Matamoros, Tamaulipas",
-      "tipoOrganismoId": 340,
-      "tipoOrganismo": "Tribunal Colegiado de Apelación",
-      "materiaId": 8,
-      "circuitoId": 39,
-      "circuito": "DÉCIMO NOVENO CIRCUITO",
-      "estadoId": 28,
-      "estado": "Tamaulipas",
-      "ciudad": "Matamoros"
     },
     {
       "id": 802,
@@ -15820,6 +16221,18 @@
       "ciudad": "Ciudad Victoria"
     },
     {
+      "id": 904,
+      "nombre": "Oficina de Correspondencia Común de Tribunales Colegiados del Décimo Noveno Circuito, con residencia en Reynosa Tamaulipas",
+      "tipoOrganismoId": 9,
+      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
+      "materiaId": 8,
+      "circuitoId": 39,
+      "circuito": "DÉCIMO NOVENO CIRCUITO",
+      "estadoId": 28,
+      "estado": "Tamaulipas",
+      "ciudad": "Reynosa"
+    },
+    {
       "id": 906,
       "nombre": "Oficina de Correspondencia Común de los Juzgados de Distrito en el Estado de Tamaulipas, con Residencia en Ciudad Victoria",
       "tipoOrganismoId": 7,
@@ -15842,18 +16255,6 @@
       "estadoId": 28,
       "estado": "Tamaulipas",
       "ciudad": "Tampico"
-    },
-    {
-      "id": 904,
-      "nombre": "Oficina de Correspondencia Común de Tribunales Colegiados del Décimo Noveno Circuito, con residencia en Reynosa Tamaulipas",
-      "tipoOrganismoId": 9,
-      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
-      "materiaId": 8,
-      "circuitoId": 39,
-      "circuito": "DÉCIMO NOVENO CIRCUITO",
-      "estadoId": 28,
-      "estado": "Tamaulipas",
-      "ciudad": "Reynosa"
     },
     {
       "id": 1526,
@@ -16036,6 +16437,18 @@
       "ciudad": "Reynosa"
     },
     {
+      "id": 4373,
+      "nombre": "Tribunal Colegiado de Apelación del Vigésimo Octavo Circuito, con residencia en Apizaco, Tlaxcala",
+      "tipoOrganismoId": 340,
+      "tipoOrganismo": "Tribunal Colegiado de Apelación",
+      "materiaId": 8,
+      "circuitoId": 50,
+      "circuito": "VIGÉSIMO OCTAVO CIRCUITO",
+      "estadoId": 29,
+      "estado": "Tlaxcala",
+      "ciudad": "Apizaco"
+    },
+    {
       "id": 187,
       "nombre": "Juzgado Primero de Distrito en el Estado de Tlaxcala",
       "tipoOrganismoId": 2,
@@ -16072,10 +16485,10 @@
       "ciudad": "Apizaco"
     },
     {
-      "id": 4373,
-      "nombre": "Tribunal Colegiado de Apelación del Vigésimo Octavo Circuito, con residencia en Apizaco, Tlaxcala",
-      "tipoOrganismoId": 340,
-      "tipoOrganismo": "Tribunal Colegiado de Apelación",
+      "id": 192,
+      "nombre": "Juzgado Segundo de Distrito en el Estado de Tlaxcala",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 8,
       "circuitoId": 50,
       "circuito": "VIGÉSIMO OCTAVO CIRCUITO",
@@ -16088,18 +16501,6 @@
       "nombre": "Segundo Tribunal Colegiado del Vigésimo Octavo Circuito",
       "tipoOrganismoId": 4,
       "tipoOrganismo": "Tribunal Colegiado de Circuito",
-      "materiaId": 8,
-      "circuitoId": 50,
-      "circuito": "VIGÉSIMO OCTAVO CIRCUITO",
-      "estadoId": 29,
-      "estado": "Tlaxcala",
-      "ciudad": "Apizaco"
-    },
-    {
-      "id": 192,
-      "nombre": "Juzgado Segundo de Distrito en el Estado de Tlaxcala",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 8,
       "circuitoId": 50,
       "circuito": "VIGÉSIMO OCTAVO CIRCUITO",
@@ -16300,16 +16701,16 @@
       "ciudad": "Xalapa"
     },
     {
-      "id": 203,
-      "nombre": "Juzgado Primero de Distrito en el Estado de Veracruz",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
+      "id": 1162,
+      "nombre": "Primer Tribunal Colegiado del Décimo Circuito, con residencia en Coatzacoalcos, Veracruz",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 8,
-      "circuitoId": 7,
-      "circuito": "SÉPTIMO CIRCUITO",
+      "circuitoId": 10,
+      "circuito": "DÉCIMO CIRCUITO",
       "estadoId": 30,
       "estado": "Veracruz",
-      "ciudad": "Xalapa"
+      "ciudad": "Coatzacoalcos"
     },
     {
       "id": 937,
@@ -16324,18 +16725,6 @@
       "ciudad": "Córdoba"
     },
     {
-      "id": 1162,
-      "nombre": "Primer Tribunal Colegiado del Décimo Circuito, con residencia en Coatzacoalcos, Veracruz",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
-      "materiaId": 8,
-      "circuitoId": 10,
-      "circuito": "DÉCIMO CIRCUITO",
-      "estadoId": 30,
-      "estado": "Veracruz",
-      "ciudad": "Coatzacoalcos"
-    },
-    {
       "id": 3848,
       "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados del Décimo Circuito, con residencia en Coatzacoalcos, Veracruz",
       "tipoOrganismoId": 9,
@@ -16346,6 +16735,18 @@
       "estadoId": 30,
       "estado": "Veracruz",
       "ciudad": "Coatzacoalcos"
+    },
+    {
+      "id": 203,
+      "nombre": "Juzgado Primero de Distrito en el Estado de Veracruz",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 8,
+      "circuitoId": 7,
+      "circuito": "SÉPTIMO CIRCUITO",
+      "estadoId": 30,
+      "estado": "Veracruz",
+      "ciudad": "Xalapa"
     },
     {
       "id": 4352,
@@ -16660,18 +17061,6 @@
       "ciudad": "Coatzacoalcos"
     },
     {
-      "id": 1528,
-      "nombre": "Centro de Justicia Penal Federal en el Estado de Veracruz, con residencia en Coatzacoalcos",
-      "tipoOrganismoId": 65,
-      "tipoOrganismo": "Centro de Justicia Penal Federal",
-      "materiaId": 9,
-      "circuitoId": 10,
-      "circuito": "DÉCIMO CIRCUITO",
-      "estadoId": 30,
-      "estado": "Veracruz",
-      "ciudad": "Coatzacoalcos"
-    },
-    {
       "id": 4934,
       "nombre": "CENTRO FEDERAL DE REINSERCIÓN SOCIAL NÚMERO 5 \"ORIENTE\", CON SEDE EN VILLA ALDAMA, VERACRUZ",
       "tipoOrganismoId": 346,
@@ -16684,10 +17073,22 @@
       "ciudad": "Villa Aldama"
     },
     {
-      "id": 1412,
-      "nombre": "Primer Tribunal Colegiado en Materia Penal del Séptimo Circuito, con residencia en Boca del Río, Veracruz",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 1528,
+      "nombre": "Centro de Justicia Penal Federal en el Estado de Veracruz, con residencia en Coatzacoalcos",
+      "tipoOrganismoId": 65,
+      "tipoOrganismo": "Centro de Justicia Penal Federal",
+      "materiaId": 9,
+      "circuitoId": 10,
+      "circuito": "DÉCIMO CIRCUITO",
+      "estadoId": 30,
+      "estado": "Veracruz",
+      "ciudad": "Coatzacoalcos"
+    },
+    {
+      "id": 1267,
+      "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados en Materias Penal del Séptimo Circuito, con residencia en Boca del Río Veracruz",
+      "tipoOrganismoId": 9,
+      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
       "materiaId": 9,
       "circuitoId": 7,
       "circuito": "SÉPTIMO CIRCUITO",
@@ -16696,10 +17097,10 @@
       "ciudad": "Boca del Río"
     },
     {
-      "id": 1267,
-      "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados en Materias Penal del Séptimo Circuito, con residencia en Boca del Río Veracruz",
-      "tipoOrganismoId": 9,
-      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
+      "id": 1412,
+      "nombre": "Primer Tribunal Colegiado en Materia Penal del Séptimo Circuito, con residencia en Boca del Río, Veracruz",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
       "materiaId": 9,
       "circuitoId": 7,
       "circuito": "SÉPTIMO CIRCUITO",
@@ -16756,18 +17157,6 @@
       "ciudad": "Boca del Río"
     },
     {
-      "id": 3842,
-      "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de Veracruz, con residencia en Xalapa",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
-      "materiaId": 23,
-      "circuitoId": 7,
-      "circuito": "SÉPTIMO CIRCUITO",
-      "estadoId": 30,
-      "estado": "Veracruz",
-      "ciudad": "Xalapa"
-    },
-    {
       "id": 5609,
       "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de Veracruz, con residencia en Coatzacoalcos",
       "tipoOrganismoId": 2,
@@ -16778,6 +17167,18 @@
       "estadoId": 30,
       "estado": "Veracruz",
       "ciudad": "Coatzacoalcos"
+    },
+    {
+      "id": 3842,
+      "nombre": "Juzgado de Distrito en Materia Mercantil Federal en el Estado de Veracruz, con residencia en Xalapa",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
+      "materiaId": 23,
+      "circuitoId": 7,
+      "circuito": "SÉPTIMO CIRCUITO",
+      "estadoId": 30,
+      "estado": "Veracruz",
+      "ciudad": "Xalapa"
     },
     {
       "id": 3876,
@@ -16936,10 +17337,10 @@
       "ciudad": "Mérida"
     },
     {
-      "id": 1885,
-      "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados del Decimocuarto Circuito",
-      "tipoOrganismoId": 9,
-      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
+      "id": 420,
+      "nombre": "Juzgado Primero de Distrito en el Estado de Yucatán",
+      "tipoOrganismoId": 2,
+      "tipoOrganismo": "Juzgado de Distrito",
       "materiaId": 8,
       "circuitoId": 38,
       "circuito": "DÉCIMO CUARTO CIRCUITO",
@@ -16948,10 +17349,10 @@
       "ciudad": "Mérida"
     },
     {
-      "id": 420,
-      "nombre": "Juzgado Primero de Distrito en el Estado de Yucatán",
-      "tipoOrganismoId": 2,
-      "tipoOrganismo": "Juzgado de Distrito",
+      "id": 1885,
+      "nombre": "Oficina de Correspondencia Común de los Tribunales Colegiados del Decimocuarto Circuito",
+      "tipoOrganismoId": 9,
+      "tipoOrganismo": "Oficina de Correspondencia Común (Tribunales Colegiados)",
       "materiaId": 8,
       "circuitoId": 38,
       "circuito": "DÉCIMO CUARTO CIRCUITO",
@@ -17164,6 +17565,18 @@
       "ciudad": "Zacatecas"
     },
     {
+      "id": 3896,
+      "nombre": "Segundo Tribunal Colegiado del Vigésimo Tercer Circuito",
+      "tipoOrganismoId": 4,
+      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "materiaId": 8,
+      "circuitoId": 56,
+      "circuito": "VIGÉSIMO TERCER CIRCUITO",
+      "estadoId": 32,
+      "estado": "Zacatecas",
+      "ciudad": "Zacatecas"
+    },
+    {
       "id": 1126,
       "nombre": "Juzgado Segundo de Distrito del Centro Auxiliar de la Novena Región",
       "tipoOrganismoId": 11,
@@ -17188,13 +17601,13 @@
       "ciudad": "Zacatecas"
     },
     {
-      "id": 3896,
-      "nombre": "Segundo Tribunal Colegiado del Vigésimo Tercer Circuito",
-      "tipoOrganismoId": 4,
-      "tipoOrganismo": "Tribunal Colegiado de Circuito",
+      "id": 1127,
+      "nombre": "Juzgado Tercero de Distrito del Centro Auxiliar de la Novena Región",
+      "tipoOrganismoId": 11,
+      "tipoOrganismo": "Juzgado de Distrito Auxiliar",
       "materiaId": 8,
-      "circuitoId": 56,
-      "circuito": "VIGÉSIMO TERCER CIRCUITO",
+      "circuitoId": 111,
+      "circuito": "NOVENA REGIÓN",
       "estadoId": 32,
       "estado": "Zacatecas",
       "ciudad": "Zacatecas"
@@ -17207,18 +17620,6 @@
       "materiaId": 8,
       "circuitoId": 56,
       "circuito": "VIGÉSIMO TERCER CIRCUITO",
-      "estadoId": 32,
-      "estado": "Zacatecas",
-      "ciudad": "Zacatecas"
-    },
-    {
-      "id": 1127,
-      "nombre": "Juzgado Tercero de Distrito del Centro Auxiliar de la Novena Región",
-      "tipoOrganismoId": 11,
-      "tipoOrganismo": "Juzgado de Distrito Auxiliar",
-      "materiaId": 8,
-      "circuitoId": 111,
-      "circuito": "NOVENA REGIÓN",
       "estadoId": 32,
       "estado": "Zacatecas",
       "ciudad": "Zacatecas"
