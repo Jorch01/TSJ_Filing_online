@@ -38,8 +38,16 @@ async function cargarCatalogosPJF() {
 
         var data = await res.json();
 
-        // ── Organos (1 195) ───────────────────────────────────────────────
-        pjfOrganismos = (data.organos || []).map(function(o) {
+        // ── Organos ───────────────────────────────────────────────────────
+        // El JSON es espejo fiel del portal, que incluye órganos de prueba
+        // ("PLENO REGIONAL PRUEBAS1", "Apelación_Pruebas2"…). Se quitan aquí y
+        // no en el fetcher para que, si el filtro falla, se vea en el JSON.
+        // Sin \b: no hay frontera de palabra antes de un dígito o un "_".
+        var todos = data.organos || [];
+        var reales = todos.filter(function(o) { return !/prueba/i.test(o.nombre); });
+        console.log('[PJF] Órganos de prueba descartados:', todos.length - reales.length);
+
+        pjfOrganismos = reales.map(function(o) {
             return {
                 id: o.id,
                 nombre: o.nombre,

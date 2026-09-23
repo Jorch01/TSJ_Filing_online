@@ -48,3 +48,6 @@ chromedriver.exe
 
 # Dependencias de las pruebas de navegador (Playwright)
 node_modules/
+
+# Descargas intermedias de fetch_pjf_catalogos_completos.py (reanudables)
+.cache/
