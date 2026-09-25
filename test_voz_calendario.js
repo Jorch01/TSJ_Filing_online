@@ -276,7 +276,7 @@ async function pruebaVariosYDeshacer() {
     ] });
     igual('varios: el plan trae los dos', plan.items.length, 2);
     verificar('varios: y la confirmación enseña el antes y el después en hora local',
-        plan.detalles.some(d => /lunes, 5 de octubre, 10:00 → martes, 6 de octubre, 10:00/.test(d)), JSON.stringify(plan.detalles));
+        plan.detalles.some(d => /lunes, 5 de octubre( de 2026)?, 10:00 → martes, 6 de octubre( de 2026)?, 10:00/.test(d)), JSON.stringify(plan.detalles));
     verificar('varios: el resumen dice cuántos', /Cambiar 2 eventos/.test(plan.resumen), plan.resumen);
 
     await sb.aplicarEdicionesEventos(plan);

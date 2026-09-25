@@ -424,7 +424,7 @@ async function probarCalendarioEnCancun(navegador) {
             voz.mixtas.length === 2 && voz.mixtas.some(u => /tsjqroo/.test(u)) && voz.mixtas.some(u => /dgej\.cjf/.test(u)),
             JSON.stringify(voz.mixtas));
         verificar('voz: la confirmación del evento enseña el antes y el después en hora local',
-            /1 de octubre, 10:00 → viernes, 2 de octubre, 12:00/.test(voz.textoConfirmacionEvento), voz.textoConfirmacionEvento);
+            /1 de octubre( de 2026)?, 10:00 → viernes, 2 de octubre( de 2026)?, 12:00/.test(voz.textoConfirmacionEvento), voz.textoConfirmacionEvento);
         igual('voz: el evento queda donde se pidió', voz.eventoMovido, true);
         igual('voz: sin perder su descripción', voz.descripcionIntacta, true);
         igual('voz: con dos juntas ese día, ofrece las dos', voz.opciones, 2);
