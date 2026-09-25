@@ -234,37 +234,51 @@
                 </div>
             </div>
 
-            <div class="stats-grid">
-                <div class="stat-card">
+            <!-- Cada tarjeta es un botón: despliega debajo una vista rápida de
+                 lo que cuenta, con acceso directo a cada elemento. -->
+            <div class="stats-grid" role="group" aria-label="Resumen">
+                <button type="button" class="stat-card stat-interactiva" id="stat-card-pendientes"
+                        data-panel="pendientes" aria-expanded="false" aria-controls="panel-rapido"
+                        onclick="alternarPanelRapido('pendientes')">
+                    <div class="stat-icon" style="background: #fdecea;">✅</div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="stat-pendientes">0</span>
+                        <span class="stat-label">Pendientes urgentes</span>
+                        <span class="stat-detalle" id="stat-pendientes-detalle"></span>
+                    </div>
+                </button>
+                <button type="button" class="stat-card stat-interactiva" id="stat-card-eventos"
+                        data-panel="eventos" aria-expanded="false" aria-controls="panel-rapido"
+                        onclick="alternarPanelRapido('eventos')">
+                    <div class="stat-icon" style="background: #e8f5e9;">📅</div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="stat-eventos">0</span>
+                        <span class="stat-label">Eventos próximos</span>
+                        <span class="stat-detalle" id="stat-eventos-detalle"></span>
+                    </div>
+                </button>
+                <button type="button" class="stat-card stat-interactiva" id="stat-card-expedientes"
+                        data-panel="expedientes" aria-expanded="false" aria-controls="panel-rapido"
+                        onclick="alternarPanelRapido('expedientes')">
                     <div class="stat-icon" style="background: #e3f2fd;">📁</div>
                     <div class="stat-content">
                         <span class="stat-value" id="stat-expedientes">0</span>
                         <span class="stat-label">Expedientes</span>
+                        <span class="stat-detalle" id="stat-expedientes-detalle"></span>
                     </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon" style="background: #e8f5e9;">📅</div>
-                    <div class="stat-content">
-                        <span class="stat-value" id="stat-eventos">0</span>
-                        <span class="stat-label">Eventos Próximos</span>
-                    </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon" style="background: #fff3e0;">📝</div>
+                </button>
+                <button type="button" class="stat-card stat-interactiva" id="stat-card-notas"
+                        data-panel="notas" aria-expanded="false" aria-controls="panel-rapido"
+                        onclick="alternarPanelRapido('notas')">
+                    <div class="stat-icon" style="background: #fff3e0;">📌</div>
                     <div class="stat-content">
                         <span class="stat-value" id="stat-notas">0</span>
-                        <span class="stat-label">Notas</span>
+                        <span class="stat-label">Notas fijadas</span>
+                        <span class="stat-detalle" id="stat-notas-detalle"></span>
                     </div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon" style="background: #fce4ec;">🔔</div>
-                    <div class="stat-content">
-                        <span class="stat-value" id="stat-alertas">0</span>
-                        <span class="stat-label">Alertas</span>
-                    </div>
-                </div>
+                </button>
             </div>
-
+            <div class="panel-rapido card" id="panel-rapido" role="region" aria-live="polite" hidden></div>
             <div class="quick-actions">
                 <h3>Acciones Rápidas</h3>
                 <div class="actions-grid">
@@ -298,7 +312,7 @@
             <div class="dashboard-grid">
                 <div class="card">
                     <div class="card-header">
-                        <h3>📅 Próximos 8 Días</h3>
+                        <h3>📅 Hoy y próximos 7 días</h3>
                     </div>
                     <div class="card-body" id="eventos-hoy" style="max-height: 300px; overflow-y: auto;">
                         <div class="empty-state small">

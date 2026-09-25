@@ -1486,6 +1486,83 @@ async function main() {
         igual('notas: al buscar sigue arriba', fijadas.filtrada, ['Nota tres', 'Nota uno', 'Nota dos']);
         igual('notas: desfijada vuelve a su sitio', fijadas.desfijada, ['Nota uno', 'Nota dos', 'Nota tres']);
 
+        // ---- Inicio: las tarjetas se tocan y abren su vista rápida ----
+        const inicio = await page.evaluate(async () => {
+            const pausa = (ms) => new Promise(res => setTimeout(res, ms));
+            cerrarModal();
+            const dia = (n, h = 0) => { const d = new Date(); d.setDate(d.getDate() + n); d.setHours(h, 0, 0, 0); return d.toISOString(); };
+            const idVencido = await crearPendienteCore({ titulo: 'Inicio: vencido', fechaLimite: dia(-1), todoElDia: true });
+            await crearPendienteCore({ titulo: 'Inicio: esta semana', fechaLimite: dia(3), todoElDia: true });
+            await crearEventoCore({ titulo: 'Inicio: audiencia', tipo: 'audiencia', fechaInicio: dia(1, 10) });
+            navegarA('inicio');
+            await cargarEstadisticas();
+            const valor = (id) => Number(document.getElementById(id).textContent);
+            const panel = () => document.getElementById('panel-rapido');
+            const filas = () => [...panel().querySelectorAll('.panel-rapido-fila strong')].map(s => s.textContent);
+            const r = {};
+            r.urgentesAntes = valor('stat-pendientes');
+
+            document.getElementById('stat-card-pendientes').click();
+            await pausa(200);
+            r.abierto = !panel().hidden;
+            r.expandido = document.getElementById('stat-card-pendientes').getAttribute('aria-expanded');
+            r.filasPendientes = filas();
+            // Terminarlo desde el propio inicio.
+            const fila = [...panel().querySelectorAll('.panel-rapido-fila')].find(f => /Inicio: vencido/.test(f.textContent));
+            fila.querySelector('.panel-rapido-hecho').click();
+            await pausa(700);
+            r.urgentesDespues = valor('stat-pendientes');
+            r.terminado = (await obtenerPendiente(idVencido)).completado;
+            r.siguePanel = !panel().hidden && !filas().includes('Inicio: vencido');
+
+            document.getElementById('stat-card-eventos').click();
+            await pausa(200);
+            r.filasEventos = filas();
+            r.soloUnoExpandido = [...document.querySelectorAll('.stat-interactiva[aria-expanded="true"]')].length;
+            const filaEvento = [...panel().querySelectorAll('.panel-rapido-abrir')].find(b => /Inicio: audiencia/.test(b.textContent));
+            filaEvento.click();
+            await pausa(400);
+            r.enCalendario = document.getElementById('page-calendario').classList.contains('active');
+            r.editorAbierto = document.getElementById('modal-overlay').classList.contains('active') &&
+                document.getElementById('evento-titulo').value === 'Inicio: audiencia';
+            r.panelCerrado = panel().hidden;
+            cerrarModal();
+
+            const nota = (await obtenerNotas()).find(n => n.titulo === 'Nota uno');
+            await actualizarNotaCore(nota.id, { fijada: true, fijadaEn: new Date().toISOString() });
+            navegarA('inicio');
+            r.contadorFijadas = Number(document.getElementById('stat-notas').textContent);
+            document.getElementById('stat-card-notas').click();
+            await pausa(200);
+            r.filasNotas = filas();
+            document.getElementById('stat-card-notas').click();
+            await pausa(100);
+            r.cerradoConOtroClic = panel().hidden;
+            document.getElementById('stat-card-expedientes').click();
+            await pausa(200);
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+            r.cerradoConEscape = panel().hidden;
+            return r;
+        });
+        verificar('inicio: cuenta los pendientes vencidos o de hoy', inicio.urgentesAntes >= 1, String(inicio.urgentesAntes));
+        igual('inicio: tocar la tarjeta abre su vista rápida', inicio.abierto, true);
+        igual('inicio: y lo anuncia a los lectores de pantalla', inicio.expandido, 'true');
+        verificar('inicio: con lo vencido y lo de la semana', inicio.filasPendientes.includes('Inicio: vencido') &&
+            inicio.filasPendientes.includes('Inicio: esta semana'), JSON.stringify(inicio.filasPendientes));
+        igual('inicio: un pendiente se termina desde ahí', inicio.terminado, true);
+        igual('inicio: y el contador baja al momento', inicio.urgentesDespues, inicio.urgentesAntes - 1);
+        igual('inicio: la lista abierta se actualiza sola', inicio.siguePanel, true);
+        verificar('inicio: la vista de eventos trae la audiencia de mañana', inicio.filasEventos.includes('Inicio: audiencia'),
+            JSON.stringify(inicio.filasEventos));
+        igual('inicio: solo una tarjeta abierta a la vez', inicio.soloUnoExpandido, 1);
+        igual('inicio: tocar un evento lleva al calendario', inicio.enCalendario, true);
+        igual('inicio: con el evento abierto para editar', inicio.editorAbierto, true);
+        igual('inicio: y la vista rápida se cierra', inicio.panelCerrado, true);
+        igual('inicio: la tarjeta cuenta las notas fijadas', inicio.contadorFijadas, 1);
+        igual('inicio: y su vista las muestra', inicio.filasNotas, ['Nota uno']);
+        igual('inicio: tocar otra vez la tarjeta la cierra', inicio.cerradoConOtroClic, true);
+        igual('inicio: y Esc también', inicio.cerradoConEscape, true);
+
         igual('la página no lanza errores de JavaScript', erroresPagina, []);
 
         // ---- El calendario y el asistente, con el reloj en Cancún ----

@@ -646,14 +646,224 @@ window.tecladoBusquedaRapida = tecladoBusquedaRapida;
 
 // ==================== ESTADÍSTICAS ====================
 
-async function cargarEstadisticas() {
-    const stats = await obtenerEstadisticas();
+// ==================== PANEL DE INICIO ====================
+// Las cuatro tarjetas del inicio cuentan lo que hay que atender —pendientes
+// vencidos o de hoy, eventos de la semana, expedientes y notas fijadas— y cada
+// una es un botón: despliega debajo una vista rápida con acceso directo a cada
+// elemento, sin salir del inicio.
 
-    document.getElementById('stat-expedientes').textContent = stats.expedientes;
-    document.getElementById('stat-eventos').textContent = stats.eventos;
-    document.getElementById('stat-notas').textContent = stats.notas;
-    document.getElementById('stat-alertas').textContent = stats.alertas;
+let panelRapidoAbierto = null;   // 'pendientes' | 'eventos' | 'expedientes' | 'notas' | null
+let datosPanelInicio = null;
+
+// El mismo rango que la tarjeta "Hoy y próximos 7 días" de abajo: antes una
+// contaba 7 días desde ahora y la otra 8 desde hoy, y no cuadraban.
+function _rangoProximos() {
+    const desde = new Date();
+    desde.setHours(0, 0, 0, 0);
+    const hasta = new Date(desde);
+    hasta.setDate(hasta.getDate() + 8);
+    return { desde, hasta };
 }
+
+async function _leerDatosPanelInicio() {
+    const [expedientes, eventos, notas, pendientes] = await Promise.all([
+        obtenerExpedientes().catch(() => []),
+        obtenerEventos().catch(() => []),
+        obtenerNotas().catch(() => []),
+        typeof obtenerPendientes === 'function' ? obtenerPendientes().catch(() => []) : Promise.resolve([])
+    ]);
+    const { desde, hasta } = _rangoProximos();
+    const abiertos = pendientes.filter(p => !p.completado);
+    const conDias = abiertos.map(p => ({ p, dias: diasParaPendiente(p) }));
+    const urgentes = conDias.filter(x => x.dias !== null && x.dias <= 0).sort((a, b) => a.dias - b.dias);
+    const semana = conDias.filter(x => x.dias !== null && x.dias > 0 && x.dias <= 7).sort((a, b) => a.dias - b.dias);
+    const proximos = eventos
+        .filter(e => { const f = new Date(e.fechaInicio); return f >= desde && f < hasta; })
+        .sort((a, b) => new Date(a.fechaInicio) - new Date(b.fechaInicio));
+    const conPendientes = new Set(abiertos.filter(p => p.expedienteId != null).map(p => p.expedienteId));
+    return {
+        expedientes, notas, abiertos, urgentes, semana, proximos,
+        audiencias: proximos.filter(e => e.tipo === 'audiencia').length,
+        expPorId: new Map(expedientes.map(e => [e.id, e])),
+        conPendientes,
+        fijadas: ordenarNotasFijadas(notas).filter(n => n.fijada)
+    };
+}
+
+async function cargarEstadisticas() {
+    const d = await _leerDatosPanelInicio();
+    datosPanelInicio = d;
+    const poner = (id, texto) => { const el = document.getElementById(id); if (el) el.textContent = texto; };
+    const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+
+    poner('stat-pendientes', d.urgentes.length);
+    poner('stat-pendientes-detalle', d.abiertos.length ? `de ${plural(d.abiertos.length, 'abierto', 'abiertos')}` : 'Nada por hacer');
+    document.getElementById('stat-card-pendientes')?.classList.toggle('urgente', d.urgentes.length > 0);
+
+    poner('stat-eventos', d.proximos.length);
+    poner('stat-eventos-detalle', d.audiencias ? plural(d.audiencias, 'audiencia', 'audiencias') : 'hoy y 7 días');
+
+    poner('stat-expedientes', d.expedientes.length);
+    poner('stat-expedientes-detalle', d.conPendientes.size ? `${d.conPendientes.size} con pendientes` : '');
+
+    poner('stat-notas', d.fijadas.length);
+    poner('stat-notas-detalle', `de ${plural(d.notas.length, 'nota', 'notas')}`);
+
+    // Si hay un panel abierto, se repinta con los datos nuevos: terminar un
+    // pendiente desde él tiene que verse al momento.
+    if (panelRapidoAbierto) pintarPanelRapido();
+}
+
+function alternarPanelRapido(cual) {
+    panelRapidoAbierto = panelRapidoAbierto === cual ? null : cual;
+    document.querySelectorAll('.stat-interactiva').forEach(b => {
+        const abierta = b.dataset.panel === panelRapidoAbierto;
+        b.classList.toggle('abierta', abierta);
+        b.setAttribute('aria-expanded', abierta ? 'true' : 'false');
+    });
+    const panel = document.getElementById('panel-rapido');
+    if (!panel) return;
+    if (!panelRapidoAbierto) {
+        panel.hidden = true;
+        panel.innerHTML = '';
+        return;
+    }
+    panel.hidden = false;
+    if (datosPanelInicio) pintarPanelRapido();
+    else cargarEstadisticas();
+}
+
+function cerrarPanelRapido() {
+    if (panelRapidoAbierto) alternarPanelRapido(panelRapidoAbierto);
+}
+
+function _filaPanelHTML({ icono, titulo, detalle, accion, clase = '', extra = '' }) {
+    return `<li class="panel-rapido-fila ${clase}">
+        <button type="button" class="panel-rapido-abrir" onclick="${accion}">
+            <span class="panel-rapido-icono" aria-hidden="true">${icono}</span>
+            <span class="panel-rapido-texto"><strong>${escapeText(titulo)}</strong>${detalle ? `<small>${escapeText(detalle)}</small>` : ''}</span>
+        </button>${extra}
+    </li>`;
+}
+
+function _cuandoEventoCorto(e) {
+    const f = new Date(e.fechaInicio);
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    const dia = new Date(f); dia.setHours(0, 0, 0, 0);
+    const dif = Math.round((dia - hoy) / 86400000);
+    const cuando = dif === 0 ? 'Hoy' : dif === 1 ? 'Mañana'
+        : f.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' });
+    return e.todoElDia ? `${cuando} · todo el día`
+        : `${cuando} · ${f.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+function _nombreExpedienteDe(item, d) {
+    if (item.expedienteTexto) return item.expedienteTexto;
+    const exp = item.expedienteId != null ? d.expPorId.get(item.expedienteId) : null;
+    return exp ? (exp.numero || exp.nombre || '') : '';
+}
+
+function pintarPanelRapido() {
+    const panel = document.getElementById('panel-rapido');
+    const d = datosPanelInicio;
+    if (!panel || !d || !panelRapidoAbierto) return;
+    const MAX = 8;
+    let titulo = '', filas = [], vacio = '', verTodo = '', extraCabecera = '';
+
+    if (panelRapidoAbierto === 'pendientes') {
+        titulo = '✅ Pendientes por atender';
+        verTodo = `navegarA('pendientes')`;
+        extraCabecera = `<button type="button" class="btn btn-sm btn-secondary" onclick="cerrarPanelRapido(); navegarA('pendientes'); mostrarFormularioPendiente()">➕ Nuevo</button>`;
+        const lista = d.urgentes.concat(d.semana);
+        filas = lista.slice(0, MAX).map(({ p }) => {
+            const venc = _etiquetaVencimientoPendiente(p);
+            const exp = _nombreExpedienteDe(p, d);
+            return _filaPanelHTML({
+                icono: venc.clase === 'vencido' ? '🔴' : '🟡',
+                titulo: p.titulo,
+                detalle: [venc.texto, exp].filter(Boolean).join(' · '),
+                clase: venc.clase,
+                accion: `cerrarPanelRapido(); navegarA('pendientes'); mostrarFormularioPendiente(${p.id})`,
+                extra: `<button type="button" class="panel-rapido-hecho" title="Marcar como terminado" aria-label="Marcar como terminado: ${escapeText(p.titulo)}" onclick="terminarDesdeInicio(${p.id})">✓</button>`
+            });
+        });
+        vacio = d.abiertos.length
+            ? `Nada vence esta semana. Tienes ${d.abiertos.length} pendiente${d.abiertos.length !== 1 ? 's' : ''} sin urgencia.`
+            : 'No tienes pendientes por hacer. 🎉';
+        if (lista.length > MAX) filas.push(`<li class="panel-rapido-mas">y ${lista.length - MAX} más…</li>`);
+    } else if (panelRapidoAbierto === 'eventos') {
+        titulo = '📅 Hoy y próximos 7 días';
+        verTodo = `navegarA('calendario')`;
+        extraCabecera = `<button type="button" class="btn btn-sm btn-secondary" onclick="cerrarPanelRapido(); navegarA('calendario'); mostrarFormularioEvento()">➕ Nuevo</button>`;
+        filas = d.proximos.slice(0, MAX).map(e => _filaPanelHTML({
+            icono: e.tipo === 'audiencia' ? '⚖️' : e.tipo === 'vencimiento' ? '⚠️' : e.tipo === 'recordatorio' ? '🔔' : '📌',
+            titulo: e.titulo,
+            detalle: [_cuandoEventoCorto(e), _nombreExpedienteDe(e, d)].filter(Boolean).join(' · '),
+            accion: `cerrarPanelRapido(); navegarA('calendario'); editarEvento(${e.id})`
+        }));
+        vacio = 'No hay eventos en los próximos días.';
+        if (d.proximos.length > MAX) filas.push(`<li class="panel-rapido-mas">y ${d.proximos.length - MAX} más…</li>`);
+    } else if (panelRapidoAbierto === 'expedientes') {
+        titulo = '📁 Expedientes recientes';
+        verTodo = `navegarA('expedientes')`;
+        extraCabecera = `<button type="button" class="btn btn-sm btn-secondary" onclick="cerrarPanelRapido(); navegarA('expedientes'); mostrarFormularioExpediente()">➕ Nuevo</button>`;
+        const fecha = (e) => e.fechaModificacion || e.fechaActualizacion || e.fechaCreacion || '';
+        const recientes = [...d.expedientes].sort((a, b) => String(fecha(b)).localeCompare(String(fecha(a)))).slice(0, MAX);
+        filas = recientes.map(e => {
+            const pend = d.abiertos.filter(p => p.expedienteId === e.id).length;
+            return _filaPanelHTML({
+                icono: e.institucion === 'PJF' ? '🏛️' : '📁',
+                titulo: e.numero || e.nombre || 'Expediente',
+                detalle: [e.juzgado, pend ? `${pend} pendiente${pend !== 1 ? 's' : ''}` : ''].filter(Boolean).join(' · '),
+                accion: `cerrarPanelRapido(); mostrarExpediente(${e.id})`
+            });
+        });
+        vacio = 'Todavía no hay expedientes.';
+    } else if (panelRapidoAbierto === 'notas') {
+        titulo = '📌 Notas fijadas';
+        verTodo = `navegarA('notas')`;
+        extraCabecera = `<button type="button" class="btn btn-sm btn-secondary" onclick="cerrarPanelRapido(); navegarA('notas'); mostrarFormularioNota()">➕ Nueva</button>`;
+        filas = d.fijadas.slice(0, MAX).map(n => _filaPanelHTML({
+            icono: '📌',
+            titulo: n.titulo,
+            detalle: [(n.contenido || '').slice(0, 80), _nombreExpedienteDe(n, d)].filter(Boolean).join(' · '),
+            accion: `cerrarPanelRapido(); navegarA('notas'); editarNota(${n.id})`
+        }));
+        vacio = 'No tienes notas fijadas. En Notas, toca la 📌 de una nota para tenerla siempre a mano aquí.';
+    }
+
+    panel.innerHTML = `
+        <div class="panel-rapido-cabecera">
+            <h3 id="panel-rapido-titulo">${titulo}</h3>
+            <div class="panel-rapido-acciones">
+                ${extraCabecera}
+                <button type="button" class="btn btn-sm btn-primary" onclick="cerrarPanelRapido(); ${verTodo}">Ver todo →</button>
+                <button type="button" class="panel-rapido-cerrar" onclick="cerrarPanelRapido()" aria-label="Cerrar">✕</button>
+            </div>
+        </div>
+        ${filas.length ? `<ul class="panel-rapido-lista">${filas.join('')}</ul>` : `<p class="panel-rapido-vacio">${escapeText(vacio)}</p>`}
+    `;
+    panel.setAttribute('aria-labelledby', 'panel-rapido-titulo');
+}
+
+async function terminarDesdeInicio(id) {
+    try {
+        await completarPendienteCore(id, true);   // repinta el inicio y el panel
+        mostrarToast('Pendiente terminado', 'success');
+    } catch (e) {
+        mostrarToast('Error: ' + e.message, 'error');
+    }
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && panelRapidoAbierto && !document.getElementById('modal-overlay')?.classList.contains('active')) {
+        cerrarPanelRapido();
+    }
+});
+
+window.alternarPanelRapido = alternarPanelRapido;
+window.cerrarPanelRapido = cerrarPanelRapido;
+window.terminarDesdeInicio = terminarDesdeInicio;
 
 // ==================== EXPEDIENTES ====================
 
