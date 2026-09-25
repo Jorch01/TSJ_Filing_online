@@ -1563,6 +1563,91 @@ async function main() {
         igual('inicio: tocar otra vez la tarjeta la cierra', inicio.cerradoConOtroClic, true);
         igual('inicio: y Esc también', inicio.cerradoConEscape, true);
 
+        // ---- Tribunales: un solo apartado para TSJ y PJF ----
+        const trib = await page.evaluate(async () => {
+            const pausa = (ms) => new Promise(res => setTimeout(res, ms));
+            const visible = (id) => document.getElementById(id).classList.contains('active');
+            const botonMenu = () => document.querySelector('.main-nav .nav-btn[data-page="tribunales"], nav .nav-btn[data-page="tribunales"]');
+            const r = {};
+            r.entradasMenu = [...document.querySelectorAll('.nav-btn')].map(b => b.dataset.page)
+                .filter(p => ['busqueda', 'pjf', 'tribunales'].includes(p));
+            try { localStorage.removeItem('tribunal_actual'); } catch (e) {}
+            botonMenu().click();
+            await pausa(200);
+            r.abreTSJ = visible('page-busqueda');
+            r.menuMarcado = botonMenu().classList.contains('active');
+            // Cambiar al PJF desde el selector.
+            document.querySelector('#page-busqueda .tribunal-opcion:not(.activa)').click();
+            await pausa(200);
+            r.pasaAPJF = visible('page-pjf');
+            r.menuSigueMarcado = botonMenu().classList.contains('active');
+            r.pestanasPJF = [...document.querySelectorAll('#page-pjf .pjf-tab')].map(t => t.textContent.trim());
+            navegarA('inicio');
+            botonMenu().click();
+            await pausa(200);
+            r.recuerdaPJF = visible('page-pjf');
+            // Pestañas del TSJ.
+            navegarA('busqueda');
+            const pjfAntes = document.querySelector('#page-pjf .pjf-tab.active')?.dataset.pjfTab;
+            cambiarTabTSJ('ia');
+            r.tsjIA = visible('tsj-tab-ia') && !visible('tsj-tab-busqueda');
+            r.pjfIntacto = document.querySelector('#page-pjf .pjf-tab.active')?.dataset.pjfTab === pjfAntes;
+            cambiarTabTSJ('busqueda');
+
+            // Notas y calendario filtrados por tribunal.
+            const idPJF = await crearExpedienteCore({ numero: '9/2026', institucion: 'PJF', juzgado: 'Primer Tribunal Colegiado' });
+            const idTSJ = await crearExpedienteCore({ numero: '8/2026', institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' });
+            await crearNotaCore({ titulo: 'Nota federal', expedienteId: idPJF });
+            await crearNotaCore({ titulo: 'Nota estatal', expedienteId: idTSJ });
+            navegarA('notas');
+            actualizarSelectExpedientes();
+            await pausa(200);
+            const select = document.getElementById('filtro-expediente-nota');
+            select.value = '__pjf__';
+            await filtrarNotas();
+            const titulos = () => [...document.querySelectorAll('#lista-notas .nota-titulo')].map(h => h.textContent);
+            r.notasPJF = titulos().filter(t => /^Nota (federal|estatal)$/.test(t));
+            select.value = '__tsj__';
+            await filtrarNotas();
+            r.notasTSJ = titulos().filter(t => /^Nota (federal|estatal)$/.test(t));
+            select.value = '';
+            await filtrarNotas();
+
+            const hoy = new Date(); hoy.setHours(11, 0, 0, 0);
+            await crearEventoCore({ titulo: 'Evento federal', tipo: 'audiencia', fechaInicio: hoy.toISOString(), expedienteId: idPJF });
+            await crearEventoCore({ titulo: 'Evento estatal', tipo: 'audiencia', fechaInicio: hoy.toISOString(), expedienteId: idTSJ });
+            navegarA('calendario');
+            irAHoy();
+            await pausa(300);
+            const eventosPanel = () => [...document.querySelectorAll('#lista-eventos-panel .evento-titulo')]
+                .map(e => e.textContent).filter(t => /Evento (federal|estatal)/.test(t));
+            r.calTodos = eventosPanel().length;
+            cambiarFiltroTribunalCalendario('PJF');
+            await pausa(300);
+            r.calPJF = eventosPanel().map(t => t.replace(/PJF$/, '').trim());
+            r.selectRefleja = document.getElementById('filtro-tribunal-calendario').value;
+            cambiarFiltroTribunalCalendario('');
+            await pausa(300);
+            r.calDeVuelta = eventosPanel().length;
+            return r;
+        });
+        igual('tribunales: una sola entrada en cada menú', trib.entradasMenu, ['tribunales', 'tribunales']);
+        igual('tribunales: abre el TSJ la primera vez', trib.abreTSJ, true);
+        igual('tribunales: y marca su botón del menú', trib.menuMarcado, true);
+        igual('tribunales: el selector cambia al PJF', trib.pasaAPJF, true);
+        igual('tribunales: sin dejar de marcar el menú', trib.menuSigueMarcado, true);
+        verificar('tribunales: el PJF ya no duplica notas ni calendario',
+            !trib.pestanasPJF.some(t => /Notas PJF|Calendario PJF/.test(t)), JSON.stringify(trib.pestanasPJF));
+        igual('tribunales: recuerda el último tribunal', trib.recuerdaPJF, true);
+        igual('tribunales: el TSJ tiene sus pestañas', trib.tsjIA, true);
+        igual('tribunales: cambiarlas no mueve las del PJF', trib.pjfIntacto, true);
+        igual('notas: filtro "Solo PJF"', trib.notasPJF, ['Nota federal']);
+        igual('notas: filtro "Solo TSJ"', trib.notasTSJ, ['Nota estatal']);
+        igual('calendario: sin filtro se ven los dos', trib.calTodos, 2);
+        igual('calendario: "Solo PJF" deja el federal', trib.calPJF, ['Evento federal']);
+        igual('calendario: y el selector lo refleja', trib.selectRefleja, 'PJF');
+        igual('calendario: quitar el filtro los devuelve', trib.calDeVuelta, 2);
+
         igual('la página no lanza errores de JavaScript', erroresPagina, []);
 
         // ---- El calendario y el asistente, con el reloj en Cancún ----

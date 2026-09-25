@@ -1201,6 +1201,28 @@ input:focus, textarea:focus, select:focus {
 /* Calendario */
 .calendario-nav { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
 .calendario-nav h3 { min-width: 180px; text-align: center; margin: 0; }
+/* Filtro por tribunal: compacto, en la misma fila que la navegación. */
+.calendario-nav #filtro-tribunal-calendario { width: auto; min-width: 170px; padding: 0.45rem 0.6rem; }
+
+/* Selector de tribunal (TSJ | PJF): control segmentado arriba del apartado. */
+.tribunal-selector {
+    display: inline-flex; padding: 4px; gap: 4px; margin: 0 0 1rem;
+    background: var(--bg-tertiary); border: 1px solid var(--border-color);
+    border-radius: 999px; max-width: 100%;
+}
+.tribunal-opcion {
+    border: none; background: none; font: inherit; font-weight: 600; font-size: 0.9rem;
+    color: var(--text-secondary); padding: 0.5rem 1.1rem; border-radius: 999px;
+    cursor: pointer; white-space: nowrap; min-height: 40px;
+    transition: background 0.15s, color 0.15s;
+}
+.tribunal-opcion:hover { color: var(--text-primary); }
+.tribunal-opcion:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+.tribunal-opcion.activa { background: var(--primary); color: #fff; box-shadow: var(--shadow); }
+@media (max-width: 480px) {
+    .tribunal-selector { display: flex; }
+    .tribunal-opcion { flex: 1; padding: 0.5rem 0.5rem; font-size: 0.85rem; }
+}
 
 .calendario-container { display: grid; grid-template-columns: 1fr 280px; gap: 1.5rem; }
 
