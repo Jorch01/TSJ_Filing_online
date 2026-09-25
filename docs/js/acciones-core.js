@@ -108,16 +108,106 @@ async function crearEventoCore(datos) {
     return nuevoId;
 }
 
-/** Actualiza un evento. Ajusta el color si cambia el tipo y no se indicó color. */
-async function actualizarEventoCore(id, cambios) {
+/**
+ * Actualiza un evento. Ajusta el color si cambia el tipo y no se indicó color.
+ *
+ * Si el evento es el reflejo de un pendiente, el cambio de fecha, hora, título
+ * o descripción se lleva también al pendiente. Sin eso, mover el evento en el
+ * calendario no duraba: el siguiente cambio al pendiente —subirle la
+ * prioridad, pasarlo a otra carpeta— lo reescribía con la fecha vieja.
+ * opciones.reflejarEnPendiente:false lo evita cuando el cambio viene
+ * precisamente del pendiente.
+ */
+async function actualizarEventoCore(id, cambios, opciones = {}) {
     const aplicar = { ...cambios };
     if (aplicar.tipo && !aplicar.color && CORE_COLORES_EVENTOS[aplicar.tipo]) {
         aplicar.color = CORE_COLORES_EVENTOS[aplicar.tipo];
     }
+    const actual = (await obtenerEventos()).find(e => e.id === id);
+    if (!actual) throw new Error('Evento no encontrado');
+    _coreReajustarHoraEscrita(actual, aplicar);
+
     await actualizarEvento(id, aplicar);
+    if (opciones.reflejarEnPendiente !== false) await _coreReflejarEventoEnPendiente(actual, aplicar);
     await _coreRefrescarUI();
     await _coreSincronizar();
     await _coreGcalGuardar(id);
+}
+
+// El análisis IA escribe la hora dentro del propio título ("10:00 — Audiencia
+// …") y de la descripción ("🕒 Hora: 10:00"). Si luego se mueve la hora y el
+// título sigue diciendo 10:00, en el calendario parece que el cambio no se
+// aplicó. Solo se toca ese formato, solo si decía la hora que tenía el evento
+// y solo si el texto no se reescribió en esta misma edición: un título escrito
+// por el usuario se respeta tal cual.
+const _CORE_RE_HORA_TITULO = /^(\d{1,2}:\d{2}) — /;
+const _CORE_RE_HORA_DESCRIPCION = /^🕒 Hora: (\d{1,2}:\d{2})$/m;
+
+function _coreHoraLocal(fechaISO) {
+    const d = new Date(fechaISO);
+    if (isNaN(d.getTime())) return null;
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+function _coreMismaHora(a, b) {
+    const n = (h) => (h || '').replace(/^(\d):/, '0$1:');
+    return !!a && n(a) === n(b);
+}
+
+function _coreReajustarHoraEscrita(actual, aplicar) {
+    const fechaNueva = aplicar.fechaInicio !== undefined ? aplicar.fechaInicio : actual.fechaInicio;
+    const todoElDiaNuevo = aplicar.todoElDia !== undefined ? !!aplicar.todoElDia : !!actual.todoElDia;
+    if (fechaNueva === actual.fechaInicio && todoElDiaNuevo === !!actual.todoElDia) return;
+
+    const horaAntes = actual.todoElDia ? null : _coreHoraLocal(actual.fechaInicio);
+    const horaAhora = todoElDiaNuevo ? null : _coreHoraLocal(fechaNueva);
+    if (!horaAntes) return;   // no había hora escrita que pudiera quedar vieja
+
+    const tituloIntacto = aplicar.titulo === undefined || aplicar.titulo === actual.titulo;
+    const mTitulo = _CORE_RE_HORA_TITULO.exec(actual.titulo || '');
+    if (tituloIntacto && mTitulo && _coreMismaHora(mTitulo[1], horaAntes)) {
+        const resto = actual.titulo.slice(mTitulo[0].length);
+        aplicar.titulo = horaAhora ? `${horaAhora} — ${resto}` : resto;
+    }
+
+    const descripcionIntacta = aplicar.descripcion === undefined || aplicar.descripcion === actual.descripcion;
+    const mDesc = _CORE_RE_HORA_DESCRIPCION.exec(actual.descripcion || '');
+    if (descripcionIntacta && mDesc && _coreMismaHora(mDesc[1], horaAntes)) {
+        aplicar.descripcion = horaAhora
+            ? actual.descripcion.replace(_CORE_RE_HORA_DESCRIPCION, `🕒 Hora: ${horaAhora}`)
+            : actual.descripcion.replace(/^🕒 Hora: \d{1,2}:\d{2}\n?/m, '');
+    }
+}
+
+/** Lleva al pendiente vinculado lo que se cambió en su evento de calendario. */
+async function _coreReflejarEventoEnPendiente(evento, cambios) {
+    if (evento.pendienteId == null || typeof obtenerPendiente !== 'function') return;
+    try {
+        const pendiente = await obtenerPendiente(evento.pendienteId);
+        // El vínculo tiene que ir en los dos sentidos: un pendienteId heredado
+        // de un respaldo viejo no autoriza a tocar un pendiente ajeno.
+        if (!pendiente || pendiente.eventoId !== evento.id) return;
+
+        const reflejo = {};
+        if (cambios.fechaInicio !== undefined && cambios.fechaInicio !== pendiente.fechaLimite) {
+            reflejo.fechaLimite = cambios.fechaInicio;
+        }
+        if (cambios.todoElDia !== undefined && !!cambios.todoElDia !== _corePendienteEsTodoElDia(pendiente)) {
+            reflejo.todoElDia = !!cambios.todoElDia;
+        }
+        if (cambios.titulo && cambios.titulo.trim() && cambios.titulo.trim() !== pendiente.titulo) {
+            reflejo.titulo = cambios.titulo.trim();
+        }
+        if (cambios.descripcion !== undefined) {
+            const detalle = _corePendienteDetalleDeDescripcion(cambios.descripcion);
+            if (detalle !== (pendiente.descripcion || '')) reflejo.descripcion = detalle;
+        }
+        if (Object.keys(reflejo).length) await actualizarPendiente(pendiente.id, reflejo);
+    } catch (e) {
+        // Que falle el reflejo no puede tumbar el cambio del evento, que es lo
+        // que el usuario pidió.
+        console.error('[CORE] No se pudo reflejar el cambio en el pendiente:', e);
+    }
 }
 
 /** Elimina un evento (incluida su copia en Google Calendar si aplica). */
@@ -316,9 +406,20 @@ function normalizarPrioridadCore(valor) {
     return CORE_PRIORIDADES_PENDIENTE.includes(valor) ? valor : '';
 }
 
+const _CORE_BASE_DESCRIPCION_PENDIENTE = 'Pendiente del expediente.';
+
 function _corePendienteDescripcionEvento(datos) {
-    const base = 'Pendiente del expediente.';
+    const base = _CORE_BASE_DESCRIPCION_PENDIENTE;
     return datos.descripcion ? base + '\n\n' + datos.descripcion : base;
+}
+
+// Lo contrario: de la descripción del evento, el detalle que va al pendiente.
+function _corePendienteDetalleDeDescripcion(descripcion) {
+    const texto = String(descripcion || '').trim();
+    if (texto.startsWith(_CORE_BASE_DESCRIPCION_PENDIENTE)) {
+        return texto.slice(_CORE_BASE_DESCRIPCION_PENDIENTE.length).trim();
+    }
+    return texto;
 }
 
 /**
@@ -366,7 +467,11 @@ async function _corePendienteSincronizarEvento(pendiente, eventoIdActual) {
             // está, se crea uno nuevo en vez de fallar.
             const existe = (await obtenerEventos()).some(e => e.id === eventoIdActual);
             if (existe) {
-                await actualizarEventoCore(eventoIdActual, datosEvento);
+                // Tipo y alerta no son datos del pendiente: se fijan al crear
+                // el evento y después son del evento. Reenviarlos deshacía lo
+                // que se hubiera cambiado a mano en el calendario.
+                const { tipo, alerta, ...delPendiente } = datosEvento;
+                await actualizarEventoCore(eventoIdActual, delPendiente, { reflejarEnPendiente: false });
                 return eventoIdActual;
             }
         }

@@ -4205,6 +4205,19 @@ textarea:focus {
     font-size: 0.88rem;
 }
 .voz-hint { font-size: 0.75rem; color: var(--text-secondary); }
+/* Lo que se va a abrir o cambiar: puede ser largo, y el panel no debe crecer. */
+.voz-confirmacion-lista {
+    max-height: 9.5rem;
+    overflow-y: auto;
+    margin: 0.35rem 0 0.4rem 1.1rem;
+    font-size: 0.8rem;
+}
+.voz-tag-inst {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+.voz-chip-todas { margin-top: 0.45rem; font-weight: 600; }
 .voz-confirmacion-btns {
     display: flex;
     justify-content: flex-end;

@@ -607,6 +607,15 @@ function buscarOrganismoPJF(texto) {
     return lista.length ? lista[0] : null;
 }
 
+/** El órgano con ese id (el que guarda un expediente como pjfOrgId), o null. */
+function organismoPJFPorId(id) {
+    if (id === null || id === undefined || id === '') return null;
+    for (var i = 0; i < pjfOrganismos.length; i++) {
+        if (String(pjfOrganismos[i].id) === String(id)) return pjfOrganismos[i];
+    }
+    return null;
+}
+
 /**
  * Busca el tipo de asunto por nombre aproximado dentro de los válidos para
  * el tipo de órgano dado. Retorna {id, nombre} o null.

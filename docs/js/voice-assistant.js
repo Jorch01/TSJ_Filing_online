@@ -5,12 +5,15 @@
  * Permite dar instrucciones por voz (o texto) para que la app ejecute
  * acciones automáticamente:
  *
- *   - Agendar / editar / eliminar eventos del calendario
+ *   - Agendar / editar / eliminar eventos del calendario (uno o varios a la
+ *     vez: fecha, hora, título, descripción, expediente)
  *   - Crear / editar / archivar expedientes
  *   - Crear notas
  *   - Buscar en el catálogo local de expedientes
  *   - Abrir búsquedas en estrados del TSJ Quintana Roo (local)
  *   - Abrir búsquedas en el Poder Judicial de la Federación (federal)
+ *   - Varias búsquedas en una orden: varios tipos de asunto, todos los
+ *     tipos, varios órganos o juzgados, y TSJ y PJF mezclados
  *   - Consultar la agenda ("¿qué audiencias tengo esta semana?")
  *
  * Si falta información obligatoria, el asistente PREGUNTA por el dato
@@ -61,11 +64,19 @@
     // esto el navegador bloquea las ventanas y el resultado es inservible.
     const MAX_ORGANOS_PJF = 12;
 
+    // Cuántas consultas se abren solas tras confirmar. Con más —todos los
+    // tipos de asunto de varios órganos, todos los juzgados del TSJ— se deja
+    // la lista con un botón por consulta y otro para abrirlas todas.
+    const MAX_VENTANAS_AUTO = 20;
+
+    // Tope de consultas que se preparan en una sola orden.
+    const MAX_CONSULTAS = 80;
+
     const EJEMPLOS = [
         'Agenda audiencia del expediente 123/2025 el jueves a las 10',
         'Busca el 456/2024 en estrados del TSJ',
-        'Abre el estrado del amparo directo 486/2026 del primer tribunal colegiado del 27 circuito',
-        'Agrega nota al expediente de Juan Pérez: llamar al perito',
+        'Busca la queja y el amparo directo 486/2026 en el primer colegiado del 27 circuito',
+        'Cambia la audiencia del jueves para el viernes a las 12',
         '¿Qué audiencias tengo esta semana?',
         'Cambia el comentario del expediente 78/2025 a "pendiente de sentencia"'
     ];
@@ -78,6 +89,10 @@
                 'Agenda audiencia del expediente 123/2025 el jueves a las 10',
                 'Agenda un vencimiento el 15 de agosto: contestar demanda',
                 'Cambia la audiencia del jueves para el viernes a las 12',
+                'Pospón una semana la audiencia del 123/2025',
+                'Agrégale a la descripción de la audiencia del viernes: llevar testigos',
+                'Cambia la descripción del vencimiento del 15 a "presentar alegatos"',
+                'Mueve las audiencias del lunes al martes a la misma hora',
                 'Elimina el recordatorio del lunes',
                 '¿Qué audiencias tengo esta semana?'
             ]
@@ -113,7 +128,11 @@
                 'Abre el estrado del amparo directo 486/2026 del primer tribunal colegiado del 27 circuito',
                 'Ábreme los estrados del amparo en revisión 12/2026 del segundo colegiado del XXVII circuito',
                 'Busca el amparo directo 486/2026 en los tres colegiados del 27 circuito',
-                'Busca el amparo directo 100/2026 en los colegiados del 27 y del 28 circuito'
+                'Busca el amparo directo 100/2026 en los colegiados del 27 y del 28 circuito',
+                'Busca la queja y el amparo directo 486/2026 en el primer colegiado del 27 circuito',
+                'Busca el 55/2026 en todos los tipos de asunto del segundo colegiado del 27 circuito',
+                'Busca el 123/2025 en los juzgados primero y segundo civil de Cancún',
+                'Busca el 123/2025 en el primero civil de Cancún y el amparo indirecto 45/2026 en el juzgado primero de distrito de Quintana Roo'
             ]
         },
         {
@@ -132,6 +151,8 @@
         'Si propongo algo con un error, dime la corrección directamente: "mejor a las 11".',
         'Si falta un dato (hora, juzgado…), te lo preguntaré; puedes responder por voz o escribiendo.',
         'Si mencionas un expediente de tu catálogo, uso su juzgado guardado automáticamente en las búsquedas.',
+        'Puedes pedir varias búsquedas en una sola orden: varios tipos de asunto ("la queja y el amparo directo"), "en todos los tipos de asunto", varios órganos, o asuntos del TSJ y del PJF juntos. Antes de abrir te enseño la lista.',
+        'Para cambiar un evento basta con decir cuál y qué cambia: "pospón una semana la audiencia del 123/2025", "agrégale a la descripción…". Antes de guardar te enseño el antes y el después.',
         'Di "deshaz lo último" para revertir la acción más reciente hecha por el asistente.',
         'Con 🔊/🔇 activas o silencias mis respuestas habladas; en Configuración puedes ajustar la velocidad de la voz y la escucha automática.',
         'También puedes escribir la instrucción en el campo de texto de abajo.'
@@ -208,6 +229,13 @@
             case 'evento_creado':        await eliminarEventoCore(u.id); break;
             case 'evento_editado':       await actualizarEventoCore(u.id, u.antes); break;
             case 'evento_eliminado':     await crearEventoCore(u.evento); break;
+            // Varios de una vez se deshacen juntos, en orden inverso.
+            case 'eventos_editados':
+                for (const x of u.eventos.slice().reverse()) await actualizarEventoCore(x.id, x.antes);
+                break;
+            case 'eventos_eliminados':
+                for (const ev of u.eventos) await crearEventoCore(ev);
+                break;
             case 'expediente_creado':    await eliminarExpedienteCore(u.id, true); break;
             case 'expediente_editado':   await actualizarExpedienteCore(u.id, u.antes); break;
             case 'expediente_archivado': await archivarExpedienteCore(u.id, false); break;
@@ -802,27 +830,46 @@
             return;
         }
 
-        // 2) Acción destructiva o múltiples popups → confirmar
-        const multiPopupTSJ = accion === 'buscar_tsj' && !p.juzgado;
-        // Varios órganos federales = varias ventanas: se confirma, como en el TSJ.
-        const multiPopupPJF = accion === 'buscar_pjf' && Array.isArray(p.organismos) && p.organismos.length > 0;
-        if (ACCIONES_MUTANTES.has(accion) || multiPopupTSJ || multiPopupPJF) {
-            accionPendiente = r;
-            estado = Estado.ESPERANDO_CONFIRMACION;
-            mostrarConfirmacion(r.resumen || 'Ejecutar: ' + accion);
-            hablar((r.resumen || '') + '. ¿Confirmas?', () => { if (panelAbierto()) iniciarEscucha(); });
+        // 2) Búsquedas y cambios a eventos: se resuelven ANTES de confirmar, para
+        //    enseñar exactamente qué se va a abrir o qué evento cambia y cómo,
+        //    en vez del resumen que redactó el modelo.
+        if (ACCIONES_BUSQUEDA.has(accion)) {
+            await prepararBusqueda(r);
+            return;
+        }
+        if (accion === 'editar_evento' || accion === 'eliminar_evento') {
+            await prepararCambioDeEventos(r);
             return;
         }
 
-        // 3) Acción no destructiva → ejecutar directo
+        // 3) Acción que modifica datos → confirmar
+        if (ACCIONES_MUTANTES.has(accion)) {
+            pedirConfirmacion(r, r.resumen || 'Ejecutar: ' + accion);
+            return;
+        }
+
+        // 4) Acción no destructiva → ejecutar directo
         await ejecutarAccion(r);
     }
 
-    function mostrarConfirmacion(resumen) {
+    function pedirConfirmacion(r, resumen, detalles) {
+        accionPendiente = r;
+        estado = Estado.ESPERANDO_CONFIRMACION;
+        mostrarConfirmacion(resumen, detalles);
+        // La flecha del "antes → después" no se lee bien en voz alta.
+        hablar(resumen.replace(/\s*→\s*/g, ', pasa a ') + '. ¿Confirmas?', () => { if (panelAbierto()) iniciarEscucha(); });
+    }
+
+    function mostrarConfirmacion(resumen, detalles) {
         const cont = document.getElementById('voz-confirmacion');
         const txt = document.getElementById('voz-confirmacion-texto');
-        if (txt) txt.innerHTML = '⚡ <strong>Acción propuesta:</strong><br>' + esc(resumen) +
-            '<br><span class="voz-hint">Di "sí" para confirmar o "no" para cancelar.</span>';
+        let lista = '';
+        if (detalles && detalles.length) {
+            lista = '<ul class="voz-lista voz-confirmacion-lista">' +
+                detalles.map(d => '<li>' + esc(d) + '</li>').join('') + '</ul>';
+        }
+        if (txt) txt.innerHTML = '⚡ <strong>Acción propuesta:</strong><br>' + esc(resumen) + (lista || '<br>') +
+            '<span class="voz-hint">Di "sí" para confirmar o "no" para cancelar.</span>';
         if (cont) cont.style.display = 'block';
     }
 
@@ -860,19 +907,20 @@
             conversacion = [];
             return;
         }
-        await ejecutarAccionResuelta(accion, p);
+        await ejecutarAccionResuelta(accion, p, r._plan);
     }
 
     // Ejecuta una acción ya identificada. Vive aparte de ejecutarAccion para
     // poder reanudarla tal cual cuando el usuario elige el expediente entre
-    // varias posibilidades.
-    async function ejecutarAccionResuelta(accion, p) {
+    // varias posibilidades. "plan" es lo ya resuelto antes de confirmar
+    // (búsquedas y cambios a eventos): se ejecuta tal cual se enseñó.
+    async function ejecutarAccionResuelta(accion, p, plan) {
         try {
             let mensajeFinal = '';
             switch (accion) {
                 case 'crear_evento':        mensajeFinal = await accCrearEvento(p); break;
-                case 'editar_evento':       mensajeFinal = await accEditarEvento(p); break;
-                case 'eliminar_evento':     mensajeFinal = await accEliminarEvento(p); break;
+                case 'editar_evento':       mensajeFinal = plan ? await aplicarEdicionesEventos(plan) : await accEditarEvento(p); break;
+                case 'eliminar_evento':     mensajeFinal = plan ? await aplicarEliminacionEventos(plan) : await accEliminarEvento(p); break;
                 case 'consultar_agenda':    mensajeFinal = await accConsultarAgenda(p); break;
                 case 'crear_expediente':    mensajeFinal = await accCrearExpediente(p); break;
                 case 'editar_expediente':   mensajeFinal = await accEditarExpediente(p); break;
@@ -885,8 +933,9 @@
                 case 'abrir_expediente':    mensajeFinal = await accAbrirExpediente(p); break;
                 case 'deshacer':            mensajeFinal = await accDeshacer(); break;
                 case 'buscar_local':        mensajeFinal = await accBuscarLocal(p); break;
-                case 'buscar_tsj':          mensajeFinal = await accBuscarTSJ(p); break;
-                case 'buscar_pjf':          mensajeFinal = await accBuscarPJF(p); break;
+                case 'buscar_tsj':          mensajeFinal = plan ? ejecutarPlanBusqueda(plan) : await accBuscarTSJ(p); break;
+                case 'buscar_pjf':          mensajeFinal = plan ? ejecutarPlanBusqueda(plan) : await accBuscarPJF(p); break;
+                case 'buscar_varios':       mensajeFinal = plan ? ejecutarPlanBusqueda(plan) : await accBuscarVarios(p); break;
                 case 'navegar':             mensajeFinal = accNavegar(p); break;
                 default:
                     mensajeFinal = 'Listo.';
@@ -901,24 +950,28 @@
             }
             conversacion = [];
         } catch (e) {
-            // Pedir que se elija un expediente no es un fallo: las opciones ya
-            // están en pantalla y la acción sigue esperando.
-            if (e._esEleccion) {
-                agregarMensaje('asistente', esc(e.message));
-                hablar(e.message);
-                return;
-            }
-            if (e._esAviso) {
-                agregarMensaje('asistente', esc(e.message));
-                hablar(e.message);
-                conversacion = [];
-                return;
-            }
-            console.error('[VOZ] Error ejecutando acción:', e);
-            agregarMensaje('asistente', '⚠️ Error: ' + esc(e.message));
-            hablar('Ocurrió un error: ' + e.message);
-            conversacion = [];
+            informarFallo(e);
         }
+    }
+
+    function informarFallo(e) {
+        // Pedir que se elija un expediente no es un fallo: las opciones ya
+        // están en pantalla y la acción sigue esperando.
+        if (e._esEleccion) {
+            agregarMensaje('asistente', esc(e.message));
+            hablar(e.message);
+            return;
+        }
+        if (e._esAviso) {
+            agregarMensaje('asistente', esc(e.message));
+            hablar(e.message);
+            conversacion = [];
+            return;
+        }
+        console.error('[VOZ] Error ejecutando acción:', e);
+        agregarMensaje('asistente', '⚠️ Error: ' + esc(e.message));
+        hablar('Ocurrió un error: ' + e.message);
+        conversacion = [];
     }
 
     // ==================== EJECUTORES DE ACCIONES ====================
@@ -948,50 +1001,421 @@
         return `Evento "${p.titulo}" agendado para el ${cuando}.`;
     }
 
-    async function accEditarEvento(p) {
-        const id = parseInt(p.eventoId);
-        if (!id) throw new Error('No identifiqué qué evento editar');
-        const evento = (await obtenerEventos()).find(e => e.id === id);
-        if (!evento) throw new Error('Evento no encontrado');
+    // ==================== CAMBIOS A EVENTOS ====================
+    // Editar o borrar va en dos pasos: primero se resuelve QUÉ evento y QUÉ
+    // cambia exactamente, y solo después se aplica. Así la confirmación enseña
+    // el antes y el después reales —no el resumen que redactó el modelo, que a
+    // veces se equivocaba de día— y caben varios cambios en una sola orden.
 
-        const c = p.cambios || {};
-        const cambios = {};
-        if (c.titulo) cambios.titulo = c.titulo;
-        if (c.descripcion != null) cambios.descripcion = c.descripcion;
-        if (c.tipo && CORE_COLORES_EVENTOS[c.tipo]) cambios.tipo = c.tipo; // el color lo ajusta el núcleo
-        if (c.fecha || c.hora) {
-            const base = new Date(evento.fechaInicio);
-            const fecha = c.fecha || fechaLocalISO(base);
-            const horaNueva = normalizarHora(c.hora);
-            const hora = horaNueva || (pad(base.getHours()) + ':' + pad(base.getMinutes()));
-            const nueva = new Date(fecha + 'T' + hora);
-            if (isNaN(nueva.getTime())) throw new Error('Fecha u hora inválida');
-            cambios.fechaInicio = nueva.toISOString();
-            if (horaNueva) cambios.todoElDia = false;
+    // Palabras con las que se nombra un evento pero que no están en ningún
+    // título: exigirlas dejaba la búsqueda sin resultados.
+    const PALABRAS_RUIDO_EVENTO = new Set(['el', 'la', 'los', 'las', 'de', 'del', 'un', 'una', 'que', 'con', 'para', 'por', 'al', 'a', 'y', 'en', 'mi', 'mis', 'evento', 'eventos', 'cita', 'citas', 'calendario', 'agenda', 'expediente', 'exp']);
+
+    // Llegan como lista; la forma antigua {eventoId, cambios} cuenta como una.
+    function edicionesDe(p) {
+        if (Array.isArray(p.ediciones) && p.ediciones.length) return p.ediciones.map(e => ({ ...(e || {}) }));
+        return [{ eventoId: p.eventoId, buscar: p.buscar, eventoRef: p.eventoRef, cambios: p.cambios || {} }];
+    }
+
+    function eventosAEliminarDe(p) {
+        if (Array.isArray(p.eventos) && p.eventos.length) return p.eventos.map(e => ({ ...(e || {}) }));
+        return [{ eventoId: p.eventoId, buscar: p.buscar, eventoRef: p.eventoRef }];
+    }
+
+    function textoLimpio(v) {
+        return typeof v === 'string' ? v.trim() : '';
+    }
+
+    function horaLocalDe(fechaISO) {
+        const d = new Date(fechaISO);
+        return isNaN(d.getTime()) ? null : pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
+
+    // "jueves, 1 de octubre, 10:00" o "jueves, 1 de octubre (todo el día)",
+    // siempre en la hora local: es la que tiene en la cabeza quien habla.
+    function cuandoEsEvento(fechaISO, todoElDia) {
+        const d = new Date(fechaISO);
+        if (isNaN(d.getTime())) return 'sin fecha';
+        const opciones = { weekday: 'long', day: 'numeric', month: 'long' };
+        if (d.getFullYear() !== new Date().getFullYear()) opciones.year = 'numeric';
+        const dia = d.toLocaleDateString('es-MX', opciones);
+        return todoElDia ? `${dia} (todo el día)` : `${dia}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    async function mapaDeExpedientes() {
+        const activos = await obtenerExpedientes().catch(() => []);
+        const archivados = typeof obtenerExpedientesArchivados === 'function'
+            ? await obtenerExpedientesArchivados().catch(() => []) : [];
+        return new Map(activos.concat(archivados).map(e => [e.id, e]));
+    }
+
+    function expedienteDeEvento(ev, expedientesPorId) {
+        const exp = ev.expedienteId != null ? expedientesPorId.get(ev.expedienteId) : null;
+        return (exp && (exp.numero || exp.nombre)) || ev.expedienteTexto || ev.numeroExpediente || '';
+    }
+
+    // "123/2025", "0123/2025" y "el 123" apuntan al mismo expediente; un nombre
+    // ("Ramírez") basta con que aparezca. Un número no se busca como subcadena:
+    // "23/2025" no es el "123/2025".
+    function mismoExpediente(etiqueta, buscado) {
+        const e = normalizar(etiqueta).replace(/\s+/g, '');
+        const b = normalizar(buscado).replace(/\b(diagonal|barra)\b/g, '/').replace(/\s+/g, '');
+        if (!e || !b) return false;
+        const sinCeros = (s) => s.replace(/^0+(?=\d)/, '');
+        // Dicho con número: "123/2025", "exp. 0123/2025", "el 123".
+        const m = b.match(/(\d+)\/(\d{2,4})/) ||
+                  b.replace(/^(el|del|exp|expediente|num|numero)\.?/, '').match(/^(\d+)$/);
+        if (!m) return e.includes(b);
+        return (e.match(/\d+\/\d{2,4}/g) || []).some(x => {
+            const [n, anio] = x.split('/');
+            return sinCeros(n) === sinCeros(m[1]) && (!m[2] || anio === m[2]);
+        });
+    }
+
+    function buscarEventosPorCriterios(criterios, eventos, expedientesPorId) {
+        const tokens = normalizar(criterios.texto || '')
+            .replace(/\s*\b(diagonal|barra)\b\s*/g, '/')    // "123 diagonal 2025" dictado
+            .split(/[\s,;:"“”]+/)
+            .filter(t => t && !PALABRAS_RUIDO_EVENTO.has(t));
+        const fecha = /^\d{4}-\d{2}-\d{2}$/.test(textoLimpio(criterios.fecha)) ? textoLimpio(criterios.fecha) : null;
+        const hora = normalizarHora(criterios.hora);
+        const tipo = CORE_COLORES_EVENTOS[criterios.tipo] ? criterios.tipo : null;
+        const expediente = textoLimpio(criterios.expediente);
+
+        return eventos.filter(ev => {
+            const d = new Date(ev.fechaInicio);
+            if (fecha && (isNaN(d.getTime()) || fechaLocalISO(d) !== fecha)) return false;
+            if (hora && (ev.todoElDia || horaLocalDe(ev.fechaInicio) !== hora)) return false;
+            if (tipo && ev.tipo !== tipo) return false;
+            const suExpediente = expedienteDeEvento(ev, expedientesPorId);
+            if (expediente && !mismoExpediente(suExpediente, expediente)) return false;
+            if (tokens.length) {
+                const blob = normalizar([ev.titulo, ev.descripcion, ev.tipo, suExpediente].filter(Boolean).join(' '));
+                if (!tokens.every(t => blob.includes(t))) return false;
+            }
+            return true;
+        });
+    }
+
+    function describirCriterios(c) {
+        const partes = [];
+        if (textoLimpio(c.texto)) partes.push(`con “${textoLimpio(c.texto)}”`);
+        if (textoLimpio(c.expediente)) partes.push(`del expediente ${textoLimpio(c.expediente)}`);
+        if (c.tipo) partes.push(`de tipo ${c.tipo}`);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(textoLimpio(c.fecha))) {
+            partes.push('del ' + new Date(textoLimpio(c.fecha) + 'T12:00')
+                .toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }));
         }
-        if (typeof c.todoElDia === 'boolean') cambios.todoElDia = c.todoElDia;
-        if (!Object.keys(cambios).length) throw new Error('No hay cambios que aplicar');
+        if (normalizarHora(c.hora)) partes.push(`a las ${normalizarHora(c.hora)}`);
+        return partes.join(' ');
+    }
 
-        // Valores previos de los campos que cambian, para poder deshacer
-        const antes = {};
-        for (const k of Object.keys(cambios)) antes[k] = evento[k];
+    // Hacen falta datos del usuario, no es un fallo: varios eventos encajan.
+    function ErrorEleccionEvento(candidatos, descripcion, indice) {
+        const e = new Error(`Hay ${candidatos.length} eventos ${descripcion}. ¿Cuál?`);
+        e._eleccionEvento = { candidatos, indice };
+        return e;
+    }
 
-        await actualizarEventoCore(id, cambios);
-        registrarDeshacer({ tipo: 'evento_editado', id, antes, etiqueta: `edición del evento "${evento.titulo}"` });
-        toast('Evento actualizado', 'success');
-        return `Evento "${evento.titulo}" actualizado.`;
+    /**
+     * El evento del que habla el usuario. Por id si el modelo lo vio en la
+     * agenda; si no —la agenda del prompt es parcial—, por lo que dijo: palabras
+     * del título, su fecha, su hora, su expediente o su tipo, contra TODO el
+     * calendario. Lanza un aviso si no hay ninguno y una elección si hay varios.
+     */
+    function resolverEventoReferido(ref, eventos, expedientesPorId, indice) {
+        const id = parseInt(ref.eventoId);
+        if (id) {
+            const ev = eventos.find(e => e.id === id);
+            if (ev) return ev;
+        }
+        const b = ref.buscar || {};
+        const criterios = {
+            texto: b.texto || ref.eventoRef || '',
+            fecha: b.fecha, hora: b.hora, tipo: b.tipo, expediente: b.expediente
+        };
+        if (!Object.values(criterios).some(v => v && String(v).trim())) {
+            throw ErrorAviso('No identifiqué qué evento. Dime su título, su fecha o su expediente.');
+        }
+
+        let candidatos = buscarEventosPorCriterios(criterios, eventos, expedientesPorId);
+        if (candidatos.length > 1) {
+            // Entre varios, lo que todavía no pasa: "la audiencia del 123" es
+            // la que viene, no la del mes pasado.
+            const hoy = new Date();
+            hoy.setHours(0, 0, 0, 0);
+            const proximos = candidatos.filter(e => new Date(e.fechaInicio) >= hoy);
+            if (proximos.length) candidatos = proximos;
+        }
+        if (candidatos.length === 1) return candidatos[0];
+
+        const descripcion = describirCriterios(criterios);
+        if (!candidatos.length) throw ErrorAviso(`No encontré ningún evento ${descripcion}.`);
+        candidatos.sort((a, b2) => new Date(a.fechaInicio) - new Date(b2.fechaInicio));
+        throw ErrorEleccionEvento(candidatos, descripcion, indice);
+    }
+
+    // El expediente al que se quiere pasar un evento. Si encajan varios se
+    // pide precisarlo, en vez de escoger uno.
+    async function expedienteParaEvento(c) {
+        if (c.expedienteId != null && c.expedienteId !== '') {
+            const exp = await obtenerExpediente(parseInt(c.expedienteId)).catch(() => null);
+            if (exp) return exp;
+        }
+        const ref = textoLimpio(c.expedienteRef);
+        if (!ref || typeof resolverExpedientePorReferencia !== 'function') throw ErrorAviso('¿A qué expediente lo paso?');
+        const r = await resolverExpedientePorReferencia(ref);
+        if (r.estado === 'unico') return r.expediente;
+        if (r.estado === 'ninguno') throw ErrorAviso(`No encontré el expediente "${ref}".`);
+        throw ErrorAviso(`"${ref}" coincide con varios expedientes: ` +
+            r.candidatos.slice(0, 4).map(x => etiquetaExpediente(x.expediente)).join('; ') + '. Dímelo completo.');
+    }
+
+    /** Los campos que cambian de verdad, a partir de lo que se pidió. */
+    async function calcularCambiosEvento(evento, c) {
+        c = c || {};
+        const cambios = {};
+
+        const titulo = textoLimpio(c.titulo);
+        if (titulo && titulo !== evento.titulo) cambios.titulo = titulo;
+        if (c.tipo && CORE_COLORES_EVENTOS[c.tipo] && c.tipo !== evento.tipo) cambios.tipo = c.tipo; // el color lo ajusta el núcleo
+
+        // Descripción: reemplazar, añadir al final o borrar. Una cadena vacía
+        // NO borra: el modelo a veces rellena todos los campos del esquema, y
+        // así se perdía la descripción entera al pedir solo otra fecha.
+        const descripcionActual = evento.descripcion || '';
+        let descripcion = descripcionActual;
+        if (c.borrarDescripcion === true) descripcion = '';
+        if (textoLimpio(c.descripcion)) descripcion = textoLimpio(c.descripcion);
+        const agregado = textoLimpio(c.agregarDescripcion);
+        if (agregado) descripcion = descripcion ? descripcion + '\n' + agregado : agregado;
+        if (descripcion !== descripcionActual) cambios.descripcion = descripcion;
+
+        // Fecha y hora, siempre en hora local. "moverDias" se calcula aquí,
+        // sobre la fecha real del evento: la suma que hacía el modelo fallaba
+        // en los cambios de mes.
+        const base = new Date(evento.fechaInicio);
+        const fechaPedida = textoLimpio(c.fecha);
+        let fecha = /^\d{4}-\d{2}-\d{2}$/.test(fechaPedida) ? fechaPedida : null;
+        if (fechaPedida && !fecha) throw ErrorAviso(`No entendí la fecha "${fechaPedida}".`);
+        const dias = parseInt(c.moverDias, 10);
+        if (!fecha && Number.isFinite(dias) && dias !== 0 && !isNaN(base.getTime())) {
+            fecha = fechaLocalISO(new Date(base.getFullYear(), base.getMonth(), base.getDate() + dias));
+        }
+        const hora = normalizarHora(c.hora);
+        if (c.hora && !hora) throw ErrorAviso(`No entendí la hora "${c.hora}".`);
+        if (fecha || hora) {
+            const f = fecha || fechaLocalISO(base);
+            const h = hora || horaLocalDe(evento.fechaInicio) || '09:00';
+            const nueva = new Date(f + 'T' + h);
+            if (isNaN(nueva.getTime())) throw ErrorAviso('Fecha u hora inválida: ' + [c.fecha, c.hora].filter(Boolean).join(' '));
+            if (nueva.toISOString() !== evento.fechaInicio) cambios.fechaInicio = nueva.toISOString();
+        }
+        // Con hora deja de ser "todo el día". Sin hora solo cabe quitársela:
+        // para ponérsela hay que decir cuál, y un todoElDia:false que el
+        // modelo rellenó de paso convertía el día completo en una cita a las 9.
+        if (hora) {
+            if (evento.todoElDia) cambios.todoElDia = false;
+        } else if (c.todoElDia === true && !evento.todoElDia) {
+            cambios.todoElDia = true;
+        }
+
+        if (typeof c.alerta === 'boolean' && c.alerta !== !!evento.alerta) cambios.alerta = c.alerta;
+
+        if (c.sinExpediente === true) {
+            if (evento.expedienteId != null || evento.expedienteTexto) {
+                cambios.expedienteId = null;
+                cambios.expedienteTexto = null;
+            }
+        } else if ((c.expedienteId != null && c.expedienteId !== '') || textoLimpio(c.expedienteRef)) {
+            const exp = await expedienteParaEvento(c);
+            if (exp.id !== evento.expedienteId || evento.expedienteTexto) {
+                cambios.expedienteId = exp.id;
+                cambios.expedienteTexto = null;
+            }
+        }
+        return cambios;
+    }
+
+    function describirCambiosEvento(evento, cambios, expedientesPorId) {
+        const partes = [];
+        if (cambios.fechaInicio !== undefined || cambios.todoElDia !== undefined) {
+            const fecha = cambios.fechaInicio !== undefined ? cambios.fechaInicio : evento.fechaInicio;
+            const todoElDia = cambios.todoElDia !== undefined ? cambios.todoElDia : !!evento.todoElDia;
+            partes.push(`${cuandoEsEvento(evento.fechaInicio, evento.todoElDia)} → ${cuandoEsEvento(fecha, todoElDia)}`);
+        }
+        if (cambios.titulo !== undefined) partes.push(`título → “${cambios.titulo}”`);
+        if (cambios.tipo !== undefined) partes.push(`tipo → ${cambios.tipo}`);
+        if (cambios.descripcion !== undefined) {
+            const d = cambios.descripcion;
+            partes.push(d ? `descripción → “${d.length > 90 ? d.slice(0, 90) + '…' : d}”` : 'sin descripción');
+        }
+        if (cambios.expedienteId !== undefined) {
+            const exp = cambios.expedienteId != null ? expedientesPorId.get(cambios.expedienteId) : null;
+            partes.push(cambios.expedienteId == null ? 'sin expediente'
+                : `expediente → ${exp ? (exp.numero || exp.nombre) : '#' + cambios.expedienteId}`);
+        }
+        if (cambios.alerta !== undefined) partes.push(cambios.alerta ? 'con alerta' : 'sin alerta');
+        return partes.join('; ');
+    }
+
+    async function planEditarEventos(p) {
+        const [eventos, expedientesPorId] = await Promise.all([obtenerEventos(), mapaDeExpedientes()]);
+
+        // Dos órdenes sobre el mismo evento se juntan en una.
+        const porEvento = new Map();
+        edicionesDe(p).forEach((ed, i) => {
+            const evento = resolverEventoReferido(ed, eventos, expedientesPorId, i);
+            const previo = porEvento.get(evento.id);
+            porEvento.set(evento.id, { evento, pedidos: { ...(previo ? previo.pedidos : {}), ...(ed.cambios || {}) } });
+        });
+
+        const items = [];
+        let pidioAlgo = false;
+        for (const { evento, pedidos } of porEvento.values()) {
+            if (Object.values(pedidos).some(v => v !== undefined && v !== null && v !== '' && v !== false)) pidioAlgo = true;
+            const cambios = await calcularCambiosEvento(evento, pedidos);
+            if (!Object.keys(cambios).length) continue;
+            items.push({ evento, cambios, detalle: `“${evento.titulo}”: ${describirCambiosEvento(evento, cambios, expedientesPorId)}` });
+        }
+        if (!items.length) {
+            throw ErrorAviso(pidioAlgo ? 'Eso ya está así en el calendario: no hay nada que cambiar.'
+                                       : '¿Qué quieres cambiar del evento: la fecha, la hora, el título o la descripción?');
+        }
+        return {
+            items,
+            resumen: items.length === 1 ? `Cambiar ${items[0].detalle}` : `Cambiar ${items.length} eventos`,
+            detalles: items.length === 1 ? [] : items.map(x => x.detalle)
+        };
+    }
+
+    async function aplicarEdicionesEventos(plan) {
+        const hechos = [];
+        for (const { evento, cambios } of plan.items) {
+            // Lo de antes, campo por campo, para poder deshacer.
+            const antes = {};
+            for (const k of Object.keys(cambios)) antes[k] = evento[k] !== undefined ? evento[k] : null;
+            await actualizarEventoCore(evento.id, cambios);
+            hechos.push({ id: evento.id, antes, titulo: evento.titulo });
+        }
+        if (hechos.length === 1) {
+            registrarDeshacer({ tipo: 'evento_editado', id: hechos[0].id, antes: hechos[0].antes, etiqueta: `edición del evento "${hechos[0].titulo}"` });
+            toast('Evento actualizado', 'success');
+            const ev = (await obtenerEventos()).find(e => e.id === hechos[0].id);
+            return ev ? `Listo: “${ev.titulo}” queda el ${cuandoEsEvento(ev.fechaInicio, ev.todoElDia)}.` : 'Evento actualizado.';
+        }
+        registrarDeshacer({ tipo: 'eventos_editados', eventos: hechos, etiqueta: `edición de ${hechos.length} eventos` });
+        toast(`${hechos.length} eventos actualizados`, 'success');
+        return `Listo: actualicé ${hechos.length} eventos.`;
+    }
+
+    async function planEliminarEventos(p) {
+        const [eventos, expedientesPorId] = await Promise.all([obtenerEventos(), mapaDeExpedientes()]);
+        const elegidos = new Map();
+        eventosAEliminarDe(p).forEach((ref, i) => {
+            const ev = resolverEventoReferido(ref, eventos, expedientesPorId, i);
+            elegidos.set(ev.id, ev);
+        });
+        const items = [...elegidos.values()].map(evento => ({
+            evento,
+            detalle: `“${evento.titulo}” (${cuandoEsEvento(evento.fechaInicio, evento.todoElDia)})`
+        }));
+        return {
+            items,
+            resumen: items.length === 1 ? `Eliminar ${items[0].detalle}` : `Eliminar ${items.length} eventos`,
+            detalles: items.length === 1 ? [] : items.map(x => x.detalle)
+        };
+    }
+
+    async function aplicarEliminacionEventos(plan) {
+        const copias = [];
+        for (const { evento } of plan.items) {
+            const eliminado = await eliminarEventoCore(evento.id);
+            const copia = { ...eliminado };
+            delete copia.id;
+            delete copia.googleCalEventId;
+            copias.push(copia);
+        }
+        if (copias.length === 1) {
+            registrarDeshacer({ tipo: 'evento_eliminado', evento: copias[0], etiqueta: `eliminación del evento "${copias[0].titulo}"` });
+            toast('Evento eliminado', 'success');
+            return `Evento "${copias[0].titulo}" eliminado.`;
+        }
+        registrarDeshacer({ tipo: 'eventos_eliminados', eventos: copias, etiqueta: `eliminación de ${copias.length} eventos` });
+        toast(`${copias.length} eventos eliminados`, 'success');
+        return `Eliminé ${copias.length} eventos.`;
+    }
+
+    // Sin confirmación: para dispararlas desde otra parte de la app (VOZ.ejecutar).
+    async function accEditarEvento(p) {
+        return aplicarEdicionesEventos(await planEditarEventos(p));
     }
 
     async function accEliminarEvento(p) {
-        const id = parseInt(p.eventoId);
-        if (!id) throw new Error('No identifiqué qué evento eliminar');
-        const eliminado = await eliminarEventoCore(id);
-        const copia = { ...eliminado };
-        delete copia.id;
-        delete copia.googleCalEventId;
-        registrarDeshacer({ tipo: 'evento_eliminado', evento: copia, etiqueta: `eliminación del evento "${eliminado.titulo}"` });
-        toast('Evento eliminado', 'success');
-        return `Evento "${eliminado.titulo}" eliminado.`;
+        return aplicarEliminacionEventos(await planEliminarEventos(p));
+    }
+
+    async function prepararCambioDeEventos(r) {
+        let plan;
+        try {
+            plan = r.accion === 'editar_evento'
+                ? await planEditarEventos(r.parametros || {})
+                : await planEliminarEventos(r.parametros || {});
+        } catch (e) {
+            if (e._eleccionEvento) { ofrecerEventos(e, r); return; }
+            informarFallo(e);
+            return;
+        }
+        pedirConfirmacion({ ...r, _plan: plan }, plan.resumen, plan.detalles);
+    }
+
+    // Varios eventos encajan: se enseñan para elegir, y al elegir se vuelve a
+    // preparar la misma orden con ese evento ya fijado.
+    function ofrecerEventos(e, r) {
+        const { candidatos, indice } = e._eleccionEvento;
+        const visibles = candidatos.slice(0, 8);
+        const div = agregarMensaje('asistente', '🔎 <strong>' + esc(e.message) + '</strong>');
+        hablar(e.message);
+
+        // Para que también pueda contestar hablando ("el de las diez").
+        const ultimo = conversacion[conversacion.length - 1];
+        if (ultimo && ultimo.role === 'assistant') {
+            ultimo.content += '\nOpciones: ' + visibles.map(ev =>
+                `[eventoId ${ev.id}] "${ev.titulo}" ${cuandoEsEvento(ev.fechaInicio, ev.todoElDia)}`).join('; ');
+        }
+        if (!div) return;
+
+        visibles.forEach(ev => {
+            const fila = document.createElement('div');
+            fila.className = 'voz-resultado';
+            fila.innerHTML =
+                '<div class="voz-resultado-info">' +
+                    '<strong>' + esc(ev.titulo) + '</strong>' +
+                    '<br><small>' + esc(cuandoEsEvento(ev.fechaInicio, ev.todoElDia)) + '</small>' +
+                '</div>';
+            const btns = document.createElement('div');
+            btns.className = 'voz-resultado-btns';
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'voz-chip';
+            b.textContent = 'Este';
+            b.addEventListener('click', () => {
+                const editar = r.accion === 'editar_evento';
+                const lista = editar ? edicionesDe(r.parametros || {}) : eventosAEliminarDe(r.parametros || {});
+                lista[indice] = { ...lista[indice], eventoId: ev.id };
+                agregarMensaje('usuario', esc(ev.titulo));
+                prepararCambioDeEventos({ ...r, parametros: { ...(r.parametros || {}), [editar ? 'ediciones' : 'eventos']: lista } });
+            });
+            btns.appendChild(b);
+            fila.appendChild(btns);
+            div.appendChild(fila);
+        });
+        if (candidatos.length > visibles.length) {
+            const mas = document.createElement('div');
+            mas.className = 'voz-mas';
+            mas.textContent = `y ${candidatos.length - visibles.length} más — dime la fecha o la hora para acotar.`;
+            div.appendChild(mas);
+        }
     }
 
     async function accConsultarAgenda(p) {
@@ -1436,61 +1860,78 @@
         return '';
     }
 
-    async function accBuscarTSJ(p) {
-        // Si mencionó un expediente, se usa su juzgado y su número en vez de
-        // abrir una ventana por cada juzgado del estado.
-        if (!p.juzgado && (p.expedienteId != null || p.expedienteRef)) {
-            let expTSJ = null;
-            try {
-                expTSJ = await resolverExpedienteDeParametros(p, 'buscar_tsj');
-            } catch (e) {
-                // Igual que en el PJF: un estrado se consulta muchas veces de
-                // un asunto que todavía no está registrado.
-                if (e._esEleccion || !p.valor) throw e;
-            }
-            if (expTSJ) {
-                if (expTSJ.juzgado) p = { ...p, juzgado: expTSJ.juzgado };
-                if (!p.valor && expTSJ.numero) p = { ...p, valor: expTSJ.numero, tipoBusqueda: 'numero' };
-            }
-        }
-        if (!p.valor) throw new Error('Falta el número o nombre a buscar');
-        const tipo = p.tipoBusqueda === 'nombre' ? 'nombre' : 'numero';
-        if (typeof construirUrlBusqueda !== 'function') throw new Error('El buscador TSJ no está disponible');
+    // ==================== BÚSQUEDAS EN ESTRADOS ====================
+    // Cada búsqueda se resuelve primero a "consultas" —una por ventana: un
+    // órgano, un tipo de asunto y un número— y solo después se abre algo.
+    // Separarlo es lo que permite pedir varias a la vez (la queja y el amparo
+    // directo del mismo número, todos los tipos de asunto de un órgano, varios
+    // órganos o juzgados, el TSJ y el PJF en la misma orden) y enseñar, antes
+    // de abrir nada, la lista exacta de lo que se va a abrir.
 
-        if (p.juzgado) {
-            const match = matchJuzgadoTSJ(p.juzgado);
-            if (!match) throw new Error('No identifiqué el juzgado "' + p.juzgado + '"');
-            const url = construirUrlBusqueda(match, tipo, p.valor);
-            if (typeof abrirBusquedaPopup === 'function') abrirBusquedaPopup(url, p.valor + ' en ' + match);
-            else if (url) window.open(url, '_blank');
-            return `Abrí la búsqueda de "${p.valor}" en ${match}.`;
-        }
+    const ACCIONES_BUSQUEDA = new Set(['buscar_tsj', 'buscar_pjf', 'buscar_varios']);
 
-        // Búsqueda en múltiples juzgados (ya confirmada por el usuario)
-        const ambito = ['todos', 'primera', 'segunda'].includes(p.ambito) ? p.ambito : 'todos';
-        let lista = [];
-        if (ambito === 'todos' || ambito === 'primera') {
-            if (typeof JUZGADOS !== 'undefined') lista = lista.concat(Object.keys(JUZGADOS));
-        }
-        if (ambito === 'todos' || ambito === 'segunda') {
-            if (typeof SALAS_SEGUNDA_INSTANCIA !== 'undefined') lista = lista.concat(Object.keys(SALAS_SEGUNDA_INSTANCIA));
-        }
-        if (!lista.length) throw new Error('No hay juzgados disponibles para ese ámbito');
+    // "Todos los tipos de asunto": no hay que elegir uno.
+    const RE_TODOS_LOS_TIPOS = /^(todos?|todas?|cualquiera|cualquier tipo|todos los tipos( de asunto)?|todos los asuntos|todo)$/;
 
-        let delay = 0;
-        for (const juzgado of lista) {
-            const url = construirUrlBusqueda(juzgado, tipo, p.valor);
-            if (!url) continue;
-            setTimeout(() => {
-                if (typeof abrirBusquedaPopup === 'function') abrirBusquedaPopup(url, p.valor + ' en ' + juzgado.substring(0, 30));
-                else window.open(url, '_blank');
-            }, delay);
-            delay += 600;
-        }
-        return `Abriendo búsqueda de "${p.valor}" en ${lista.length} juzgados del TSJ. Permite las ventanas emergentes.`;
+    // Tipos que no son asuntos que alguien consulte por número.
+    const RE_TIPO_NO_BUSCABLE = /comunicaciones oficiales|varios administrativo/i;
+
+    // Una lista de lo dictado: la lista si viene, si no el valor suelto.
+    function textosDe(lista, suelto) {
+        const base = Array.isArray(lista) && lista.length ? lista : (suelto ? [suelto] : []);
+        return base.map(x => String(x == null ? '' : x).trim()).filter(Boolean);
     }
 
-    async function accBuscarPJF(p) {
+    function pideTodosLosTipos(tipos) {
+        return tipos.some(t => RE_TODOS_LOS_TIPOS.test(normalizar(t)));
+    }
+
+    function tiposBuscablesDeOrgano(org) {
+        const todos = typeof tiposAsuntoDeOrgano === 'function' ? tiposAsuntoDeOrgano(org) : [];
+        return todos.filter(t => !RE_TIPO_NO_BUSCABLE.test(t.nombre));
+    }
+
+    function consultaPJF(org, tipo, numero) {
+        return {
+            institucion: 'PJF',
+            numero,
+            organo: org.nombre,
+            tipo: tipo.nombre,
+            etiqueta: `${tipo.nombre} ${numero} — ${org.nombre}`,
+            url: construirURLPJF(org.id, tipo.id, numero, 0),
+            // Una ventana por órgano Y tipo: con el mismo nombre, la queja
+            // cargaría encima del amparo y solo quedaría una.
+            ventana: `pjf_${org.id}_${tipo.id}`
+        };
+    }
+
+    function consultaTSJ(juzgado, tipoBusqueda, valor) {
+        const url = construirUrlBusqueda(juzgado, tipoBusqueda, valor);
+        if (!url) return null;
+        return { institucion: 'TSJ', numero: valor, organo: juzgado, tipo: '', etiqueta: `${valor} — ${juzgado}`, url, ventana: null };
+    }
+
+    // El órgano y el tipo guardados en un expediente del catálogo.
+    function organoDeExpediente(exp) {
+        const org = typeof organismoPJFPorId === 'function' ? organismoPJFPorId(exp.pjfOrgId) : null;
+        return org || { id: exp.pjfOrgId, nombre: exp.juzgado || `órgano ${exp.pjfOrgId}`, tipoOrganismoId: null };
+    }
+
+    function tipoDeExpediente(org, exp) {
+        const tipos = typeof tiposAsuntoDeOrgano === 'function' ? tiposAsuntoDeOrgano(org) : [];
+        return tipos.find(t => String(t.id) === String(exp.pjfTipoAsunto)) ||
+            { id: exp.pjfTipoAsunto, nombre: 'Tipo ' + exp.pjfTipoAsunto };
+    }
+
+    /**
+     * Consultas del PJF. Admite uno o varios órganos (organismo / organismos),
+     * uno o varios tipos de asunto (tipoAsunto / tiposAsunto, o "todos") y el
+     * número dictado, o un expediente del catálogo con sus datos del PJF.
+     */
+    async function planBuscarPJF(p) {
+        const refsOrganos = textosDe(p.organismos, p.organismo);
+        const tiposPedidos = textosDe(p.tiposAsunto, p.tipoAsunto);
+
         // Aquí la referencia también sirve: "busca en el PJF lo de Ramírez".
         // Pero estas consultas se hacen sobre todo con asuntos que NO están
         // dados de alta —para eso se dicta el órgano—, así que no encontrarlo
@@ -1502,90 +1943,255 @@
         } catch (e) {
             // Elegir entre varios candidatos sí es útil y se respeta. Lo que no
             // vale es rendirse teniendo el órgano o el número que dictó.
-            if (e._esEleccion || !(p.organismo || p.numero)) throw e;
+            if (e._esEleccion || !(refsOrganos.length || p.numero)) throw e;
         }
-        const numero = (exp && exp.numero) || p.numero || '';
+        const numero = String((exp && exp.numero) || p.numero || '').trim();
+        const plan = { consultas: [], avisos: [], numero };
+        if (typeof construirURLPJF !== 'function') throw new Error('El buscador del PJF no está disponible');
+        if (typeof asegurarCatalogosPJF === 'function') await asegurarCatalogosPJF();
 
-        if (exp && exp.pjfOrgId && exp.pjfTipoAsunto && numero && typeof construirURLPJF === 'function') {
-            const url = construirURLPJF(exp.pjfOrgId, exp.pjfTipoAsunto, numero, 0);
-            window.open(url, 'pjf_expediente', 'width=1024,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no');
-            return `Abrí la consulta del expediente ${numero} en el portal del PJF.`;
-        }
-
-        // Órganos dictados por nombre → resolver contra el catálogo PJF.
-        // Pueden ser varios, del mismo circuito o de circuitos distintos, y
-        // cada referencia puede además abarcar varios órganos por sí sola:
-        // "los colegiados del 27" son los tres.
-        const refsOrganos = Array.isArray(p.organismos) && p.organismos.length
-            ? p.organismos.map(x => String(x || '').trim()).filter(Boolean)
-            : (p.organismo ? [String(p.organismo).trim()] : []);
-
-        if (refsOrganos.length && typeof buscarOrganismosPJF === 'function' && typeof construirURLPJF === 'function') {
-            if (typeof asegurarCatalogosPJF === 'function') await asegurarCatalogosPJF();
-
-            const organos = [];
-            const vistos = new Set();
-            const sinResolver = [];
+        // Órganos: los dictados. Si no dictó ninguno, el del expediente guardado.
+        // Cada referencia puede abarcar varios: "los colegiados del 27" son tres.
+        const organos = [];
+        const vistos = new Set();
+        const agregar = (o) => {
+            if (o && !vistos.has(String(o.id))) { vistos.add(String(o.id)); organos.push(o); }
+        };
+        const sinResolver = [];
+        if (refsOrganos.length) {
             for (const ref of refsOrganos) {
-                const encontrados = buscarOrganismosPJF(ref) || [];
-                if (!encontrados.length) { sinResolver.push(ref); continue; }
-                for (const o of encontrados) {
-                    if (!vistos.has(o.id)) { vistos.add(o.id); organos.push(o); }
-                }
+                const encontrados = (typeof buscarOrganismosPJF === 'function' ? buscarOrganismosPJF(ref) : null) || [];
+                if (!encontrados.length) sinResolver.push(ref);
+                encontrados.forEach(agregar);
             }
+        } else if (exp && exp.pjfOrgId) {
+            agregar(organoDeExpediente(exp));
+        }
+        if (sinResolver.length) plan.avisos.push(`no identifiqué "${sinResolver.join('", "')}"`);
 
-            if (organos.length) {
-                if (!numero) throw new Error('Falta el número de expediente para consultar en el PJF');
+        // Sin órgano no hay consulta que armar: quien ejecuta decide qué hacer.
+        if (!organos.length) {
+            plan.sinOrgano = true;
+            return plan;
+        }
+        if (!numero) throw new Error('Falta el número de expediente para consultar en el PJF');
 
-                // Abrir treinta ventanas no ayuda a nadie y el navegador las
-                // bloquea igual: mejor decir cuántas salieron y que acote.
-                if (organos.length > MAX_ORGANOS_PJF) {
-                    throw ErrorAviso(`Eso abarca ${organos.length} órganos (${organos.slice(0, 3).map(o => o.nombre).join('; ')}...). ` +
-                        `Son demasiadas ventanas: acota el circuito o dime cuáles.`);
-                }
-
-                // El tipo de asunto se resuelve por órgano: "amparo directo" no
-                // existe en todos los tipos de órgano.
-                const aAbrir = [];
-                const sinTipo = [];
-                for (const org of organos) {
-                    const ta = p.tipoAsunto ? buscarTipoAsuntoPJF(org, p.tipoAsunto) : null;
-                    if (ta) aAbrir.push({ org, ta });
-                    else sinTipo.push(org);
-                }
-
-                if (!aAbrir.length) {
-                    const tipos = (typeof tiposAsuntoDeOrgano === 'function' ? tiposAsuntoDeOrgano(organos[0]) : [])
-                        .map(t => t.nombre).slice(0, 12).join(', ');
-                    throw new Error(`Identifiqué ${organos.length === 1 ? `el órgano "${organos[0].nombre}"` : `${organos.length} órganos`} pero no el tipo de asunto. ` +
-                        (tipos ? `Los válidos son: ${tipos}. ` : '') + 'Repite indicando el tipo de asunto.');
-                }
-
-                let espera = 0;
-                for (const { org, ta } of aAbrir) {
-                    const url = construirURLPJF(org.id, ta.id, numero, 0);
-                    setTimeout(() => {
-                        window.open(url, 'pjf_' + org.id,
-                            'width=1024,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no');
-                    }, espera);
-                    espera += 600;   // el navegador bloquea las ráfagas
-                }
-
-                const avisos = [];
-                if (sinTipo.length) avisos.push(`${sinTipo.length} sin ese tipo de asunto`);
-                if (sinResolver.length) avisos.push(`no identifiqué "${sinResolver.join('", "')}"`);
-                const cola = avisos.length ? ` (${avisos.join('; ')})` : '';
-
-                if (aAbrir.length === 1) {
-                    return `Abrí la consulta del ${numero} (${aAbrir[0].ta.nombre}) en ${aAbrir[0].org.nombre}.${cola}`;
-                }
-                return `Abriendo el ${numero} en ${aAbrir.length} órganos: ` +
-                    aAbrir.map(x => x.org.nombre).join('; ') + `.${cola} Permite las ventanas emergentes.`;
-            }
-            // Si ningún órgano se resolvió, caer al plan B de abajo
+        // Abrir treinta ventanas no ayuda a nadie y el navegador las bloquea
+        // igual: mejor decir cuántas salieron y que acote.
+        if (organos.length > MAX_ORGANOS_PJF) {
+            throw ErrorAviso(`Eso abarca ${organos.length} órganos (${organos.slice(0, 3).map(o => o.nombre).join('; ')}...). ` +
+                `Son demasiadas ventanas: acota el circuito o dime cuáles.`);
         }
 
-        // Sin organismo resuelto: llevar a la página PJF con el número precargado
+        // El tipo de asunto se resuelve por órgano: "amparo directo" no existe
+        // en todos los tipos de órgano.
+        const todos = pideTodosLosTipos(tiposPedidos);
+        const sinTipo = [];
+        for (const org of organos) {
+            let tipos = [];
+            if (todos) {
+                tipos = tiposBuscablesDeOrgano(org);
+            } else if (tiposPedidos.length) {
+                for (const texto of tiposPedidos) {
+                    const ta = buscarTipoAsuntoPJF(org, texto);
+                    if (ta && !tipos.some(t => t.id === ta.id)) tipos.push(ta);
+                }
+            } else if (exp && exp.pjfTipoAsunto && String(exp.pjfOrgId) === String(org.id)) {
+                tipos = [tipoDeExpediente(org, exp)];
+            } else {
+                // No dijo el tipo de asunto. Si el órgano solo tiene uno, es
+                // ese; si tiene varios, se ofrecen todos para que elija, sin
+                // abrir nada por su cuenta.
+                tipos = tiposBuscablesDeOrgano(org);
+                if (tipos.length > 1) plan.faltaTipo = true;
+            }
+            if (!tipos.length) { sinTipo.push(org); continue; }
+            tipos.forEach(ta => plan.consultas.push(consultaPJF(org, ta, numero)));
+        }
+
+        if (!plan.consultas.length) {
+            const muestra = sinTipo[0] || organos[0];
+            const validos = tiposBuscablesDeOrgano(muestra).map(t => t.nombre).slice(0, 14).join(', ');
+            throw ErrorAviso(`Identifiqué ${organos.length === 1 ? `el órgano "${organos[0].nombre}"` : `${organos.length} órganos`} ` +
+                `pero no el tipo de asunto${tiposPedidos.length ? ` "${tiposPedidos.join('", "')}"` : ''}. ` +
+                (validos ? `Los válidos son: ${validos}. ` : '') + 'Repite indicando el tipo de asunto.');
+        }
+        if (sinTipo.length) plan.avisos.push(`${sinTipo.length} sin ese tipo de asunto`);
+        if (plan.consultas.length > MAX_CONSULTAS) {
+            throw ErrorAviso(`Eso son ${plan.consultas.length} consultas. Son demasiadas: acota los órganos o los tipos de asunto.`);
+        }
+        return plan;
+    }
+
+    /**
+     * Consultas del TSJ de Quintana Roo: en un juzgado, en varios (juzgados) o
+     * en todos los de un ámbito. Aquí no hay tipos de asunto: el buscador de
+     * estrados encuentra el número en cualquiera.
+     */
+    async function planBuscarTSJ(p) {
+        const refsJuzgados = textosDe(p.juzgados, p.juzgado);
+        let valor = String(p.valor || '').trim();
+        let tipo = p.tipoBusqueda === 'nombre' ? 'nombre' : 'numero';
+
+        // Si mencionó un expediente, se usa su juzgado y su número en vez de
+        // abrir una ventana por cada juzgado del estado.
+        if (!refsJuzgados.length && (p.expedienteId != null || p.expedienteRef)) {
+            let expTSJ = null;
+            try {
+                expTSJ = await resolverExpedienteDeParametros(p, 'buscar_tsj');
+            } catch (e) {
+                // Igual que en el PJF: un estrado se consulta muchas veces de
+                // un asunto que todavía no está registrado.
+                if (e._esEleccion || !valor) throw e;
+            }
+            if (expTSJ) {
+                if (expTSJ.juzgado) refsJuzgados.push(expTSJ.juzgado);
+                if (!valor && expTSJ.numero) { valor = expTSJ.numero; tipo = 'numero'; }
+            }
+        }
+        if (!valor) throw new Error('Falta el número o nombre a buscar');
+        if (typeof construirUrlBusqueda !== 'function') throw new Error('El buscador TSJ no está disponible');
+
+        const plan = { consultas: [], avisos: [], numero: valor };
+        let juzgados = [];
+        if (refsJuzgados.length) {
+            const sinResolver = [];
+            for (const ref of refsJuzgados) {
+                const match = matchJuzgadoTSJ(ref);
+                if (!match) sinResolver.push(ref);
+                else if (!juzgados.includes(match)) juzgados.push(match);
+            }
+            if (!juzgados.length) throw new Error('No identifiqué el juzgado "' + sinResolver.join('", "') + '"');
+            if (sinResolver.length) plan.avisos.push(`no identifiqué "${sinResolver.join('", "')}"`);
+        } else {
+            // En todos los juzgados de un ámbito (se confirma antes de abrir).
+            const ambito = ['todos', 'primera', 'segunda'].includes(p.ambito) ? p.ambito : 'todos';
+            if ((ambito === 'todos' || ambito === 'primera') && typeof JUZGADOS !== 'undefined') {
+                juzgados = juzgados.concat(Object.keys(JUZGADOS));
+            }
+            if ((ambito === 'todos' || ambito === 'segunda') && typeof SALAS_SEGUNDA_INSTANCIA !== 'undefined') {
+                juzgados = juzgados.concat(Object.keys(SALAS_SEGUNDA_INSTANCIA));
+            }
+            if (!juzgados.length) throw new Error('No hay juzgados disponibles para ese ámbito');
+        }
+        for (const juzgado of juzgados) {
+            const c = consultaTSJ(juzgado, tipo, valor);
+            if (c) plan.consultas.push(c);
+        }
+        return plan;
+    }
+
+    /**
+     * Varios asuntos en una orden: números distintos, o unos del TSJ y otros
+     * del PJF. Cada búsqueda lleva los parámetros de su acción; lo que no se
+     * pueda preparar se avisa sin tumbar al resto.
+     */
+    async function planBuscarVarios(p) {
+        const busquedas = Array.isArray(p.busquedas) ? p.busquedas : [];
+        const plan = { consultas: [], avisos: [], numero: '' };
+        const vistas = new Set();
+        let numeros = [];
+
+        for (const b of busquedas) {
+            const accion = b && b.accion;
+            const params = (b && b.parametros) || {};
+            if (accion !== 'buscar_pjf' && accion !== 'buscar_tsj') continue;
+            const cual = params.numero || params.valor || 'una búsqueda';
+
+            let parcial;
+            try {
+                parcial = accion === 'buscar_pjf' ? await planBuscarPJF(params) : await planBuscarTSJ(params);
+            } catch (e) {
+                // Si hay que elegir expediente, las opciones ya están en
+                // pantalla y se pueden usar aparte; el resto sigue.
+                plan.avisos.push(e._esEleccion ? `${cual}: elige el expediente arriba` : `${cual}: ${e.message}`);
+                continue;
+            }
+            if (parcial.sinOrgano) plan.avisos.push(`${cual}: no identifiqué el órgano`);
+            parcial.avisos.forEach(a => plan.avisos.push(`${cual}: ${a}`));
+            if (parcial.faltaTipo) plan.faltaTipo = true;
+            for (const c of parcial.consultas) {
+                if (vistas.has(c.url)) continue;
+                vistas.add(c.url);
+                plan.consultas.push(c);
+            }
+            if (parcial.consultas.length && !numeros.includes(parcial.numero)) numeros.push(parcial.numero);
+        }
+
+        if (!plan.consultas.length) {
+            throw ErrorAviso('No pude preparar ninguna de las búsquedas' + (plan.avisos.length ? ': ' + plan.avisos.join('; ') : '') + '.');
+        }
+        if (plan.consultas.length > MAX_CONSULTAS) {
+            throw ErrorAviso(`Eso son ${plan.consultas.length} consultas. Son demasiadas: divídelo en varias órdenes.`);
+        }
+        plan.numero = numeros.join(', ');
+        return plan;
+    }
+
+    async function planificarBusqueda(accion, p) {
+        if (accion === 'buscar_pjf') return planBuscarPJF(p);
+        if (accion === 'buscar_tsj') return planBuscarTSJ(p);
+        return planBuscarVarios(p);
+    }
+
+    function abrirConsulta(c) {
+        if (c.institucion === 'TSJ' && typeof abrirBusquedaPopup === 'function') {
+            abrirBusquedaPopup(c.url, c.etiqueta);
+            return;
+        }
+        window.open(c.url, c.ventana || '_blank', 'width=1024,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no');
+    }
+
+    function abrirConsultas(consultas) {
+        consultas.forEach((c, i) => {
+            // La primera en el acto: si viene de un clic, el navegador la deja
+            // pasar. Las demás espaciadas, porque bloquea las ráfagas.
+            if (i === 0) abrirConsulta(c);
+            else setTimeout(() => abrirConsulta(c), i * 600);
+        });
+    }
+
+    // La lista de consultas en el chat, con un botón por cada una: sirve para
+    // reabrir la que el navegador bloqueó y para elegir cuando no se abren solas.
+    function mostrarListaConsultas(consultas, abiertas) {
+        const div = agregarMensaje('asistente', abiertas
+            ? `🌐 <strong>${consultas.length} consultas.</strong> Si alguna no se abrió, ábrela desde aquí:`
+            : `🌐 <strong>${consultas.length} consultas listas.</strong> Ábrelas una por una o todas de una vez:`);
+        if (!div) return;
+        if (!abiertas) {
+            const todas = document.createElement('button');
+            todas.type = 'button';
+            todas.className = 'voz-chip voz-chip-todas';
+            todas.textContent = `🌐 Abrir las ${consultas.length}`;
+            todas.addEventListener('click', () => abrirConsultas(consultas));
+            div.appendChild(todas);
+        }
+        consultas.forEach(c => {
+            const fila = document.createElement('div');
+            fila.className = 'voz-resultado';
+            fila.innerHTML =
+                '<div class="voz-resultado-info">' +
+                    '<strong>' + esc(c.tipo ? `${c.tipo} ${c.numero}` : c.numero) + '</strong>' +
+                    ' <span class="voz-tag voz-tag-inst">' + esc(c.institucion) + '</span>' +
+                    '<br><small>' + esc(c.organo) + '</small>' +
+                '</div>';
+            const btns = document.createElement('div');
+            btns.className = 'voz-resultado-btns';
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'voz-chip';
+            b.textContent = '🌐 Abrir';
+            b.addEventListener('click', () => abrirConsulta(c));
+            btns.appendChild(b);
+            fila.appendChild(btns);
+            div.appendChild(fila);
+        });
+        const chat = document.getElementById('voz-chat');
+        if (chat) chat.scrollTop = chat.scrollHeight;
+    }
+
+    // Sin órgano resuelto: a la página del PJF con el número precargado.
+    function irABusquedaPJF(numero, cola) {
         if (typeof navegarA === 'function') navegarA('pjf');
         if (numero) {
             setTimeout(() => {
@@ -1594,8 +2200,83 @@
             }, 400);
         }
         return numero
-            ? `Te llevé a la búsqueda PJF con el expediente ${numero} precargado. Selecciona circuito y organismo para consultar.`
-            : 'Te llevé a la búsqueda del PJF. Selecciona circuito, organismo y número de expediente.';
+            ? `Te llevé a la búsqueda PJF con el expediente ${numero} precargado. Selecciona circuito y organismo para consultar.${cola}`
+            : `Te llevé a la búsqueda del PJF. Selecciona circuito, organismo y número de expediente.${cola}`;
+    }
+
+    // Abre lo planeado. Hasta MAX_VENTANAS_AUTO se abren solas; con más, o si
+    // no dijo el tipo de asunto, se deja la lista para que elija.
+    function ejecutarPlanBusqueda(plan) {
+        const consultas = plan.consultas;
+        const cola = plan.avisos.length ? ` (${plan.avisos.join('; ')})` : '';
+
+        if (!consultas.length) {
+            if (plan.sinOrgano) return irABusquedaPJF(plan.numero, cola);
+            throw ErrorAviso('No hay nada que abrir' + cola + '.');
+        }
+
+        const soloLista = !!plan.faltaTipo || consultas.length > MAX_VENTANAS_AUTO;
+        if (!soloLista) abrirConsultas(consultas);
+        if (consultas.length > 1) mostrarListaConsultas(consultas, !soloLista);
+
+        if (soloLista) {
+            return plan.faltaTipo
+                ? `No me dijiste el tipo de asunto del ${plan.numero}: te dejé los ${consultas.length} posibles para que abras el que quieras, o todos.${cola}`
+                : `Son ${consultas.length} consultas: te las dejé en una lista para abrirlas una por una o todas de una vez.${cola}`;
+        }
+
+        const c = consultas[0];
+        if (consultas.length === 1) {
+            return c.institucion === 'PJF'
+                ? `Abrí la consulta del ${c.numero} (${c.tipo}) en ${c.organo}.${cola}`
+                : `Abrí la búsqueda de "${c.numero}" en ${c.organo}.${cola}`;
+        }
+
+        const organos = [...new Set(consultas.map(x => x.organo))];
+        const tipos = [...new Set(consultas.map(x => x.tipo))];
+        const numeros = [...new Set(consultas.map(x => x.numero))];
+        let que;
+        if (numeros.length === 1 && tipos.length === 1 && consultas.every(x => x.institucion === 'TSJ')) {
+            que = `la búsqueda de "${c.numero}" en ${organos.length} juzgados del TSJ`;
+        } else if (numeros.length === 1 && tipos.length === 1) {
+            que = `el ${c.numero} en ${organos.length} órganos: ${organos.join('; ')}`;
+        } else if (numeros.length === 1 && organos.length === 1) {
+            que = `el ${c.numero} como ${tipos.join(', ')} en ${c.organo}`;
+        } else {
+            que = `${consultas.length} consultas`;
+        }
+        return `Abriendo ${que}.${cola} Permite las ventanas emergentes.`;
+    }
+
+    async function accBuscarPJF(p) {
+        return ejecutarPlanBusqueda(await planBuscarPJF(p));
+    }
+
+    async function accBuscarTSJ(p) {
+        return ejecutarPlanBusqueda(await planBuscarTSJ(p));
+    }
+
+    async function accBuscarVarios(p) {
+        return ejecutarPlanBusqueda(await planBuscarVarios(p));
+    }
+
+    // Se prepara antes de confirmar: si va a abrir varias ventanas, se enseña
+    // la lista exacta; una sola, o una lista para elegir, no necesita permiso.
+    async function prepararBusqueda(r) {
+        let plan;
+        try {
+            plan = await planificarBusqueda(r.accion, r.parametros || {});
+        } catch (e) {
+            informarFallo(e);
+            return;
+        }
+        const abriraVarias = plan.consultas.length > 1 && !plan.faltaTipo && plan.consultas.length <= MAX_VENTANAS_AUTO;
+        if (!abriraVarias) {
+            await ejecutarAccion({ ...r, _plan: plan });
+            return;
+        }
+        pedirConfirmacion({ ...r, _plan: plan }, `Abrir ${plan.consultas.length} consultas`,
+            plan.consultas.map(c => c.etiqueta).concat(plan.avisos.map(a => '⚠️ ' + a)));
     }
 
     function accNavegar(p) {
@@ -1614,6 +2295,51 @@
         } catch (e) {
             return '';
         }
+    }
+
+    const TOPE_AGENDA = 150;
+    const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+    /**
+     * La agenda que ve el modelo, en fecha y hora LOCALES. Antes iba el
+     * fechaInicio en UTC ("2026-10-01T15:00:00.000Z" para una audiencia a las
+     * 10:00 en Cancún): el modelo tenía que convertirlo solo, se equivocaba de
+     * hora y una audiencia de las 20:00 le aparecía al día siguiente.
+     * Van primero los próximos: son los que se cambian. Del pasado, los recientes.
+     */
+    function agendaParaElModelo(eventos, expedientesPorId, ahoraMs) {
+        const hoy = new Date(ahoraMs);
+        hoy.setHours(0, 0, 0, 0);
+        const desde = hoy.getTime() - 30 * 864e5;
+        const hasta = hoy.getTime() + 366 * 864e5;
+        const t = (e) => new Date(e.fechaInicio).getTime();
+
+        const enRango = eventos.filter(e => t(e) >= desde && t(e) <= hasta).sort((a, b) => t(a) - t(b));
+        const futuros = enRango.filter(e => t(e) >= hoy.getTime());
+        const pasados = enRango.filter(e => t(e) < hoy.getTime()).reverse();
+        const cupoPasados = Math.min(pasados.length, 30);
+        const elegidos = pasados.slice(0, cupoPasados)
+            .concat(futuros.slice(0, TOPE_AGENDA - cupoPasados))
+            .sort((a, b) => t(a) - t(b));
+
+        return {
+            total: eventos.length,
+            lista: elegidos.map(e => {
+                const d = new Date(e.fechaInicio);
+                const item = {
+                    id: e.id,
+                    titulo: e.titulo,
+                    tipo: e.tipo,
+                    fecha: fechaLocalISO(d),
+                    dia: DIAS_SEMANA[d.getDay()],
+                    hora: e.todoElDia ? null : horaLocalDe(e.fechaInicio)
+                };
+                const expediente = expedienteDeEvento(e, expedientesPorId);
+                if (expediente) item.expediente = expediente;
+                if (e.descripcion) item.descripcion = e.descripcion.length > 80 ? e.descripcion.slice(0, 80) + '…' : e.descripcion;
+                return item;
+            })
+        };
     }
 
     async function construirPromptSistema() {
@@ -1658,19 +2384,10 @@
             }
         } catch (e) { /* base aún no lista */ }
 
-        // Eventos cercanos (para editar/eliminar/consultar)
-        let agenda = [];
+        // Eventos (para editar/eliminar/consultar)
+        let agenda = { lista: [], total: 0 };
         try {
-            const desde = Date.now() - 7 * 864e5;
-            const hasta = Date.now() + 120 * 864e5;
-            agenda = (await obtenerEventos())
-                .filter(e => {
-                    const t = new Date(e.fechaInicio).getTime();
-                    return t >= desde && t <= hasta;
-                })
-                .sort((a, b) => new Date(a.fechaInicio) - new Date(b.fechaInicio))
-                .slice(0, 80)
-                .map(e => ({ id: e.id, titulo: e.titulo, tipo: e.tipo, fechaInicio: e.fechaInicio, expedienteId: e.expedienteId || null }));
+            agenda = agendaParaElModelo(await obtenerEventos(), await mapaDeExpedientes(), Date.now());
         } catch (e) { /* base aún no lista */ }
 
         const juzgadosTSJ = []
@@ -1688,8 +2405,9 @@ ${totalExpedientes > catalogo.length ? `ATENCIÓN: hay ${totalExpedientes - cata
 CARPETAS DEL USUARIO (agrupan expedientes por caso):
 ${JSON.stringify(carpetas)}
 
-EVENTOS DEL CALENDARIO (recientes y próximos):
-${JSON.stringify(agenda)}
+EVENTOS DEL CALENDARIO (${agenda.lista.length} de ${agenda.total}; "fecha" y "hora" YA están en hora local de Cancún; hora null = todo el día):
+${JSON.stringify(agenda.lista)}
+${agenda.total > agenda.lista.length ? 'ATENCIÓN: la lista de eventos es parcial. Si el usuario se refiere a un evento que no ves aquí, NO digas que no existe: usa "buscar" con eventoId null.' : ''}
 
 JUZGADOS TSJ QUINTANA ROO VÁLIDOS (usa el nombre EXACTO):
 ${JSON.stringify(juzgadosTSJ)}
@@ -1709,9 +2427,20 @@ ACCIONES DISPONIBLES y sus parámetros:
 1. "crear_evento": {titulo, tipo:"audiencia"|"vencimiento"|"recordatorio"|"otro", fecha:"YYYY-MM-DD", hora:"HH:MM" o null, todoElDia:bool, expedienteId:número o null, expedienteRef:texto o null, expedienteTexto:texto o null, descripcion:""}
    - Si menciona un expediente, resuélvelo contra el catálogo y usa su id en expedienteId. Si no está en el catálogo, pon el texto en expedienteTexto.
    - Si no dice hora → todoElDia=true. Obligatorios: titulo y fecha.
-2. "editar_evento": {eventoId:número, cambios:{titulo?, tipo?, fecha?:"YYYY-MM-DD", hora?:"HH:MM", todoElDia?, descripcion?}}
-   - Resuelve el evento contra la lista de EVENTOS. Si hay varios candidatos, pregunta cuál.
-3. "eliminar_evento": {eventoId:número}
+2. "editar_evento": {ediciones:[{eventoId:número o null, buscar:{texto, fecha:"YYYY-MM-DD", hora:"HH:MM", expediente, tipo} o null, cambios:{...}}]}
+   - Una entrada en "ediciones" por cada evento que cambie. Si pide cambiar varios ("mueve las dos audiencias del lunes al martes"), una entrada por evento.
+   - eventoId: el id de la lista EVENTOS cuando identifiques el evento sin duda. Si no lo ves ahí o dudas entre varios, eventoId=null y llena "buscar" con lo que dijo para identificarlo: palabras del título en "texto", la fecha que el evento TIENE AHORA en "fecha", su hora actual en "hora", su expediente en "expediente", su tipo en "tipo". La app lo busca en todo el calendario y, si hay varios, le enseña las opciones. No preguntes tú cuál.
+   - En "cambios" pon SOLO lo que quiere cambiar y omite lo demás (no mandes campos vacíos ni en null):
+     · fecha:"YYYY-MM-DD" (la NUEVA fecha); hora:"HH:MM" en 24 h; todoElDia:true para quitarle la hora.
+     · moverDias: entero para recorrerlo respecto a SU fecha actual ("pospónla una semana" → 7, "adelántala dos días" → -2). Úsalo en vez de calcular tú la fecha cuando el cambio es relativo al propio evento.
+     · titulo: el nuevo título.
+     · descripcion: REEMPLAZA la descripción entera. agregarDescripcion: AÑADE al final sin borrar lo que había ("agrégale", "anótale", "ponle también"). borrarDescripcion:true la vacía.
+     · tipo:"audiencia"|"vencimiento"|"recordatorio"|"otro"; alerta:true|false.
+     · expedienteRef: número o nombre del expediente al que debe quedar vinculado; sinExpediente:true para desvincularlo.
+   - Ejemplo: "cambia la audiencia del jueves para el viernes a las 12" → ediciones:[{eventoId:<id de esa audiencia>, cambios:{fecha:"<fecha del viernes>", hora:"12:00"}}].
+   - Ejemplo: "pospón una semana el vencimiento del 123/2025" → ediciones:[{eventoId:null, buscar:{tipo:"vencimiento", expediente:"123/2025"}, cambios:{moverDias:7}}].
+   - Ejemplo: "a la audiencia del viernes agrégale que hay que llevar testigos" → cambios:{agregarDescripcion:"Llevar testigos"}.
+3. "eliminar_evento": {eventos:[{eventoId:número o null, buscar:{texto, fecha, hora, expediente, tipo} o null}]} — una entrada por evento a borrar; se identifican igual que en editar_evento.
 4. "consultar_agenda": {fechaInicio:"YYYY-MM-DD", fechaFin:"YYYY-MM-DD"} — para "¿qué tengo esta semana?", "audiencias de mañana", etc.
 5. "crear_expediente": {tipoRegistro:"numero"|"nombre", valor, institucion:"TSJ"|"PJF"|"OTRO", juzgado, comentario, carpetaId:número o null}
    - Para TSJ el juzgado es OBLIGATORIO y debe ser un nombre EXACTO de la lista de juzgados. Si el usuario no lo dice o no coincide, pregunta.
@@ -1728,18 +2457,26 @@ ACCIONES DISPONIBLES y sus parámetros:
 10. "abrir_expediente": {expedienteId:número o null, expedienteRef:texto o null} — navega hasta el expediente y lo resalta ("abre el expediente 123/2025", "muéstrame el caso de Juan Pérez", "ábreme el 123").
 11. "deshacer": {} — revierte la última acción hecha por el asistente ("deshaz lo último", "revierte eso").
 12. "buscar_local": {consulta} — buscar en el catálogo local del usuario ("busca mis expedientes de divorcio", "¿tengo algo de Juan Pérez?", "qué tengo del 123"). Pasa la consulta TAL CUAL la dijo; la app la interpreta y ordena por relevancia.
-13. "buscar_tsj": {valor, tipoBusqueda:"numero"|"nombre", juzgado:nombre exacto de la lista o null, ambito:"todos"|"primera"|"segunda" o null, expedienteId:número o null, expedienteRef:texto o null}
-    - ESTRADOS DEL TSJ DE QUINTANA ROO (tribunal del estado). Si el usuario menciona un expediente de su catálogo, usa el juzgado guardado de ese expediente. Si no especifica juzgado, deja juzgado=null y usa ambito (default "todos"; abre muchas ventanas).
-14. "buscar_pjf": {expedienteId:número o null, expedienteRef:texto o null, numero:texto o null, organismo:texto o null, organismos:[textos] o null, tipoAsunto:texto o null}
+13. "buscar_tsj": {valor, tipoBusqueda:"numero"|"nombre", juzgado:nombre exacto de la lista o null, juzgados:[nombres exactos] o null, ambito:"todos"|"primera"|"segunda" o null, expedienteId:número o null, expedienteRef:texto o null}
+    - ESTRADOS DEL TSJ DE QUINTANA ROO (tribunal del estado). Si el usuario menciona un expediente de su catálogo, usa el juzgado guardado de ese expediente.
+    - VARIOS JUZGADOS concretos: usa "juzgados" (lista de nombres EXACTOS de la lista) y deja "juzgado" en null. Si no especifica juzgado, deja los dos en null y usa ambito (default "todos").
+    - En el TSJ no hay tipos de asunto: el buscador encuentra el número en cualquier tipo de juicio. "En todos los tipos de asunto" en un juzgado del TSJ es una búsqueda normal por número.
+14. "buscar_pjf": {expedienteId:número o null, expedienteRef:texto o null, numero:texto o null, organismo:texto o null, organismos:[textos] o null, tipoAsunto:texto o null, tiposAsunto:[textos] o null}
     - ESTRADOS / LISTA DE ACUERDOS DEL PODER JUDICIAL DE LA FEDERACIÓN. Si el expediente está en el catálogo con tienePJF=true, usa su id.
     - Si el usuario dicta el órgano federal, pásalo TAL CUAL en "organismo" y el tipo de asunto tal como lo diga en "tipoAsunto"; la app los resuelve contra el catálogo oficial. Los ordinales dan igual: "27 circuito", "vigésimo séptimo circuito" y "XXVII circuito" valen los tres.
     - El número del asunto va SIEMPRE en "numero", aunque no esté dado de alta.
+    - VARIOS TIPOS DE ASUNTO del mismo número: usa "tiposAsunto" (lista) y deja "tipoAsunto" en null: "la queja y el amparo directo 12/2026" → tiposAsunto:["queja","amparo directo"].
+    - TODOS LOS TIPOS: si lo pide en todos los tipos de asunto o no sabe de qué tipo es ("en todos los tipos", "sin importar el tipo", "en cualquier tipo de asunto") → tiposAsunto:["todos"].
+    - Si no dice el tipo de asunto, no preguntes: déjalo en null y la app le ofrece los tipos posibles de ese órgano.
     - VARIOS ÓRGANOS A LA VEZ: usa "organismos" (lista) en cuanto el usuario quiera más de uno; deja "organismo" en null. Sirve para el mismo circuito o para circuitos distintos.
       · Enumerados: "en el primer y segundo colegiado del 27" → organismos:["primer tribunal colegiado del 27 circuito","segundo tribunal colegiado del 27 circuito"].
       · En bloque: "en todos los colegiados del 27" → organismos:["tribunales colegiados del 27 circuito"]. Una sola entrada genérica ya abarca todos los de ese circuito; no los enumeres tú.
       · Circuitos distintos: "en los colegiados del 27 y del 28" → organismos:["tribunales colegiados del 27 circuito","tribunales colegiados del 28 circuito"].
       · Mezclados: "en los juzgados de distrito de Quintana Roo y en el primer colegiado del 27" → organismos:["juzgados de distrito en quintana roo","primer tribunal colegiado del 27 circuito"].
       Copia cada referencia TAL CUAL la dice el usuario. No inventes nombres oficiales ni cuentes cuántos órganos hay: de eso se encarga la app.
+14b. "buscar_varios": {busquedas:[{accion:"buscar_pjf"|"buscar_tsj", parametros:{...los mismos de esa acción...}}]}
+    - Para VARIOS ASUNTOS DISTINTOS en una sola orden: números distintos, o unos del TSJ y otros del PJF. Una entrada por asunto, cada una con los parámetros completos de su acción.
+    - Si es el MISMO número en varios órganos o con varios tipos de asunto, basta buscar_pjf (organismos / tiposAsunto) o buscar_tsj (juzgados).
 
 CÓMO DECIDIR ENTRE ESTRADOS DEL TSJ Y DEL PJF (importante):
 - "Estrados", "estrado", "lista de acuerdos", "publicaciones", "boletín" NO deciden nada por sí solos: las dos instituciones publican así. Lo que decide es el ÓRGANO o la institución que se mencione.
@@ -1748,6 +2485,11 @@ CÓMO DECIDIR ENTRE ESTRADOS DEL TSJ Y DEL PJF (importante):
 - Ejemplo: "abre el estrado del amparo directo 486/2026 del primer tribunal colegiado del 27 circuito del pjf" → buscar_pjf con numero="486/2026", organismo="primer tribunal colegiado del 27 circuito", tipoAsunto="amparo directo".
 - Ejemplo con varios: "busca el amparo directo 486/2026 en los tres colegiados del 27 circuito" → buscar_pjf con numero="486/2026", organismos=["tribunales colegiados del 27 circuito"], tipoAsunto="amparo directo".
 - Ejemplo: "ábreme los estrados del 123/2025 del juzgado primero civil de Cancún" → buscar_tsj con valor="123/2025", juzgado el de la lista.
+- Ejemplo con varios tipos: "busca la queja y el amparo directo 486/2026 en el primer colegiado del 27" → buscar_pjf con numero="486/2026", organismo="primer tribunal colegiado del 27 circuito", tiposAsunto=["queja","amparo directo"].
+- Ejemplo con todos los tipos: "busca el expediente 55/2026 en todos los tipos de asunto de los colegiados del 27" → buscar_pjf con numero="55/2026", organismos=["tribunales colegiados del 27 circuito"], tiposAsunto=["todos"].
+- Ejemplo con varios juzgados del TSJ: "busca el 123/2025 en el primero y el segundo civil de Cancún" → buscar_tsj con valor="123/2025", juzgados=["JUZGADO PRIMERO CIVIL CANCUN","JUZGADO SEGUNDO CIVIL CANCUN"].
+- Ejemplo mixto: "busca el 123/2025 en el juzgado primero civil de Cancún y el amparo indirecto 45/2026 en el juzgado primero de distrito de Quintana Roo" → buscar_varios con busquedas=[{accion:"buscar_tsj", parametros:{valor:"123/2025", tipoBusqueda:"numero", juzgado:"JUZGADO PRIMERO CIVIL CANCUN"}}, {accion:"buscar_pjf", parametros:{numero:"45/2026", organismo:"juzgado primero de distrito en quintana roo", tiposAsunto:["amparo indirecto"]}}].
+- Ejemplo con números distintos: "busca el amparo directo 100/2026 y la queja 7/2026 en el primer colegiado del 27" → buscar_varios con dos buscar_pjf, uno por número.
 - NO hace falta que el asunto esté en el catálogo del usuario: si dicta el órgano y el número, manda esos datos y deja expedienteId y expedienteRef en null. Solo usa expedienteRef cuando se refiera a algo SUYO sin dar el órgano ("abre los estrados de lo de Ramírez").
 15. "navegar": {pagina:"inicio"|"expedientes"|"calendario"|"pendientes"|"notas"|"busqueda"|"pjf"|"impi"|"config"}
 16. "responder": para preguntas generales, saludos o cuando ninguna acción aplica. Usa el campo "respuesta".
@@ -1761,16 +2503,18 @@ CÓMO REFERIRSE A UN EXPEDIENTE (importante):
 REGLAS:
 - Si falta un dato OBLIGATORIO para la acción: faltan_datos=true y "pregunta" con UNA pregunta corta y específica. Conserva en "parametros" todo lo que ya sepas.
 - En turnos siguientes el usuario responderá tu pregunta: integra su respuesta y devuelve la acción COMPLETA actualizada (con todos los parámetros acumulados).
-- Si la referencia a un expediente o evento es ambigua (varios candidatos), pregunta cuál, listando las opciones brevemente en la pregunta.
+- Si la referencia a un expediente o evento es ambigua (varios candidatos), no adivines: usa expedienteRef (expedientes) o "buscar" con eventoId null (eventos) y la app le enseña las opciones.
 - "resumen" siempre en español, específico y corto (ej: 'Agendar audiencia del exp. 123/2025 el jueves 30 de julio a las 10:00').
 - Números de expediente suelen dictarse como "123 diagonal 2025" o "123 barra 2025" → normaliza a "123/2025".
-- Nunca inventes ids de expedientes o eventos: solo usa los del catálogo/agenda. Si no está, usa expedienteRef.`;
+- Nunca inventes ids de expedientes o eventos: solo usa los del catálogo/agenda. Si no está, usa expedienteRef, o "buscar" para un evento.`;
     }
 
     async function llamarModelo(sistema, historial) {
         // El prompt de sistema va aparte, en systemInstruction: Gemini no lo
-        // acepta como un turno más de la conversación.
-        const respuesta = await llamarIA(null, { sistema, historial, maxTokens: 1200 });
+        // acepta como un turno más de la conversación. En Gemini 2.5 lo que el
+        // modelo "piensa" cuenta dentro de maxOutputTokens: con 1200, una orden
+        // con varias búsquedas o varios eventos podía quedarse sin respuesta.
+        const respuesta = await llamarIA(null, { sistema, historial, maxTokens: 4096 });
 
         try {
             return _extraerJSON(respuesta);

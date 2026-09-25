@@ -958,27 +958,17 @@ function _clavePendiente(p) {
 // notas y eventos, para que marcar terminado en un dispositivo y editar el
 // texto en otro no se pisen.
 function fusionarPendientes(locales, remotos, clavesEliminadas = new Map()) {
-    const mapa = new Map();
-
     // Locales primero como base, igual que en notas: una edición local
     // reciente gana sobre una versión remota más vieja del mismo campo.
-    for (const p of [...locales, ...remotos]) {
-        const clave = _clavePendiente(p);
-        if (_eliminadoGana(clavesEliminadas, clave, p)) continue;
+    const preparados = [...locales, ...remotos]
+        .filter(p => !_eliminadoGana(clavesEliminadas, _clavePendiente(p), p));
 
-        const existente = mapa.get(clave);
-        if (!existente) {
-            mapa.set(clave, p);
-            continue;
-        }
-        // eventoId apunta a ids locales de cada dispositivo, así que no debe
-        // viajar en la fusión: se conserva el del registro base.
-        const fusionado = fusionarRegistroPorCampo(existente, p,
-            new Set(['id', '_fieldTimestamps', 'eventoId']));
-        mapa.set(clave, fusionado);
-    }
-
-    return Array.from(mapa.values());
+    // Las versiones del mismo pendiente se juntan también si se renombró:
+    // el título es parte de su clave por contenido.
+    // eventoId apunta a ids locales de cada dispositivo, así que no debe
+    // viajar en la fusión: se conserva el del registro base.
+    return unirVersiones(preparados, _clavePendiente,
+        (a, b) => fusionarRegistroPorCampo(a, b, new Set(['id', '_fieldTimestamps', 'eventoId'])));
 }
 
 // Une búsquedas guardadas (SIGA, MARCia y Marcanet) deduplicando por
@@ -1445,16 +1435,71 @@ function fusionarNotas(locales, remotas, clavesEliminadas = new Map()) {
     });
 }
 
+/**
+ * Identidad de ORIGEN de un registro: su id y el instante en que se creó.
+ *
+ * La clave por contenido (título + fecha + expediente de un evento) cambia en
+ * cuanto se edita uno de esos campos, y entonces la versión vieja que seguía
+ * en la nube pasaba por OTRO registro: sobrevivían las dos, con el mismo id, y
+ * al guardarlas por id ganaba la última escrita. Cambiar la fecha de un evento
+ * se deshacía solo al sincronizar. El id y la fecha de creación, en cambio,
+ * viajan intactos con cada edición y a todos los dispositivos: dos versiones
+ * del mismo registro los comparten; dos registros distintos, no.
+ *
+ * Sin fecha de creación (datos muy antiguos) no hay identidad de origen y se
+ * usa la clave por contenido, como siempre.
+ */
+function claveOrigen(registro) {
+    if (!registro || registro.id === undefined || registro.id === null || !registro.fechaCreacion) return null;
+    return `${registro.id}|${registro.fechaCreacion}`;
+}
+
+/**
+ * Junta las versiones de un mismo registro: las que comparten identidad de
+ * origen, o si no la tienen, clave de contenido. Cada grupo se funde campo por
+ * campo (gana lo más reciente de cada campo), así que un cambio de fecha en un
+ * dispositivo y uno de descripción en otro sobreviven los dos. También limpia
+ * los duplicados que el fallo dejó en la nube.
+ *
+ * @param {Array} registros en orden, los locales primero
+ * @param {Function} claveContenido registro → clave por contenido
+ * @param {Function} fundir (a, b) → la fusión de las dos versiones
+ */
+function unirVersiones(registros, claveContenido, fundir) {
+    const resultado = [];
+    const porContenido = new Map();
+    const porOrigen = new Map();
+
+    for (const registro of registros) {
+        const clave = claveContenido(registro);
+        if (!clave) continue;
+        const origen = claveOrigen(registro);
+
+        let i = origen !== null && porOrigen.has(origen) ? porOrigen.get(origen) : porContenido.get(clave);
+        if (i === undefined) {
+            i = resultado.push(registro) - 1;
+        } else {
+            const claveAntes = claveContenido(resultado[i]);
+            resultado[i] = fundir(resultado[i], registro);
+            // La fecha nueva pudo ganarle a la vieja: esa clave ya no lo nombra.
+            if (porContenido.get(claveAntes) === i) porContenido.delete(claveAntes);
+        }
+        porContenido.set(claveContenido(resultado[i]), i);
+        if (origen !== null) porOrigen.set(origen, i);
+        const origenFundido = claveOrigen(resultado[i]);
+        if (origenFundido !== null) porOrigen.set(origenFundido, i);
+    }
+    return resultado;
+}
+
 // Fusionar eventos sin duplicar, con merge por campo, reasignación de
 // expedientes fusionados y filtrado de eventos eliminados remotamente.
 function fusionarEventos(locales, remotos, clavesEliminadas = new Map()) {
-    const mapa = new Map();
     const mapaReasignacion = crearMapaReasignacion();
+    const preparados = [];
 
-    const todosEventos = [...locales, ...remotos];
-
-    todosEventos.forEach(evento => {
-        if (_eliminadoGana(clavesEliminadas, claveEliminacionEvento(evento), evento)) return;
+    for (const evento of [...locales, ...remotos]) {
+        if (_eliminadoGana(clavesEliminadas, claveEliminacionEvento(evento), evento)) continue;
 
         let eventoProcesado = { ...evento };
         if (evento.expedienteId && mapaReasignacion.has(evento.expedienteId)) {
@@ -1462,19 +1507,10 @@ function fusionarEventos(locales, remotos, clavesEliminadas = new Map()) {
             eventoProcesado._reasignado = true;
             reporteFusionDuplicados.eventosReasignados++;
         }
+        preparados.push(eventoProcesado);
+    }
 
-        const clave = claveEvento(eventoProcesado);
-        if (!clave) return;
-
-        const existente = mapa.get(clave);
-        if (!existente) {
-            mapa.set(clave, eventoProcesado);
-        } else {
-            mapa.set(clave, fusionarRegistroPorCampo(existente, eventoProcesado));
-        }
-    });
-
-    return Array.from(mapa.values()).map(evento => {
+    return unirVersiones(preparados, claveEvento, (a, b) => fusionarRegistroPorCampo(a, b)).map(evento => {
         delete evento._reasignado;
         return evento;
     });

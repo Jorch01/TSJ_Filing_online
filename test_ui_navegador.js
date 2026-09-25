@@ -170,6 +170,273 @@ async function abrirChromium() {
     }
 }
 
+/**
+ * El calendario y el asistente con el navegador en Cancún (UTC-5).
+ *
+ * Con el reloj en UTC —el de las máquinas de CI— los fallos de fechas no se
+ * ven: el formulario de edición usaba la hora de Greenwich, y abrir una
+ * audiencia de las 10:00 y guardarla sin tocar nada la movía a las 15:00.
+ */
+async function probarCalendarioEnCancun(navegador) {
+    const contexto = await navegador.newContext({
+        timezoneId: 'America/Cancun', locale: 'es-MX', viewport: { width: 1400, height: 900 }
+    });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => typeof crearEventoCore === 'function' && typeof db !== 'undefined' && !!db,
+            { timeout: 15000 });
+        await page.waitForTimeout(800);
+
+        // ---- El formulario de edición, en hora local ----
+        const form = await page.evaluate(async () => {
+            const r = {};
+            const pausa = (ms) => new Promise(res => setTimeout(res, ms));
+            const diez = new Date(2026, 9, 1, 10).toISOString();
+            const veinte = new Date(2026, 9, 1, 20).toISOString();
+            const id10 = await crearEventoCore({ titulo: 'A las diez', tipo: 'audiencia', fechaInicio: diez });
+            const id20 = await crearEventoCore({ titulo: 'A las ocho de la noche', tipo: 'audiencia', fechaInicio: veinte });
+            navegarA('calendario');
+
+            for (const [id, clave, original] of [[id10, 'diez', diez], [id20, 'veinte', veinte]]) {
+                await editarEvento(id);
+                r[clave + 'Formulario'] = document.getElementById('evento-fecha').value;
+                document.getElementById('evento-form').requestSubmit();   // sin tocar nada
+                await pausa(400);
+                r[clave + 'Intacto'] = (await obtenerEventos()).find(e => e.id === id).fechaInicio === original;
+            }
+
+            seleccionarDia(new Date(2026, 9, 5).getTime());
+            await mostrarFormularioEvento();
+            r.nuevo = document.getElementById('evento-fecha').value;
+            r.diaSeleccionadoIntacto = diaSeleccionado.getHours() === 0;
+            cerrarModal();
+
+            await editarEvento(id10);
+            document.getElementById('evento-fecha').value = '2026-10-08T11:15';
+            document.getElementById('evento-form').requestSubmit();
+            await pausa(400);
+            r.cambiado = (await obtenerEventos()).find(e => e.id === id10).fechaInicio === new Date(2026, 9, 8, 11, 15).toISOString();
+            return r;
+        });
+        igual('cancún: una audiencia de las 10:00 se abre a las 10:00', form.diezFormulario, '2026-10-01T10:00');
+        igual('cancún: guardarla sin tocar nada no la mueve', form.diezIntacto, true);
+        igual('cancún: una de las 20:00 se abre en su día, no en el siguiente', form.veinteFormulario, '2026-10-01T20:00');
+        igual('cancún: y guardarla tampoco la cambia de día', form.veinteIntacto, true);
+        igual('cancún: un evento nuevo propone las 9:00', form.nuevo, '2026-10-05T09:00');
+        igual('cancún: abrir el formulario no altera el día seleccionado', form.diaSeleccionadoIntacto, true);
+        igual('cancún: cambiar la fecha en el formulario la guarda tal cual', form.cambiado, true);
+
+        // ---- Cambiar la fecha y sincronizar ya no la regresa ----
+        const sync = await page.evaluate(async () => {
+            const nueva = new Date(2026, 9, 19, 9).toISOString();
+            const id = await crearEventoCore({ titulo: 'Audiencia sync', tipo: 'audiencia',
+                fechaInicio: new Date(2026, 9, 12, 9).toISOString() });
+            // La nube tiene la versión de antes del cambio.
+            const nube = JSON.parse(JSON.stringify(await obtenerTodosLosDatos()));
+            nube.metadata = { ultimaModificacion: Date.now(), dispositivo: 'otro', version: '2.0' };
+
+            await actualizarEventoCore(id, { fechaInicio: nueva });
+
+            const local = await obtenerTodosLosDatos();
+            local.metadata = { ultimaModificacion: Date.now(), dispositivo: 'este', version: '2.0' };
+            const fusion = fusionarDatos(local, nube);
+            await aplicarDatosLocalmente(fusion);
+            const aqui = (await obtenerEventos()).filter(e => e.titulo === 'Audiencia sync');
+
+            // Una nube que ya arrastra el duplicado que dejaba el fallo: la
+            // versión vieja y la nueva, con el mismo id.
+            const sucia = JSON.parse(JSON.stringify(nube));
+            sucia.eventos = sucia.eventos.concat(fusion.eventos.filter(e => e.titulo === 'Audiencia sync'));
+            const otraVez = await obtenerTodosLosDatos();
+            otraVez.metadata = local.metadata;
+            const limpia = fusionarDatos(otraVez, sucia);
+            await aplicarDatosLocalmente(limpia);
+            const despues = (await obtenerEventos()).filter(e => e.titulo === 'Audiencia sync');
+            return {
+                aqui: aqui.length,
+                fechaNueva: !!aqui[0] && aqui[0].fechaInicio === nueva,
+                subeALaNube: fusion.eventos.filter(e => e.titulo === 'Audiencia sync').length,
+                duplicadoLimpio: limpia.eventos.filter(e => e.titulo === 'Audiencia sync').length,
+                sigueNueva: despues.length === 1 && despues[0].fechaInicio === nueva
+            };
+        });
+        igual('sync: tras sincronizar sigue habiendo un solo evento', sync.aqui, 1);
+        igual('sync: con la fecha nueva (antes volvía la vieja)', sync.fechaNueva, true);
+        igual('sync: y a la nube sube uno solo', sync.subeALaNube, 1);
+        igual('sync: el duplicado que ya estuviera en la nube se limpia', sync.duplicadoLimpio, 1);
+        igual('sync: y la fecha sigue siendo la nueva', sync.sigueNueva, true);
+
+        // ---- Google Calendar y meses ----
+        const varios = await page.evaluate(async () => {
+            const id = await crearEventoCore({ titulo: 'Para Google', tipo: 'otro',
+                fechaInicio: new Date(2026, 9, 1, 20).toISOString(), todoElDia: true });
+            const ev = await obtenerEvento(id);
+
+            navegarA('calendario');
+            fechaCalendario = new Date(2026, 9, 31);
+            mesSiguiente();
+            await new Promise(res => setTimeout(res, 250));
+            const siguiente = document.getElementById('mes-actual').textContent;
+            fechaCalendario = new Date(2026, 9, 31);
+            mesAnterior();
+            await new Promise(res => setTimeout(res, 250));
+            const anterior = document.getElementById('mes-actual').textContent;
+
+            return {
+                obtenerEvento: !!ev && ev.id === id,
+                urlGoogle: decodeURIComponent(GCAL.urlAgregarGCal(ev)),
+                siguiente, anterior
+            };
+        });
+        igual('google: obtenerEvento existe y devuelve el evento (sin él no se guardaba el id de Google)',
+            varios.obtenerEvento, true);
+        verificar('google: todo el día en su día local, hasta el siguiente',
+            varios.urlGoogle.includes('dates=20261001/20261002'), varios.urlGoogle);
+        igual('meses: desde el 31 de octubre, "siguiente" es noviembre', varios.siguiente, 'Noviembre 2026');
+        igual('meses: y "anterior" es septiembre', varios.anterior, 'Septiembre 2026');
+
+        // ---- El evento de un pendiente ----
+        const pend = await page.evaluate(async () => {
+            const nueva = new Date(2026, 9, 9).toISOString();
+            const idP = await crearPendienteCore({ titulo: 'Contestar demanda (UI)',
+                fechaLimite: new Date(2026, 9, 5).toISOString(), todoElDia: true });
+            const p = await obtenerPendiente(idP);
+            await actualizarEventoCore(p.eventoId, { fechaInicio: nueva });
+            await actualizarPendienteCore(idP, { prioridad: 'alta' });
+            return {
+                pendiente: (await obtenerPendiente(idP)).fechaLimite === nueva,
+                evento: (await obtenerEvento(p.eventoId)).fechaInicio === nueva
+            };
+        });
+        igual('pendiente: moverlo en el calendario lo mueve también en pendientes', pend.pendiente, true);
+        igual('pendiente: y subirle la prioridad ya no lo regresa a la fecha vieja', pend.evento, true);
+
+        // ---- El asistente de punta a punta, con el modelo simulado ----
+        const voz = await page.evaluate(async () => {
+            const r = {};
+            const pausa = (ms) => new Promise(res => setTimeout(res, ms));
+            const esperar = async (condicion, ms = 5000) => {
+                const hasta = Date.now() + ms;
+                while (Date.now() < hasta) { if (condicion()) return true; await pausa(50); }
+                return false;
+            };
+            const confirmacion = () => document.getElementById('voz-confirmacion');
+            const confirmacionVisible = () => confirmacion() && confirmacion().style.display !== 'none';
+
+            try { localStorage.setItem('voz_auto_escucha', '0'); } catch (e) { /* sin almacenamiento */ }
+            await guardarConfig('ia_api_key', 'CLAVE-DE-PRUEBA');
+            let respuesta = null;
+            window.llamarIA = async () => JSON.stringify(respuesta);
+            const abiertas = [];
+            const openOriginal = window.open;
+            window.open = (url, nombre) => { abiertas.push({ url, nombre }); return { focus() {} }; };
+
+            const decir = async (texto, delModelo) => {
+                respuesta = delModelo;
+                const mensajes = document.querySelectorAll('#voz-chat .voz-msg').length;
+                document.getElementById('voz-input').value = texto;
+                document.getElementById('voz-enviar').click();
+                // Hasta que conteste: con una confirmación o con un mensaje.
+                await esperar(() => confirmacionVisible() || document.querySelectorAll('#voz-chat .voz-msg').length > mensajes + 1);
+            };
+
+            try {
+                await VOZ.abrir();
+                const tts = document.getElementById('voz-tts-toggle');
+                if (tts && tts.textContent === '🔊') tts.click();
+
+                // 1) La queja y el amparo directo: se confirma viendo la lista exacta.
+                await decir('busca la queja y el amparo directo 486/2026 en el primer colegiado del 27', {
+                    accion: 'buscar_pjf', faltan_datos: false, resumen: 'Buscar',
+                    parametros: { numero: '486/2026', organismo: 'primer tribunal colegiado del 27 circuito',
+                                  tiposAsunto: ['queja', 'amparo directo'] }
+                });
+                r.confirmaBusqueda = confirmacionVisible();
+                r.listaBusqueda = [...document.querySelectorAll('#voz-confirmacion-texto li')].map(li => li.textContent);
+                r.abiertasAntesDeConfirmar = abiertas.length;
+                document.getElementById('voz-btn-confirmar').click();
+                await esperar(() => abiertas.length >= 2, 3000);
+                r.abiertas = abiertas.map(a => a.url);
+
+                // 2) TSJ y PJF en la misma orden.
+                abiertas.length = 0;
+                await decir('busca el 123/2025 en el primero civil de Cancún y el amparo indirecto 45/2026 en el primero de distrito de Quintana Roo', {
+                    accion: 'buscar_varios', faltan_datos: false, resumen: 'Buscar',
+                    parametros: { busquedas: [
+                        { accion: 'buscar_tsj', parametros: { valor: '123/2025', tipoBusqueda: 'numero', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' } },
+                        { accion: 'buscar_pjf', parametros: { numero: '45/2026', organismo: 'juzgado primero de distrito en quintana roo', tiposAsunto: ['amparo indirecto'] } }
+                    ] }
+                });
+                r.confirmaMixta = confirmacionVisible();
+                document.getElementById('voz-btn-confirmar').click();
+                await esperar(() => abiertas.length >= 2, 3000);
+                r.mixtas = abiertas.map(a => a.url);
+
+                // 3) Cambiar un evento: la confirmación dice el antes y el después.
+                const id = await crearEventoCore({ titulo: 'Audiencia por voz', tipo: 'audiencia',
+                    fechaInicio: new Date(2026, 9, 1, 10).toISOString(), descripcion: 'Sala 3' });
+                await decir('cambia la audiencia por voz al viernes a las 12', {
+                    accion: 'editar_evento', faltan_datos: false, resumen: 'Cambiar',
+                    parametros: { ediciones: [{ eventoId: null, buscar: { texto: 'audiencia por voz' },
+                        cambios: { fecha: '2026-10-02', hora: '12:00', descripcion: '' } }] }
+                });
+                r.textoConfirmacionEvento = document.getElementById('voz-confirmacion-texto').textContent;
+                document.getElementById('voz-btn-confirmar').click();
+                await pausa(600);
+                const editado = await obtenerEvento(id);
+                r.eventoMovido = editado.fechaInicio === new Date(2026, 9, 2, 12).toISOString();
+                r.descripcionIntacta = editado.descripcion === 'Sala 3';
+
+                // 4) Dos juntas el mismo día: se ofrecen para elegir.
+                await crearEventoCore({ titulo: 'Junta A', tipo: 'otro', fechaInicio: new Date(2026, 9, 20, 9).toISOString() });
+                const idB = await crearEventoCore({ titulo: 'Junta B', tipo: 'otro', fechaInicio: new Date(2026, 9, 20, 17).toISOString() });
+                await decir('mueve la junta del 20 al 21', {
+                    accion: 'editar_evento', faltan_datos: false, resumen: 'Mover',
+                    parametros: { ediciones: [{ eventoId: null, buscar: { texto: 'junta', fecha: '2026-10-20' },
+                        cambios: { fecha: '2026-10-21' } }] }
+                });
+                const filas = [...document.querySelectorAll('#voz-chat .voz-resultado')].filter(f => /Junta [AB]/.test(f.textContent));
+                r.opciones = filas.length;
+                const filaB = filas.find(f => /Junta B/.test(f.textContent));
+                if (filaB) filaB.querySelector('button').click();
+                await esperar(confirmacionVisible, 3000);
+                r.confirmaLaElegida = /Junta B/.test(document.getElementById('voz-confirmacion-texto').textContent);
+                document.getElementById('voz-btn-confirmar').click();
+                await pausa(600);
+                r.juntaB = (await obtenerEvento(idB)).fechaInicio === new Date(2026, 9, 21, 17).toISOString();
+            } finally {
+                window.open = openOriginal;
+            }
+            return r;
+        });
+        igual('voz: dos tipos de asunto piden confirmación', voz.confirmaBusqueda, true);
+        igual('voz: enseñando las dos consultas', voz.listaBusqueda.length, 2);
+        verificar('voz: con sus nombres', voz.listaBusqueda.some(t => /Queja 486\/2026/.test(t)) &&
+            voz.listaBusqueda.some(t => /Amparo Directo 486\/2026/.test(t)), JSON.stringify(voz.listaBusqueda));
+        igual('voz: nada se abre antes de confirmar', voz.abiertasAntesDeConfirmar, 0);
+        igual('voz: al confirmar se abren las dos', voz.abiertas.length, 2);
+        igual('voz: TSJ y PJF en una orden también se confirman', voz.confirmaMixta, true);
+        verificar('voz: y se abren las dos, cada una en su portal',
+            voz.mixtas.length === 2 && voz.mixtas.some(u => /tsjqroo/.test(u)) && voz.mixtas.some(u => /dgej\.cjf/.test(u)),
+            JSON.stringify(voz.mixtas));
+        verificar('voz: la confirmación del evento enseña el antes y el después en hora local',
+            /1 de octubre, 10:00 → viernes, 2 de octubre, 12:00/.test(voz.textoConfirmacionEvento), voz.textoConfirmacionEvento);
+        igual('voz: el evento queda donde se pidió', voz.eventoMovido, true);
+        igual('voz: sin perder su descripción', voz.descripcionIntacta, true);
+        igual('voz: con dos juntas ese día, ofrece las dos', voz.opciones, 2);
+        igual('voz: al elegir una, confirma esa', voz.confirmaLaElegida, true);
+        igual('voz: y mueve la elegida', voz.juntaB, true);
+
+        igual('cancún: la página no lanza errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
 async function main() {
     const servidor = await servidorEstatico(PUERTO);
     const navegador = await abrirChromium();
@@ -1185,6 +1452,9 @@ async function main() {
             await page.locator('#busqueda-rapida').isVisible(), false);
 
         igual('la página no lanza errores de JavaScript', erroresPagina, []);
+
+        // ---- El calendario y el asistente, con el reloj en Cancún ----
+        await probarCalendarioEnCancun(navegador);
 
     } finally {
         await navegador.close();
