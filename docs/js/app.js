@@ -327,7 +327,22 @@ function configurarNavegacion() {
     });
 }
 
+// "Tribunales" es un solo apartado con dos páginas, TSJ y PJF: se abre en la
+// última que se usó. 'busqueda' y 'pjf' siguen existiendo por dentro, así que
+// los atajos, el asistente y los enlaces que ya las usan no cambian.
+const CLAVE_TRIBUNAL = 'tribunal_actual';
+const PAGINAS_TRIBUNALES = ['busqueda', 'pjf'];
+
 function navegarA(pagina) {
+    if (pagina === 'tribunales') {
+        let ultima = null;
+        try { ultima = localStorage.getItem(CLAVE_TRIBUNAL); } catch (e) { /* sin almacenamiento */ }
+        pagina = PAGINAS_TRIBUNALES.includes(ultima) ? ultima : 'busqueda';
+    }
+    if (PAGINAS_TRIBUNALES.includes(pagina)) {
+        try { localStorage.setItem(CLAVE_TRIBUNAL, pagina); } catch (e) { /* sin almacenamiento */ }
+    }
+
     // Ocultar todas las páginas
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
 
@@ -338,8 +353,10 @@ function navegarA(pagina) {
     }
 
     // Actualizar botones de navegación
+    const enTribunales = PAGINAS_TRIBUNALES.includes(pagina);
     document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.page === pagina);
+        btn.classList.toggle('active', btn.dataset.page === pagina ||
+            (enTribunales && btn.dataset.page === 'tribunales'));
     });
 
     // Cerrar menú móvil
@@ -1115,14 +1132,28 @@ function actualizarExpedientesRecientes(expedientes) {
     `).join('');
 }
 
+/**
+ * De qué tribunal es una nota o un evento: 'PJF', 'TSJ', 'OTRO', o null si no
+ * cuelga de ningún expediente (general o con referencia escrita a mano).
+ */
+function tribunalDeRegistro(registro, expPorId) {
+    if (registro.institucion) return registro.institucion;
+    const exp = registro.expedienteId != null ? expPorId.get(registro.expedienteId) : null;
+    return exp ? (exp.institucion || 'TSJ') : null;
+}
+
 function actualizarSelectExpedientes() {
     obtenerExpedientes().then(expedientes => {
         const select = document.getElementById('filtro-expediente-nota');
         if (select) {
+            const elegido = select.value;
             select.innerHTML = '<option value="">Todos</option>' +
+                '<option value="__tsj__">🏢 Solo TSJ</option>' +
+                '<option value="__pjf__">🏛️ Solo PJF</option>' +
                 '<option value="__general__">📋 Generales (sin expediente)</option>' +
                 '<option value="__custom__">✏️ Personalizados</option>' +
                 expedientes.map(e => `<option value="${e.id}">${escapeText(e.numero || e.nombre)}</option>`).join('');
+            if ([...select.options].some(o => o.value === elegido)) select.value = elegido;
         }
     });
 }
@@ -3917,7 +3948,12 @@ async function filtrarNotas() {
     }
 
     // Filtrar por tipo de expediente
-    if (filtroValue === '__general__') {
+    if (filtroValue === '__tsj__' || filtroValue === '__pjf__') {
+        // Por tribunal: reemplaza a la antigua pestaña "Notas PJF".
+        const quiero = filtroValue === '__pjf__' ? 'PJF' : 'TSJ';
+        const expTodos = new Map(expedientes.map(e => [e.id, e]));
+        notas = notas.filter(n => tribunalDeRegistro(n, expTodos) === quiero);
+    } else if (filtroValue === '__general__') {
         // Solo notas sin expediente (ni ID ni texto)
         notas = notas.filter(n => !n.expedienteId && !n.expedienteTexto);
     } else if (filtroValue === '__custom__') {
@@ -4149,8 +4185,31 @@ function initEventTooltips() {
     });
 }
 
+const CLAVE_FILTRO_CALENDARIO = 'calendario_tribunal';
+
+function filtroTribunalCalendario() {
+    try { return localStorage.getItem(CLAVE_FILTRO_CALENDARIO) || ''; } catch (e) { return ''; }
+}
+
+function cambiarFiltroTribunalCalendario(valor) {
+    try { localStorage.setItem(CLAVE_FILTRO_CALENDARIO, valor || ''); } catch (e) { /* sin almacenamiento */ }
+    renderizarCalendario();
+}
+window.cambiarFiltroTribunalCalendario = cambiarFiltroTribunalCalendario;
+
 async function renderizarCalendario() {
-    const eventos = await obtenerEventos();
+    let eventos = await obtenerEventos();
+    // Solo TSJ / Solo PJF: reemplaza a la antigua pestaña "Calendario PJF".
+    const filtro = filtroTribunalCalendario();
+    const selectFiltro = document.getElementById('filtro-tribunal-calendario');
+    if (selectFiltro && selectFiltro.value !== filtro) selectFiltro.value = filtro;
+    if (filtro) {
+        const expedientes = await obtenerExpedientes().catch(() => []);
+        const archivados = typeof obtenerExpedientesArchivados === 'function'
+            ? await obtenerExpedientesArchivados().catch(() => []) : [];
+        const expPorId = new Map(expedientes.concat(archivados).map(e => [e.id, e]));
+        eventos = eventos.filter(e => tribunalDeRegistro(e, expPorId) === filtro);
+    }
     const diasContainer = document.getElementById('calendario-dias');
     const mesActual = document.getElementById('mes-actual');
 
@@ -9586,9 +9645,9 @@ function cambiarInstitucionACrear(inst) {
 // ==================== PJF TABS ====================
 
 function cambiarTabPJF(tab) {
-    // Deactivate all tabs
-    document.querySelectorAll('.pjf-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.pjf-tab-content').forEach(c => c.classList.remove('active'));
+    // Solo las de su página: las pestañas del TSJ usan el mismo estilo.
+    document.querySelectorAll('#page-pjf .pjf-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('#page-pjf .pjf-tab-content').forEach(c => c.classList.remove('active'));
 
     // Activate selected tab
     const tabBtn = document.querySelector(`.pjf-tab[data-pjf-tab="${tab}"]`);
@@ -9607,6 +9666,15 @@ function cambiarTabPJF(tab) {
         actualizarSelectExpedientesIAPJF();
     }
 }
+
+// Pestañas del TSJ (Búsqueda / Análisis IA), a imagen de las del PJF.
+function cambiarTabTSJ(tab) {
+    document.querySelectorAll('#page-busqueda .pjf-tab').forEach(t =>
+        t.classList.toggle('active', t.dataset.tsjTab === tab));
+    document.querySelectorAll('#page-busqueda .pjf-tab-content').forEach(c =>
+        c.classList.toggle('active', c.id === `tsj-tab-${tab}`));
+}
+window.cambiarTabTSJ = cambiarTabTSJ;
 
 // ==================== PJF EXPEDIENTES ====================
 
