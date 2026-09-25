@@ -111,7 +111,8 @@ const NECESARIO = [
     '_searchIndexCache', '_searchIndexVersion', '_dataMutationCounter',
     'obtenerIndiceBusqueda', 'invalidarIndiceBusqueda',
     '_filtrarArchivoComun', 'filtrarArchivo', 'filtrarArchivoPJF',
-    'filtrarExpedientes', 'filtrarExpedientesPJF', 'filtrarNotas'
+    'filtrarExpedientes', 'filtrarExpedientesPJF', 'filtrarNotas',
+    'ordenarNotasFijadas', '_botonFijarNotaHTML'
 ];
 
 function cargarCodigoReal(sandbox) {
