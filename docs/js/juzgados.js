@@ -226,6 +226,9 @@ function normalizarNombreJuzgado(nombre) {
         .trim();
 }
 
+// Palabras de enlace que el catálogo omite o incluye sin criterio fijo.
+const ENLACES_NOMBRE_JUZGADO = new Set(['de', 'del', 'la', 'las', 'el', 'lo', 'los', 'en', 'y']);
+
 /**
  * Resuelve lo que el usuario escribió al nombre EXACTO del catálogo (regla
  * única para el asistente de voz y la carga masiva por CSV). Devolver el
@@ -245,6 +248,15 @@ function resolverJuzgadoTSJ(nombre) {
 
     const exacto = todos.find(j => normalizarNombreJuzgado(j) === objetivo);
     if (exacto) return exacto;
+
+    // "Juzgado Primero Civil de Cancún": el catálogo no lleva las preposiciones
+    // ("JUZGADO PRIMERO CIVIL CANCUN"), pero así lo dice y lo escribe todo el
+    // mundo. Se compara sin ellas, y solo vale si queda uno.
+    const sinEnlaces = (s) => normalizarNombreJuzgado(s).split(' ')
+        .filter(p => !ENLACES_NOMBRE_JUZGADO.has(p)).join(' ');
+    const objetivoSinEnlaces = sinEnlaces(nombre);
+    const porPalabras = todos.filter(j => sinEnlaces(j) === objetivoSinEnlaces);
+    if (porPalabras.length === 1) return porPalabras[0];
 
     // Último recurso: coincidencia parcial, pero solo si es inequívoca. Con
     // varios candidatos se prefiere fallar a adivinar mal el juzgado.

@@ -3103,14 +3103,7 @@ async function mostrarFormularioPendiente(id = null, expedienteIdPrefijado = nul
         : (opcionSel && opcionSel.valor !== '' ? opcionSel.etiqueta : '');
 
     // El input datetime-local espera hora local sin zona; el valor guardado es ISO.
-    let valorFecha = '';
-    if (pendiente && pendiente.fechaLimite) {
-        const d = new Date(pendiente.fechaLimite);
-        if (!isNaN(d.getTime())) {
-            const p2 = n => String(n).padStart(2, '0');
-            valorFecha = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`;
-        }
-    }
+    const valorFecha = pendiente && pendiente.fechaLimite ? valorFechaHoraLocal(pendiente.fechaLimite) : '';
 
     const prioridadSel = (pendiente && pendiente.prioridad) || '';
     const opcionesPrioridad = ['', 'alta', 'media', 'baja'].map(v => {
@@ -4123,14 +4116,17 @@ async function actualizarPanelEventos(eventos) {
     }
 }
 
+// Se cambia de mes desde el día 1: con setMonth sobre un 31, "noviembre 31"
+// se desbordaba a diciembre y el calendario se saltaba un mes (o, hacia atrás,
+// se quedaba en el mismo).
 function mesAnterior() {
-    fechaCalendario.setMonth(fechaCalendario.getMonth() - 1);
+    fechaCalendario = new Date(fechaCalendario.getFullYear(), fechaCalendario.getMonth() - 1, 1);
     diaSeleccionado = null;
     renderizarCalendario();
 }
 
 function mesSiguiente() {
-    fechaCalendario.setMonth(fechaCalendario.getMonth() + 1);
+    fechaCalendario = new Date(fechaCalendario.getFullYear(), fechaCalendario.getMonth() + 1, 1);
     diaSeleccionado = null;
     renderizarCalendario();
 }
@@ -4147,13 +4143,31 @@ function crearEventoEnDia(timestamp) {
     mostrarFormularioEvento(fecha);
 }
 
+/**
+ * Valor para un <input type="datetime-local">: fecha y hora LOCALES, sin zona
+ * ("2026-10-01T10:00").
+ *
+ * No sirve toISOString(), que da la hora de Greenwich: en Cancún (UTC-5) una
+ * audiencia de las 10:00 aparecía a las 15:00 al abrirla para editar, y una de
+ * las 20:00 aparecía al día siguiente. Guardar sin tocar nada la movía de
+ * verdad a esa hora equivocada.
+ */
+function valorFechaHoraLocal(fecha) {
+    const d = fecha instanceof Date ? fecha : new Date(fecha);
+    if (isNaN(d.getTime())) return '';
+    const p2 = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`;
+}
+
 async function mostrarFormularioEvento(fecha = null) {
     const expedientes = await obtenerExpedientes();
     const selectHtml = '<option value="">Sin expediente</option>' +
         '<option value="__custom__">✏️ Otro (escribir manualmente)</option>' +
-        expedientes.map(e => `<option value="${e.id}">${e.numero || e.nombre}</option>`).join('');
+        expedientes.map(e => `<option value="${e.id}">${escapeText(e.numero || e.nombre)}</option>`).join('');
 
-    const fechaDefault = fecha || diaSeleccionado || new Date();
+    // Una copia: diaSeleccionado es el mismo objeto que resalta el día en el
+    // calendario, y ponerle las 9:00 hacía que dejara de coincidir con él.
+    const fechaDefault = new Date(fecha || diaSeleccionado || new Date());
     fechaDefault.setHours(9, 0, 0, 0);
 
     document.getElementById('modal-titulo').textContent = 'Nuevo Evento';
@@ -4175,7 +4189,7 @@ async function mostrarFormularioEvento(fecha = null) {
             </div>
             <div class="form-group">
                 <label>Fecha y hora *</label>
-                <input type="datetime-local" id="evento-fecha" value="${fechaDefault.toISOString().slice(0, 16)}" required>
+                <input type="datetime-local" id="evento-fecha" value="${valorFechaHoraLocal(fechaDefault)}" required>
             </div>
             <div class="form-group">
                 <label class="checkbox-label">
@@ -4282,65 +4296,81 @@ async function guardarEvento(event) {
 async function editarEvento(id) {
     const eventos = await obtenerEventos();
     const evento = eventos.find(e => e.id === id);
-    if (!evento) return;
+    if (!evento) {
+        mostrarToast('Ese evento ya no existe', 'warning');
+        return;
+    }
 
+    // mostrarFormularioEvento deja el formulario pintado antes de resolver, así
+    // que se rellena en cuanto vuelve. Antes se esperaban 100 ms a ciegas.
     await mostrarFormularioEvento(new Date(evento.fechaInicio));
 
-    setTimeout(() => {
-        document.getElementById('modal-titulo').textContent = 'Editar Evento';
-        document.getElementById('evento-id').value = id;
-        document.getElementById('evento-titulo').value = evento.titulo;
-        document.getElementById('evento-tipo').value = evento.tipo;
-        document.getElementById('evento-fecha').value = new Date(evento.fechaInicio).toISOString().slice(0, 16);
-        document.getElementById('evento-todo-dia').checked = evento.todoElDia;
-        document.getElementById('evento-descripcion').value = evento.descripcion || '';
-        document.getElementById('evento-alerta').checked = evento.alerta;
+    document.getElementById('modal-titulo').textContent = 'Editar Evento';
+    document.getElementById('evento-id').value = id;
+    document.getElementById('evento-titulo').value = evento.titulo;
+    // Un tipo que no está en la lista dejaba el selector en blanco, y al
+    // guardar el evento perdía tipo y color.
+    document.getElementById('evento-tipo').value = COLORES_EVENTOS[evento.tipo] ? evento.tipo : 'otro';
+    document.getElementById('evento-fecha').value = valorFechaHoraLocal(evento.fechaInicio);
+    document.getElementById('evento-todo-dia').checked = !!evento.todoElDia;
+    document.getElementById('evento-descripcion').value = evento.descripcion || '';
+    document.getElementById('evento-alerta').checked = !!evento.alerta;
 
-        // Manejar expediente personalizado
-        if (evento.expedienteTexto) {
-            document.getElementById('evento-expediente').value = '__custom__';
-            toggleExpedienteCustom('evento');
-            document.getElementById('evento-expediente-custom').value = evento.expedienteTexto;
-        } else {
-            document.getElementById('evento-expediente').value = evento.expedienteId || '';
+    // Manejar expediente personalizado
+    if (evento.expedienteTexto) {
+        document.getElementById('evento-expediente').value = '__custom__';
+        toggleExpedienteCustom('evento');
+        document.getElementById('evento-expediente-custom').value = evento.expedienteTexto;
+    } else {
+        const select = document.getElementById('evento-expediente');
+        // La lista solo trae expedientes activos. Si el del evento está
+        // archivado, sin su opción el selector caía a "Sin expediente" y
+        // al guardar el evento se quedaba sin él.
+        if (evento.expedienteId != null && ![...select.options].some(o => o.value === String(evento.expedienteId))) {
+            const exp = await obtenerExpediente(evento.expedienteId).catch(() => null);
+            const opcion = document.createElement('option');
+            opcion.value = String(evento.expedienteId);
+            opcion.textContent = exp ? `${exp.numero || exp.nombre}${exp.archivado ? ' (archivado)' : ''}` : `Expediente #${evento.expedienteId}`;
+            select.appendChild(opcion);
         }
+        select.value = evento.expedienteId != null ? String(evento.expedienteId) : '';
+    }
 
-        // Si el evento viene de un análisis IA, mostrar contexto del acuerdo
-        // por encima del formulario para que el usuario lo vea al editar.
-        const formBody = document.getElementById('modal-body');
-        if (formBody && evento.origenIA) {
-            const ya = formBody.querySelector('.evento-contexto-acuerdo');
-            if (ya) ya.remove();
-            const ctxLineas = [];
-            if (evento.tipoAcuerdo) ctxLineas.push(`<div><strong>📝 Tipo de acuerdo:</strong> ${escapeText(evento.tipoAcuerdo)}</div>`);
-            if (evento.juzgadoOrigen) ctxLineas.push(`<div><strong>🏛️ Órgano:</strong> ${escapeText(evento.juzgadoOrigen)}</div>`);
-            if (evento.resumen) ctxLineas.push(`<div style="margin-top:0.5rem;"><strong>📄 Resumen:</strong> ${escapeText(evento.resumen)}</div>`);
-            if (ctxLineas.length > 0) {
-                const ctxHtml = `<div class="evento-contexto-acuerdo" style="background:#f0f9ff;border-left:3px solid #3788d8;padding:0.6rem 0.8rem;margin-bottom:0.75rem;border-radius:4px;font-size:0.85rem;">
-                    <div style="font-weight:600;margin-bottom:0.3rem;">🤖 Contexto del acuerdo (análisis IA)</div>
-                    ${ctxLineas.join('')}
-                </div>`;
-                formBody.insertAdjacentHTML('afterbegin', ctxHtml);
-            }
+    // Si el evento viene de un análisis IA, mostrar contexto del acuerdo
+    // por encima del formulario para que el usuario lo vea al editar.
+    const formBody = document.getElementById('modal-body');
+    if (formBody && evento.origenIA) {
+        const ya = formBody.querySelector('.evento-contexto-acuerdo');
+        if (ya) ya.remove();
+        const ctxLineas = [];
+        if (evento.tipoAcuerdo) ctxLineas.push(`<div><strong>📝 Tipo de acuerdo:</strong> ${escapeText(evento.tipoAcuerdo)}</div>`);
+        if (evento.juzgadoOrigen) ctxLineas.push(`<div><strong>🏛️ Órgano:</strong> ${escapeText(evento.juzgadoOrigen)}</div>`);
+        if (evento.resumen) ctxLineas.push(`<div style="margin-top:0.5rem;"><strong>📄 Resumen:</strong> ${escapeText(evento.resumen)}</div>`);
+        if (ctxLineas.length > 0) {
+            const ctxHtml = `<div class="evento-contexto-acuerdo" style="background:#f0f9ff;border-left:3px solid #3788d8;padding:0.6rem 0.8rem;margin-bottom:0.75rem;border-radius:4px;font-size:0.85rem;">
+                <div style="font-weight:600;margin-bottom:0.3rem;">🤖 Contexto del acuerdo (análisis IA)</div>
+                ${ctxLineas.join('')}
+            </div>`;
+            formBody.insertAdjacentHTML('afterbegin', ctxHtml);
         }
+    }
 
-        const verExpBtn = evento.expedienteId
-            ? `<button class="btn btn-info" onclick="verExpedienteDesdeEvento(${evento.expedienteId})" title="Abrir el expediente relacionado">📂 Ver expediente</button>`
-            : '';
+    const verExpBtn = evento.expedienteId
+        ? `<button class="btn btn-info" onclick="verExpedienteDesdeEvento(${evento.expedienteId})" title="Abrir el expediente relacionado">📂 Ver expediente</button>`
+        : '';
 
-        const gcalUrl = (typeof GCAL !== 'undefined') ? GCAL.urlAgregarGCal(evento) : null;
-        const gcalBtn = gcalUrl
-            ? `<a class="btn btn-secondary" href="${gcalUrl}" target="_blank" rel="noopener" title="Agregar a Google Calendar">📅 GCal</a>`
-            : '';
+    const gcalUrl = (typeof GCAL !== 'undefined') ? GCAL.urlAgregarGCal(evento) : null;
+    const gcalBtn = gcalUrl
+        ? `<a class="btn btn-secondary" href="${gcalUrl}" target="_blank" rel="noopener" title="Agregar a Google Calendar">📅 GCal</a>`
+        : '';
 
-        document.getElementById('modal-footer').innerHTML = `
-            <button class="btn btn-danger" onclick="confirmarEliminarEvento(${id})">🗑️ Eliminar</button>
-            ${verExpBtn}
-            ${gcalBtn}
-            <button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>
-            <button class="btn btn-primary" onclick="document.getElementById('evento-form').requestSubmit()">💾 Guardar</button>
-        `;
-    }, 100);
+    document.getElementById('modal-footer').innerHTML = `
+        <button class="btn btn-danger" onclick="confirmarEliminarEvento(${id})">🗑️ Eliminar</button>
+        ${verExpBtn}
+        ${gcalBtn}
+        <button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="document.getElementById('evento-form').requestSubmit()">💾 Guardar</button>
+    `;
 }
 
 // Navegar al expediente relacionado desde el modal de evento.
@@ -4846,6 +4876,40 @@ function _parsearFechaLocal(fechaStr) {
     return new Date(fechaStr);
 }
 
+/**
+ * El día LOCAL en que cae un evento. fechaInicio es un instante en UTC, y
+ * cortarle el texto (como hace _parsearFechaLocal) da el día de Greenwich: en
+ * Cancún una audiencia a las 20:00 se avisaba como si fuera al día siguiente.
+ * Solo una fecha sin hora ("2026-10-01") se lee tal cual.
+ */
+function _diaLocalDeEvento(evento) {
+    const valor = evento.fechaInicio || evento.fecha;
+    if (!valor) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(valor))) return _parsearFechaLocal(valor);
+    const d = new Date(valor);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * ¿El aviso que ya se mandó sigue sirviendo? Solo si salió después del último
+ * cambio de fecha del evento: si se pospuso, aquel aviso era para la fecha
+ * vieja y el de la nueva todavía no ha salido.
+ */
+function _avisoSigueVigente(enviadoEn, evento) {
+    if (!enviadoEn) return false;
+    const sellos = evento._fieldTimestamps || {};
+    // La fecha con la que se creó no es un cambio: es la que se avisó.
+    if (!sellos.fechaInicio || sellos.fechaInicio === evento.fechaCreacion) return true;
+    return enviadoEn >= (Date.parse(sellos.fechaInicio) || 0);
+}
+
+// Hora con la que se anota un aviso enviado: la del reloj de sincronización,
+// el mismo con el que se sellan los cambios de fecha, para poder compararlas
+// aunque el reloj del dispositivo vaya adelantado o atrasado.
+function _horaDeAviso() {
+    return Date.now() + (typeof desfaseRelojSync === 'function' ? desfaseRelojSync() : 0);
+}
+
 // Verificar y enviar recordatorios pendientes
 // silencioso: si true, no muestra toasts cuando no hay nada que hacer (para verificación automática)
 async function verificarRecordatoriosPendientes(silencioso) {
@@ -4881,8 +4945,7 @@ async function verificarRecordatoriosPendientes(silencioso) {
         // Solo procesar eventos con alerta activada
         if (!evento.alerta) continue;
 
-        // Parsear fecha como local para evitar desfase por zona horaria UTC
-        const fechaEvento = _parsearFechaLocal(evento.fechaInicio || evento.fecha);
+        const fechaEvento = _diaLocalDeEvento(evento);
         if (!fechaEvento) continue;
         fechaEvento.setHours(0, 0, 0, 0);
         const diasRestantes = Math.round((fechaEvento - hoy) / (1000 * 60 * 60 * 24));
@@ -4892,11 +4955,12 @@ async function verificarRecordatoriosPendientes(silencioso) {
 
         // Usar umbrales en lugar de comparación exacta para no perder ventanas
         // La clave incluye el tipo de umbral (no el número exacto de días) para deduplicar
-        if (config.unDia && diasRestantes <= 1 && !recordatoriosEnviados[`${evento.id}_umbral1`]) {
+        const yaAvisado = (umbral) => _avisoSigueVigente(recordatoriosEnviados[`${evento.id}_${umbral}`], evento);
+        if (config.unDia && diasRestantes <= 1 && !yaAvisado('umbral1')) {
             pendientes.push({ evento, diasRestantes, clave: `${evento.id}_umbral1` });
-        } else if (config.tresDias && diasRestantes <= 3 && !recordatoriosEnviados[`${evento.id}_umbral3`]) {
+        } else if (config.tresDias && diasRestantes <= 3 && !yaAvisado('umbral3')) {
             pendientes.push({ evento, diasRestantes, clave: `${evento.id}_umbral3` });
-        } else if (config.unaSemana && diasRestantes <= 7 && !recordatoriosEnviados[`${evento.id}_umbral7`]) {
+        } else if (config.unaSemana && diasRestantes <= 7 && !yaAvisado('umbral7')) {
             pendientes.push({ evento, diasRestantes, clave: `${evento.id}_umbral7` });
         }
     }
@@ -4933,7 +4997,7 @@ async function verificarRecordatoriosPendientes(silencioso) {
                 await enviarRecordatorioEvento(item.evento, item.diasRestantes, serviceId, publicKey, templateId, emailDestino);
             }
 
-            recordatoriosEnviados[item.clave] = Date.now();
+            recordatoriosEnviados[item.clave] = _horaDeAviso();
             enviados++;
         } catch (error) {
             Logger.error('Error enviando recordatorio:', error);

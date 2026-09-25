@@ -1275,6 +1275,14 @@ async function obtenerEventosPorFecha(fechaInicio, fechaFin) {
     });
 }
 
+async function obtenerEvento(id) {
+    return new Promise((resolve, reject) => {
+        const request = db.transaction(['eventos'], 'readonly').objectStore('eventos').get(id);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+    });
+}
+
 async function actualizarEvento(id, cambios) {
     return new Promise(async (resolve, reject) => {
         const transaction = db.transaction(['eventos'], 'readwrite');

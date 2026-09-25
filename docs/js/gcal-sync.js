@@ -85,15 +85,30 @@ const GCAL = (() => {
 
     // ── Formato de evento ────────────────────────────────────────────────────
 
+    // Día LOCAL del evento ("2026-10-01", o "20261001" sin separador). No vale
+    // toISOString(), que da el día de Greenwich: un evento de todo el día a las
+    // 20:00 en Cancún caía en Google Calendar al día siguiente.
+    function fechaLocal(d, separador = '-') {
+        const p2 = n => String(n).padStart(2, '0');
+        return [d.getFullYear(), p2(d.getMonth() + 1), p2(d.getDate())].join(separador);
+    }
+
+    // En Google Calendar y en iCalendar el fin de un evento de día completo es
+    // EXCLUSIVO: un solo día va de ese día al siguiente. Con inicio y fin
+    // iguales la API lo rechaza ("The specified time range is empty") y el
+    // evento nunca llegaba a Google.
+    function diaSiguiente(d) {
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+    }
+
     function appEventoAGCal(evento) {
         const inicio = new Date(evento.fechaInicio);
         const fin = new Date(inicio.getTime() + 60 * 60 * 1000); // +1h por defecto
 
         let start, end;
         if (evento.todoElDia) {
-            const fechaStr = inicio.toISOString().substring(0, 10);
-            start = { date: fechaStr };
-            end = { date: fechaStr };
+            start = { date: fechaLocal(inicio) };
+            end = { date: fechaLocal(diaSiguiente(inicio)) };
         } else {
             start = { dateTime: inicio.toISOString(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone };
             end = { dateTime: fin.toISOString(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone };
@@ -191,7 +206,7 @@ const GCAL = (() => {
         const fin = new Date(inicio.getTime() + 60 * 60 * 1000);
         const fmt = (d) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
         const dates = evento.todoElDia
-            ? inicio.toISOString().substring(0, 10).replace(/-/g, '') + '/' + inicio.toISOString().substring(0, 10).replace(/-/g, '')
+            ? `${fechaLocal(inicio, '')}/${fechaLocal(diaSiguiente(inicio), '')}`
             : `${fmt(inicio)}/${fmt(fin)}`;
         const params = new URLSearchParams({
             text: evento.titulo || '',
@@ -211,7 +226,6 @@ const GCAL = (() => {
         const fin = new Date(inicio.getTime() + 60 * 60 * 1000);
 
         const fmt = (d) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-        const fmtFecha = (d) => d.toISOString().substring(0, 10).replace(/-/g, '');
 
         const icsEsc = (s) => (s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
 
@@ -220,8 +234,8 @@ const GCAL = (() => {
                 'BEGIN:VEVENT',
                 `UID:${uid}`,
                 `DTSTAMP:${ahora}`,
-                `DTSTART;VALUE=DATE:${fmtFecha(inicio)}`,
-                `DTEND;VALUE=DATE:${fmtFecha(inicio)}`,
+                `DTSTART;VALUE=DATE:${fechaLocal(inicio, '')}`,
+                `DTEND;VALUE=DATE:${fechaLocal(diaSiguiente(inicio), '')}`,
                 `SUMMARY:${icsEsc(evento.titulo)}`,
                 evento.descripcion ? `DESCRIPTION:${icsEsc(evento.descripcion)}` : '',
                 'END:VEVENT'
