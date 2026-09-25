@@ -2108,6 +2108,42 @@ function formatearFechaHora(fechaISO) {
 
 // ==================== NOTAS ====================
 
+// ==================== NOTAS FIJADAS ====================
+// Una nota fijada va siempre arriba, antes que las demás, en todas las listas
+// de notas. Entre fijadas, la última que se fijó primero; el resto conserva su
+// orden de siempre.
+function ordenarNotasFijadas(notas) {
+    const fijadas = notas.filter(n => n.fijada)
+        .sort((a, b) => String(b.fijadaEn || '').localeCompare(String(a.fijadaEn || '')));
+    return fijadas.concat(notas.filter(n => !n.fijada));
+}
+
+function _botonFijarNotaHTML(nota) {
+    const titulo = nota.fijada ? 'Desfijar nota' : 'Fijar arriba';
+    return `<button type="button" class="nota-fijar${nota.fijada ? ' activa' : ''}" title="${titulo}" aria-label="${titulo}"
+        aria-pressed="${nota.fijada ? 'true' : 'false'}" onclick="toggleFijarNota(${nota.id}, event)">📌</button>`;
+}
+
+async function toggleFijarNota(id, event) {
+    // La tarjeta entera abre la nota: sin esto, fijar abriría además el editor.
+    if (event) { event.stopPropagation(); event.preventDefault(); }
+    const nota = (await obtenerNotas()).find(n => n.id === id);
+    if (!nota) return;
+    const fijar = !nota.fijada;
+    try {
+        await actualizarNotaCore(id, { fijada: fijar, fijadaEn: fijar ? new Date().toISOString() : null });
+        // actualizarNotaCore repinta la lista completa; si hay búsqueda o
+        // filtro activos, se vuelven a aplicar para no perderlos.
+        const buscando = document.getElementById('buscar-nota')?.value || document.getElementById('filtro-expediente-nota')?.value;
+        if (buscando) await filtrarNotas();
+        if (typeof cargarNotasPJF === 'function') await cargarNotasPJF();
+        mostrarToast(fijar ? '📌 Nota fijada arriba' : 'Nota desfijada', 'success');
+    } catch (e) {
+        mostrarToast('No se pudo fijar la nota: ' + e.message, 'error');
+    }
+}
+window.toggleFijarNota = toggleFijarNota;
+
 async function cargarNotas() {
     const notas = await obtenerNotas();
     const lista = document.getElementById('lista-notas');
@@ -2131,7 +2167,7 @@ async function cargarNotas() {
     const expedientes = await obtenerExpedientes();
     const expMap = Object.fromEntries(expedientes.map(e => [e.id, e]));
 
-    lista.innerHTML = notas.map(nota => {
+    lista.innerHTML = ordenarNotasFijadas(notas).map(nota => {
         const exp = expMap[nota.expedienteId];
         const instInst = (exp && exp.institucion) || nota.institucion || 'TSJ';
         const instBadge = instInst === 'PJF'
@@ -2140,11 +2176,12 @@ async function cargarNotas() {
             ? '<span class="institucion-badge otro" style="font-size: 0.65rem;">📋 Varios</span>'
             : '';
         return `
-            <div class="nota-card" style="background-color: ${escapeText(nota.color || '#fff3cd')}" onclick="editarNota(${nota.id})">
+            <div class="nota-card${nota.fijada ? ' fijada' : ''}" style="background-color: ${escapeText(nota.color || '#fff3cd')}" onclick="editarNota(${nota.id})">
                 <div class="nota-header">
                     <h3 class="nota-titulo">${escapeText(nota.titulo)}</h3>
                     ${instBadge}
                     ${nota.recordatorio ? '<span class="nota-recordatorio">🔔</span>' : ''}
+                    ${_botonFijarNotaHTML(nota)}
                 </div>
                 <p class="nota-contenido">${escapeText(nota.contenido || 'Sin contenido')}</p>
                 <div class="nota-footer">
@@ -3692,7 +3729,7 @@ async function filtrarNotas() {
             </div>
         `;
     } else {
-        lista.innerHTML = notas.map(nota => {
+        lista.innerHTML = ordenarNotasFijadas(notas).map(nota => {
             const exp = expMap[nota.expedienteId];
             // Determinar qué mostrar como expediente
             let expedienteLabel;
@@ -3704,13 +3741,14 @@ async function filtrarNotas() {
                 expedienteLabel = '📋 General';
             }
             return `
-                <div class="nota-card" style="background-color: ${nota.color || '#fff3cd'}" onclick="editarNota(${nota.id})">
+                <div class="nota-card${nota.fijada ? ' fijada' : ''}" style="background-color: ${escapeText(nota.color || '#fff3cd')}" onclick="editarNota(${nota.id})">
                     <div class="nota-header">
-                        <h3 class="nota-titulo">${nota.titulo}</h3>
+                        <h3 class="nota-titulo">${escapeText(nota.titulo)}</h3>
+                        ${_botonFijarNotaHTML(nota)}
                     </div>
-                    <p class="nota-contenido">${nota.contenido || 'Sin contenido'}</p>
+                    <p class="nota-contenido">${escapeText(nota.contenido || 'Sin contenido')}</p>
                     <div class="nota-footer">
-                        <span class="nota-expediente">${expedienteLabel}</span>
+                        <span class="nota-expediente">${escapeText(expedienteLabel)}</span>
                     </div>
                 </div>
             `;
@@ -9930,13 +9968,14 @@ async function cargarNotasPJF() {
         return;
     }
 
-    lista.innerHTML = notasPJF.map(nota => {
+    lista.innerHTML = ordenarNotasFijadas(notasPJF).map(nota => {
         const exp = expMap[nota.expedienteId];
         return `
-            <div class="nota-card" style="background-color: ${escapeText(nota.color || '#fff3cd')}" onclick="editarNota(${nota.id})">
+            <div class="nota-card${nota.fijada ? ' fijada' : ''}" style="background-color: ${escapeText(nota.color || '#fff3cd')}" onclick="editarNota(${nota.id})">
                 <div class="nota-header">
                     <h3 class="nota-titulo">${escapeText(nota.titulo)}</h3>
                     <span class="institucion-badge pjf" style="font-size: 0.7rem;">🏛️ PJF</span>
+                    ${_botonFijarNotaHTML(nota)}
                 </div>
                 <p class="nota-contenido">${escapeText(nota.contenido || 'Sin contenido')}</p>
                 <div class="nota-footer">

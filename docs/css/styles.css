@@ -1122,6 +1122,19 @@ input:focus, textarea:focus, select:focus {
 .nota-header { display: flex; justify-content: space-between; margin-bottom: 0.5rem; }
 .nota-titulo { font-size: 1rem; margin: 0; }
 .nota-recordatorio { font-size: 1rem; }
+/* Fijar arriba: la chincheta se ve tenue hasta que se usa o se pasa el ratón. */
+.nota-header { align-items: flex-start; gap: 0.4rem; }
+.nota-titulo { flex: 1; min-width: 0; }
+.nota-fijar {
+    background: none; border: none; cursor: pointer; padding: 0 0.15rem;
+    font-size: 1rem; line-height: 1; opacity: 0.3; filter: grayscale(1);
+    transition: opacity 0.15s, filter 0.15s, transform 0.15s;
+}
+.nota-card:hover .nota-fijar, .nota-fijar:focus-visible { opacity: 0.75; }
+.nota-fijar.activa { opacity: 1; filter: none; transform: rotate(-20deg); }
+.nota-card.fijada { box-shadow: 0 0 0 2px var(--primary); }
+/* En pantallas táctiles no hay "hover": la chincheta tiene que verse. */
+@media (hover: none) { .nota-fijar { opacity: 0.6; } }
 .nota-contenido { flex: 1; font-size: 0.85rem; opacity: 0.8; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 .nota-footer { display: flex; justify-content: space-between; font-size: 0.75rem; opacity: 0.7; margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid rgba(0,0,0,0.1); }
 

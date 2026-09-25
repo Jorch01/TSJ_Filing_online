@@ -1451,6 +1451,41 @@ async function main() {
         igual('rápida: al volver al escritorio se esconde otra vez',
             await page.locator('#busqueda-rapida').isVisible(), false);
 
+        // ---- Notas fijadas arriba ----
+        const fijadas = await page.evaluate(async () => {
+            const pausa = (ms) => new Promise(res => setTimeout(res, ms));
+            cerrarModal();
+            for (const t of ['Nota uno', 'Nota dos', 'Nota tres']) await crearNotaCore({ titulo: t, contenido: 'x' });
+            navegarA('notas');
+            await cargarNotas();
+            const titulos = () => [...document.querySelectorAll('#lista-notas .nota-card .nota-titulo')].map(h => h.textContent)
+                .filter(t => /^Nota (uno|dos|tres)$/.test(t));
+            const boton = (titulo) => [...document.querySelectorAll('#lista-notas .nota-card')]
+                .find(c => c.querySelector('.nota-titulo').textContent === titulo).querySelector('.nota-fijar');
+            const r = { antes: titulos() };
+            boton('Nota tres').click();
+            await pausa(500);
+            r.abrioEditor = document.getElementById('modal-overlay').classList.contains('active');
+            r.despues = titulos();
+            r.marcada = [...document.querySelectorAll('#lista-notas .nota-card.fijada .nota-titulo')].map(h => h.textContent);
+            // Filtrar sigue respetando las fijadas.
+            document.getElementById('buscar-nota').value = 'nota';
+            await filtrarNotas();
+            r.filtrada = titulos();
+            document.getElementById('buscar-nota').value = '';
+            await cargarNotas();
+            boton('Nota tres').click();
+            await pausa(500);
+            r.desfijada = titulos();
+            return r;
+        });
+        igual('notas: sin fijar, en su orden de siempre', fijadas.antes, ['Nota uno', 'Nota dos', 'Nota tres']);
+        igual('notas: la fijada pasa hasta arriba', fijadas.despues, ['Nota tres', 'Nota uno', 'Nota dos']);
+        igual('notas: y se ve marcada', fijadas.marcada, ['Nota tres']);
+        igual('notas: fijar no abre el editor de la nota', fijadas.abrioEditor, false);
+        igual('notas: al buscar sigue arriba', fijadas.filtrada, ['Nota tres', 'Nota uno', 'Nota dos']);
+        igual('notas: desfijada vuelve a su sitio', fijadas.desfijada, ['Nota uno', 'Nota dos', 'Nota tres']);
+
         igual('la página no lanza errores de JavaScript', erroresPagina, []);
 
         // ---- El calendario y el asistente, con el reloj en Cancún ----
