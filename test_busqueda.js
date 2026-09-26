@@ -81,7 +81,9 @@ function crearEntorno(datos) {
         renderNotaHTML: (nota) => `[nota:${nota.titulo}]`,
         vistaExpedientes: 'cards', vistaExpedientesPJF: 'cards',
         aplicarVistaExpedientes: () => {}, aplicarVistaExpedientesPJF: () => {},
-        actualizarBadgeArchivo: () => {}, actualizarBadgeArchivoPJF: () => {}
+        actualizarBadgeArchivo: () => {}, actualizarBadgeArchivoPJF: () => {},
+        aplicarVistaExpedientesTSJ: () => {}, actualizarBadgeArchivoTSJ: () => {},
+        estadoPremium: { activo: true }, PREMIUM_CONFIG: { limiteExpedientes: 10 }
     };
     sandbox.window = sandbox;
     vm.createContext(sandbox);
@@ -110,7 +112,9 @@ const NECESARIO = [
     'expedienteCoincideBusqueda', '_coincideTexto', '_expedienteEncajaEnBusqueda',
     '_searchIndexCache', '_searchIndexVersion', '_dataMutationCounter',
     'obtenerIndiceBusqueda', 'invalidarIndiceBusqueda',
-    '_filtrarArchivoComun', 'filtrarArchivo', 'filtrarArchivoPJF',
+    '_soloDeInstitucion', '_filtrarArchivoComun', 'filtrarArchivo', 'filtrarArchivoPJF',
+    'filtrarArchivoTSJ', '_esExpedienteTSJ', '_ordenarExpedientesTSJ', 'modoSeleccionTSJ',
+    'expedientesTSJSeleccionados', 'actualizarContadorSeleccionTSJ', 'cargarExpedientesTSJ',
     'filtrarExpedientes', 'filtrarExpedientesPJF', 'filtrarNotas',
     'ordenarNotasFijadas', '_botonFijarNotaHTML'
 ];
@@ -256,6 +260,36 @@ async function pruebaExpedientesPJF() {
         pintados(estado, 'lista-expedientes-pjf'), []);
 }
 
+// La pestaña Expedientes TSJ de Tribunales: la misma búsqueda, solo con los del TSJ.
+async function pruebaTribunalTSJ() {
+    const { sandbox, estado, campos } = await preparar();
+
+    await sandbox.cargarExpedientesTSJ();
+    igual('Tribunales TSJ: sin filtros están todos los del TSJ y ningún federal',
+        pintados(estado, 'lista-expedientes-tsj'), ['111/2025', '333/2025', '444/2025']);
+
+    campos['buscar-expediente-tsj'] = 'perez';
+    await sandbox.cargarExpedientesTSJ();
+    igual('Tribunales TSJ: la carpeta se busca y el federal del mismo caso no se cuela',
+        pintados(estado, 'lista-expedientes-tsj'), ['111/2025']);
+
+    campos['buscar-expediente-tsj'] = '';
+    campos['filtro-carpeta-tsj'] = '__sin__';
+    await sandbox.cargarExpedientesTSJ();
+    igual('Tribunales TSJ: "sin carpeta" deja solo los sueltos',
+        pintados(estado, 'lista-expedientes-tsj'), ['444/2025']);
+
+    campos['filtro-carpeta-tsj'] = '11';
+    await sandbox.cargarExpedientesTSJ();
+    igual('Tribunales TSJ: y una carpeta, los suyos',
+        pintados(estado, 'lista-expedientes-tsj'), ['333/2025']);
+
+    campos['buscar-archivo-tsj'] = 'desistimiento';
+    await sandbox.filtrarArchivoTSJ();
+    igual('Tribunales TSJ: el archivo del TSJ se busca como el general',
+        pintados(estado, 'lista-archivo-tsj'), ['555/2024']);
+}
+
 async function pruebaArchivo() {
     const { sandbox, estado, campos } = await preparar();
 
@@ -347,6 +381,7 @@ async function pruebaCriterioCompartido() {
     const pruebas = [
         ['expedientes TSJ', pruebaExpedientesTSJ],
         ['expedientes PJF', pruebaExpedientesPJF],
+        ['tribunales TSJ', pruebaTribunalTSJ],
         ['archivo', pruebaArchivo],
         ['notas', pruebaNotas],
         ['paleta de comandos', pruebaPaletaDeComandos],

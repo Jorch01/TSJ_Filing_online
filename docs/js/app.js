@@ -77,7 +77,6 @@ function escapeText(text) {
 // ==================== ESTADO GLOBAL ====================
 
 // Estado global
-let expedientesSeleccionados = [];
 let fechaCalendario = new Date();
 let diaSeleccionado = null;
 let vistaExpedientes = localStorage.getItem('vistaExpedientes') || 'cards'; // 'cards' o 'table'
@@ -368,7 +367,7 @@ function navegarA(pagina) {
     } else if (pagina === 'pendientes') {
         cargarPendientes();
     } else if (pagina === 'busqueda') {
-        cargarExpedientesParaBusqueda();
+        prepararPaginaTSJ();
     } else if (pagina === 'pjf') {
         cargarCatalogosPJF();
     } else if (pagina === 'impi') {
@@ -899,6 +898,12 @@ async function cargarExpedientes() {
             'warning');
     }
 
+    // La pestaña Expedientes TSJ de Tribunales muestra los mismos datos: se
+    // repinta con cada cambio, como la lista principal.
+    if (typeof cargarExpedientesTSJ === 'function') {
+        cargarExpedientesTSJ().catch(e => Logger.warn('Expedientes TSJ:', e));
+    }
+
     let expedientes = await obtenerExpedientes();
     const lista = document.getElementById('lista-expedientes');
     const count = document.getElementById('count-expedientes');
@@ -1222,11 +1227,12 @@ async function cargarCarpetasUI() {
         ftTSJ.innerHTML = optsHTML;
         if (prev) ftTSJ.value = prev;
     }
-    const ftPJF = document.getElementById('filtro-carpeta-pjf');
-    if (ftPJF) {
-        const prev = ftPJF.value;
-        ftPJF.innerHTML = optsHTML;
-        if (prev) ftPJF.value = prev;
+    for (const id of ['filtro-carpeta-pjf', 'filtro-carpeta-tsj']) {
+        const ft = document.getElementById(id);
+        if (!ft) continue;
+        const prev = ft.value;
+        ft.innerHTML = optsHTML;
+        if (prev) ft.value = prev;
     }
 
     // Filtro de carpetas en Pendientes. Aquí "sin carpeta" no es una categoría
@@ -1810,9 +1816,14 @@ function cerrarArchivo() {
 }
 
 // Núcleo compartido de carga de archivo (usado por TSJ y PJF)
-async function _cargarArchivoComun({ listaId, countId, soloPJF, mensajeVacio }) {
-    let archivados = await obtenerExpedientesArchivados();
-    if (soloPJF) archivados = archivados.filter(e => e.institucion === 'PJF');
+// soloInstitucion ('TSJ' | 'PJF') limita el archivo al de un tribunal.
+function _soloDeInstitucion(expedientes, soloPJF, soloInstitucion) {
+    const inst = soloInstitucion || (soloPJF ? 'PJF' : null);
+    return inst ? expedientes.filter(e => (e.institucion || 'TSJ') === inst) : expedientes;
+}
+
+async function _cargarArchivoComun({ listaId, countId, soloPJF, soloInstitucion, mensajeVacio }) {
+    let archivados = _soloDeInstitucion(await obtenerExpedientesArchivados(), soloPJF, soloInstitucion);
 
     const lista = document.getElementById(listaId);
     const count = document.getElementById(countId);
@@ -1916,7 +1927,7 @@ function _badgeCarpetaHTML(carpetaId) {
 //   institucion: 'TSJ' | 'PJF' | 'OTRO' (default: exp.institucion || 'TSJ')
 //   draggable: muestra drag-handle y atributo draggable. Default false.
 //   orden: número para data-orden (cuando se permite reordenar).
-//   selectable / selected: modo selección PJF.
+//   selectable / selected / toggleFn: modo selección (PJF o TSJ).
 //   editarFn / eliminarFn: nombre de la función JS a invocar.
 //   categoriaDefault: texto cuando exp.categoria está vacío.
 // ¿Este expediente se puede consultar en el portal del PJF? Lo decide el
@@ -1938,6 +1949,7 @@ function renderTarjetaExpedienteHTML(exp, opciones = {}) {
     const editarFn = opciones.editarFn || 'editarExpediente';
     const eliminarFn = opciones.eliminarFn || 'confirmarEliminarExpediente';
     const categoriaDefault = opciones.categoriaDefault || (institucion === 'PJF' ? 'PJF Federal' : 'General');
+    const toggleFn = opciones.toggleFn || 'toggleSeleccionExpedientePJF';
 
     // Distintivo con los pendientes sin terminar del expediente.
     const abiertos = typeof pendientesAbiertosDeExpediente === 'function'
@@ -1956,7 +1968,7 @@ function renderTarjetaExpedienteHTML(exp, opciones = {}) {
             <div class="pjf-checkbox-wrap" onclick="event.stopPropagation()" style="display:flex;align-items:center;padding:0.4rem 0.5rem 0;">
                 <input type="checkbox" class="pjf-check" data-exp-id="${exp.id}"
                     ${selected ? 'checked' : ''}
-                    onchange="toggleSeleccionExpedientePJF(${exp.id}, this)"
+                    onchange="${toggleFn}(${exp.id}, this)"
                     style="width:1.2rem;height:1.2rem;cursor:pointer;accent-color:var(--primary,#366092);">
                 <span style="font-size:0.8rem;margin-left:0.4rem;color:var(--text-secondary,#6c757d);">Seleccionar</span>
             </div>`;
@@ -2046,12 +2058,11 @@ function renderFilaExpedienteHTML(exp, opciones = {}) {
 }
 
 // Núcleo compartido de filtro de archivo (usado por TSJ y PJF)
-async function _filtrarArchivoComun({ listaId, countId, soloPJF, busquedaId, motivoId, mensajeSinResultados }) {
+async function _filtrarArchivoComun({ listaId, countId, soloPJF, soloInstitucion, busquedaId, motivoId, mensajeSinResultados }) {
     const busqueda = _normalizarBusqueda(document.getElementById(busquedaId)?.value || '');
     const motivo = document.getElementById(motivoId)?.value || '';
 
-    let archivados = await obtenerExpedientesArchivados();
-    if (soloPJF) archivados = archivados.filter(e => e.institucion === 'PJF');
+    let archivados = _soloDeInstitucion(await obtenerExpedientesArchivados(), soloPJF, soloInstitucion);
 
     if (busqueda) {
         // Un expediente archivado se encuentra por lo mismo que uno activo —su
@@ -2097,10 +2108,9 @@ async function filtrarArchivo() {
 }
 
 // Núcleo compartido del badge de archivo
-async function _actualizarBadgeArchivoComun(badgeId, soloPJF) {
+async function _actualizarBadgeArchivoComun(badgeId, soloPJF, soloInstitucion) {
     try {
-        let archivados = await obtenerExpedientesArchivados();
-        if (soloPJF) archivados = archivados.filter(e => e.institucion === 'PJF');
+        const archivados = _soloDeInstitucion(await obtenerExpedientesArchivados(), soloPJF, soloInstitucion);
         const badge = document.getElementById(badgeId);
         if (badge) {
             if (archivados.length > 0) {
@@ -4719,147 +4729,9 @@ function confirmarEliminarEvento(id) {
     }
 }
 
-// ==================== BÚSQUEDA ====================
-
-async function cargarExpedientesParaBusqueda() {
-    const todosExpedientes = await obtenerExpedientes();
-    // Solo mostrar expedientes del TSJQROO en la sección de búsqueda TSJ
-    let expedientes = todosExpedientes.filter(exp => (exp.institucion || 'TSJ') === 'TSJ');
-    // Limpiar seleccionados que sean de PJF (por si quedaron de una sesión anterior)
-    expedientesSeleccionados = expedientesSeleccionados.filter(id => expedientes.some(e => e.id === id));
-    const container = document.getElementById('expedientes-busqueda');
-    const totalExpedientes = expedientes.length;
-
-    // Límite compartido: el cupo disponible para TSJ = total límite - cuántos PJF hay
-    const esPremium = estadoPremium && estadoPremium.activo;
-    let mostrandoLimitados = false;
-
-    if (!esPremium) {
-        const noTSJCount = todosExpedientes.filter(exp => (exp.institucion || 'TSJ') !== 'TSJ').length;
-        const limiteDisponibleTSJ = Math.max(0, PREMIUM_CONFIG.limiteExpedientes - noTSJCount);
-        if (totalExpedientes > limiteDisponibleTSJ) {
-            expedientes = [...expedientes]
-                .sort((a, b) => new Date(b.fechaModificacion || b.fechaCreacion || 0) - new Date(a.fechaModificacion || a.fechaCreacion || 0))
-                .slice(0, limiteDisponibleTSJ);
-            mostrandoLimitados = true;
-            // Limpiar seleccionados que ya no están visibles
-            expedientesSeleccionados = expedientesSeleccionados.filter(id => expedientes.some(e => e.id === id));
-        }
-    }
-
-    if (expedientes.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state small">
-                <span>📂</span>
-                <p>No hay expedientes. Agrega algunos primero.</p>
-            </div>
-        `;
-        return;
-    }
-
-    let advertenciaHTML = '';
-    if (mostrandoLimitados) {
-        advertenciaHTML = `
-            <div style="background: #fff3cd; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.5rem; font-size: 0.8rem;">
-                ⚠️ Mostrando solo ${expedientes.length} de ${totalExpedientes} expedientes TSJ (límite compartido de ${PREMIUM_CONFIG.limiteExpedientes} entre TSJ y PJF).
-                <a href="#" onclick="mostrarSeccion('configuracion'); return false;">Activar Premium</a>
-            </div>
-        `;
-    }
-
-    container.innerHTML = advertenciaHTML + expedientes.map(exp => `
-        <label class="expediente-seleccion-item ${expedientesSeleccionados.includes(exp.id) ? 'selected' : ''}">
-            <input type="checkbox" ${expedientesSeleccionados.includes(exp.id) ? 'checked' : ''} onchange="toggleExpedienteSeleccion(${exp.id})">
-            <div class="exp-info">
-                <span class="exp-numero">${exp.numero || exp.nombre}</span>
-                <span class="exp-juzgado">${exp.juzgado}</span>
-                ${exp.comentario ? `<span class="exp-comentario">${exp.comentario}</span>` : ''}
-            </div>
-        </label>
-    `).join('');
-
-    document.getElementById('count-seleccionados').textContent = `${expedientesSeleccionados.length} seleccionados`;
-}
-
-function toggleExpedienteSeleccion(id) {
-    if (expedientesSeleccionados.includes(id)) {
-        expedientesSeleccionados = expedientesSeleccionados.filter(e => e !== id);
-    } else {
-        expedientesSeleccionados.push(id);
-    }
-    cargarExpedientesParaBusqueda();
-}
-
-async function seleccionarTodosExpedientes() {
-    const expedientes = await obtenerExpedientes();
-    // Solo operar sobre expedientes TSJ (excluir PJF)
-    const tsjExpedientes = expedientes.filter(exp => (exp.institucion || 'TSJ') === 'TSJ');
-    const todosSeleccionados = tsjExpedientes.every(e => expedientesSeleccionados.includes(e.id));
-    if (todosSeleccionados) {
-        expedientesSeleccionados = [];
-    } else {
-        expedientesSeleccionados = tsjExpedientes.map(e => e.id);
-    }
-    cargarExpedientesParaBusqueda();
-}
-
-async function generarURLsBusqueda() {
-    if (expedientesSeleccionados.length === 0) {
-        mostrarToast('Selecciona al menos un expediente', 'warning');
-        return;
-    }
-
-    const expedientes = await obtenerExpedientes();
-    // Solo generar URLs de TSJQROO para expedientes TSJ
-    const seleccionados = expedientes.filter(e => expedientesSeleccionados.includes(e.id) && (e.institucion || 'TSJ') === 'TSJ');
-
-    const urlsContainer = document.getElementById('urls-generadas');
-    const listaUrls = document.getElementById('lista-urls');
-
-    listaUrls.innerHTML = seleccionados.map(exp => {
-        const tipoBusqueda = exp.numero ? 'numero' : 'nombre';
-        const valor = exp.numero || exp.nombre;
-        const url = construirUrlBusqueda(exp.juzgado, tipoBusqueda, valor);
-
-        if (!url) {
-            // Expediente PJF u órgano no reconocido — no tiene URL de búsqueda TSJQROO
-            return `
-                <div class="url-item url-item-unavailable">
-                    <div class="url-info">
-                        <span class="url-expediente">${exp.numero || exp.nombre}</span>
-                        <span class="url-juzgado">${exp.juzgado}</span>
-                    </div>
-                    <div class="url-actions">
-                        <span class="url-unavailable-msg" title="Este expediente no pertenece a un juzgado del TSJQROO">⚠️ Sin URL (PJF/no TSJQROO)</span>
-                    </div>
-                </div>
-            `;
-        }
-
-        const urlEscaped = url.replace(/'/g, "\\'");
-        const valorEscaped = valor.replace(/'/g, "\\'");
-
-        return `
-            <div class="url-item">
-                <div class="url-info">
-                    <span class="url-expediente">${exp.numero || exp.nombre}</span>
-                    <span class="url-juzgado">${exp.juzgado}</span>
-                </div>
-                <div class="url-actions">
-                    <button class="btn btn-sm btn-secondary" onclick="copiarURL('${urlEscaped}')" title="Copiar">📋</button>
-                    <button class="btn btn-sm btn-primary" onclick="abrirBusquedaPopup('${urlEscaped}', '${valorEscaped}')">👁️ Ver</button>
-                </div>
-            </div>
-        `;
-    }).join('');
-
-    urlsContainer.style.display = 'block';
-    mostrarToast(`${seleccionados.length} URLs generadas`, 'success');
-}
-
 // ==================== ESTRADOS DE UN EXPEDIENTE ====================
 // Los estrados electrónicos son el tablero donde el TSJ publica los acuerdos.
-// La página de Búsqueda ya los abre en bloque; esto es el atajo de una fila,
+// La pestaña Expedientes TSJ los abre en bloque; esto es el atajo de una fila,
 // que es como se consultan en el día a día: se abre el de un expediente y se
 // mira si hay algo nuevo.
 
@@ -4932,59 +4804,6 @@ function abrirBusquedaPopup(url, titulo) {
         mostrarToast('Popup bloqueado. Abriendo en nueva pestaña...', 'warning');
         window.open(url, '_blank');
     }
-}
-
-// Abrir todas las búsquedas en popups secuenciales
-async function abrirTodasBusquedas() {
-    const expedientes = await obtenerExpedientes();
-    // Solo abrir búsquedas TSJ para expedientes TSJ
-    const seleccionados = expedientes.filter(e => expedientesSeleccionados.includes(e.id) && (e.institucion || 'TSJ') === 'TSJ');
-
-    if (seleccionados.length === 0) {
-        mostrarToast('Selecciona al menos un expediente', 'warning');
-        return;
-    }
-
-    if (seleccionados.length > 5) {
-        if (!confirm(`Vas a abrir ${seleccionados.length} ventanas. ¿Continuar?`)) {
-            return;
-        }
-    }
-
-    let delay = 0;
-    seleccionados.forEach((exp, index) => {
-        const tipoBusqueda = exp.numero ? 'numero' : 'nombre';
-        const valor = exp.numero || exp.nombre;
-        const url = construirUrlBusqueda(exp.juzgado, tipoBusqueda, valor);
-
-        setTimeout(() => {
-            abrirBusquedaPopup(url, valor);
-        }, delay);
-
-        delay += 500; // 500ms entre cada ventana
-    });
-
-    mostrarToast(`Abriendo ${seleccionados.length} búsquedas...`, 'success');
-}
-
-function copiarURL(url) {
-    navigator.clipboard.writeText(url);
-    mostrarToast('URL copiada', 'success');
-}
-
-async function copiarTodasURLs() {
-    const expedientes = await obtenerExpedientes();
-    // Solo copiar URLs de expedientes TSJ
-    const seleccionados = expedientes.filter(e => expedientesSeleccionados.includes(e.id) && (e.institucion || 'TSJ') === 'TSJ');
-
-    const urls = seleccionados.map(exp => {
-        const tipoBusqueda = exp.numero ? 'numero' : 'nombre';
-        const valor = exp.numero || exp.nombre;
-        return construirUrlBusqueda(exp.juzgado, tipoBusqueda, valor);
-    }).filter(url => url !== null).join('\n');
-
-    navigator.clipboard.writeText(urls);
-    mostrarToast('Todas las URLs copiadas', 'success');
 }
 
 // ==================== CONFIGURACIÓN ====================
@@ -9667,14 +9486,400 @@ function cambiarTabPJF(tab) {
     }
 }
 
-// Pestañas del TSJ (Búsqueda / Análisis IA), a imagen de las del PJF.
+// Pestañas del TSJ (Búsqueda / Expedientes / Análisis IA), a imagen de las del PJF.
 function cambiarTabTSJ(tab) {
     document.querySelectorAll('#page-busqueda .pjf-tab').forEach(t =>
         t.classList.toggle('active', t.dataset.tsjTab === tab));
     document.querySelectorAll('#page-busqueda .pjf-tab-content').forEach(c =>
         c.classList.toggle('active', c.id === `tsj-tab-${tab}`));
+
+    if (tab === 'expedientes') cargarExpedientesTSJ();
 }
 window.cambiarTabTSJ = cambiarTabTSJ;
+
+// Al entrar a la página del TSJ: el catálogo de juzgados de la consulta y la
+// lista de expedientes, por si se entra directo a esa pestaña.
+function prepararPaginaTSJ() {
+    const select = document.getElementById('tsj-juzgado');
+    if (select && select.options.length <= 1 && typeof poblarSelectJuzgados === 'function') {
+        poblarSelectJuzgados('tsj-juzgado');
+    }
+    cargarExpedientesTSJ();
+}
+
+// ==================== TSJ BÚSQUEDA ====================
+
+function _tipoBusquedaTSJ() {
+    return document.querySelector('input[name="tsj-tipo-busqueda"]:checked')?.value || 'numero';
+}
+
+function actualizarPlaceholderTSJ() {
+    const porNombre = _tipoBusquedaTSJ() === 'nombre';
+    const input = document.getElementById('tsj-valor');
+    const label = document.getElementById('tsj-valor-label');
+    const ayuda = document.getElementById('tsj-valor-ayuda');
+    if (input) input.placeholder = porNombre ? 'Ej: Juan Pérez López' : 'Ej: 1234/2025';
+    if (label) label.textContent = porNombre ? 'Nombre de la parte *' : 'Número de Expediente *';
+    if (ayuda) ayuda.textContent = porNombre ? 'Nombre como aparece en los estrados' : 'Formato: número/año';
+}
+
+// Lo que pide la consulta, o null (con aviso) si falta algo.
+function _datosConsultaTSJ() {
+    const juzgado = document.getElementById('tsj-juzgado')?.value || '';
+    const valor = (document.getElementById('tsj-valor')?.value || '').trim();
+    const tipo = _tipoBusquedaTSJ();
+    if (!juzgado || !valor) {
+        mostrarToast(`Completa el juzgado y el ${tipo === 'nombre' ? 'nombre' : 'número de expediente'}`, 'warning');
+        return null;
+    }
+    const url = construirUrlBusqueda(juzgado, tipo, valor);
+    if (!url) {
+        mostrarToast(`No hay estrados del TSJ para "${juzgado}"`, 'warning');
+        return null;
+    }
+    return { juzgado, valor, tipo, url };
+}
+
+function ejecutarBusquedaTSJ() {
+    const datos = _datosConsultaTSJ();
+    if (datos) abrirBusquedaPopup(datos.url, datos.valor);
+}
+
+async function ejecutarBusquedaTSJyGuardar() {
+    const datos = _datosConsultaTSJ();
+    if (!datos) return;
+
+    const campo = datos.tipo === 'nombre' ? 'nombre' : 'numero';
+    const clave = datos.valor.toLowerCase();
+    const expedientes = await obtenerExpedientes();
+    const existente = expedientes.find(e =>
+        _esExpedienteTSJ(e) && e.juzgado === datos.juzgado &&
+        (e[campo] || '').toLowerCase() === clave);
+
+    if (existente) {
+        mostrarToast(`"${datos.valor}" ya está en tus expedientes del TSJ`, 'info');
+    } else if (await verificarLimiteExpedientes()) {
+        await crearExpedienteCore({ [campo]: datos.valor, juzgado: datos.juzgado, institucion: 'TSJ' });
+        mostrarToast(`Expediente "${datos.valor}" guardado`, 'success');
+    }
+
+    abrirBusquedaPopup(datos.url, datos.valor);
+}
+
+function limpiarFormularioTSJ() {
+    const buscador = document.getElementById('tsj-juzgado-search');
+    if (buscador) {
+        buscador.value = '';
+        filtrarJuzgadosSelect('tsj-juzgado-search', 'tsj-juzgado');
+    }
+    const select = document.getElementById('tsj-juzgado');
+    if (select) select.value = '';
+    const valor = document.getElementById('tsj-valor');
+    if (valor) valor.value = '';
+    const porNumero = document.querySelector('input[name="tsj-tipo-busqueda"][value="numero"]');
+    if (porNumero) porNumero.checked = true;
+    actualizarPlaceholderTSJ();
+}
+
+// ==================== TSJ EXPEDIENTES ====================
+// La misma lista que "Mis Expedientes Federales", con los del TSJ.
+
+let vistaExpedientesTSJ = (() => {
+    try { return localStorage.getItem('vistaExpedientesTSJ') || 'cards'; } catch (e) { return 'cards'; }
+})();
+let modoSeleccionTSJ = false;
+const expedientesTSJSeleccionados = new Set();
+
+// Sin institución es del TSJ: así se guardaban antes de que hubiera PJF.
+function _esExpedienteTSJ(exp) {
+    return (exp.institucion || 'TSJ') === 'TSJ';
+}
+
+function _ordenarExpedientesTSJ(lista) {
+    return [...lista].sort((a, b) => {
+        if (a.orden !== undefined && b.orden !== undefined) return a.orden - b.orden;
+        if (a.orden !== undefined) return -1;
+        if (b.orden !== undefined) return 1;
+        return new Date(b.fechaModificacion || b.fechaCreacion || 0) - new Date(a.fechaModificacion || a.fechaCreacion || 0);
+    });
+}
+
+// Pinta la lista con los filtros que haya: cargar y filtrar son lo mismo.
+async function cargarExpedientesTSJ() {
+    const lista = document.getElementById('lista-expedientes-tsj');
+    if (!lista) return;
+    const count = document.getElementById('count-expedientes-tsj');
+    const tablaBody = document.getElementById('tabla-expedientes-body-tsj');
+
+    const todos = await obtenerExpedientes();
+    let tsjExps = _ordenarExpedientesTSJ(todos.filter(_esExpedienteTSJ));
+    const totalTSJ = tsjExps.length;
+
+    // Límite compartido: el cupo del TSJ es el total menos lo que ocupan los demás.
+    const esPremium = estadoPremium && estadoPremium.activo;
+    let limitados = false;
+    if (!esPremium) {
+        const cupo = Math.max(0, PREMIUM_CONFIG.limiteExpedientes - (todos.length - totalTSJ));
+        if (totalTSJ > cupo) {
+            tsjExps = tsjExps.slice(0, cupo);
+            limitados = true;
+        }
+    }
+
+    // Los seleccionados que ya no están (borrados, archivados) dejan de contar.
+    for (const id of [...expedientesTSJSeleccionados]) {
+        if (!tsjExps.some(e => e.id === id)) expedientesTSJSeleccionados.delete(id);
+    }
+    actualizarContadorSeleccionTSJ();
+
+    const busqueda = _normalizarBusqueda(document.getElementById('buscar-expediente-tsj')?.value || '');
+    const carpetaFiltro = document.getElementById('filtro-carpeta-tsj')?.value || '';
+    let visibles = tsjExps;
+    if (carpetaFiltro === '__sin__') {
+        visibles = visibles.filter(e => e.carpetaId === undefined || e.carpetaId === null);
+    } else if (carpetaFiltro) {
+        const cid = parseInt(carpetaFiltro, 10);
+        visibles = visibles.filter(e => e.carpetaId === cid);
+    }
+    if (busqueda) {
+        const indice = await obtenerIndiceBusqueda();
+        visibles = visibles.filter(e => _expedienteEncajaEnBusqueda(e, busqueda, indice));
+    }
+    const filtrando = !!(busqueda || carpetaFiltro);
+
+    if (totalTSJ === 0) {
+        lista.innerHTML = `
+            <div class="empty-state">
+                <span class="empty-icon">🏢</span>
+                <h3>No hay expedientes del TSJ</h3>
+                <p>Busca un expediente en el TSJ y guárdalo, o crea uno desde la pestaña de Expedientes.</p>
+                <button class="btn btn-primary" onclick="navegarA('expedientes'); cambiarInstitucionACrear('TSJ')">
+                    ➕ Agregar Expediente TSJ
+                </button>
+            </div>`;
+        if (tablaBody) tablaBody.innerHTML = '';
+        if (count) count.textContent = '0 expedientes';
+    } else if (visibles.length === 0) {
+        lista.innerHTML = limitados && !filtrando
+            ? `<div style="background: #fff3cd; padding: 0.75rem; border-radius: 6px; font-size: 0.875rem;">
+                ⚠️ El límite gratuito de ${PREMIUM_CONFIG.limiteExpedientes} expedientes compartidos ya está completo con expedientes de otros tribunales.
+                <a href="#" onclick="mostrarSeccion('configuracion'); return false;">Activar Premium</a> para expedientes ilimitados.
+            </div>`
+            : `<div class="empty-state">
+                <span class="empty-icon">🔍</span>
+                <h3>Sin resultados</h3>
+                <p>No se encontraron expedientes del TSJ con esos filtros</p>
+            </div>`;
+        if (tablaBody) tablaBody.innerHTML = '';
+        if (count) count.textContent = `0 expedientes`;
+    } else {
+        const advertencia = limitados ? `
+            <div style="background: #fff3cd; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.5rem; font-size: 0.8rem;">
+                ⚠️ Mostrando solo ${tsjExps.length} de ${totalTSJ} expedientes TSJ (límite compartido de ${PREMIUM_CONFIG.limiteExpedientes} entre tribunales).
+                <a href="#" onclick="mostrarSeccion('configuracion'); return false;">Activar Premium</a>
+            </div>` : '';
+
+        // Reordenar solo tiene sentido con la lista completa a la vista.
+        const reordenable = !filtrando && !modoSeleccionTSJ;
+        lista.innerHTML = advertencia + visibles.map((exp, index) =>
+            renderTarjetaExpedienteHTML(exp, {
+                institucion: 'TSJ',
+                draggable: reordenable,
+                orden: exp.orden || index,
+                selectable: modoSeleccionTSJ,
+                selected: expedientesTSJSeleccionados.has(exp.id),
+                toggleFn: 'toggleSeleccionExpedienteTSJ'
+            })
+        ).join('');
+        if (reordenable) inicializarDragAndDropPJF('lista-expedientes-tsj');
+
+        if (tablaBody) {
+            tablaBody.innerHTML = visibles.map(exp =>
+                renderFilaExpedienteHTML(exp, { institucion: 'TSJ', showInstColumn: false })
+            ).join('');
+        }
+
+        if (count) {
+            count.textContent = filtrando
+                ? `${visibles.length} de ${totalTSJ} expediente${totalTSJ !== 1 ? 's' : ''}`
+                : limitados
+                    ? `${tsjExps.length} de ${totalTSJ} expediente${totalTSJ !== 1 ? 's' : ''} (limitado)`
+                    : `${totalTSJ} expediente${totalTSJ !== 1 ? 's' : ''}`;
+        }
+    }
+
+    aplicarVistaExpedientesTSJ();
+    actualizarBadgeArchivoTSJ();
+    // Archivar, restaurar o borrar repintan esta lista: el archivo abierto
+    // se repinta con ella.
+    if (document.getElementById('archivo-section-tsj')?.style.display === 'block') filtrarArchivoTSJ();
+}
+
+const filtrarExpedientesTSJ = cargarExpedientesTSJ;
+let _filtrarTSJTabTimer = null;
+function filtrarExpedientesTSJDebounced() {
+    clearTimeout(_filtrarTSJTabTimer);
+    _filtrarTSJTabTimer = setTimeout(() => filtrarExpedientesTSJ(), 150);
+}
+
+function cambiarVistaExpedientesTSJ(vista) {
+    vistaExpedientesTSJ = vista;
+    try { localStorage.setItem('vistaExpedientesTSJ', vista); } catch (e) {}
+    aplicarVistaExpedientesTSJ();
+}
+
+function aplicarVistaExpedientesTSJ() {
+    document.querySelectorAll('.tsj-view-btn').forEach(btn =>
+        btn.classList.toggle('active', btn.dataset.view === vistaExpedientesTSJ));
+
+    // Con el archivo abierto, la lista queda oculta hasta volver.
+    const archivoAbierto = document.getElementById('archivo-section-tsj')?.style.display === 'block';
+    const listaCards = document.getElementById('lista-expedientes-tsj');
+    const tabla = document.getElementById('tabla-expedientes-tsj');
+    const enTabla = vistaExpedientesTSJ === 'table';
+    if (listaCards) listaCards.style.display = archivoAbierto || enTabla ? 'none' : 'grid';
+    if (tabla) tabla.style.display = archivoAbierto || !enTabla ? 'none' : 'block';
+}
+
+// ---------- Selección masiva: abrir los estrados de varios a la vez ----------
+
+function toggleModoSeleccionTSJ() {
+    modoSeleccionTSJ = !modoSeleccionTSJ;
+    expedientesTSJSeleccionados.clear();
+
+    const bulkBar = document.getElementById('bulk-actions-tsj');
+    if (bulkBar) bulkBar.style.display = modoSeleccionTSJ ? 'flex' : 'none';
+    const aviso = document.getElementById('bulk-open-notice-tsj');
+    if (aviso) aviso.style.display = modoSeleccionTSJ ? 'block' : 'none';
+    const btn = document.getElementById('btn-toggle-seleccion-tsj');
+    if (btn) {
+        btn.textContent = modoSeleccionTSJ ? '✕ Cancelar selección' : '☑️ Selección masiva';
+        btn.classList.toggle('btn-warning', modoSeleccionTSJ);
+        btn.classList.toggle('btn-secondary', !modoSeleccionTSJ);
+    }
+    // Las casillas solo están en las tarjetas.
+    if (modoSeleccionTSJ && vistaExpedientesTSJ === 'table') cambiarVistaExpedientesTSJ('cards');
+    cargarExpedientesTSJ();
+}
+
+function toggleSeleccionExpedienteTSJ(id, checkbox) {
+    if (checkbox.checked) expedientesTSJSeleccionados.add(id);
+    else expedientesTSJSeleccionados.delete(id);
+    actualizarContadorSeleccionTSJ();
+}
+
+function actualizarContadorSeleccionTSJ() {
+    const n = expedientesTSJSeleccionados.size;
+    const countEl = document.getElementById('count-tsj-seleccionados');
+    if (countEl) countEl.textContent = `${n} seleccionado${n !== 1 ? 's' : ''}`;
+    for (const id of ['btn-abrir-tsj-seleccionados', 'btn-copiar-tsj-seleccionados']) {
+        const b = document.getElementById(id);
+        if (b) b.disabled = n === 0;
+    }
+}
+
+function seleccionarTodosExpedientesTSJ() {
+    document.querySelectorAll('#lista-expedientes-tsj .pjf-check').forEach(cb => {
+        cb.checked = true;
+        const id = parseInt(cb.dataset.expId, 10);
+        if (id) expedientesTSJSeleccionados.add(id);
+    });
+    actualizarContadorSeleccionTSJ();
+}
+
+function deseleccionarTodosExpedientesTSJ() {
+    document.querySelectorAll('#lista-expedientes-tsj .pjf-check').forEach(cb => { cb.checked = false; });
+    expedientesTSJSeleccionados.clear();
+    actualizarContadorSeleccionTSJ();
+}
+
+// Los seleccionados con estrados, y cuántos no los tienen.
+async function _estradosSeleccionadosTSJ() {
+    const expedientes = await obtenerExpedientes();
+    const elegidos = expedientes.filter(e => expedientesTSJSeleccionados.has(e.id));
+    const conUrl = elegidos
+        .map(exp => ({ exp, url: urlEstradosExpediente(exp) }))
+        .filter(x => x.url);
+    return { conUrl, sinUrl: elegidos.length - conUrl.length };
+}
+
+async function abrirExpedientesTSJSeleccionados() {
+    if (expedientesTSJSeleccionados.size === 0) {
+        mostrarToast('No hay expedientes seleccionados', 'warning');
+        return;
+    }
+    const { conUrl, sinUrl } = await _estradosSeleccionadosTSJ();
+    if (conUrl.length === 0) {
+        mostrarToast('Ninguno de los seleccionados tiene un juzgado del catálogo del TSJ', 'warning');
+        return;
+    }
+    if (conUrl.length > 5 && !confirm(`Vas a abrir ${conUrl.length} ventanas. ¿Continuar?`)) return;
+
+    // Una tras otra: varias ventanas en el mismo instante las bloquea el navegador.
+    conUrl.forEach(({ exp, url }, i) => {
+        setTimeout(() => abrirBusquedaPopup(url, exp.numero || exp.nombre), i * 500);
+    });
+    mostrarToast(
+        `Abriendo ${conUrl.length} estrado${conUrl.length !== 1 ? 's' : ''}` +
+        (sinUrl > 0 ? `. ${sinUrl} sin juzgado del TSJ reconocido.` : '') +
+        ' (Permite ventanas emergentes si el navegador las bloquea)',
+        'success');
+}
+
+async function copiarURLsExpedientesTSJSeleccionados() {
+    const { conUrl } = await _estradosSeleccionadosTSJ();
+    if (conUrl.length === 0) {
+        mostrarToast('Ninguno de los seleccionados tiene estrados del TSJ', 'warning');
+        return;
+    }
+    try {
+        await navigator.clipboard.writeText(conUrl.map(x => x.url).join('\n'));
+        mostrarToast(`${conUrl.length} URL${conUrl.length !== 1 ? 's' : ''} copiada${conUrl.length !== 1 ? 's' : ''}`, 'success');
+    } catch (e) {
+        mostrarToast('No se pudo copiar al portapapeles', 'error');
+    }
+}
+
+// ---------- Archivo TSJ ----------
+
+function abrirArchivoTSJ() {
+    document.getElementById('archivo-section-tsj').style.display = 'block';
+    document.getElementById('archivo-toggle-tsj').style.display = 'none';
+    document.getElementById('filtros-expedientes-tsj').style.display = 'none';
+    aplicarVistaExpedientesTSJ();
+    cargarArchivoTSJ();
+}
+
+function cerrarArchivoTSJ() {
+    document.getElementById('archivo-section-tsj').style.display = 'none';
+    document.getElementById('archivo-toggle-tsj').style.display = 'block';
+    document.getElementById('filtros-expedientes-tsj').style.display = '';
+    aplicarVistaExpedientesTSJ();
+}
+
+async function cargarArchivoTSJ() {
+    return _cargarArchivoComun({
+        listaId: 'lista-archivo-tsj',
+        countId: 'count-archivo-tsj',
+        soloInstitucion: 'TSJ',
+        mensajeVacio: 'No hay expedientes TSJ archivados'
+    });
+}
+
+async function filtrarArchivoTSJ() {
+    return _filtrarArchivoComun({
+        listaId: 'lista-archivo-tsj',
+        countId: 'count-archivo-tsj',
+        soloInstitucion: 'TSJ',
+        busquedaId: 'buscar-archivo-tsj',
+        motivoId: 'filtro-motivo-archivo-tsj',
+        mensajeSinResultados: 'No se encontraron expedientes TSJ archivados con esos filtros'
+    });
+}
+
+async function actualizarBadgeArchivoTSJ() {
+    return _actualizarBadgeArchivoComun('count-archivo-badge-tsj', false, 'TSJ');
+}
 
 // ==================== PJF EXPEDIENTES ====================
 
@@ -10099,8 +10304,10 @@ async function filtrarExpedientesPJF() {
 // Drag and Drop for PJF expedientes
 let draggedElementPJF = null;
 
-function inicializarDragAndDropPJF() {
-    const lista = document.getElementById('lista-expedientes-pjf');
+// También la usa la lista de Expedientes TSJ: los manejadores trabajan sobre
+// la lista a la que pertenece la tarjeta, no sobre una fija.
+function inicializarDragAndDropPJF(listaId = 'lista-expedientes-pjf') {
+    const lista = document.getElementById(listaId);
     if (!lista) return;
     const cards = lista.querySelectorAll('.expediente-card');
 
@@ -10122,7 +10329,7 @@ function handleDragStartPJF(e) {
 
 function handleDragEndPJF() {
     this.classList.remove('dragging');
-    document.querySelectorAll('#lista-expedientes-pjf .expediente-card').forEach(c => c.classList.remove('drag-over'));
+    (this.parentNode || document).querySelectorAll('.expediente-card').forEach(c => c.classList.remove('drag-over'));
     draggedElementPJF = null;
 }
 
@@ -10144,8 +10351,8 @@ async function handleDropPJF(e) {
     e.preventDefault();
     this.classList.remove('drag-over');
 
-    if (draggedElementPJF && draggedElementPJF !== this) {
-        const lista = document.getElementById('lista-expedientes-pjf');
+    if (draggedElementPJF && draggedElementPJF !== this && draggedElementPJF.parentNode === this.parentNode) {
+        const lista = this.parentNode;
         const cards = [...lista.querySelectorAll('.expediente-card')];
         const fromIndex = cards.indexOf(draggedElementPJF);
         const toIndex = cards.indexOf(this);

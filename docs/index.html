@@ -821,7 +821,7 @@
             <div class="page-header">
                 <div>
                     <h2>⚖️ Tribunales</h2>
-                    <p class="subtitle">Estrados, búsquedas y análisis de acuerdos del TSJ de Quintana Roo</p>
+                    <p class="subtitle">Estrados, expedientes y análisis de acuerdos del TSJ de Quintana Roo</p>
                 </div>
             </div>
             <!-- Un solo apartado para los dos tribunales: se cambia aquí. -->
@@ -833,6 +833,7 @@
             <!-- Pestañas del TSJ, igual que las del PJF -->
             <div class="pjf-tabs tsj-tabs">
                 <button class="pjf-tab active" data-tsj-tab="busqueda" onclick="cambiarTabTSJ('busqueda')">🔍 Búsqueda</button>
+                <button class="pjf-tab" data-tsj-tab="expedientes" onclick="cambiarTabTSJ('expedientes')">📁 Expedientes TSJ</button>
                 <button class="pjf-tab" data-tsj-tab="ia" onclick="cambiarTabTSJ('ia')">🤖 Análisis IA</button>
             </div>
 
@@ -847,144 +848,282 @@
                 </div>
             </div>
 
+            <!-- TAB: Búsqueda TSJ -->
             <div class="pjf-tab-content active" id="tsj-tab-busqueda">
-            <!-- Búsqueda Global -->
-            <div class="card">
-                <div class="card-header">
-                    <div class="header-with-help">
-                        <h3>🌐 Búsqueda Global (Investigación)</h3>
-                        <div class="tooltip-container">
-                            <button class="help-btn" type="button">?</button>
-                            <div class="tooltip-content tooltip-left">
-                                <h4>¿Para qué sirve la Búsqueda Global?</h4>
-                                <p>Esta función te permite <strong>investigar</strong> buscando en TODOS los juzgados y salas al mismo tiempo.</p>
-                                <p><strong>Casos de uso:</strong></p>
-                                <ul>
-                                    <li>Buscar todas las causas de una persona</li>
-                                    <li>Verificar si existe un expediente (sin saber el juzgado)</li>
-                                    <li>Investigar antecedentes legales</li>
-                                </ul>
-                                <p><strong>Nota:</strong> Abre múltiples ventanas. El navegador puede bloquear popups - permite las ventanas emergentes del sitio TSJ.</p>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="header-with-help">
+                            <h3>🔍 Consulta de Expedientes del TSJ</h3>
+                            <div class="tooltip-container">
+                                <button class="help-btn" type="button">?</button>
+                                <div class="tooltip-content tooltip-left">
+                                    <h4>¿Cómo funciona?</h4>
+                                    <ul>
+                                        <li>Elige el juzgado o la sala (puedes filtrar la lista escribiendo)</li>
+                                        <li>Indica si buscas por número de expediente o por nombre de una parte</li>
+                                        <li>La consulta abre los estrados electrónicos del TSJ de Quintana Roo</li>
+                                        <li>"Buscar y Guardar" además lo agrega a tus expedientes</li>
+                                    </ul>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-                <div class="card-body">
-                    <p class="section-desc">Busca un número de expediente o nombre en TODOS los juzgados y salas a la vez.</p>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Tipo de búsqueda</label>
-                            <div class="radio-group">
-                                <label class="radio-label">
-                                    <input type="radio" name="tipo-busqueda-global" value="numero" checked>
-                                    <span>Por Número</span>
-                                </label>
-                                <label class="radio-label">
-                                    <input type="radio" name="tipo-busqueda-global" value="nombre">
-                                    <span>Por Nombre</span>
-                                </label>
+                    <div class="card-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="tsj-juzgado">Juzgado o Sala *</label>
+                                <input type="text" id="tsj-juzgado-search" class="catalog-search-input"
+                                    placeholder="Filtrar juzgados por texto..."
+                                    oninput="filtrarJuzgadosSelect('tsj-juzgado-search','tsj-juzgado')"
+                                    autocomplete="off" style="margin-bottom:0.35rem;">
+                                <select id="tsj-juzgado">
+                                    <option value="">Selecciona un juzgado...</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Buscar por</label>
+                                <div class="radio-group">
+                                    <label class="radio-label">
+                                        <input type="radio" name="tsj-tipo-busqueda" value="numero" checked onchange="actualizarPlaceholderTSJ()">
+                                        <span>Número</span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="tsj-tipo-busqueda" value="nombre" onchange="actualizarPlaceholderTSJ()">
+                                        <span>Nombre</span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label>Valor a buscar</label>
-                            <input type="text" id="busqueda-global-valor" placeholder="Ej: 1234/2025 o Juan Pérez">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Buscar en</label>
-                            <select id="busqueda-global-ambito" onchange="toggleJuzgadosEspecificos()">
-                                <option value="todos">Todos (Primera + Segunda Instancia)</option>
-                                <option value="primera">Solo Primera Instancia</option>
-                                <option value="segunda">Solo Segunda Instancia (Salas)</option>
-                                <option value="especificos">Juzgados específicos...</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div id="juzgados-especificos-container" style="display:none; max-height:300px; overflow-y:auto; border:1px solid var(--border-color,#ddd); border-radius:8px; padding:10px; margin-bottom:10px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                            <input type="text" id="filtro-juzgados-global" placeholder="Filtrar juzgados..." oninput="filtrarJuzgadosGlobal()" style="flex:1; margin-right:8px; padding:6px 10px; border:1px solid var(--border-color,#ccc); border-radius:6px; font-size:0.85rem;">
-                            <label style="font-size:0.8rem; white-space:nowrap; cursor:pointer;"><input type="checkbox" id="seleccionar-todos-juzgados" onchange="toggleTodosJuzgadosGlobal(this.checked)"> Todos</label>
-                        </div>
-                        <div id="juzgados-checkboxes"></div>
-                    </div>
-                </div>
-                <div class="card-footer">
-                    <button class="btn btn-success btn-lg" onclick="ejecutarBusquedaGlobal()">
-                        🌐 Buscar en Todos los Juzgados
-                    </button>
-                </div>
-            </div>
 
-            <hr class="section-divider">
-
-            <!-- Búsqueda por Expedientes Guardados -->
-            <div class="card">
-                <div class="card-header">
-                    <div class="header-with-help">
-                        <h3>📁 Buscar Expedientes Guardados</h3>
-                        <div class="tooltip-container">
-                            <button class="help-btn" type="button">?</button>
-                            <div class="tooltip-content">
-                                <h4>Búsqueda Rápida</h4>
-                                <p>Selecciona uno o más expedientes de tu lista y genera las URLs de búsqueda del TSJ.</p>
-                                <p><strong>Opciones:</strong></p>
-                                <ul>
-                                    <li><strong>Ver:</strong> Abre los resultados en una ventana popup</li>
-                                    <li><strong>Copiar:</strong> Copia el enlace al portapapeles</li>
-                                    <li><strong>Abrir Todas:</strong> Abre todas las búsquedas seleccionadas</li>
-                                </ul>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="tsj-valor" id="tsj-valor-label">Número de Expediente *</label>
+                                <input type="text" id="tsj-valor" placeholder="Ej: 1234/2025"
+                                    onkeydown="if (event.key === 'Enter') { event.preventDefault(); ejecutarBusquedaTSJ(); }">
+                                <span class="form-help" id="tsj-valor-ayuda">Formato: número/año</span>
                             </div>
                         </div>
                     </div>
-                    <div class="header-actions">
-                        <button class="btn btn-sm btn-secondary" onclick="seleccionarTodosExpedientes()">
-                            ✓ Seleccionar todos
+                    <div class="card-footer">
+                        <button class="btn btn-secondary" onclick="limpiarFormularioTSJ()">
+                            🗑️ Limpiar
                         </button>
-                        <span class="selection-count" id="count-seleccionados">0 seleccionados</span>
+                        <button class="btn btn-success" onclick="ejecutarBusquedaTSJyGuardar()">
+                            📁 Buscar y Guardar Expediente
+                        </button>
+                        <button class="btn btn-primary btn-lg" onclick="ejecutarBusquedaTSJ()">
+                            🔍 Buscar en TSJ
+                        </button>
                     </div>
                 </div>
-                <div class="card-body">
-                    <div class="expedientes-seleccion" id="expedientes-busqueda">
-                        <div class="empty-state small">
-                            <span>📂</span>
-                            <p>No hay expedientes. Agrega algunos primero.</p>
+
+                <hr class="section-divider">
+
+                <!-- Búsqueda Global -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="header-with-help">
+                            <h3>🌐 Búsqueda Global (Investigación)</h3>
+                            <div class="tooltip-container">
+                                <button class="help-btn" type="button">?</button>
+                                <div class="tooltip-content tooltip-left">
+                                    <h4>¿Para qué sirve la Búsqueda Global?</h4>
+                                    <p>Esta función te permite <strong>investigar</strong> buscando en TODOS los juzgados y salas al mismo tiempo.</p>
+                                    <p><strong>Casos de uso:</strong></p>
+                                    <ul>
+                                        <li>Buscar todas las causas de una persona</li>
+                                        <li>Verificar si existe un expediente (sin saber el juzgado)</li>
+                                        <li>Investigar antecedentes legales</li>
+                                    </ul>
+                                    <p><strong>Nota:</strong> Abre múltiples ventanas. El navegador puede bloquear popups - permite las ventanas emergentes del sitio TSJ.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <p class="section-desc">Busca un número de expediente o nombre en TODOS los juzgados y salas a la vez.</p>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Tipo de búsqueda</label>
+                                <div class="radio-group">
+                                    <label class="radio-label">
+                                        <input type="radio" name="tipo-busqueda-global" value="numero" checked>
+                                        <span>Por Número</span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="tipo-busqueda-global" value="nombre">
+                                        <span>Por Nombre</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Valor a buscar</label>
+                                <input type="text" id="busqueda-global-valor" placeholder="Ej: 1234/2025 o Juan Pérez">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Buscar en</label>
+                                <select id="busqueda-global-ambito" onchange="toggleJuzgadosEspecificos()">
+                                    <option value="todos">Todos (Primera + Segunda Instancia)</option>
+                                    <option value="primera">Solo Primera Instancia</option>
+                                    <option value="segunda">Solo Segunda Instancia (Salas)</option>
+                                    <option value="especificos">Juzgados específicos...</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="juzgados-especificos-container" style="display:none; max-height:300px; overflow-y:auto; border:1px solid var(--border-color,#ddd); border-radius:8px; padding:10px; margin-bottom:10px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <input type="text" id="filtro-juzgados-global" placeholder="Filtrar juzgados..." oninput="filtrarJuzgadosGlobal()" style="flex:1; margin-right:8px; padding:6px 10px; border:1px solid var(--border-color,#ccc); border-radius:6px; font-size:0.85rem;">
+                                <label style="font-size:0.8rem; white-space:nowrap; cursor:pointer;"><input type="checkbox" id="seleccionar-todos-juzgados" onchange="toggleTodosJuzgadosGlobal(this.checked)"> Todos</label>
+                            </div>
+                            <div id="juzgados-checkboxes"></div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-success btn-lg" onclick="ejecutarBusquedaGlobal()">
+                            🌐 Buscar en Todos los Juzgados
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: Expedientes TSJ -->
+            <div class="pjf-tab-content" id="tsj-tab-expedientes">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>📁 Mis Expedientes del TSJ</h3>
+                        <div class="header-buttons">
+                            <div class="tooltip-container">
+                                <button class="btn btn-secondary btn-sm" onclick="descargarTemplateExpedientes()">
+                                    📄 Descargar Template
+                                </button>
+                                <div class="tooltip-content tooltip-bottom tooltip-right">
+                                    <h4>Carga masiva de expedientes</h4>
+                                    <p>Es <strong>el mismo template</strong> que en Expedientes: un solo archivo para lo estatal, lo federal y lo demás.</p>
+                                    <p>Para un asunto del TSJ basta el número (o el nombre) y el juzgado tal como aparece en el catálogo; con eso el botón "🌐 Estrados" abre su búsqueda directamente.</p>
+                                </div>
+                            </div>
+                            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('import-tsj-csv').click()">
+                                📥 Importar CSV
+                            </button>
+                            <input type="file" id="import-tsj-csv" accept=".csv,.xlsx,.xls" style="display:none" onchange="importarExpedientes(event)">
+                            <button class="btn btn-secondary btn-sm" onclick="toggleModoSeleccionTSJ()" id="btn-toggle-seleccion-tsj" title="Selección masiva para abrir los estrados de varios expedientes a la vez">
+                                ☑️ Selección masiva
+                            </button>
+                            <button class="btn btn-primary btn-sm" onclick="navegarA('expedientes'); cambiarInstitucionACrear('TSJ')">
+                                ➕ Nuevo Expediente TSJ
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <!-- Filtros y Vista TSJ -->
+                        <div class="filters-section" id="filtros-expedientes-tsj" style="margin-bottom: 1rem;">
+                            <div class="search-box">
+                                <span class="search-icon">🔍</span>
+                                <input type="text" id="buscar-expediente-tsj" placeholder="Buscar expedientes TSJ..." oninput="filtrarExpedientesTSJDebounced()">
+                            </div>
+                            <select id="filtro-carpeta-tsj" onchange="filtrarExpedientesTSJ()" title="Filtrar por carpeta">
+                                <option value="">Todas las carpetas</option>
+                            </select>
+                            <button class="btn btn-sm btn-secondary" onclick="abrirGestionCarpetas()" title="Crear, editar o eliminar carpetas">📁 Carpetas</button>
+                            <div class="view-toggle">
+                                <button class="view-btn tsj-view-btn active" data-view="cards" onclick="cambiarVistaExpedientesTSJ('cards')" title="Vista tarjetas">
+                                    <span>▦</span>
+                                </button>
+                                <button class="view-btn tsj-view-btn" data-view="table" onclick="cambiarVistaExpedientesTSJ('table')" title="Vista tabla">
+                                    <span>☰</span>
+                                </button>
+                            </div>
+                            <span class="results-count" id="count-expedientes-tsj">0 expedientes</span>
+                        </div>
+
+                        <!-- Selección masiva TSJ -->
+                        <div class="bulk-actions-pjf" id="bulk-actions-tsj" style="display:none;">
+                            <button class="btn btn-sm btn-secondary" onclick="seleccionarTodosExpedientesTSJ()">
+                                ✓ Seleccionar todos
+                            </button>
+                            <button class="btn btn-sm btn-secondary" onclick="deseleccionarTodosExpedientesTSJ()">
+                                ✕ Deseleccionar todos
+                            </button>
+                            <span class="selection-count" id="count-tsj-seleccionados" style="font-size:0.875rem; color:var(--text-secondary,#6c757d);">0 seleccionados</span>
+                            <button class="btn btn-sm btn-secondary" onclick="copiarURLsExpedientesTSJSeleccionados()" id="btn-copiar-tsj-seleccionados" disabled>
+                                📋 Copiar URLs
+                            </button>
+                            <button class="btn btn-sm btn-primary" onclick="abrirExpedientesTSJSeleccionados()" id="btn-abrir-tsj-seleccionados" disabled>
+                                🚀 Abrir estrados seleccionados
+                            </button>
+                        </div>
+                        <div class="bulk-open-notice" id="bulk-open-notice-tsj" style="display:none;">
+                            💻 La apertura masiva de estrados funciona mejor en <strong>computadora de escritorio</strong>. En dispositivos móviles o tablets se recomienda abrir cada expediente individualmente para evitar bloqueos del navegador.
+                        </div>
+
+                        <!-- Lista Cards TSJ -->
+                        <div class="expedientes-grid" id="lista-expedientes-tsj">
+                            <div class="empty-state">
+                                <span class="empty-icon">🏢</span>
+                                <h3>No hay expedientes del TSJ</h3>
+                                <p>Busca un expediente en el TSJ y guárdalo, o crea uno desde la pestaña de Expedientes.</p>
+                            </div>
+                        </div>
+
+                        <!-- Lista Tabla TSJ -->
+                        <div class="expedientes-table-container" id="tabla-expedientes-tsj" style="display: none;">
+                            <table class="expedientes-table">
+                                <thead>
+                                    <tr>
+                                        <th>Tipo</th>
+                                        <th>Número/Nombre</th>
+                                        <th>Juzgado</th>
+                                        <th>Categoría</th>
+                                        <th>Comentario</th>
+                                        <th>Fecha</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabla-expedientes-body-tsj">
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Sección Archivo TSJ -->
+                        <div class="archivo-section" id="archivo-section-tsj" style="display: none;">
+                            <div class="archivo-header">
+                                <h3>📦 Archivo de Expedientes TSJ</h3>
+                                <button class="btn btn-secondary btn-sm" onclick="cerrarArchivoTSJ()">Volver a Expedientes TSJ</button>
+                            </div>
+                            <div class="filters-section" style="margin-bottom: 1rem;">
+                                <div class="search-box">
+                                    <span class="search-icon">🔍</span>
+                                    <input type="text" id="buscar-archivo-tsj" placeholder="Buscar en archivo TSJ..." oninput="filtrarArchivoTSJ()">
+                                </div>
+                                <select id="filtro-motivo-archivo-tsj" onchange="filtrarArchivoTSJ()">
+                                    <option value="">Todos los motivos</option>
+                                    <option value="concluido">Concluido</option>
+                                    <option value="abandonado">Abandonado</option>
+                                    <option value="otro">Otro</option>
+                                </select>
+                                <span class="results-count" id="count-archivo-tsj">0 archivados</span>
+                            </div>
+                            <div class="expedientes-grid" id="lista-archivo-tsj">
+                                <div class="empty-state">
+                                    <span class="empty-icon">📦</span>
+                                    <h3>Archivo vacío</h3>
+                                    <p>No hay expedientes TSJ archivados</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Botón para abrir archivo TSJ -->
+                        <div class="archivo-toggle" id="archivo-toggle-tsj">
+                            <button class="btn btn-outline" onclick="abrirArchivoTSJ()">📦 Ver Archivo TSJ <span id="count-archivo-badge-tsj" class="badge" style="display:none;">0</span></button>
                         </div>
                     </div>
                 </div>
-                <div class="card-footer">
-                    <button class="btn btn-primary btn-lg" onclick="generarURLsBusqueda()">
-                        🔗 Generar URLs de Búsqueda
-                    </button>
-                </div>
             </div>
 
-            <!-- URLs Generadas -->
-            <div class="card" id="urls-generadas" style="display: none;">
-                <div class="card-header">
-                    <h3>🔗 Resultados de Búsqueda</h3>
-                    <div class="header-actions">
-                        <button class="btn btn-sm btn-secondary" onclick="copiarTodasURLs()">📋 Copiar URLs</button>
-                        <button class="btn btn-sm btn-success" onclick="abrirTodasBusquedas()">🚀 Abrir Todas</button>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <div class="bulk-open-notice" id="bulk-open-notice-tsj">
-                        💻 La apertura masiva de estrados funciona mejor en <strong>computadora de escritorio</strong>. En dispositivos móviles o tablets se recomienda abrir cada expediente individualmente para evitar bloqueos del navegador.
-                    </div>
-                    <p class="manual-instructions">Haz clic en "Ver" para abrir los resultados del TSJ en una ventana popup.</p>
-                    <div class="urls-list" id="lista-urls">
-                        <!-- URLs generadas por JS -->
-                    </div>
-                </div>
-            </div>
-
-            <hr class="section-divider">
-
-            </div>
-
+            <!-- TAB: Análisis IA TSJ -->
             <div class="pjf-tab-content" id="tsj-tab-ia">
-            <!-- Análisis con IA -->
             <div class="card">
                 <div class="card-header">
                     <div class="header-with-help">
