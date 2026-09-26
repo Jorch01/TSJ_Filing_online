@@ -5286,3 +5286,90 @@ table th {
         cursor: pointer;
     }
 }
+
+/* ==================== TARJETA DE EXPEDIENTE: ACCIONES ====================
+   La fecha no se parte en renglones y, si los botones no caben, bajan a la
+   línea siguiente en vez de salirse de la tarjeta. */
+.expediente-footer {
+    flex-wrap: wrap;
+    gap: 0.4rem 0.5rem;
+}
+.expediente-fecha { white-space: nowrap; }
+.expediente-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    margin-left: auto;
+}
+
+/* Menú "⋯" con las acciones de uso ocasional */
+.acciones-mas { position: relative; }
+.acciones-mas > .btn { font-weight: 700; }
+.acciones-mas-lista {
+    display: none;
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 4px);
+    z-index: 30;
+    min-width: 150px;
+    flex-direction: column;
+    padding: 0.3rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+}
+.acciones-mas-lista button {
+    background: none;
+    border: 0;
+    text-align: left;
+    padding: 0.45rem 0.6rem;
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.acciones-mas-lista button:hover,
+.acciones-mas-lista button:focus-visible { background: var(--bg-tertiary); }
+.acciones-mas-lista button.peligro { color: var(--danger, #dc3545); }
+.acciones-mas.abierto .acciones-mas-lista { display: flex; }
+/* La tarjeta recorta lo que se sale; con el menú abierto no debe hacerlo. */
+.expediente-card.con-menu {
+    overflow: visible;
+    position: relative;
+    z-index: 20;
+}
+
+/* ==================== ANUNCIO AL PIE ====================
+   En Tribunales el anuncio va después del contenido: arriba empujaba la
+   consulta a media pantalla. */
+.ad-banner-bottom { margin-top: 1.5rem; margin-bottom: 0; }
+
+/* ==================== ENCABEZADO DE LISTAS EN EL CELULAR ====================
+   Título arriba y botones debajo, en dos columnas: juntos en una fila, los
+   botones aplastaban el título ("📁 Mis…"). */
+@media (max-width: 600px) {
+    .card-header:has(> .header-buttons) {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .card-header > .header-buttons {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.4rem;
+    }
+    .card-header > .header-buttons > .btn,
+    .card-header > .header-buttons > .tooltip-container,
+    .card-header > .header-buttons > .tooltip-container > .btn {
+        width: 100%;
+        min-width: 0;
+        justify-content: center;
+        white-space: normal;
+        text-align: center;
+    }
+
+    /* Con los filtros apilados, la base de 220px del buscador se volvía su
+       altura: una caja enorme con la lupa flotando a media altura. */
+    .filters-section .search-box { flex: 0 0 auto; min-width: 0; }
+}

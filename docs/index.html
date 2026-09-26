@@ -837,17 +837,6 @@
                 <button class="pjf-tab" data-tsj-tab="ia" onclick="cambiarTabTSJ('ia')">🤖 Análisis IA</button>
             </div>
 
-            <!-- Banner de anuncios -->
-            <div class="ad-banner ad-banner-top" id="ad-banner-busqueda" style="display: none;">
-                <div class="ad-content">
-                    <span class="ad-label">Anuncio</span>
-                    <div class="ad-body" id="ad-body-busqueda">
-                        <!-- Contenido del anuncio se carga dinámicamente -->
-                    </div>
-                    <a href="#" class="ad-remove-link" onclick="mostrarOpcionQuitarAnuncios(event)">Quitar anuncios</a>
-                </div>
-            </div>
-
             <!-- TAB: Búsqueda TSJ -->
             <div class="pjf-tab-content active" id="tsj-tab-busqueda">
                 <div class="card">
@@ -1213,6 +1202,17 @@
                     <button class="btn btn-secondary" onclick="document.getElementById('resultados-ia').style.display='none'">Cerrar</button>
                 </div>
             </div>
+            </div>
+
+            <!-- Banner de anuncios: al pie, para que la consulta quede arriba -->
+            <div class="ad-banner ad-banner-bottom" id="ad-banner-busqueda" style="display: none;">
+                <div class="ad-content">
+                    <span class="ad-label">Anuncio</span>
+                    <div class="ad-body" id="ad-body-busqueda">
+                        <!-- Contenido del anuncio se carga dinámicamente -->
+                    </div>
+                    <a href="#" class="ad-remove-link" onclick="mostrarOpcionQuitarAnuncios(event)">Quitar anuncios</a>
+                </div>
             </div>
         </section>
 

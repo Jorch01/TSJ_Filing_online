@@ -882,7 +882,7 @@ async function main() {
             // el detalle no se abriría aunque la guarda no existiese — y el día
             // que se añada un botón que no la frene, esto lo cubre.
             _clicEnTarjetaExpediente(
-                { target: tarjeta.querySelector('button[title="Ver historial"]'), currentTarget: tarjeta }, 1);
+                { target: tarjeta.querySelector('button[title="Ver pendientes"]'), currentTarget: tarjeta }, 1);
             const trasBoton = llamadas;
 
             _clicEnTarjetaExpediente(
@@ -1788,6 +1788,115 @@ async function main() {
         igual('tribunales TSJ: y lo cuenta en el botón del archivo', tsj.badgeArchivo, true);
         igual('tribunales TSJ: el archivo del TSJ lo muestra', tsj.archivoTSJ, true);
         igual('tribunales TSJ: y volver regresa a la lista', tsj.archivoCerrado, true);
+
+        // ---- Tarjetas: las acciones caben, el anuncio va al pie y el encabezado respira en el celular ----
+        const ajustes = await page.evaluate(async () => {
+            const pausa = (ms) => new Promise(res => setTimeout(res, ms));
+            const r = {};
+            const premiumAntes = estadoPremium.activo;
+            estadoPremium.activo = true;
+            const id = await crearExpedienteCore({ numero: '733/2026', institucion: 'TSJ',
+                juzgado: 'JUZGADO PRIMERO FAMILIAR ORAL CANCUN', comentario: 'Prueba de acciones' });
+            try {
+                navegarA('busqueda');
+                cambiarTabTSJ('expedientes');
+                await pausa(300);
+                const tarjeta = () => document.querySelector(`#lista-expedientes-tsj .expediente-card[data-id="${id}"]`);
+                const caja = tarjeta().getBoundingClientRect();
+                const botones = [...tarjeta().querySelectorAll('.expediente-actions > .btn, .expediente-actions > .acciones-mas > .btn')];
+                r.nadaSeSale = botones.length > 0 && botones.every(b => {
+                    const c = b.getBoundingClientRect();
+                    return c.right <= caja.right + 0.5 && c.left >= caja.left - 0.5;
+                });
+                const fecha = tarjeta().querySelector('.expediente-fecha');
+                r.fechaUnaLinea = fecha.getBoundingClientRect().height < 24;
+
+                // El menú "⋯": cerrado no se ve; abierto muestra las cuatro acciones.
+                const menu = tarjeta().querySelector('.acciones-mas');
+                const boton = menu.querySelector(':scope > button');
+                const abierto = () => menu.classList.contains('abierto');
+                const lista = menu.querySelector('.acciones-mas-lista');
+                r.cerradoOculto = lista.getBoundingClientRect().height === 0;
+                boton.click();
+                await pausa(100);
+                r.abierto = abierto() && lista.getBoundingClientRect().height > 0 &&
+                    boton.getAttribute('aria-expanded') === 'true';
+                r.opciones = [...lista.querySelectorAll('button')].map(b => b.textContent.trim());
+                r.noAbreDetalle = !document.getElementById('modal-overlay').classList.contains('active');
+                document.body.click();
+                await pausa(50);
+                r.cierraFuera = !abierto();
+                boton.click();
+                await pausa(50);
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+                r.cierraEsc = !abierto();
+                // Elegir una opción la ejecuta y cierra el menú.
+                boton.click();
+                await pausa(50);
+                [...lista.querySelectorAll('button')].find(b => /Historial/.test(b.textContent)).click();
+                await pausa(300);
+                r.historialAbre = document.getElementById('modal-overlay').classList.contains('active');
+                r.cierraAlElegir = !abierto();
+                cerrarModal();
+
+                // El anuncio del TSJ va después del contenido.
+                const pagina = document.getElementById('page-busqueda');
+                const anuncio = document.getElementById('ad-banner-busqueda');
+                const ultimaPestana = document.getElementById('tsj-tab-ia');
+                r.anuncioAlPie = anuncio.parentElement === pagina &&
+                    !!(ultimaPestana.compareDocumentPosition(anuncio) & Node.DOCUMENT_POSITION_FOLLOWING);
+            } finally {
+                await eliminarExpedienteCore(id, true);
+                estadoPremium.activo = premiumAntes;
+                cambiarTabTSJ('busqueda');
+            }
+            return r;
+        });
+        igual('tarjetas: ningún botón se sale de la tarjeta', ajustes.nadaSeSale, true);
+        igual('tarjetas: la fecha cabe en una línea', ajustes.fechaUnaLinea, true);
+        igual('tarjetas: el menú ⋯ empieza cerrado', ajustes.cerradoOculto, true);
+        igual('tarjetas: y se abre al tocarlo', ajustes.abierto, true);
+        igual('tarjetas: con las acciones de uso ocasional', ajustes.opciones,
+            ['📜 Historial', '📅 Timeline', '📦 Archivar', '🗑️ Eliminar']);
+        igual('tarjetas: abrir el menú no abre el detalle del expediente', ajustes.noAbreDetalle, true);
+        igual('tarjetas: el menú se cierra al tocar fuera', ajustes.cierraFuera, true);
+        igual('tarjetas: y con Esc', ajustes.cierraEsc, true);
+        igual('tarjetas: elegir "Historial" lo abre', ajustes.historialAbre, true);
+        igual('tarjetas: y cierra el menú', ajustes.cierraAlElegir, true);
+        igual('tribunales TSJ: el anuncio va al pie', ajustes.anuncioAlPie, true);
+
+        // En el celular, el título de la lista no se aplasta con los botones.
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.waitForTimeout(300);
+        const movil = await page.evaluate(async () => {
+            navegarA('busqueda');
+            cambiarTabTSJ('expedientes');
+            await new Promise(res => setTimeout(res, 300));
+            const r = {};
+            for (const [nombre, sel] of [['TSJ', '#tsj-tab-expedientes'], ['PJF', '#pjf-tab-expedientes']]) {
+                if (nombre === 'PJF') { navegarA('pjf'); cambiarTabPJF('expedientes'); await new Promise(res => setTimeout(res, 300)); }
+                const h3 = document.querySelector(`${sel} .card-header h3`);
+                const botones = document.querySelector(`${sel} .card-header .header-buttons`);
+                const t = h3.getBoundingClientRect(), b = botones.getBoundingClientRect();
+                const cabecera = document.querySelector(`${sel} .card-header`).getBoundingClientRect();
+                const ultimoBoton = Math.max(...[...botones.querySelectorAll('.btn')]
+                    .map(x => x.getBoundingClientRect().right));
+                const buscador = document.querySelector(`${sel} .filters-section .search-box`).getBoundingClientRect();
+                r[nombre] = { unaLinea: t.height < 30, arribaDeLosBotones: t.bottom <= b.top + 1,
+                    dentro: ultimoBoton <= cabecera.right + 0.5,
+                    buscadorNormal: buscador.height < 60 };
+            }
+            navegarA('busqueda');
+            cambiarTabTSJ('busqueda');
+            return r;
+        });
+        await page.setViewportSize({ width: 1400, height: 900 });
+        for (const z of ['TSJ', 'PJF']) {
+            igual(`celular ${z}: el título de la lista cabe en una línea`, movil[z].unaLinea, true);
+            igual(`celular ${z}: y queda arriba de los botones`, movil[z].arribaDeLosBotones, true);
+            igual(`celular ${z}: sin salirse de la tarjeta`, movil[z].dentro, true);
+            igual(`celular ${z}: el buscador de la lista tiene su altura normal`, movil[z].buscadorNormal, true);
+        }
 
         igual('la página no lanza errores de JavaScript', erroresPagina, []);
 
