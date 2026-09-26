@@ -466,7 +466,13 @@ async function main() {
             if (tab) tab.click();
         });
         await page.waitForTimeout(600);
-        await probarBotonTemplate(page, 'PJF', 1);
+        await probarBotonTemplate(page, 'PJF', 2);
+
+        // ---- Tribunales TSJ: su pestaña de expedientes lleva el mismo botón ----
+        await page.evaluate(() => { navegarA('busqueda'); cambiarTabTSJ('expedientes'); });
+        await page.waitForTimeout(600);
+        await probarBotonTemplate(page, 'Tribunales TSJ', 1);
+        await page.evaluate(() => cambiarTabTSJ('busqueda'));
 
         // ---- La descarga cumple lo que Safari y Firefox exigen ----
         // Chromium se traga un <a> suelto y un revoke inmediato, así que este
@@ -1647,6 +1653,141 @@ async function main() {
         igual('calendario: "Solo PJF" deja el federal', trib.calPJF, ['Evento federal']);
         igual('calendario: y el selector lo refleja', trib.selectRefleja, 'PJF');
         igual('calendario: quitar el filtro los devuelve', trib.calDeVuelta, 2);
+
+        // ---- Tribunales TSJ: las mismas tres pestañas y el mismo formato que el PJF ----
+        const tsj = await page.evaluate(async () => {
+            const pausa = (ms) => new Promise(res => setTimeout(res, ms));
+            const visible = (el) => !!el && el.offsetParent !== null;
+            const r = {};
+            const premiumAntes = estadoPremium.activo;
+            estadoPremium.activo = true;          // que el límite gratuito no esconda nada
+            const abiertas = [];
+            const openOriginal = window.open;
+            window.open = (url) => { abiertas.push(url); return { focus() {} }; };
+            try {
+                navegarA('busqueda');
+                await pausa(200);
+                const pestanas = (sel) => [...document.querySelectorAll(sel)].map(t => t.textContent.trim().split(' ')[0]);
+                r.pestanasTSJ = [...document.querySelectorAll('#page-busqueda .pjf-tab')].map(t => t.textContent.trim());
+                r.mismosIconos = JSON.stringify(pestanas('#page-busqueda .pjf-tab')) === JSON.stringify(pestanas('#page-pjf .pjf-tab'));
+
+                // Búsqueda: una consulta como la del PJF.
+                cambiarTabTSJ('busqueda');
+                const select = document.getElementById('tsj-juzgado');
+                r.juzgadosCargados = select.options.length > 10;
+                const buscador = document.getElementById('tsj-juzgado-search');
+                buscador.value = 'familiar';
+                buscador.dispatchEvent(new Event('input'));
+                const opcionesVisibles = [...select.options].filter(o => o.value && o.style.display !== 'none');
+                r.filtraJuzgados = opcionesVisibles.length > 0 &&
+                    opcionesVisibles.every(o => /familiar/i.test(o.textContent));
+                const juzgado = opcionesVisibles[0].value;
+                select.value = juzgado;
+                document.getElementById('tsj-valor').value = '612/2026';
+                r.botonesPie = [...document.querySelectorAll('#tsj-tab-busqueda .card-footer')[0].querySelectorAll('button')]
+                    .map(b => b.textContent.trim());
+                ejecutarBusquedaTSJ();
+                r.abreEstrados = abiertas.length === 1 && /tsjqroo\.gob\.mx\/estrados\/.*findexp=612%2F2026/.test(abiertas[0]);
+                const antes = (await obtenerExpedientes()).filter(e => e.numero === '612/2026').length;
+                await ejecutarBusquedaTSJyGuardar();
+                await ejecutarBusquedaTSJyGuardar();   // la segunda no lo repite
+                const guardados = (await obtenerExpedientes()).filter(e => e.numero === '612/2026');
+                r.guardaUnaVez = antes === 0 && guardados.length === 1 &&
+                    guardados[0].institucion === 'TSJ' && guardados[0].juzgado === juzgado;
+                limpiarFormularioTSJ();
+                r.limpia = select.value === '' && document.getElementById('tsj-valor').value === '' && buscador.value === '';
+                document.querySelector('input[name="tsj-tipo-busqueda"][value="nombre"]').click();
+                r.placeholderNombre = /Juan/.test(document.getElementById('tsj-valor').placeholder);
+                limpiarFormularioTSJ();
+
+                // Expedientes TSJ: la lista de "Mis Expedientes Federales", con los del TSJ.
+                document.querySelector('#page-busqueda .pjf-tab[data-tsj-tab="expedientes"]').click();
+                await pausa(300);
+                r.pestanaExpedientes = document.getElementById('tsj-tab-expedientes').classList.contains('active');
+                const titulos = (sel) => [...document.querySelectorAll(sel)].map(h => h.textContent.trim());
+                const enLista = titulos('#lista-expedientes-tsj .expediente-titulo');
+                r.soloTSJ = enLista.includes('8/2026') && enLista.includes('612/2026') && !enLista.includes('9/2026');
+                r.conEstrados = !!document.querySelector('#lista-expedientes-tsj .expediente-card[data-id="' +
+                    guardados[0].id + '"] button[onclick^="abrirEstradosExpediente"]');
+                r.contador = document.getElementById('count-expedientes-tsj').textContent;
+
+                const buscar = document.getElementById('buscar-expediente-tsj');
+                buscar.value = '612/2026';
+                await filtrarExpedientesTSJ();
+                r.filtra = titulos('#lista-expedientes-tsj .expediente-titulo');
+                buscar.value = '';
+                await filtrarExpedientesTSJ();
+
+                cambiarVistaExpedientesTSJ('table');
+                r.vistaTabla = visible(document.getElementById('tabla-expedientes-tsj')) &&
+                    !visible(document.getElementById('lista-expedientes-tsj')) &&
+                    document.querySelectorAll('#tabla-expedientes-body-tsj tr').length === enLista.length;
+                cambiarVistaExpedientesTSJ('cards');
+
+                // Selección masiva: abre los estrados de los elegidos.
+                toggleModoSeleccionTSJ();
+                await pausa(200);
+                r.barraSeleccion = visible(document.getElementById('bulk-actions-tsj'));
+                r.casillas = document.querySelectorAll('#lista-expedientes-tsj .pjf-check').length === enLista.length;
+                const casilla = document.querySelector(`#lista-expedientes-tsj .pjf-check[data-exp-id="${guardados[0].id}"]`);
+                casilla.click();
+                r.contadorSeleccion = document.getElementById('count-tsj-seleccionados').textContent;
+                abiertas.length = 0;
+                await abrirExpedientesTSJSeleccionados();
+                await pausa(100);
+                r.abreSeleccionados = abiertas.length === 1 && /findexp=612%2F2026/.test(abiertas[0]);
+                toggleModoSeleccionTSJ();
+                await pausa(200);
+                r.seleccionCerrada = !visible(document.getElementById('bulk-actions-tsj')) &&
+                    document.querySelectorAll('#lista-expedientes-tsj .pjf-check').length === 0;
+
+                // Archivo del TSJ.
+                await archivarExpedienteDB(guardados[0].id, true, 'concluido');
+                await cargarExpedientes();
+                await pausa(200);
+                r.salioDeLaLista = !titulos('#lista-expedientes-tsj .expediente-titulo').includes('612/2026');
+                r.badgeArchivo = document.getElementById('count-archivo-badge-tsj').style.display !== 'none';
+                abrirArchivoTSJ();
+                await pausa(200);
+                r.archivoTSJ = titulos('#lista-archivo-tsj .expediente-titulo').includes('612/2026') &&
+                    !visible(document.getElementById('lista-expedientes-tsj'));
+                cerrarArchivoTSJ();
+                r.archivoCerrado = visible(document.getElementById('lista-expedientes-tsj')) &&
+                    !visible(document.getElementById('archivo-section-tsj'));
+                await eliminarExpedienteCore(guardados[0].id, true);
+                cambiarTabTSJ('busqueda');
+            } finally {
+                window.open = openOriginal;
+                estadoPremium.activo = premiumAntes;
+            }
+            return r;
+        });
+        igual('tribunales TSJ: tres pestañas como el PJF', tsj.pestanasTSJ,
+            ['🔍 Búsqueda', '📁 Expedientes TSJ', '🤖 Análisis IA']);
+        igual('tribunales TSJ: con los mismos iconos y orden que las del PJF', tsj.mismosIconos, true);
+        igual('tribunales TSJ: la consulta trae el catálogo de juzgados', tsj.juzgadosCargados, true);
+        igual('tribunales TSJ: y se filtra escribiendo', tsj.filtraJuzgados, true);
+        igual('tribunales TSJ: los botones de la consulta son los del PJF', tsj.botonesPie,
+            ['🗑️ Limpiar', '📁 Buscar y Guardar Expediente', '🔍 Buscar en TSJ']);
+        igual('tribunales TSJ: "Buscar en TSJ" abre los estrados', tsj.abreEstrados, true);
+        igual('tribunales TSJ: "Buscar y Guardar" lo guarda una sola vez', tsj.guardaUnaVez, true);
+        igual('tribunales TSJ: "Limpiar" vacía la consulta', tsj.limpia, true);
+        igual('tribunales TSJ: buscar por nombre cambia la pista', tsj.placeholderNombre, true);
+        igual('tribunales TSJ: la pestaña Expedientes se abre', tsj.pestanaExpedientes, true);
+        igual('tribunales TSJ: con los del TSJ y sin los federales', tsj.soloTSJ, true);
+        igual('tribunales TSJ: cada tarjeta abre sus estrados', tsj.conEstrados, true);
+        verificar('tribunales TSJ: cuenta los expedientes', /^\d+ expedientes?$/.test(tsj.contador), tsj.contador);
+        igual('tribunales TSJ: el buscador filtra la lista', tsj.filtra, ['612/2026']);
+        igual('tribunales TSJ: la vista de tabla', tsj.vistaTabla, true);
+        igual('tribunales TSJ: la selección masiva muestra su barra', tsj.barraSeleccion, true);
+        igual('tribunales TSJ: y una casilla por expediente', tsj.casillas, true);
+        igual('tribunales TSJ: cuenta los elegidos', tsj.contadorSeleccion, '1 seleccionado');
+        igual('tribunales TSJ: y abre los estrados de los elegidos', tsj.abreSeleccionados, true);
+        igual('tribunales TSJ: cancelar la selección quita las casillas', tsj.seleccionCerrada, true);
+        igual('tribunales TSJ: archivar lo saca de la lista', tsj.salioDeLaLista, true);
+        igual('tribunales TSJ: y lo cuenta en el botón del archivo', tsj.badgeArchivo, true);
+        igual('tribunales TSJ: el archivo del TSJ lo muestra', tsj.archivoTSJ, true);
+        igual('tribunales TSJ: y volver regresa a la lista', tsj.archivoCerrado, true);
 
         igual('la página no lanza errores de JavaScript', erroresPagina, []);
 
