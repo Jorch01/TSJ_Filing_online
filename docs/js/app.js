@@ -1940,6 +1940,55 @@ function _puedeBuscarEnPJF(exp, institucion) {
     return institucion === 'PJF' && !!(exp && exp.numero);
 }
 
+// Lo que se usa de vez en cuando va en un menú "⋯": con todo a la vista la
+// fila no cabía en la tarjeta y el último botón —eliminar— quedaba cortado.
+function _menuMasAccionesHTML(id, eliminarFn) {
+    return `
+        <div class="acciones-mas">
+            <button type="button" class="btn btn-sm btn-secondary" title="Más acciones" aria-label="Más acciones"
+                aria-haspopup="menu" aria-expanded="false" onclick="_alternarMenuMas(this, event)">⋯</button>
+            <div class="acciones-mas-lista" role="menu">
+                <button type="button" role="menuitem" onclick="_cerrarMenuMas(this); verHistorialExpediente(${id}, event)">📜 Historial</button>
+                <button type="button" role="menuitem" onclick="_cerrarMenuMas(this); verTimelineExpediente(${id}, event)">📅 Timeline</button>
+                <button type="button" role="menuitem" onclick="_cerrarMenuMas(this); mostrarDialogoArchivar(${id}, event)">📦 Archivar</button>
+                <button type="button" role="menuitem" class="peligro" onclick="_cerrarMenuMas(this); ${eliminarFn}(${id}, event)">🗑️ Eliminar</button>
+            </div>
+        </div>`;
+}
+
+function _cerrarMenusMas(excepto) {
+    document.querySelectorAll('.acciones-mas.abierto').forEach(m => {
+        if (m === excepto) return;
+        m.classList.remove('abierto');
+        m.closest('.expediente-card')?.classList.remove('con-menu');
+        m.querySelector(':scope > button')?.setAttribute('aria-expanded', 'false');
+    });
+}
+
+function _alternarMenuMas(boton, event) {
+    if (event) event.stopPropagation();
+    const menu = boton.parentElement;
+    _cerrarMenusMas(menu);
+    const abrir = !menu.classList.contains('abierto');
+    menu.classList.toggle('abierto', abrir);
+    // La tarjeta recorta lo que se sale: con el menú abierto no debe hacerlo.
+    menu.closest('.expediente-card')?.classList.toggle('con-menu', abrir);
+    boton.setAttribute('aria-expanded', String(abrir));
+}
+
+// Las acciones cortan la propagación del clic, así que el menú se cierra aquí.
+function _cerrarMenuMas() {
+    _cerrarMenusMas(null);
+}
+
+// Un menú "⋯" abierto se cierra al tocar fuera o con Esc.
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.acciones-mas')) _cerrarMenusMas(null);
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') _cerrarMenusMas(null);
+});
+
 function renderTarjetaExpedienteHTML(exp, opciones = {}) {
     const institucion = opciones.institucion || exp.institucion || 'TSJ';
     const draggable = !!opciones.draggable;
@@ -1985,11 +2034,8 @@ function renderTarjetaExpedienteHTML(exp, opciones = {}) {
             actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirEstradosExpediente(${exp.id}, event)" title="Abrir los estrados electrónicos del TSJ para este expediente">🌐 Estrados</button>`;
         }
         actionsHTML += `<button class="btn btn-sm btn-info" onclick="verPendientesDeExpediente(${exp.id}, event)" title="Ver pendientes">✅</button>`;
-        actionsHTML += `<button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>`;
-        actionsHTML += `<button class="btn btn-sm btn-info" onclick="verTimelineExpediente(${exp.id}, event)" title="Ver timeline">📅</button>`;
-        actionsHTML += `<button class="btn btn-sm btn-secondary" onclick="${editarFn}(${exp.id}, event)">✏️</button>`;
-        actionsHTML += `<button class="btn btn-sm btn-warning" onclick="mostrarDialogoArchivar(${exp.id}, event)" title="Archivar">📦</button>`;
-        actionsHTML += `<button class="btn btn-sm btn-danger" onclick="${eliminarFn}(${exp.id}, event)">🗑️</button>`;
+        actionsHTML += `<button class="btn btn-sm btn-secondary" onclick="${editarFn}(${exp.id}, event)" title="Editar">✏️</button>`;
+        actionsHTML += _menuMasAccionesHTML(exp.id, eliminarFn);
     }
 
     return `
@@ -8619,8 +8665,9 @@ async function ejecutarTransferencia() {
 // Delegación de eventos para botones en contenido dinámico
 document.addEventListener('click', function(event) {
     // Buscar si el click fue en un botón de editar expediente
+    // El "⋯" también es gris, pero abre su menú: no es el de editar.
     const editBtn = event.target.closest('.expediente-actions .btn-secondary');
-    if (editBtn && !event.defaultPrevented) {
+    if (editBtn && !editBtn.closest('.acciones-mas') && !event.defaultPrevented) {
         const card = editBtn.closest('.expediente-card');
         if (card) {
             const id = parseInt(card.dataset.id);
