@@ -1,8 +1,14 @@
+# TSJ Filing Online — https://tsjia.empirica.mx/
 User-agent: *
 Allow: /
+Allow: /docs/manifest.json
 Disallow: /extension/
+Disallow: /userscripts/
+Disallow: /herramientas/
+Disallow: /docs/proxy/
+Disallow: /docs/google-apps-script/
 Disallow: /*.py$
+Disallow: /*.md$
 Disallow: /*.json$
-Allow: /docs/
 
 Sitemap: https://tsjia.empirica.mx/sitemap.xml

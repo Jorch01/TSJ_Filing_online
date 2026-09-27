@@ -5475,3 +5475,103 @@ table th {
     font-size: 1rem; cursor: pointer; padding: 0.2rem 0.4rem;
 }
 .aviso-cerrar:hover { opacity: 1; }
+
+/* ==================== RECORRIDOS GUIADOS ==================== */
+#tour-fab {
+    position: fixed;
+    right: 1.25rem;
+    bottom: calc(1.5rem + 56px + 0.6rem + 40px + 0.5rem + env(safe-area-inset-bottom, 0px));
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px solid var(--border-color, #dee2e6);
+    background: var(--bg-primary, #fff);
+    font-size: 1.05rem;
+    line-height: 1;
+    cursor: pointer;
+    z-index: 1140;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.55;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+#tour-fab:hover, #tour-fab:focus-visible { opacity: 1; transform: scale(1.08); }
+@media (max-width: 768px) {
+    #tour-fab {
+        right: 1rem;
+        bottom: calc(1.25rem + 56px + 0.5rem + 40px + 0.5rem + env(safe-area-inset-bottom, 0px));
+    }
+}
+
+#tour-menu {
+    position: fixed;
+    right: calc(1.25rem + 48px);
+    bottom: calc(1.5rem + 56px + 0.6rem + env(safe-area-inset-bottom, 0px));
+    z-index: 1200;
+    width: min(300px, calc(100vw - 5rem));
+    background: var(--bg-primary, #fff);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: 0.4rem;
+}
+.tour-menu-titulo { font-size: 0.78rem; font-weight: 700; color: var(--text-muted); padding: 0.4rem 0.6rem; }
+#tour-menu button {
+    display: flex; align-items: center; gap: 0.6rem; width: 100%;
+    background: none; border: 0; border-radius: var(--radius);
+    padding: 0.55rem 0.6rem; text-align: left; cursor: pointer;
+    color: var(--text-primary); font-size: 0.88rem;
+}
+#tour-menu button:hover, #tour-menu button:focus-visible { background: var(--bg-tertiary); }
+.tour-menu-icono { font-size: 1.1rem; }
+.tour-menu-texto { flex: 1; }
+.tour-menu-duracion { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; }
+
+/* Oscurece alrededor del elemento sin bloquear clics. */
+.tour-resaltado {
+    position: fixed;
+    z-index: 1190;
+    border-radius: 10px;
+    box-shadow: 0 0 0 3px var(--primary), 0 0 0 9999px rgba(15, 23, 42, 0.45);
+    pointer-events: none;
+    transition: left 0.2s ease, top 0.2s ease, width 0.2s ease, height 0.2s ease;
+}
+.tour-resaltado.sin-objetivo { left: 50% !important; top: 50% !important; width: 0 !important; height: 0 !important; box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.45); }
+
+.tour-tarjeta, #tour-oferta {
+    position: fixed;
+    z-index: 1210;
+    width: min(340px, calc(100vw - 24px));
+    background: var(--bg-primary, #fff);
+    color: var(--text-primary);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    padding: 1rem 1rem 0.85rem;
+}
+.tour-progreso { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 0.35rem; padding-right: 1.5rem; }
+.tour-titulo { margin: 0 0 0.35rem; font-size: 1rem; }
+.tour-texto { margin: 0 0 0.8rem; font-size: 0.88rem; line-height: 1.5; color: var(--text-secondary); }
+.tour-botones { display: flex; justify-content: flex-end; gap: 0.4rem; }
+.tour-cerrar {
+    position: absolute; top: 0.5rem; right: 0.55rem;
+    background: none; border: 0; cursor: pointer;
+    color: var(--text-muted); font-size: 0.95rem; padding: 0.2rem 0.35rem;
+}
+.tour-cerrar:hover { color: var(--text-primary); }
+
+/* La oferta de bienvenida: una tarjeta discreta en la esquina. */
+#tour-oferta {
+    left: 1.25rem;
+    bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+    border: 1px solid var(--border-color);
+    animation: tour-entra 0.25s ease;
+}
+#tour-oferta p { margin: 0.35rem 0 0.75rem; font-size: 0.86rem; color: var(--text-secondary); line-height: 1.45; padding-right: 0.5rem; }
+@keyframes tour-entra { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (max-width: 768px) {
+    /* En el celular deja libre la columna de los botones flotantes. */
+    #tour-oferta { left: 0.75rem; width: calc(100vw - 0.75rem - 5rem); bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); }
+}
+@media print { #tour-fab, #tour-menu, .tour-resaltado, .tour-tarjeta, #tour-oferta { display: none !important; } }

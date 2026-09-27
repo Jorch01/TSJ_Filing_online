@@ -36,15 +36,16 @@ const PUERTO = 8123;
 const TIPOS = {
     '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
     '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
-    '.svg': 'image/svg+xml', '.xml': 'application/xml', '.txt': 'text/plain'
+    '.svg': 'image/svg+xml', '.xml': 'application/xml', '.txt': 'text/plain', '.png': 'image/png'
 };
 
-function servidorEstatico(puerto) {
+// raiz: docs/ para la app; la del repositorio para las páginas públicas.
+function servidorEstatico(puerto, raiz = RAIZ) {
     return new Promise(resolve => {
         const s = http.createServer((req, res) => {
             const rel = decodeURIComponent(req.url.split('?')[0]);
-            const archivo = path.join(RAIZ, rel === '/' ? 'index.html' : rel);
-            if (!archivo.startsWith(RAIZ)) { res.writeHead(403); res.end(); return; }
+            const archivo = path.join(raiz, rel.endsWith('/') ? rel + 'index.html' : rel);
+            if (!archivo.startsWith(raiz)) { res.writeHead(403); res.end(); return; }
             fs.readFile(archivo, (err, datos) => {
                 if (err) { res.writeHead(404); res.end('404'); return; }
                 res.writeHead(200, { 'Content-Type': TIPOS[path.extname(archivo)] || 'application/octet-stream' });
@@ -167,6 +168,151 @@ async function abrirChromium() {
             }
         }
         throw e;
+    }
+}
+
+/**
+ * Recorrido guiado: se ofrece (no se impone) a quien llega sin expedientes,
+ * no se repite, y cada paso señala un elemento que existe.
+ */
+async function probarRecorridoGuiado(navegador) {
+    const contexto = await navegador.newContext({ viewport: { width: 1400, height: 900 } });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => typeof iniciarTour === 'function' && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+        const oferta = await page.waitForSelector('#tour-oferta', { timeout: 6000 }).then(() => true).catch(() => false);
+        igual('recorrido: se ofrece a quien llega por primera vez', oferta, true);
+        const r = await page.evaluate(async () => {
+            const pausa = (ms) => new Promise(res => setTimeout(res, ms));
+            const out = {};
+            const o = document.getElementById('tour-oferta').getBoundingClientRect();
+            const fabs = ['voz-fab', 'fab-feedback', 'tour-fab'].map(id => document.getElementById(id)?.getBoundingClientRect()).filter(Boolean);
+            out.noTapaBotones = fabs.every(f => o.right <= f.left || o.left >= f.right || o.bottom <= f.top || o.top >= f.bottom);
+            out.sinOscurecer = !document.querySelector('.tour-resaltado');
+            [...document.querySelectorAll('#tour-oferta button')].find(b => /Ahora no/.test(b.textContent)).click();
+            await pausa(100);
+            out.cierra = !document.getElementById('tour-oferta');
+            out.recuerda = localStorage.getItem('tour_bienvenida_visto') === '1';
+
+            // El botón 🧭 abre los recorridos.
+            document.getElementById('tour-fab').click();
+            await pausa(100);
+            out.menu = [...document.querySelectorAll('#tour-menu button')].length;
+            document.body.click();
+            await pausa(50);
+            out.menuCierra = !document.getElementById('tour-menu');
+
+            // Cada recorrido, paso por paso: el elemento señalado existe.
+            out.sinObjetivo = [];
+            out.pasos = 0;
+            for (const [clave, rec] of Object.entries(RECORRIDOS_TOUR)) {
+                await iniciarTour(clave);
+                for (let i = 0; i < rec.pasos.length; i++) {
+                    await pausa(350);
+                    const tarjeta = document.querySelector('.tour-tarjeta');
+                    if (!tarjeta) break;
+                    const paso = rec.pasos.find(p => tarjeta.querySelector('.tour-titulo')?.textContent === p.titulo);
+                    if (paso && paso.objetivo && tarjeta.classList.contains('centrada')) out.sinObjetivo.push(`${clave}: ${paso.objetivo}`);
+                    out.pasos++;
+                    const sig = tarjeta.querySelector('.tour-siguiente');
+                    if (/Terminar/.test(sig.textContent)) { sig.click(); break; }
+                    sig.click();
+                }
+                await pausa(200);
+                if (document.querySelector('.tour-tarjeta')) terminarTour();
+            }
+
+            // Durante el recorrido la página se sigue usando y Esc lo cierra.
+            await iniciarTour('laboral');
+            await pausa(400);
+            const campo = document.getElementById('lab-ingreso');
+            const c = campo.getBoundingClientRect();
+            const debajo = document.elementFromPoint(c.left + c.width / 2, c.top + c.height / 2);
+            out.noBloquea = debajo === campo || campo.contains(debajo);
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+            await pausa(100);
+            out.escCierra = !document.querySelector('.tour-tarjeta') && !document.querySelector('.tour-resaltado');
+            return out;
+        });
+        igual('recorrido: la oferta no tapa los botones flotantes', r.noTapaBotones, true);
+        igual('recorrido: ofrecer no oscurece la pantalla', r.sinOscurecer, true);
+        igual('recorrido: "Ahora no" la cierra', r.cierra, true);
+        igual('recorrido: y se recuerda', r.recuerda, true);
+        igual('recorrido: el botón 🧭 lista los recorridos', r.menu, 6);
+        igual('recorrido: el menú se cierra al tocar fuera', r.menuCierra, true);
+        igual('recorrido: cada paso señala un elemento que existe', r.sinObjetivo, []);
+        verificar('recorrido: se recorren todos los pasos', r.pasos >= 20, String(r.pasos));
+        igual('recorrido: no bloquea la página', r.noBloquea, true);
+        igual('recorrido: Esc lo cierra', r.escCierra, true);
+
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(3000);
+        igual('recorrido: no se vuelve a ofrecer', await page.evaluate(() => !!document.getElementById('tour-oferta')), false);
+        await page.goto(`http://localhost:${PUERTO}/?tour=1`, { waitUntil: 'domcontentloaded' });
+        const pedido = await page.waitForSelector('#tour-oferta', { timeout: 6000 }).then(() => true).catch(() => false);
+        igual('recorrido: ?tour=1 (desde las páginas públicas) lo ofrece de nuevo', pedido, true);
+        await page.goto(`http://localhost:${PUERTO}/#laboral`, { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(1200);
+        igual('enlace directo: #laboral abre la calculadora',
+            await page.evaluate(() => document.getElementById('page-laboral').classList.contains('active')), true);
+        igual('recorrido: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
+/** Páginas públicas: se ven, la calculadora calcula y llevan a la app. */
+async function probarSitioPublico(navegador) {
+    const servidor = await servidorEstatico(PUERTO + 1, __dirname);
+    const contexto = await navegador.newContext({ viewport: { width: 1300, height: 900 } });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        for (const ruta of ['/', '/estrados-tsj-quintana-roo/', '/expedientes-pjf-quintana-roo/', '/calculadora-finiquito-liquidacion/']) {
+            const resp = await page.goto(`http://localhost:${PUERTO + 1}${ruta}`, { waitUntil: 'load' });
+            const r = await page.evaluate(() => ({
+                h1: document.querySelector('h1')?.textContent || '',
+                estilos: getComputedStyle(document.querySelector('.sitio-header')).position === 'sticky',
+                cta: [...document.querySelectorAll('a[href^="/docs/"]')].length,
+                ancho: document.documentElement.scrollWidth <= window.innerWidth
+            }));
+            igual(`sitio ${ruta}: responde`, resp.status(), 200);
+            verificar(`sitio ${ruta}: tiene título principal`, r.h1.length > 10, r.h1);
+            igual(`sitio ${ruta}: con sus estilos`, r.estilos, true);
+            verificar(`sitio ${ruta}: invita a abrir la app`, r.cta >= 2, String(r.cta));
+            igual(`sitio ${ruta}: sin desbordarse a lo ancho`, r.ancho, true);
+        }
+        // La calculadora pública calcula de verdad.
+        await page.goto(`http://localhost:${PUERTO + 1}/calculadora-finiquito-liquidacion/`, { waitUntil: 'load' });
+        const calc = await page.evaluate(async () => {
+            const fijar = (id, v) => { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+            fijar('lab-ingreso', '2020-01-15'); fijar('lab-baja', '2026-09-26'); fijar('lab-salario', '15000');
+            await new Promise(res => setTimeout(res, 100));
+            const esperado = CalculadoraLaboral.calcular({ supuesto: 'despidoInjustificado', fechaIngreso: '2020-01-15',
+                fechaBaja: '2026-09-26', salario: 15000, periodo: 'mensual', calcularISR: true });
+            return {
+                total: document.getElementById('lab-total-bruto')?.textContent,
+                esperado: CalculadoraLaboral.dinero(esperado.totales.bruto),
+                guardar: !!document.querySelector('#lab-acciones a[href*="/docs/"]')
+            };
+        });
+        igual('sitio calculadora: calcula igual que la app', calc.total, calc.esperado);
+        igual('sitio calculadora: guardar lleva a la app', calc.guardar, true);
+        // En el celular tampoco se desborda.
+        await page.setViewportSize({ width: 390, height: 844 });
+        for (const ruta of ['/', '/calculadora-finiquito-liquidacion/']) {
+            await page.goto(`http://localhost:${PUERTO + 1}${ruta}`, { waitUntil: 'load' });
+            igual(`sitio ${ruta} en celular: sin desbordarse`,
+                await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+        }
+        igual('sitio: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+        servidor.close();
     }
 }
 
@@ -2033,6 +2179,10 @@ async function main() {
 
         // ---- Sin internet ----
         await probarSinConexion(navegador);
+
+        // ---- Recorrido guiado y páginas públicas ----
+        await probarRecorridoGuiado(navegador);
+        await probarSitioPublico(navegador);
 
     } finally {
         await navegador.close();

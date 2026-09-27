@@ -449,6 +449,15 @@ window.addEventListener('load', () => {
     if (m) setTimeout(() => mostrarExpediente(parseInt(m[1])), 900);
 });
 
+// Enlaces directos a una sección (#laboral, #tribunales, #calendario…): las
+// páginas del sitio llevan a la herramienta justa, no al inicio.
+const SECCIONES_ENLAZABLES = ['inicio', 'expedientes', 'calendario', 'pendientes', 'notas',
+    'tribunales', 'busqueda', 'pjf', 'laboral', 'impi', 'config'];
+window.addEventListener('load', () => {
+    const seccion = (location.hash || '').slice(1);
+    if (SECCIONES_ENLAZABLES.includes(seccion)) setTimeout(() => navegarA(seccion), 300);
+});
+
 // ==================== BÚSQUEDA RÁPIDA DE EXPEDIENTES (INICIO, SOLO MÓVIL) ====================
 // En el teléfono, abrir un expediente costaba tres pasos —menú, Expedientes,
 // buscar— y es lo que más se hace en el día. Este buscador vive arriba del
