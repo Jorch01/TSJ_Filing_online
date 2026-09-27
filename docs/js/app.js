@@ -306,6 +306,8 @@ function configurarNavegacion() {
     document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const pagina = btn.dataset.page;
+            // Los botones del menú que no son una página (Instalar) hacen lo suyo.
+            if (!pagina) { document.getElementById('mobileNav')?.classList.remove('active'); return; }
             navegarA(pagina);
         });
     });

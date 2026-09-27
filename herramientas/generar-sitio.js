@@ -104,7 +104,9 @@ function cabeza({ ruta, tituloPagina, descripcion, jsonld = [], extraHead = '' }
     <meta name="twitter:description" content="${esc(descripcion)}">
     <meta name="twitter:image" content="${SITIO}/og-image.png">
 
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
+    <link rel="icon" href="/docs/icons/icono.svg" type="image/svg+xml">
+    <link rel="icon" href="/docs/icons/favicon-32.png" sizes="32x32" type="image/png">
+    <link rel="apple-touch-icon" href="/docs/icons/apple-touch-icon.png">
     <link rel="stylesheet" href="/docs/css/styles.css">
     <link rel="stylesheet" href="/assets/sitio.css">
 ${jsonld.map(j => `    <script type="application/ld+json">\n${JSON.stringify(j, null, 2).replace(/^/gm, '    ')}\n    </script>`).join('\n')}
@@ -216,8 +218,10 @@ const PREGUNTAS_INICIO = [
         'Los 52 juzgados y salas del Tribunal Superior de Justicia de Quintana Roo en Cancún, Playa del Carmen, Chetumal, Cozumel, Tulum, Felipe Carrillo Puerto, Isla Mujeres y Bacalar, además de los juzgados de distrito y tribunales colegiados federales del Vigésimo Séptimo Circuito.'],
     ['¿Cómo me ayuda la inteligencia artificial?',
         'Pegas el texto de un acuerdo o le tomas una foto y la IA identifica el número de expediente, el juzgado, las fechas de audiencia y los plazos. Con un clic se crean el expediente, los eventos en tu calendario y las notas. Usa Gemini de Google con una clave gratuita que configuras una sola vez.'],
-    ['¿Funciona en el celular y sin internet?',
-        'Sí. Funciona en cualquier navegador y se puede instalar en el celular como app. Después de abrirla una vez, abre aunque no haya señal, con tus expedientes, agenda y notas.'],
+    ['¿Cómo la instalo en mi celular?',
+        'En iPhone: ábrela en Safari, toca Compartir y elige "Agregar a pantalla de inicio". En Android: ábrela en Chrome y toca "Instalar app" (o el menú ⋮ → Instalar app). Queda un ícono que la abre con un toque, a pantalla completa.'],
+    ['¿Funciona sin internet?',
+        'Sí. Después de abrirla una vez, abre aunque no haya señal, con tus expedientes, agenda y notas. Lo que cambies se sincroniza al volver la conexión.'],
     ['¿Mis datos están seguros?',
         'Tus datos viven en tu navegador, no en un servidor nuestro. Puedes exportar respaldos cuando quieras y, si activas la sincronización, viajan cifrados.'],
     ['¿Sirve para asuntos federales?',
@@ -326,7 +330,7 @@ ${funciones.map(([ico, t, d, enlace]) => `                    <article class="si
             <div class="sitio-ancho">
                 <h2>Empieza en 3 pasos</h2>
                 <ol class="sitio-pasos">
-                    <li><strong>Abre la app.</strong> Sin cuentas ni contraseñas: funciona en tu navegador y se instala en el celular.</li>
+                    <li><strong>Abre la app y ponla en tu pantalla de inicio.</strong> Sin cuentas ni contraseñas: queda como un ícono más en tu celular.</li>
                     <li><strong>Pega o fotografía un acuerdo.</strong> La IA crea el expediente con su juzgado, audiencias y plazos. Un recorrido guiado te enseña cómo.</li>
                     <li><strong>Trabaja con tu agenda al día.</strong> Revisa estrados, marca pendientes y recibe tu día resumido al abrir la app.</li>
                 </ol>
@@ -334,7 +338,37 @@ ${funciones.map(([ico, t, d, enlace]) => `                    <article class="si
             </div>
         </section>
 
-        <section class="sitio-seccion" id="preguntas">
+        <section class="sitio-seccion" id="instalar">
+            <div class="sitio-ancho">
+                <h2>📲 Llévala en tu celular como una app</h2>
+                <p class="sitio-sub">Sin tiendas de apps ni descargas pesadas: queda un ícono en tu pantalla de inicio que la abre con un toque, a pantalla completa y aunque no haya señal en el juzgado.</p>
+                <div class="sitio-instalar">
+                    <article>
+                        <h3>iPhone y iPad</h3>
+                        <ol>
+                            <li>Abre <strong>tsjia.empirica.mx/docs</strong> en Safari.</li>
+                            <li>Toca <strong>Compartir</strong> (el cuadro con la flecha hacia arriba).</li>
+                            <li>Elige <strong>Agregar a pantalla de inicio</strong> y luego <strong>Agregar</strong>.</li>
+                        </ol>
+                    </article>
+                    <article>
+                        <h3>Android</h3>
+                        <ol>
+                            <li>Abre <strong>tsjia.empirica.mx/docs</strong> en Chrome.</li>
+                            <li>Toca <strong>Instalar</strong> cuando la app te lo ofrezca, o el menú <strong>⋮</strong>.</li>
+                            <li>Elige <strong>Instalar app</strong> y confirma.</li>
+                        </ol>
+                    </article>
+                    <article class="sitio-instalar-icono">
+                        <img src="/docs/icons/icono-192.png" alt="Ícono de TSJ Filing en la pantalla de inicio" width="96" height="96" loading="lazy">
+                        <strong>TSJ Filing</strong>
+                        <a class="btn btn-primary" href="${APP}?tour=1">Abrir e instalar →</a>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section class="sitio-seccion sitio-alterna" id="preguntas">
             <div class="sitio-ancho sitio-angosto">
                 <h2>Preguntas frecuentes</h2>
 ${faqHTML(PREGUNTAS_INICIO)}

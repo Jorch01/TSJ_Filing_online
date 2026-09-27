@@ -34,8 +34,12 @@ const ARCHIVOS_APP = [
     'js/command-palette.js',
     'js/voice-assistant.js',
     'js/calculadora-laboral.js',
+    'js/instalar.js',
     'js/tour.js',
-    'data/pjf_catalogos_completos.json'
+    'data/pjf_catalogos_completos.json',
+    'icons/icono.svg',
+    'icons/icono-192.png',
+    'icons/apple-touch-icon.png'
 ];
 
 // Librerías de CDN que la app necesita para arrancar. Tesseract (OCR) no se

@@ -36,7 +36,8 @@ const PUERTO = 8123;
 const TIPOS = {
     '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
     '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
-    '.svg': 'image/svg+xml', '.xml': 'application/xml', '.txt': 'text/plain', '.png': 'image/png'
+    '.svg': 'image/svg+xml', '.xml': 'application/xml', '.txt': 'text/plain', '.png': 'image/png',
+    '.webmanifest': 'application/manifest+json'
 };
 
 // raiz: docs/ para la app; la del repositorio para las páginas públicas.
@@ -172,6 +173,130 @@ async function abrirChromium() {
 }
 
 /**
+ * Instalar en el celular: es lo primero que enseña el recorrido, con los
+ * pasos de cada plataforma, y la app tiene lo que los sistemas piden para
+ * ponerla en la pantalla de inicio con su ícono.
+ */
+async function probarInstalacion(navegador) {
+    const UA = {
+        iphone: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+        android: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36'
+    };
+    const abrir = async (opciones = {}, antes) => {
+        const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, ...opciones });
+        if (antes) await contexto.addInitScript(antes);
+        const page = await contexto.newPage();
+        const errores = [];
+        page.on('pageerror', e => errores.push(e.message));
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => typeof iniciarTour === 'function' && typeof instalarApp === 'function' &&
+            typeof db !== 'undefined' && !!db, { timeout: 15000 });
+        await page.evaluate(() => { try { localStorage.setItem('tour_bienvenida_visto', '1'); } catch (e) {} document.getElementById('tour-oferta')?.remove(); });
+        return { contexto, page, errores };
+    };
+    // El segundo paso del primer recorrido (el primero tras la bienvenida).
+    const pasoInstalar = (page) => page.evaluate(async () => {
+        await iniciarTour('primerosPasos');
+        await new Promise(res => setTimeout(res, 300));
+        pasoTour(1);
+        await new Promise(res => setTimeout(res, 500));
+        const t = document.querySelector('.tour-tarjeta');
+        const r = { titulo: t?.querySelector('.tour-titulo')?.textContent || '', texto: t?.textContent || '',
+            progreso: t?.querySelector('.tour-progreso')?.textContent || '' };
+        terminarTour();
+        return r;
+    });
+
+    // Lo que piden Android/Chrome y el iPhone.
+    let { contexto, page, errores } = await abrir();
+    const manifiesto = await page.evaluate(async () => {
+        const href = document.querySelector('link[rel="manifest"]').href;
+        const m = await (await fetch(href)).json();
+        const cargan = async (src) => {
+            const img = new Image();
+            img.src = new URL(src, href).href;
+            try { await img.decode(); return [img.naturalWidth, img.naturalHeight]; } catch (e) { return null; }
+        };
+        const apple = document.querySelector('link[rel="apple-touch-icon"]');
+        return {
+            nombre: m.short_name, display: m.display, inicio: m.start_url, alcance: m.scope,
+            i192: await cargan(m.icons.find(i => i.sizes === '192x192').src),
+            i512: await cargan(m.icons.find(i => i.sizes === '512x512' && i.purpose === 'any').src),
+            maskable: !!m.icons.find(i => i.purpose === 'maskable'),
+            apple: apple ? await cargan(apple.getAttribute('href')) : null,
+            titulo: document.querySelector('meta[name="apple-mobile-web-app-title"]')?.content
+        };
+    });
+    igual('instalar: el manifiesto la abre como app a pantalla completa', [manifiesto.display, manifiesto.alcance], ['standalone', '/docs/']);
+    verificar('instalar: arranca dentro de la app', manifiesto.inicio.startsWith('/docs/'), manifiesto.inicio);
+    igual('instalar: ícono de 192 px para Android', manifiesto.i192, [192, 192]);
+    igual('instalar: ícono de 512 px para Android', manifiesto.i512, [512, 512]);
+    igual('instalar: ícono adaptable (maskable)', manifiesto.maskable, true);
+    igual('instalar: ícono para la pantalla de inicio del iPhone', manifiesto.apple, [180, 180]);
+    igual('instalar: nombre corto bajo el ícono', manifiesto.titulo, 'TSJ Filing');
+
+    // Instalación nativa (Android/Chrome): el botón abre la ventana del navegador.
+    const nativo = await page.evaluate(async () => {
+        let pedida = false;
+        const evento = new Event('beforeinstallprompt');
+        evento.prompt = () => { pedida = true; };
+        evento.userChoice = Promise.resolve({ outcome: 'accepted' });
+        window.dispatchEvent(evento);
+        await iniciarTour('instalar');
+        await new Promise(res => setTimeout(res, 300));
+        const boton = [...document.querySelectorAll('.tour-tarjeta button')].find(b => /Instalar la app/.test(b.textContent));
+        boton?.click();
+        await new Promise(res => setTimeout(res, 100));
+        terminarTour();
+        return { boton: !!boton, pedida };
+    });
+    igual('instalar: con Chrome, un botón "Instalar la app"', nativo.boton, true);
+    igual('instalar: que abre la ventana de instalación del navegador', nativo.pedida, true);
+    // El botón del menú abre las instrucciones sin dejar la página en blanco.
+    const menu = await page.evaluate(async () => {
+        document.getElementById('menuToggle').click();
+        await new Promise(res => setTimeout(res, 100));
+        const boton = document.querySelector('#mobileNav .nav-instalar');
+        const visible = !!boton && boton.getBoundingClientRect().height > 0;
+        boton.click();
+        await new Promise(res => setTimeout(res, 150));
+        const r = { visible, modal: !!document.getElementById('modal-instalar'),
+            pagina: !!document.querySelector('.page.active') };
+        cerrarModalInstalar();
+        return r;
+    });
+    igual('instalar: está en el menú del celular', menu.visible, true);
+    igual('instalar: el menú abre las instrucciones', menu.modal, true);
+    igual('instalar: sin dejar la página en blanco', menu.pagina, true);
+    igual('instalar: sin errores de JavaScript', errores, []);
+    await contexto.close();
+
+    // iPhone: los pasos de Safari, justo después de la bienvenida.
+    ({ contexto, page, errores } = await abrir({ userAgent: UA.iphone }));
+    const ios = await pasoInstalar(page);
+    verificar('instalar iPhone: es lo primero tras la bienvenida', /Antes que nada/.test(ios.titulo) && /2 de/.test(ios.progreso), `${ios.titulo} · ${ios.progreso}`);
+    verificar('instalar iPhone: enseña Compartir → Agregar a pantalla de inicio',
+        /Compartir/.test(ios.texto) && /Agregar a pantalla de inicio/.test(ios.texto), ios.texto);
+    await contexto.close();
+
+    // Android sin ventana nativa: el menú ⋮.
+    ({ contexto, page, errores } = await abrir({ userAgent: UA.android }));
+    const android = await pasoInstalar(page);
+    verificar('instalar Android: enseña Instalar app desde el menú',
+        /Instalar app/.test(android.texto) && /Agregar a pantalla principal/.test(android.texto), android.texto);
+    await contexto.close();
+
+    // Ya instalada: el paso se salta y el botón del menú desaparece.
+    ({ contexto, page, errores } = await abrir({ userAgent: UA.iphone },
+        () => Object.defineProperty(navigator, 'standalone', { get: () => true })));
+    const yaInstalada = await pasoInstalar(page);
+    igual('instalar: si ya está instalada, el recorrido no lo pide', /Antes que nada/.test(yaInstalada.titulo), false);
+    igual('instalar: y el menú ya no lo ofrece', await page.evaluate(() =>
+        getComputedStyle(document.querySelector('#mobileNav .nav-instalar')).display), 'none');
+    await contexto.close();
+}
+
+/**
  * Recorrido guiado: se ofrece (no se impone) a quien llega sin expedientes,
  * no se repite, y cada paso señala un elemento que existe.
  */
@@ -241,7 +366,7 @@ async function probarRecorridoGuiado(navegador) {
         igual('recorrido: ofrecer no oscurece la pantalla', r.sinOscurecer, true);
         igual('recorrido: "Ahora no" la cierra', r.cierra, true);
         igual('recorrido: y se recuerda', r.recuerda, true);
-        igual('recorrido: el botón 🧭 lista los recorridos', r.menu, 6);
+        igual('recorrido: el botón 🧭 lista los recorridos', r.menu, 7);
         igual('recorrido: el menú se cierra al tocar fuera', r.menuCierra, true);
         igual('recorrido: cada paso señala un elemento que existe', r.sinObjetivo, []);
         verificar('recorrido: se recorren todos los pasos', r.pasos >= 20, String(r.pasos));
@@ -2182,6 +2307,7 @@ async function main() {
 
         // ---- Recorrido guiado y páginas públicas ----
         await probarRecorridoGuiado(navegador);
+        await probarInstalacion(navegador);
         await probarSitioPublico(navegador);
 
     } finally {
