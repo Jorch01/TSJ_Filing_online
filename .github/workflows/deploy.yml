@@ -60,8 +60,10 @@ jobs:
     name: Publicar
     needs: pruebas          # ← el candado: sin pruebas en verde no se publica
     # Solo desde la rama principal. En una rama de trabajo o en un pull request
-    # las pruebas corren igual, pero no se toca el sitio.
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    # las pruebas corren igual, pero no se toca el sitio. "Run workflow" a mano
+    # (workflow_dispatch) también publica: sirve cuando GitHub no dispara el
+    # push, que a veces pasa, y así no hace falta un commit vacío.
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     # La concurrencia va aquí y no arriba: si estuviera a nivel de workflow, las
     # pruebas de una rama harían cola detrás de las de otra sin necesidad.
     concurrency:
