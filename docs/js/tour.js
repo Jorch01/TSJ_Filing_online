@@ -31,7 +31,23 @@
         catch (e) { return false; }
     }
 
+    const instalada = () => typeof estaInstalada === 'function' && estaInstalada();
+    const instrucciones = () => typeof instruccionesInstalacionHTML === 'function'
+        ? instruccionesInstalacionHTML(true) : '';
+
     const RECORRIDOS = {
+        instalar: {
+            icono: '📲',
+            titulo: 'Instalar en tu celular',
+            duracion: '20 s',
+            pasos: [
+                {
+                    titulo: '📲 Tenla a un toque en tu celular',
+                    texto: 'Agrega TSJ Filing a tu pantalla de inicio: se abre con un toque, a pantalla completa y funciona aunque no haya señal.',
+                    contenido: instrucciones
+                }
+            ]
+        },
         primerosPasos: {
             icono: '🚀',
             titulo: 'Tu primer expediente con IA',
@@ -39,7 +55,15 @@
             pasos: [
                 {
                     titulo: '👋 Bienvenido a TSJ Filing Online',
-                    texto: 'Te enseño en un minuto a dar de alta tu primer expediente dejando que la IA lea el acuerdo por ti. Puedes salir cuando quieras con ✕ o Esc.'
+                    texto: 'En un minuto: primero dejas la app a un toque en tu celular y luego das de alta tu primer expediente con la IA. Puedes salir cuando quieras con ✕ o Esc.'
+                },
+                {
+                    // Lo primero: sin el ícono en la pantalla de inicio, la
+                    // app se pierde entre las pestañas del navegador.
+                    saltarSi: async () => instalada(),
+                    titulo: '📲 Antes que nada: tenla a un toque',
+                    texto: 'Agrégala a la pantalla de inicio de tu celular: se abre con un toque, a pantalla completa y sin internet.',
+                    contenido: instrucciones
                 },
                 {
                     antes: ir('busqueda', () => typeof cambiarTabTSJ === 'function' && cambiarTabTSJ('ia')),
@@ -291,7 +315,9 @@
             <button type="button" class="tour-cerrar" aria-label="Cerrar recorrido" onclick="terminarTour()">✕</button>
             <div class="tour-progreso">${recorrido.icono} ${escapar(recorrido.titulo)} · ${indice + 1} de ${total}</div>
             <h4 class="tour-titulo">${escapar(paso.titulo)}</h4>
-            <p class="tour-texto">${escapar(paso.texto)}</p>
+            ${paso.contenido
+                ? `<p class="tour-texto">${escapar(paso.texto)}</p><div class="tour-contenido">${paso.contenido()}</div>`
+                : `<p class="tour-texto">${escapar(paso.texto)}</p>`}
             <div class="tour-botones">
                 ${indice > 0 ? '<button type="button" class="btn btn-sm btn-secondary" onclick="pasoTour(-1)">Atrás</button>' : ''}
                 <button type="button" class="btn btn-sm btn-primary tour-siguiente" onclick="pasoTour(1)">${ultimo ? 'Terminar' : 'Siguiente'}</button>
@@ -387,7 +413,7 @@
         oferta.innerHTML = `
             <button type="button" class="tour-cerrar" aria-label="Cerrar" onclick="cerrarOfertaTour(true)">✕</button>
             <strong>👋 ¿Primera vez por aquí?</strong>
-            <p>Te muestro en 1 minuto cómo agregar tu primer expediente con ayuda de la IA.</p>
+            <p>Te muestro en 1 minuto cómo tenerla en la pantalla de inicio de tu celular y agregar tu primer expediente con ayuda de la IA.</p>
             <div class="tour-botones">
                 <button type="button" class="btn btn-sm btn-secondary" onclick="cerrarOfertaTour(true)">Ahora no</button>
                 <button type="button" class="btn btn-sm btn-primary" onclick="iniciarTour('primerosPasos')">Mostrarme</button>

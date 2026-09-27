@@ -139,3 +139,13 @@ body.sitio { background: var(--bg-primary); }
 @media print {
     .sitio-header, .sitio-footer, .sitio-cta-final { display: none; }
 }
+
+/* ---------- Instalar en el celular ---------- */
+.sitio-instalar { display: grid; grid-template-columns: 1fr 1fr 0.8fr; gap: 1rem; }
+@media (max-width: 900px) { .sitio-instalar { grid-template-columns: 1fr; } }
+.sitio-instalar article { border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.15rem 1.25rem; background: #fff; }
+.sitio-instalar h3 { font-size: 1rem; margin-bottom: 0.5rem; }
+.sitio-instalar ol { margin-left: 1.1rem; display: grid; gap: 0.35rem; color: var(--text-secondary); font-size: 0.92rem; }
+.sitio-instalar ol strong { color: var(--text-primary); }
+.sitio-instalar-icono { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem; text-align: center; background: var(--primary-suave) !important; }
+.sitio-instalar-icono img { border-radius: 22px; box-shadow: var(--shadow-md); }

@@ -5575,3 +5575,38 @@ table th {
     #tour-oferta { left: 0.75rem; width: calc(100vw - 0.75rem - 5rem); bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); }
 }
 @media print { #tour-fab, #tour-menu, .tour-resaltado, .tour-tarjeta, #tour-oferta { display: none !important; } }
+
+/* ==================== INSTALAR LA APP ==================== */
+.app-instalada .nav-instalar { display: none; }
+.nav-instalar { font-weight: 650; }
+.inst-fondo {
+    position: fixed; inset: 0; z-index: 1300;
+    background: rgba(15, 23, 42, 0.45);
+    display: flex; align-items: flex-end; justify-content: center;
+    padding: 1rem;
+}
+@media (min-width: 700px) { .inst-fondo { align-items: center; } }
+.inst-modal {
+    position: relative;
+    width: min(420px, 100%);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    padding: 1.25rem 1.25rem 1rem;
+    animation: tour-entra 0.2s ease;
+}
+.inst-modal h3 { margin: 0 1.5rem 0.75rem 0; font-size: 1.05rem; }
+.inst-pasos { margin: 0.25rem 0 0.5rem 1.2rem; display: grid; gap: 0.55rem; font-size: 0.9rem; line-height: 1.5; color: var(--text-secondary); }
+.inst-pasos strong { color: var(--text-primary); }
+.inst-ico {
+    width: 1.35em; height: 1.35em; vertical-align: -0.3em;
+    color: var(--primary);
+    background: var(--primary-suave); border-radius: 6px; padding: 2px;
+}
+.inst-app { width: 1.6em; height: 1.6em; vertical-align: -0.45em; border-radius: 6px; }
+.inst-nota { font-size: 0.82rem; color: var(--text-muted); margin: 0.5rem 0 0.25rem; }
+.inst-ok { font-size: 0.9rem; color: var(--success); margin: 0.25rem 0; }
+.inst-boton { width: 100%; justify-content: center; margin: 0.25rem 0; }
+.tour-contenido { margin: -0.4rem 0 0.8rem; }
+.tour-contenido .inst-pasos { font-size: 0.85rem; }
