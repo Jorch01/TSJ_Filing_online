@@ -167,6 +167,7 @@
             <button class="nav-btn" data-page="pendientes">✅ Pendientes<span class="nav-badge" id="nav-badge-pendientes" style="display:none;">0</span></button>
             <button class="nav-btn" data-page="notas">📝 Notas</button>
             <button class="nav-btn" data-page="tribunales">⚖️ Tribunales</button>
+            <button class="nav-btn" data-page="laboral">🧮 Laboral</button>
             <button class="nav-btn" data-page="impi">🔰 IMPI Marcas</button>
             <button class="nav-btn" data-page="config">⚙️</button>
         </nav>
@@ -181,6 +182,7 @@
         <button class="nav-btn" data-page="pendientes">✅ Pendientes<span class="nav-badge" id="nav-badge-pendientes-movil" style="display:none;">0</span></button>
         <button class="nav-btn" data-page="notas">📝 Notas</button>
         <button class="nav-btn" data-page="tribunales">⚖️ Tribunales</button>
+        <button class="nav-btn" data-page="laboral">🧮 Calculadora Laboral</button>
         <button class="nav-btn" data-page="impi">🔰 IMPI Marcas</button>
         <button class="nav-btn" data-page="config">⚙️ Configuración</button>
     </nav>
@@ -2083,6 +2085,227 @@
             </div>
         </section>
 
+        <!-- Página Calculadora Laboral -->
+        <section class="page" id="page-laboral">
+            <div class="page-header">
+                <div>
+                    <h2>🧮 Calculadora Laboral</h2>
+                    <p class="subtitle">Finiquito, liquidación e indemnizaciones conforme a la Ley Federal del Trabajo</p>
+                </div>
+            </div>
+
+            <div class="lab-layout">
+                <div class="lab-formulario">
+                    <div class="card">
+                        <div class="card-header"><h3>⚖️ Motivo de la terminación</h3></div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label for="lab-supuesto">¿Cómo terminó la relación de trabajo?</label>
+                                <select id="lab-supuesto" onchange="recalcularLaboral()">
+                                    <optgroup label="Finiquito">
+                                        <option value="renuncia">Renuncia voluntaria</option>
+                                        <option value="mutuo">Mutuo consentimiento o fin de contrato</option>
+                                        <option value="despidoJustificado">Despido justificado (art. 47)</option>
+                                    </optgroup>
+                                    <optgroup label="Liquidación">
+                                        <option value="despidoInjustificado" selected>Despido injustificado (art. 48)</option>
+                                        <option value="negativaReinstalar">Negativa del patrón a reinstalar (art. 49)</option>
+                                        <option value="rescisionTrabajador">Rescisión por causa del patrón (arts. 51 y 52)</option>
+                                        <option value="cierreEmpresa">Cierre o quiebra de la empresa (art. 436)</option>
+                                        <option value="reajuste">Reajuste por maquinaria nueva (art. 439)</option>
+                                    </optgroup>
+                                    <optgroup label="Incapacidad y muerte">
+                                        <option value="incapacidadNoProfesional">Incapacidad no derivada del trabajo (art. 54)</option>
+                                        <option value="incapacidadParcial">Incapacidad permanente parcial por riesgo de trabajo (art. 492)</option>
+                                        <option value="incapacidadTotal">Incapacidad permanente total por riesgo de trabajo (art. 495)</option>
+                                        <option value="muerte">Muerte del trabajador (causa ajena al trabajo)</option>
+                                        <option value="muerteRiesgo">Muerte por riesgo de trabajo (arts. 500 y 502)</option>
+                                    </optgroup>
+                                </select>
+                                <p class="form-help" id="lab-supuesto-desc"></p>
+                            </div>
+                            <div class="form-group" id="lab-grupo-veinte">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="lab-veinte" onchange="recalcularLaboral()">
+                                    Sumar 20 días por año (cuando se pactan en convenio)
+                                </label>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group" id="lab-grupo-contrato">
+                                    <label for="lab-contrato">Tipo de contrato</label>
+                                    <select id="lab-contrato" onchange="recalcularLaboral()">
+                                        <option value="indeterminado">Por tiempo indeterminado</option>
+                                        <option value="determinado">Por tiempo u obra determinada (art. 50-I)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" id="lab-grupo-juicio">
+                                    <label for="lab-meses-juicio">Meses de juicio (salarios vencidos)</label>
+                                    <input type="number" id="lab-meses-juicio" min="0" step="1" placeholder="0 = sin juicio" oninput="recalcularLaboral()">
+                                </div>
+                                <div class="form-group" id="lab-grupo-incapacidad">
+                                    <label for="lab-pct-incapacidad">% de incapacidad (tabla art. 514)</label>
+                                    <input type="number" id="lab-pct-incapacidad" min="0" max="100" step="0.5" placeholder="Ej: 25" oninput="recalcularLaboral()">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header"><h3>👤 Datos del trabajador</h3></div>
+                        <div class="card-body">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="lab-ingreso">Fecha de ingreso *</label>
+                                    <input type="date" id="lab-ingreso" oninput="recalcularLaboral()">
+                                </div>
+                                <div class="form-group">
+                                    <label for="lab-baja">Fecha de terminación *</label>
+                                    <input type="date" id="lab-baja" oninput="recalcularLaboral()">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="lab-salario">Salario *</label>
+                                    <input type="number" id="lab-salario" min="0" step="0.01" placeholder="Ej: 15000" oninput="recalcularLaboral()">
+                                </div>
+                                <div class="form-group">
+                                    <label for="lab-periodo">Periodo del salario</label>
+                                    <select id="lab-periodo" onchange="recalcularLaboral()">
+                                        <option value="mensual" selected>Mensual</option>
+                                        <option value="quincenal">Quincenal</option>
+                                        <option value="catorcenal">Catorcenal</option>
+                                        <option value="semanal">Semanal</option>
+                                        <option value="diario">Diario</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="lab-zona">Zona del salario mínimo</label>
+                                    <select id="lab-zona" onchange="cambiarZonaLaboral()">
+                                        <option value="general">General</option>
+                                        <option value="frontera">Zona Libre de la Frontera Norte</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header"><h3>📋 Pendientes de pago</h3></div>
+                        <div class="card-body">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="lab-dias-pendientes">Días de salario no pagados</label>
+                                    <input type="number" id="lab-dias-pendientes" min="0" step="1" placeholder="0" oninput="recalcularLaboral()">
+                                </div>
+                                <div class="form-group">
+                                    <label for="lab-vac-pendientes">Vacaciones de años anteriores no tomadas (días)</label>
+                                    <input type="number" id="lab-vac-pendientes" min="0" step="0.5" placeholder="0" oninput="recalcularLaboral()">
+                                    <span class="form-help" id="lab-vac-pendientes-ayuda"></span>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="lab-vac-tomadas">Vacaciones ya tomadas del año en curso (días)</label>
+                                    <input type="number" id="lab-vac-tomadas" min="0" step="0.5" placeholder="0" oninput="recalcularLaboral()">
+                                </div>
+                                <div class="form-group">
+                                    <label for="lab-aguinaldo-pagado">Aguinaldo ya pagado este año ($)</label>
+                                    <input type="number" id="lab-aguinaldo-pagado" min="0" step="0.01" placeholder="0" oninput="recalcularLaboral()">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="lab-otras">Otras percepciones adeudadas ($)</label>
+                                    <input type="number" id="lab-otras" min="0" step="0.01" placeholder="0" oninput="recalcularLaboral()">
+                                </div>
+                                <div class="form-group">
+                                    <label for="lab-otras-concepto">¿Cuáles?</label>
+                                    <input type="text" id="lab-otras-concepto" placeholder="Horas extra, PTU, bonos…" oninput="recalcularLaboral()">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <details class="card lab-avanzado">
+                        <summary class="card-header"><h3>⚙️ Prestaciones superiores a la ley y parámetros</h3></summary>
+                        <div class="card-body">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="lab-aguinaldo-dias">Días de aguinaldo</label>
+                                    <input type="number" id="lab-aguinaldo-dias" min="15" step="1" placeholder="15" oninput="recalcularLaboral()">
+                                </div>
+                                <div class="form-group">
+                                    <label for="lab-prima-pct">Prima vacacional (%)</label>
+                                    <input type="number" id="lab-prima-pct" min="25" step="1" placeholder="25" oninput="recalcularLaboral()">
+                                </div>
+                                <div class="form-group">
+                                    <label for="lab-vac-contrato">Días de vacaciones por contrato</label>
+                                    <input type="number" id="lab-vac-contrato" min="0" step="1" placeholder="Los de la ley" oninput="recalcularLaboral()">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="lab-otras-integrables">Otras prestaciones diarias que integran el salario ($)</label>
+                                    <input type="number" id="lab-otras-integrables" min="0" step="0.01" placeholder="Bonos, vales, comisiones promedio por día" oninput="recalcularLaboral()">
+                                </div>
+                                <div class="form-group">
+                                    <label for="lab-sdi-manual">Salario diario integrado conocido ($)</label>
+                                    <input type="number" id="lab-sdi-manual" min="0" step="0.01" placeholder="Se calcula solo" oninput="recalcularLaboral()">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="lab-divisor">Días del mes para el salario diario</label>
+                                    <select id="lab-divisor" onchange="recalcularLaboral()">
+                                        <option value="30" selected>30 días (práctica usual)</option>
+                                        <option value="30.4">30.4 días (promedio anual)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="lab-sm">Salario mínimo diario ($)</label>
+                                    <input type="number" id="lab-sm" min="0" step="0.01" oninput="recalcularLaboral()">
+                                </div>
+                                <div class="form-group">
+                                    <label for="lab-uma">UMA diaria ($)</label>
+                                    <input type="number" id="lab-uma" min="0" step="0.01" oninput="recalcularLaboral()">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="lab-isr" checked onchange="recalcularLaboral()">
+                                        Estimar el ISR
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label for="lab-sueldo-isr">Último sueldo mensual ordinario para el ISR ($)</label>
+                                    <input type="number" id="lab-sueldo-isr" min="0" step="0.01" placeholder="Salario diario × 30" oninput="recalcularLaboral()">
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+
+                <div class="lab-resultado-col">
+                    <div class="card lab-resultado-card">
+                        <div class="card-header"><h3>💰 Resultado</h3></div>
+                        <div class="card-body" id="lab-resultados">
+                            <div class="lab-vacio">📝 Captura las fechas y el salario para ver el cálculo.</div>
+                        </div>
+                        <div class="card-footer lab-acciones" id="lab-acciones" style="display:none;">
+                            <select id="lab-expediente" title="Expediente al que se liga la nota">
+                                <option value="">Sin expediente</option>
+                            </select>
+                            <button class="btn btn-success btn-sm" onclick="guardarCalculoComoNota()">📝 Guardar como nota</button>
+                            <button class="btn btn-secondary btn-sm" onclick="copiarResumenLaboral()">📋 Copiar</button>
+                            <button class="btn btn-secondary btn-sm" onclick="imprimirCalculoLaboral()">🖨️ Imprimir</button>
+                        </div>
+                    </div>
+                    <p class="lab-aviso-legal">Parámetros 2026: salario mínimo $315.04 (general) y $440.87 (frontera norte), UMA $117.31, tarifa ISR del Anexo 8 RMF 2026. Es una estimación orientativa; cada caso puede tener prestaciones, convenios o criterios judiciales que cambien el resultado.</p>
+                </div>
+            </div>
+        </section>
+
         <!-- Página Configuración -->
         <section class="page" id="page-config">
             <div class="page-header">
@@ -2751,6 +2974,14 @@
 
     <!-- Scripts -->
     <!-- DOMPurify para sanitización XSS -->
+    <!-- Aviso de trabajo sin conexión -->
+    <div id="aviso-sin-conexion" class="aviso-sin-conexion" role="status" hidden>
+        📴 Sin conexión: tus expedientes, agenda, notas y la calculadora siguen disponibles.
+        Las búsquedas en tribunales, IMPI y la IA necesitan internet. Lo que cambies se sincroniza al volver la señal.
+        <button type="button" class="aviso-cerrar" aria-label="Cerrar aviso"
+            onclick="document.getElementById('aviso-sin-conexion').hidden = true">✕</button>
+    </div>
+
     <!-- Sugerir una mejora o reportar un problema. Vive en el <body>, fuera de
          las secciones, para estar disponible en cualquier parte del sitio. -->
     <button id="fab-feedback" type="button" onclick="mostrarModalReporteBug('mejora')"
@@ -2771,5 +3002,6 @@
     <script src="js/gcal-sync.js"></script>
     <script src="js/command-palette.js"></script>
     <script src="js/voice-assistant.js"></script>
+    <script src="js/calculadora-laboral.js"></script>
 </body>
 </html>

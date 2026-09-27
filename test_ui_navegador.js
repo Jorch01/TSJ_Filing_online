@@ -171,6 +171,76 @@ async function abrirChromium() {
 }
 
 /**
+ * Sin internet: con la app ya visitada una vez, cortar la red y recargar
+ * debe abrirla igual, con los datos guardados y el aviso de sin conexión.
+ */
+async function probarSinConexion(navegador) {
+    const contexto = await navegador.newContext({ viewport: { width: 1400, height: 900 } });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => typeof crearExpedienteCore === 'function' && typeof db !== 'undefined' && !!db,
+            { timeout: 15000 });
+        const listo = await page.evaluate(async () => {
+            const reg = await Promise.race([
+                navigator.serviceWorker.ready,
+                new Promise(res => setTimeout(() => res(null), 10000))
+            ]);
+            return !!reg;
+        });
+        igual('sin conexión: el service worker se instala', listo, true);
+        // Que controle la página (la primera visita la controla tras activarse).
+        await page.waitForFunction(() => !!navigator.serviceWorker.controller, { timeout: 10000 }).catch(() => {});
+        await page.evaluate(() => crearExpedienteCore({ numero: '404/2026', institucion: 'TSJ',
+            juzgado: 'JUZGADO PRIMERO CIVIL CANCUN', comentario: 'Guardado antes de perder la señal' }));
+        await page.waitForTimeout(500);
+
+        await contexto.setOffline(true);
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        const abre = await page.waitForFunction(() => typeof navegarA === 'function' && typeof db !== 'undefined' && !!db,
+            { timeout: 15000 }).then(() => true).catch(() => false);
+        igual('sin conexión: la app abre sin internet', abre, true);
+        if (!abre) return;
+        await page.waitForTimeout(800);
+        const r = await page.evaluate(async () => {
+            navegarA('expedientes');
+            await new Promise(res => setTimeout(res, 400));
+            const titulos = [...document.querySelectorAll('#lista-expedientes .expediente-titulo')].map(h => h.textContent);
+            const aviso = document.getElementById('aviso-sin-conexion');
+            navegarA('laboral');
+            await new Promise(res => setTimeout(res, 300));
+            document.getElementById('lab-ingreso').value = '2024-01-01';
+            document.getElementById('lab-baja').value = '2026-01-01';
+            document.getElementById('lab-salario').value = '9000';
+            const calc = recalcularLaboral();
+            return {
+                datos: titulos.includes('404/2026'),
+                aviso: !!aviso && !aviso.hidden && getComputedStyle(aviso).display !== 'none' && aviso.getBoundingClientRect().height > 0,
+                estilos: getComputedStyle(document.querySelector('.card')).borderRadius !== '0px',
+                calculadora: calc.ok && calc.totales.bruto > 0,
+                cierra: (() => { aviso.querySelector('.aviso-cerrar').click(); return aviso.hidden; })()
+            };
+        });
+        igual('sin conexión: los expedientes guardados siguen ahí', r.datos, true);
+        igual('sin conexión: avisa que no hay internet', r.aviso, true);
+        igual('sin conexión: con sus estilos', r.estilos, true);
+        igual('sin conexión: la calculadora laboral funciona', r.calculadora, true);
+        igual('sin conexión: el aviso se puede cerrar', r.cierra, true);
+
+        await contexto.setOffline(false);
+        await page.evaluate(() => window.dispatchEvent(new Event('online')));
+        await page.waitForTimeout(300);
+        igual('sin conexión: el aviso se quita al volver la red',
+            await page.evaluate(() => document.getElementById('aviso-sin-conexion').hidden), true);
+        igual('sin conexión: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
+/**
  * El calendario y el asistente con el navegador en Cancún (UTC-5).
  *
  * Con el reloj en UTC —el de las máquinas de CI— los fallos de fechas no se
@@ -1898,10 +1968,71 @@ async function main() {
             igual(`celular ${z}: el buscador de la lista tiene su altura normal`, movil[z].buscadorNormal, true);
         }
 
+        // ---- Calculadora laboral ----
+        const lab = await page.evaluate(async () => {
+            const pausa = (ms) => new Promise(res => setTimeout(res, ms));
+            const r = {};
+            const botonMenu = document.querySelector('.main-nav .nav-btn[data-page="laboral"], nav .nav-btn[data-page="laboral"]');
+            r.enMenu = !!botonMenu;
+            botonMenu.click();
+            await pausa(300);
+            r.pagina = document.getElementById('page-laboral').classList.contains('active');
+            r.bajaHoy = !!document.getElementById('lab-baja').value;
+            const fijar = (id, v) => { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+            fijar('lab-ingreso', '2020-01-15');
+            fijar('lab-baja', '2026-09-26');
+            fijar('lab-salario', '15000');
+            await pausa(100);
+            const esperado = CalculadoraLaboral.calcular({ supuesto: 'despidoInjustificado', fechaIngreso: '2020-01-15',
+                fechaBaja: '2026-09-26', salario: 15000, periodo: 'mensual', calcularISR: true });
+            r.totalPintado = document.getElementById('lab-total-bruto')?.textContent;
+            r.totalEsperado = CalculadoraLaboral.dinero(esperado.totales.bruto);
+            r.filas = document.querySelectorAll('#lab-resultados .lab-tabla tbody tr').length;
+            r.ayudaVacaciones = document.getElementById('lab-vac-pendientes-ayuda').textContent;
+            const visible = (id) => document.getElementById(id).style.display !== 'none';
+            r.camposDespido = [visible('lab-grupo-veinte'), visible('lab-grupo-juicio'), visible('lab-grupo-incapacidad')];
+            const sel = document.getElementById('lab-supuesto');
+            sel.value = 'renuncia'; sel.dispatchEvent(new Event('change'));
+            await pausa(50);
+            r.camposRenuncia = [visible('lab-grupo-veinte'), visible('lab-grupo-juicio'), visible('lab-grupo-incapacidad')];
+            sel.value = 'incapacidadParcial'; sel.dispatchEvent(new Event('change'));
+            await pausa(50);
+            r.campoPorcentaje = visible('lab-grupo-incapacidad');
+            sel.value = 'despidoInjustificado'; sel.dispatchEvent(new Event('change'));
+            document.getElementById('lab-veinte').click();
+            await pausa(50);
+            r.conVeinte = [...document.querySelectorAll('#lab-resultados .lab-tabla td strong')].some(s => /20 días por año/.test(s.textContent));
+            document.getElementById('lab-veinte').click();
+
+            // Guardar como nota ligada a nada.
+            const antes = (await obtenerNotas()).length;
+            await guardarCalculoComoNota();
+            const notas = await obtenerNotas();
+            const nueva = notas.find(n => /Despido injustificado/.test(n.titulo) && /TOTAL BRUTO/.test(n.contenido));
+            r.nota = notas.length === antes + 1 && !!nueva;
+            if (nueva) await eliminarNotaCore(nueva.id);
+            return r;
+        });
+        igual('laboral: está en el menú', lab.enMenu, true);
+        igual('laboral: abre su página', lab.pagina, true);
+        igual('laboral: la fecha de terminación empieza en hoy', lab.bajaHoy, true);
+        igual('laboral: el total pintado es el del motor', lab.totalPintado, lab.totalEsperado);
+        verificar('laboral: desglosa los conceptos', lab.filas >= 5, String(lab.filas));
+        verificar('laboral: recuerda las vacaciones del último año cumplido',
+            /año 6 de servicio, son 22 días/.test(lab.ayudaVacaciones), lab.ayudaVacaciones);
+        igual('laboral: el despido muestra 20 días opcionales y juicio', lab.camposDespido, [true, true, false]);
+        igual('laboral: la renuncia los oculta', lab.camposRenuncia, [false, false, false]);
+        igual('laboral: la incapacidad parcial pide el porcentaje', lab.campoPorcentaje, true);
+        igual('laboral: sumar los 20 días los agrega al desglose', lab.conVeinte, true);
+        igual('laboral: guardar el cálculo crea una nota', lab.nota, true);
+
         igual('la página no lanza errores de JavaScript', erroresPagina, []);
 
         // ---- El calendario y el asistente, con el reloj en Cancún ----
         await probarCalendarioEnCancun(navegador);
+
+        // ---- Sin internet ----
+        await probarSinConexion(navegador);
 
     } finally {
         await navegador.close();

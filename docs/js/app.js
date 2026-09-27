@@ -370,6 +370,8 @@ function navegarA(pagina) {
         prepararPaginaTSJ();
     } else if (pagina === 'pjf') {
         cargarCatalogosPJF();
+    } else if (pagina === 'laboral') {
+        if (typeof prepararCalculadoraLaboral === 'function') prepararCalculadoraLaboral();
     } else if (pagina === 'impi') {
         // IMPI page - no initialization needed
     }
@@ -11108,3 +11110,31 @@ async function abrirExpedientesPJFSeleccionados() {
         );
     }
 }
+
+// ==================== SIN CONEXIÓN ====================
+// El service worker (sw.js) guarda la app para que abra sin internet; los
+// datos ya viven en el navegador. Aquí se registra y se avisa del estado.
+function registrarServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    // Solo en https o en localhost: en file:// el navegador no lo permite.
+    if (!(location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) return;
+    navigator.serviceWorker.register('sw.js').catch(e => Logger.warn('Service worker no registrado:', e));
+}
+
+function actualizarAvisoConexion() {
+    const aviso = document.getElementById('aviso-sin-conexion');
+    if (!aviso) return;
+    const sinRed = navigator.onLine === false;
+    aviso.hidden = !sinRed;
+    document.body.classList.toggle('sin-conexion', sinRed);
+}
+
+window.addEventListener('offline', actualizarAvisoConexion);
+window.addEventListener('online', () => {
+    actualizarAvisoConexion();
+    if (typeof mostrarToast === 'function') mostrarToast('Conexión recuperada', 'success');
+});
+window.addEventListener('load', () => {
+    registrarServiceWorker();
+    actualizarAvisoConexion();
+});

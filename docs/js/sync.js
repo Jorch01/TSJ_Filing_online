@@ -1742,6 +1742,14 @@ document.addEventListener('visibilitychange', () => {
     sincronizarDatos().catch(e => console.warn('Sync al volver a foreground falló:', e && e.message ? e.message : e));
 });
 
+// Al volver la conexión (se trabajó sin internet), se sube lo pendiente.
+window.addEventListener('online', () => {
+    if (!hayPendienteSync()) return;
+    if (syncState.syncInProgress) return;
+    if (typeof estadoPremium === 'undefined' || !estadoPremium.activo || !estadoPremium.codigo) return;
+    sincronizarDatos().catch(e => console.warn('Sync al volver la conexión falló:', e && e.message ? e.message : e));
+});
+
 function actualizarVisibilidadSync() {
     const syncSection = document.getElementById('sync-section');
     if (syncSection) {
