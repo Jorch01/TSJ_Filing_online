@@ -1,0 +1,141 @@
+/* Páginas públicas del sitio (inicio, estrados, PJF, calculadora).
+   Se apoyan en los colores, botones y tarjetas de la app (docs/css/styles.css)
+   para que al pasar a la herramienta nada cambie de aspecto. */
+
+body.sitio { background: var(--bg-primary); }
+
+.sitio-ancho { width: min(1120px, 100% - 2rem); margin: 0 auto; }
+.sitio-angosto { width: min(760px, 100%); }
+
+.sitio-saltar { position: absolute; left: -999px; top: 0; }
+.sitio-saltar:focus { left: 1rem; top: 1rem; z-index: 10; background: #fff; padding: 0.5rem 0.75rem; border-radius: var(--radius); }
+
+/* ---------- Encabezado ---------- */
+.sitio-header {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: saturate(160%) blur(8px);
+    border-bottom: 1px solid var(--border-color);
+}
+.sitio-header-fila { display: flex; align-items: center; gap: 1.25rem; min-height: 60px; }
+.sitio-logo { font-weight: 750; color: var(--text-primary); text-decoration: none; font-size: 1.02rem; white-space: nowrap; }
+.sitio-nav { display: flex; gap: 1.1rem; margin-left: auto; }
+.sitio-nav a { color: var(--text-secondary); text-decoration: none; font-size: 0.9rem; }
+.sitio-nav a:hover { color: var(--primary); }
+.sitio-cta-header { white-space: nowrap; }
+@media (max-width: 900px) {
+    .sitio-nav { display: none; }
+    .sitio-cta-header { margin-left: auto; }
+}
+
+/* ---------- Portada ---------- */
+.sitio-hero {
+    background: linear-gradient(160deg, var(--primary-suave) 0%, #fff 60%);
+    padding: 4rem 0 3.5rem;
+}
+.sitio-hero-chico { padding: 2.5rem 0 2rem; }
+.sitio-hero-grid { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 3rem; align-items: center; }
+@media (max-width: 900px) { .sitio-hero-grid { grid-template-columns: 1fr; gap: 2rem; } .sitio-hero { padding: 2.5rem 0; } }
+.sitio-etiqueta {
+    display: inline-block; font-size: 0.8rem; font-weight: 650; color: var(--primary);
+    background: #fff; border: 1px solid var(--border-color); border-radius: var(--radius-full);
+    padding: 0.2rem 0.75rem; margin-bottom: 1rem;
+}
+.sitio h1 { font-size: clamp(1.75rem, 4vw, 2.6rem); line-height: 1.15; letter-spacing: -0.025em; margin-bottom: 1rem; }
+.sitio-lead { font-size: 1.08rem; color: var(--text-secondary); max-width: 60ch; margin-bottom: 1.5rem; }
+.sitio-hero-botones { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 1.1rem; }
+.sitio .btn-lg { text-decoration: none; }
+.sitio a.btn { text-decoration: none; }
+.sitio-garantias { list-style: none; display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; font-size: 0.88rem; color: var(--text-secondary); }
+.sitio-migas { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.75rem; }
+.sitio-migas a { color: var(--text-muted); }
+
+/* Maqueta de la app en la portada: dos tarjetas, no una captura pesada. */
+.sitio-hero-demo { display: grid; gap: 1rem; }
+.demo-tarjeta {
+    background: #fff; border: 1px solid var(--border-color); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md); padding: 1rem 1.1rem; display: grid; gap: 0.35rem;
+    font-size: 0.86rem; color: var(--text-secondary);
+}
+.demo-tarjeta strong { font-size: 1.15rem; color: var(--text-primary); }
+.demo-cabecera { display: flex; justify-content: space-between; align-items: center; }
+.demo-badge { font-size: 0.72rem; background: #e8f5e9; color: #1b5e20; border-radius: var(--radius-full); padding: 0.1rem 0.55rem; font-weight: 650; }
+.demo-cat { font-size: 0.68rem; background: var(--primary); color: #fff; border-radius: var(--radius-full); padding: 0.12rem 0.55rem; font-weight: 650; }
+.demo-botones { display: flex; gap: 0.4rem; margin-top: 0.3rem; }
+.demo-btn { background: var(--primary); color: #fff; border-radius: var(--radius-sm); padding: 0.2rem 0.6rem; font-size: 0.78rem; font-weight: 600; justify-self: start; }
+.demo-chip { border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.2rem 0.5rem; font-size: 0.78rem; }
+.demo-ia { margin-left: 2rem; border-left: 4px solid var(--primary); }
+.demo-titulo { font-weight: 650; color: var(--text-primary); }
+.demo-ok { background: var(--success); }
+@media (max-width: 900px) { .demo-ia { margin-left: 0; } }
+
+.sitio-ciudades { border-block: 1px solid var(--border-color); background: var(--bg-secondary); }
+.sitio-ciudades .sitio-ancho { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0.35rem 0.7rem; padding: 0.9rem 0; font-size: 0.9rem; color: var(--text-muted); }
+.sitio-ciudades strong { color: var(--text-primary); font-weight: 600; }
+
+/* ---------- Secciones ---------- */
+.sitio-seccion { padding: 3.5rem 0; }
+.sitio-alterna { background: var(--bg-secondary); }
+.sitio h2 { font-size: clamp(1.35rem, 3vw, 1.8rem); margin-bottom: 0.5rem; letter-spacing: -0.02em; }
+.sitio-sub { color: var(--text-secondary); margin-bottom: 2rem; }
+.sitio-seccion h2 + .sitio-pasos, .sitio-seccion h2 + .sitio-faq { margin-top: 1.25rem; }
+
+.sitio-funciones { display: grid; grid-template-columns: repeat(auto-fill, minmax(245px, 1fr)); gap: 1rem; }
+.sitio-funcion {
+    border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem;
+    background: #fff; transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.sitio-funcion:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.sitio-funcion-icono { font-size: 1.6rem; display: block; margin-bottom: 0.5rem; }
+.sitio-funcion h3 { font-size: 1.02rem; margin-bottom: 0.35rem; }
+.sitio-funcion p { font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.5rem; }
+.sitio-funcion a { font-size: 0.86rem; font-weight: 600; color: var(--primary); text-decoration: none; }
+
+.sitio-pasos { counter-reset: paso; list-style: none; display: grid; gap: 1rem; margin: 1.25rem 0 1.75rem; max-width: 780px; }
+.sitio-pasos li { counter-increment: paso; position: relative; padding-left: 3rem; color: var(--text-secondary); }
+.sitio-pasos li strong { color: var(--text-primary); }
+.sitio-pasos li::before {
+    content: counter(paso); position: absolute; left: 0; top: -0.1rem;
+    width: 2.1rem; height: 2.1rem; border-radius: 50%;
+    background: var(--primary); color: #fff; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+}
+
+.sitio-directorio { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+.sitio-directorio section { background: #fff; border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1rem 1.15rem; }
+.sitio-directorio h3 { font-size: 0.98rem; margin-bottom: 0.5rem; }
+.sitio-directorio ul { list-style: none; display: grid; gap: 0.25rem; font-size: 0.87rem; color: var(--text-secondary); }
+
+.sitio-faq { border-bottom: 1px solid var(--border-color); padding: 0.9rem 0; }
+.sitio-faq summary { cursor: pointer; font-weight: 650; color: var(--text-primary); list-style: none; display: flex; justify-content: space-between; gap: 1rem; }
+.sitio-faq summary::-webkit-details-marker { display: none; }
+.sitio-faq summary::after { content: '+'; color: var(--primary); font-size: 1.2rem; line-height: 1; }
+.sitio-faq[open] summary::after { content: '−'; }
+.sitio-faq p { margin-top: 0.5rem; color: var(--text-secondary); }
+
+.sitio-lista { display: grid; gap: 0.6rem; margin: 1rem 0 1.5rem 1.2rem; color: var(--text-secondary); }
+.sitio-lista strong { color: var(--text-primary); }
+
+/* La calculadora dentro de la página pública. */
+.sitio-calculadora { padding-top: 2rem; background: var(--bg-secondary); }
+.sitio-calculadora .lab-resultado-col { top: 76px; }
+
+/* ---------- Cierre y pie ---------- */
+.sitio-cta-final { background: var(--primary); color: #fff; text-align: center; padding: 3.5rem 0; }
+.sitio-cta-final h2 { color: #fff; }
+.sitio-cta-final p { opacity: 0.9; max-width: 60ch; margin: 0 auto 1.5rem; }
+.sitio-cta-final .btn-primary { background: #fff; color: var(--primary); border-color: #fff; }
+.sitio-cta-final .btn-primary:hover { background: var(--primary-suave); }
+
+.sitio-footer { background: #0f1b2b; color: #b8c4d4; padding: 2.5rem 0; font-size: 0.88rem; }
+.sitio-footer-grid { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 2rem; }
+@media (max-width: 800px) { .sitio-footer-grid { grid-template-columns: 1fr; } }
+.sitio-footer strong { color: #fff; display: block; margin-bottom: 0.5rem; }
+.sitio-footer a { color: #d6e3f3; }
+.sitio-footer ul { list-style: none; display: grid; gap: 0.3rem; }
+.sitio-footer p { margin-bottom: 0.5rem; }
+.sitio-legal { font-size: 0.78rem; color: #8494a8; }
+
+@media print {
+    .sitio-header, .sitio-footer, .sitio-cta-final { display: none; }
+}

@@ -34,6 +34,7 @@ const ARCHIVOS_APP = [
     'js/command-palette.js',
     'js/voice-assistant.js',
     'js/calculadora-laboral.js',
+    'js/tour.js',
     'data/pjf_catalogos_completos.json'
 ];
 

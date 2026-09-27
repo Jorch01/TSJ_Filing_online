@@ -1,53 +1,354 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es-MX">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="0; url=docs/index.html">
-    <title>TSJ Filing Online | Gestión de Expedientes TSJ Quintana Roo y PJF Federal</title>
-    <meta name="description" content="Sistema online gratuito para gestionar, consultar y dar seguimiento a expedientes del Tribunal Superior de Justicia de Quintana Roo (TSJQROO) y del Poder Judicial de la Federación (PJF).">
-    <meta name="robots" content="index, follow">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TSJ Filing Online | Expedientes y estrados del TSJ Quintana Roo</title>
+    <meta name="description" content="Expedientes del TSJ de Quintana Roo y del PJF en un solo lugar: estrados de 52 juzgados, agenda de audiencias, IA que lee acuerdos y calculadora laboral. Gratis.">
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+    <meta name="author" content="Empírica Legal Lab">
+    <meta name="theme-color" content="#2563a8">
+    <meta name="geo.region" content="MX-ROO">
+    <meta name="geo.placename" content="Quintana Roo">
     <link rel="canonical" href="https://tsjia.empirica.mx/">
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            background: linear-gradient(135deg, #1a365d 0%, #2d3748 100%);
-            color: white;
+    <link rel="alternate" hreflang="es-MX" href="https://tsjia.empirica.mx/">
+    <meta name="google-site-verification" content="8SEvBo272NhP7QJE2_69Bz9hjjKkiZDN6hBu1u4pRl4">
+
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://tsjia.empirica.mx/">
+    <meta property="og:title" content="TSJ Filing Online | Expedientes y estrados del TSJ Quintana Roo">
+    <meta property="og:description" content="Expedientes del TSJ de Quintana Roo y del PJF en un solo lugar: estrados de 52 juzgados, agenda de audiencias, IA que lee acuerdos y calculadora laboral. Gratis.">
+    <meta property="og:locale" content="es_MX">
+    <meta property="og:site_name" content="TSJ Filing Online">
+    <meta property="og:image" content="https://tsjia.empirica.mx/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="TSJ Filing Online: expedientes, estrados y agenda para abogados de Quintana Roo">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="TSJ Filing Online | Expedientes y estrados del TSJ Quintana Roo">
+    <meta name="twitter:description" content="Expedientes del TSJ de Quintana Roo y del PJF en un solo lugar: estrados de 52 juzgados, agenda de audiencias, IA que lee acuerdos y calculadora laboral. Gratis.">
+    <meta name="twitter:image" content="https://tsjia.empirica.mx/og-image.png">
+
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
+    <link rel="stylesheet" href="/docs/css/styles.css">
+    <link rel="stylesheet" href="/assets/sitio.css">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "@id": "https://tsjia.empirica.mx/#app",
+      "name": "TSJ Filing Online",
+      "url": "https://tsjia.empirica.mx/",
+      "applicationCategory": "BusinessApplication",
+      "applicationSubCategory": "Gestión de expedientes jurídicos",
+      "operatingSystem": "Web, Android, iOS, Windows, macOS",
+      "inLanguage": "es-MX",
+      "description": "Gestión de expedientes del TSJ de Quintana Roo y del PJF: estrados, agenda de audiencias, análisis de acuerdos con IA, calculadora laboral y búsqueda de marcas del IMPI.",
+      "image": "https://tsjia.empirica.mx/og-image.png",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "MXN",
+        "description": "Gratis hasta 10 expedientes"
+      },
+      "areaServed": {
+        "@type": "State",
+        "name": "Quintana Roo",
+        "containedInPlace": {
+          "@type": "Country",
+          "name": "México"
         }
-        .loading {
-            text-align: center;
-        }
-        .spinner {
-            width: 50px;
-            height: 50px;
-            border: 4px solid rgba(255,255,255,0.3);
-            border-top-color: #4299e1;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        a {
-            color: #63b3ed;
-        }
-    </style>
-</head>
-<body>
-    <div class="loading">
-        <div class="spinner"></div>
-        <h2>⚖️ TSJ Filing Online</h2>
-        <p>Cargando aplicación...</p>
-        <p><small>Si no redirige automáticamente, <a href="docs/index.html">haz clic aquí</a></small></p>
-    </div>
-    <script>
-        // Fallback redirect
-        window.location.href = 'docs/index.html';
+      },
+      "audience": {
+        "@type": "Audience",
+        "audienceType": "Abogados y despachos jurídicos"
+      },
+      "publisher": {
+        "@type": "Organization",
+        "@id": "https://tsjia.empirica.mx/#organizacion",
+        "name": "Empírica Legal Lab",
+        "url": "https://www.empirica.mx",
+        "email": "jorge_clemente@empirica.mx"
+      },
+      "featureList": [
+        "Estrados del TSJ en un clic",
+        "La IA lee los acuerdos por ti",
+        "Expedientes federales (PJF)",
+        "Agenda de audiencias y pendientes",
+        "Calculadora de finiquito y liquidación",
+        "Asistente de voz",
+        "Marcas y gacetas del IMPI",
+        "Funciona sin internet"
+      ]
+    }
     </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "@id": "https://tsjia.empirica.mx/#organizacion",
+      "name": "Empírica Legal Lab",
+      "url": "https://www.empirica.mx",
+      "email": "jorge_clemente@empirica.mx"
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "¿Cuánto cuesta TSJ Filing Online?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Es gratis para empezar: puedes llevar hasta 10 expedientes con todas las funciones básicas. Para expedientes ilimitados y sincronizar entre computadora y celular existe el plan Premium."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "¿Necesito crear una cuenta?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. Abres la app en el navegador y empiezas a trabajar. Tus expedientes, notas y agenda se guardan en tu propio dispositivo."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "¿Qué juzgados de Quintana Roo incluye?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Los 52 juzgados y salas del Tribunal Superior de Justicia de Quintana Roo en Cancún, Playa del Carmen, Chetumal, Cozumel, Tulum, Felipe Carrillo Puerto, Isla Mujeres y Bacalar, además de los juzgados de distrito y tribunales colegiados federales del Vigésimo Séptimo Circuito."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "¿Cómo me ayuda la inteligencia artificial?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Pegas el texto de un acuerdo o le tomas una foto y la IA identifica el número de expediente, el juzgado, las fechas de audiencia y los plazos. Con un clic se crean el expediente, los eventos en tu calendario y las notas. Usa Gemini de Google con una clave gratuita que configuras una sola vez."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "¿Funciona en el celular y sin internet?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Sí. Funciona en cualquier navegador y se puede instalar en el celular como app. Después de abrirla una vez, abre aunque no haya señal, con tus expedientes, agenda y notas."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "¿Mis datos están seguros?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Tus datos viven en tu navegador, no en un servidor nuestro. Puedes exportar respaldos cuando quieras y, si activas la sincronización, viajan cifrados."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "¿Sirve para asuntos federales?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Sí. Consultas expedientes del Poder Judicial de la Federación de todo el país, con acceso directo a los órganos de Quintana Roo, y los llevas en la misma agenda que los del TSJ."
+          }
+        }
+      ]
+    }
+    </script>
+</head>
+<body class="sitio">
+    <a class="sitio-saltar" href="#contenido">Saltar al contenido</a>
+    <header class="sitio-header">
+        <div class="sitio-ancho sitio-header-fila">
+            <a class="sitio-logo" href="/">⚖️ <span>TSJ Filing Online</span></a>
+            <nav class="sitio-nav" aria-label="Secciones">
+                <a href="/#funciones">Funciones</a>
+                <a href="/estrados-tsj-quintana-roo/">Estrados TSJ</a>
+                <a href="/expedientes-pjf-quintana-roo/">PJF</a>
+                <a href="/calculadora-finiquito-liquidacion/">Calculadora laboral</a>
+                <a href="/#preguntas">Preguntas</a>
+            </nav>
+            <a class="btn btn-primary sitio-cta-header" href="/docs/?tour=1">Probar gratis</a>
+        </div>
+    </header>
+    <main id="contenido">
+
+        <section class="sitio-hero">
+            <div class="sitio-ancho sitio-hero-grid">
+                <div>
+                    <p class="sitio-etiqueta">Para abogados y despachos de Quintana Roo</p>
+                    <h1>Tus expedientes del TSJ de Quintana Roo y del PJF, al día y en un solo lugar</h1>
+                    <p class="sitio-lead">Consulta estrados, lleva tu agenda de audiencias y plazos, y deja que la inteligencia artificial lea los acuerdos por ti. Desde la computadora o el celular.</p>
+                    <div class="sitio-hero-botones">
+                        <a class="btn btn-primary btn-lg" href="/docs/?tour=1">Probar gratis ahora →</a>
+                        <a class="btn btn-secondary btn-lg" href="/calculadora-finiquito-liquidacion/">🧮 Calcular un finiquito</a>
+                    </div>
+                    <ul class="sitio-garantias">
+                        <li>✓ Sin registro</li>
+                        <li>✓ Gratis hasta 10 expedientes</li>
+                        <li>✓ Tus datos se quedan en tu dispositivo</li>
+                    </ul>
+                </div>
+                <div class="sitio-hero-demo" aria-hidden="true">
+                    <div class="demo-tarjeta">
+                        <div class="demo-cabecera"><span class="demo-badge">⚖️ TSJ</span><span class="demo-cat">CANCÚN - Familiar</span></div>
+                        <strong>1234/2026</strong>
+                        <span>JUZGADO PRIMERO FAMILIAR ORAL CANCUN</span>
+                        <div class="demo-botones"><span class="demo-btn">🌐 Estrados</span><span class="demo-chip">✅ 2</span></div>
+                    </div>
+                    <div class="demo-tarjeta demo-ia">
+                        <span class="demo-titulo">🤖 La IA encontró en el acuerdo:</span>
+                        <span>📅 Audiencia de juicio · martes 14 de octubre, 10:00</span>
+                        <span>⏳ Término de 9 días para ofrecer pruebas</span>
+                        <span class="demo-btn demo-ok">💾 Guardar todo</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="sitio-ciudades" aria-label="Cobertura">
+            <div class="sitio-ancho">
+                <span>Juzgados de</span>
+                <strong>Cancún</strong><span aria-hidden="true">·</span><strong>Playa del Carmen</strong><span aria-hidden="true">·</span><strong>Chetumal</strong><span aria-hidden="true">·</span><strong>Cozumel</strong><span aria-hidden="true">·</span><strong>Tulum</strong><span aria-hidden="true">·</span><strong>Felipe Carrillo Puerto</strong><span aria-hidden="true">·</span><strong>Isla Mujeres</strong><span aria-hidden="true">·</span><strong>Bacalar</strong>
+            </div>
+        </section>
+
+        <section class="sitio-seccion" id="funciones">
+            <div class="sitio-ancho">
+                <h2>Todo lo que necesitas para litigar en Quintana Roo</h2>
+                <p class="sitio-sub">Hecho para el día a día de los juzgados locales y federales del estado.</p>
+                <div class="sitio-funciones">
+                    <article class="sitio-funcion">
+                        <span class="sitio-funcion-icono">🏢</span>
+                        <h3>Estrados del TSJ en un clic</h3>
+                        <p>Los 52 juzgados y salas del TSJ de Quintana Roo. Busca por número o por nombre y revisa varios expedientes a la vez.</p>
+                        <a href="/estrados-tsj-quintana-roo/">Ver más →</a>
+                    </article>
+                    <article class="sitio-funcion">
+                        <span class="sitio-funcion-icono">🤖</span>
+                        <h3>La IA lee los acuerdos por ti</h3>
+                        <p>Pega o fotografía un acuerdo: detecta expediente, juzgado, audiencias y plazos, y los guarda en tu agenda.</p>
+                        
+                    </article>
+                    <article class="sitio-funcion">
+                        <span class="sitio-funcion-icono">🏛️</span>
+                        <h3>Expedientes federales (PJF)</h3>
+                        <p>Consulta en el portal del PJF, con los 16 órganos federales de Quintana Roo a la mano.</p>
+                        <a href="/expedientes-pjf-quintana-roo/">Ver más →</a>
+                    </article>
+                    <article class="sitio-funcion">
+                        <span class="sitio-funcion-icono">📅</span>
+                        <h3>Agenda de audiencias y pendientes</h3>
+                        <p>Calendario con los días inhábiles del TSJ, pendientes con fecha límite y vista rápida de tu día.</p>
+                        
+                    </article>
+                    <article class="sitio-funcion">
+                        <span class="sitio-funcion-icono">🧮</span>
+                        <h3>Calculadora de finiquito y liquidación</h3>
+                        <p>Finiquito, liquidación, 20 días, prima de antigüedad, salarios vencidos e ISR, con su artículo de la LFT.</p>
+                        <a href="/calculadora-finiquito-liquidacion/">Ver más →</a>
+                    </article>
+                    <article class="sitio-funcion">
+                        <span class="sitio-funcion-icono">🎤</span>
+                        <h3>Asistente de voz</h3>
+                        <p>&quot;Agenda audiencia del 120/2026 el martes a las 10.&quot; Díctale y listo.</p>
+                        
+                    </article>
+                    <article class="sitio-funcion">
+                        <span class="sitio-funcion-icono">🔰</span>
+                        <h3>Marcas y gacetas del IMPI</h3>
+                        <p>Busca marcas registradas (MARCia) y vigila las gacetas (SIGA) con avisos de publicaciones nuevas.</p>
+                        
+                    </article>
+                    <article class="sitio-funcion">
+                        <span class="sitio-funcion-icono">📴</span>
+                        <h3>Funciona sin internet</h3>
+                        <p>Abre en el juzgado aunque no haya señal. Tus datos son tuyos y viven en tu dispositivo.</p>
+                        
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section class="sitio-seccion sitio-alterna">
+            <div class="sitio-ancho">
+                <h2>Empieza en 3 pasos</h2>
+                <ol class="sitio-pasos">
+                    <li><strong>Abre la app.</strong> Sin cuentas ni contraseñas: funciona en tu navegador y se instala en el celular.</li>
+                    <li><strong>Pega o fotografía un acuerdo.</strong> La IA crea el expediente con su juzgado, audiencias y plazos. Un recorrido guiado te enseña cómo.</li>
+                    <li><strong>Trabaja con tu agenda al día.</strong> Revisa estrados, marca pendientes y recibe tu día resumido al abrir la app.</li>
+                </ol>
+                <a class="btn btn-primary btn-lg" href="/docs/?tour=1">Empezar el recorrido guiado →</a>
+            </div>
+        </section>
+
+        <section class="sitio-seccion" id="preguntas">
+            <div class="sitio-ancho sitio-angosto">
+                <h2>Preguntas frecuentes</h2>
+
+                <details class="sitio-faq">
+                    <summary>¿Cuánto cuesta TSJ Filing Online?</summary>
+                    <p>Es gratis para empezar: puedes llevar hasta 10 expedientes con todas las funciones básicas. Para expedientes ilimitados y sincronizar entre computadora y celular existe el plan Premium.</p>
+                </details>
+                <details class="sitio-faq">
+                    <summary>¿Necesito crear una cuenta?</summary>
+                    <p>No. Abres la app en el navegador y empiezas a trabajar. Tus expedientes, notas y agenda se guardan en tu propio dispositivo.</p>
+                </details>
+                <details class="sitio-faq">
+                    <summary>¿Qué juzgados de Quintana Roo incluye?</summary>
+                    <p>Los 52 juzgados y salas del Tribunal Superior de Justicia de Quintana Roo en Cancún, Playa del Carmen, Chetumal, Cozumel, Tulum, Felipe Carrillo Puerto, Isla Mujeres y Bacalar, además de los juzgados de distrito y tribunales colegiados federales del Vigésimo Séptimo Circuito.</p>
+                </details>
+                <details class="sitio-faq">
+                    <summary>¿Cómo me ayuda la inteligencia artificial?</summary>
+                    <p>Pegas el texto de un acuerdo o le tomas una foto y la IA identifica el número de expediente, el juzgado, las fechas de audiencia y los plazos. Con un clic se crean el expediente, los eventos en tu calendario y las notas. Usa Gemini de Google con una clave gratuita que configuras una sola vez.</p>
+                </details>
+                <details class="sitio-faq">
+                    <summary>¿Funciona en el celular y sin internet?</summary>
+                    <p>Sí. Funciona en cualquier navegador y se puede instalar en el celular como app. Después de abrirla una vez, abre aunque no haya señal, con tus expedientes, agenda y notas.</p>
+                </details>
+                <details class="sitio-faq">
+                    <summary>¿Mis datos están seguros?</summary>
+                    <p>Tus datos viven en tu navegador, no en un servidor nuestro. Puedes exportar respaldos cuando quieras y, si activas la sincronización, viajan cifrados.</p>
+                </details>
+                <details class="sitio-faq">
+                    <summary>¿Sirve para asuntos federales?</summary>
+                    <p>Sí. Consultas expedientes del Poder Judicial de la Federación de todo el país, con acceso directo a los órganos de Quintana Roo, y los llevas en la misma agenda que los del TSJ.</p>
+                </details>
+            </div>
+        </section>
+    </main>
+
+    <section class="sitio-cta-final">
+        <div class="sitio-ancho">
+            <h2>Deja de perseguir acuerdos. Empieza hoy.</h2>
+            <p>Abre la app, agrega tu primer expediente con ayuda de la IA y ten tu agenda de audiencias al día. Sin registro y gratis para empezar.</p>
+            <a class="btn btn-primary btn-lg" href="/docs/?tour=1">Probar gratis ahora →</a>
+        </div>
+    </section>
+
+    <footer class="sitio-footer">
+        <div class="sitio-ancho sitio-footer-grid">
+            <div>
+                <strong>⚖️ TSJ Filing Online</strong>
+                <p>Herramienta para abogados y despachos de Quintana Roo: expedientes del TSJ y del PJF, estrados, agenda, IA y calculadora laboral.</p>
+                <p>Desarrollado por <a href="https://www.empirica.mx" rel="noopener">Empírica Legal Lab</a>.</p>
+            </div>
+            <div>
+                <strong>Herramientas</strong>
+                <ul>
+                    <li><a href="/docs/">Abrir la app</a></li>
+                    <li><a href="/estrados-tsj-quintana-roo/">Estrados del TSJ de Quintana Roo</a></li>
+                    <li><a href="/expedientes-pjf-quintana-roo/">Expedientes federales en Quintana Roo</a></li>
+                    <li><a href="/calculadora-finiquito-liquidacion/">Calculadora de finiquito y liquidación</a></li>
+                </ul>
+            </div>
+            <div>
+                <strong>Contacto</strong>
+                <p><a href="mailto:jorge_clemente@empirica.mx">jorge_clemente@empirica.mx</a></p>
+                <p class="sitio-legal">Herramienta independiente: no está afiliada al Tribunal Superior de Justicia de Quintana Roo, al Poder Judicial de la Federación ni al IMPI. Las consultas se hacen en sus portales oficiales.</p>
+            </div>
+        </div>
+    </footer>
 </body>
 </html>
