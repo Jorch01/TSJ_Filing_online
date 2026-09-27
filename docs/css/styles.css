@@ -5373,3 +5373,105 @@ table th {
        altura: una caja enorme con la lupa flotando a media altura. */
     .filters-section .search-box { flex: 0 0 auto; min-width: 0; }
 }
+
+/* ==================== CALCULADORA LABORAL ==================== */
+.lab-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: 1.25rem;
+    align-items: start;
+}
+.lab-formulario .card,
+.lab-resultado-col .card { margin-bottom: 1rem; }
+.lab-resultado-col { position: sticky; top: 76px; }
+.lab-avanzado > summary { cursor: pointer; list-style: none; }
+.lab-avanzado > summary::-webkit-details-marker { display: none; }
+.lab-avanzado > summary h3::after { content: ' ▸'; color: var(--text-muted); }
+.lab-avanzado[open] > summary h3::after { content: ' ▾'; }
+.lab-avanzado:not([open]) > summary { border-bottom: 0; }
+#lab-supuesto-desc { margin-top: 0.5rem; line-height: 1.45; }
+
+.lab-vacio { color: var(--text-muted); text-align: center; padding: 1.5rem 0.5rem; line-height: 1.6; }
+.lab-resumen {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+.lab-cifra {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 0.55rem 0.7rem;
+}
+.lab-cifra span { display: block; font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.lab-cifra strong { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.lab-cifra-total { background: var(--primary); border-color: var(--primary); }
+.lab-cifra-total span, .lab-cifra-total strong { color: #fff; }
+.lab-cifra-neto strong { color: var(--success, #198754); }
+.lab-bases {
+    display: flex; flex-wrap: wrap; gap: 0.3rem 1rem;
+    font-size: 0.8rem; color: var(--text-secondary);
+    margin-bottom: 0.9rem;
+}
+.lab-avisos {
+    background: #fff3cd; color: #664d03;
+    border-radius: var(--radius);
+    padding: 0.5rem 0.75rem; margin-bottom: 0.9rem; font-size: 0.82rem;
+}
+.lab-avisos p { margin: 0.2rem 0; }
+.lab-tabla { width: 100%; border-collapse: collapse; margin-bottom: 1rem; font-size: 0.85rem; }
+.lab-tabla th { text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); border-bottom: 2px solid var(--border-color); padding: 0.4rem 0.25rem; }
+.lab-tabla td { border-bottom: 1px solid var(--border-color); padding: 0.5rem 0.25rem; vertical-align: top; }
+.lab-tabla tfoot td { font-weight: 700; border-bottom: 0; }
+.lab-importe { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lab-formula { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.15rem; }
+.lab-fundamento { font-size: 0.7rem; color: var(--text-muted); font-style: italic; }
+.lab-isr { font-size: 0.82rem; }
+.lab-isr summary { cursor: pointer; font-weight: 600; margin-bottom: 0.4rem; }
+.lab-isr ul { margin: 0; padding-left: 1.1rem; color: var(--text-secondary); }
+.lab-isr li { margin-bottom: 0.3rem; }
+.lab-acciones { flex-wrap: wrap; gap: 0.4rem; }
+.lab-acciones select { flex: 1 1 100%; }
+.lab-aviso-legal { font-size: 0.72rem; color: var(--text-muted); line-height: 1.45; }
+[data-theme="dark"] .lab-avisos { background: #3d3300; color: #ffe69c; }
+
+@media (max-width: 900px) {
+    .lab-layout { grid-template-columns: minmax(0, 1fr); }
+    .lab-resultado-col { position: static; }
+}
+
+/* Al imprimir el cálculo sale solo el resultado. */
+@media print {
+    body.imprimiendo-laboral * { visibility: hidden; }
+    body.imprimiendo-laboral #page-laboral .lab-resultado-card,
+    body.imprimiendo-laboral #page-laboral .lab-resultado-card *,
+    body.imprimiendo-laboral #page-laboral .lab-aviso-legal { visibility: visible; }
+    body.imprimiendo-laboral #page-laboral .lab-resultado-col { position: absolute; left: 0; top: 0; width: 100%; }
+    body.imprimiendo-laboral .lab-acciones { display: none !important; }
+}
+
+/* ==================== SIN CONEXIÓN ==================== */
+.aviso-sin-conexion {
+    position: fixed;
+    left: 50%;
+    top: 68px;              /* bajo el encabezado: abajo están los botones flotantes */
+    transform: translateX(-50%);
+    z-index: 900;
+    width: min(640px, calc(100% - 2rem));
+    background: #3b3f46;
+    color: #fff;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: 0.65rem 0.9rem;
+    font-size: 0.82rem;
+    line-height: 1.4;
+}
+.aviso-sin-conexion[hidden] { display: none; }
+.aviso-sin-conexion { padding-right: 2.4rem; }
+.aviso-cerrar {
+    position: absolute; top: 0.35rem; right: 0.45rem;
+    background: none; border: 0; color: #fff; opacity: 0.8;
+    font-size: 1rem; cursor: pointer; padding: 0.2rem 0.4rem;
+}
+.aviso-cerrar:hover { opacity: 1; }
