@@ -17,6 +17,7 @@
 
     const CLAVE_VISTO = 'tour_bienvenida_visto';
     const pausa = (ms) => new Promise(res => setTimeout(res, ms));
+    const medir = (e, p) => { if (typeof window.medir === 'function') window.medir(e, p); };
 
     function ir(pagina, despues) {
         return async () => {
@@ -329,6 +330,8 @@
 
     async function iniciarTour(clave = 'primerosPasos') {
         if (!RECORRIDOS[clave]) return;
+        if (document.getElementById('tour-oferta')) medir('tour_oferta', { respuesta: 'aceptada' });
+        medir('tour_iniciado', { recorrido: clave });
         cerrarMenuTour();
         cerrarOfertaTour(false);
         crearCapas();
@@ -344,6 +347,7 @@
     function terminarTour(completo) {
         if (!actual) return;
         const clave = actual.clave;
+        medir(completo ? 'tour_completado' : 'tour_cerrado', { recorrido: clave, paso: actual.indice + 1 });
         actual = null;
         quitarCapas();
         try { localStorage.setItem(CLAVE_VISTO, '1'); } catch (e) { /* sin almacenamiento */ }
@@ -426,6 +430,7 @@
         if (!oferta) return;
         oferta.remove();
         if (recordar) {
+            medir('tour_oferta', { respuesta: 'ahora_no' });
             try { localStorage.setItem(CLAVE_VISTO, '1'); } catch (e) { /* sin almacenamiento */ }
             if (typeof mostrarToast === 'function') mostrarToast('Cuando quieras, los recorridos están en el botón 🧭', 'info');
         }

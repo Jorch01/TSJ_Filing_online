@@ -36,6 +36,8 @@ const ARCHIVOS_APP = [
     'js/calculadora-laboral.js',
     'js/instalar.js',
     'js/tour.js',
+    'js/recomendar.js',
+    'js/analitica.js',
     'data/pjf_catalogos_completos.json',
     'icons/icono.svg',
     'icons/icono-192.png',

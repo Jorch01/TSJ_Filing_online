@@ -5540,7 +5540,7 @@ table th {
 }
 .tour-resaltado.sin-objetivo { left: 50% !important; top: 50% !important; width: 0 !important; height: 0 !important; box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.45); }
 
-.tour-tarjeta, #tour-oferta {
+.tour-tarjeta, #tour-oferta, #rec-oferta {
     position: fixed;
     z-index: 1210;
     width: min(340px, calc(100vw - 24px));
@@ -5562,19 +5562,19 @@ table th {
 .tour-cerrar:hover { color: var(--text-primary); }
 
 /* La oferta de bienvenida: una tarjeta discreta en la esquina. */
-#tour-oferta {
+#tour-oferta, #rec-oferta {
     left: 1.25rem;
     bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
     border: 1px solid var(--border-color);
     animation: tour-entra 0.25s ease;
 }
-#tour-oferta p { margin: 0.35rem 0 0.75rem; font-size: 0.86rem; color: var(--text-secondary); line-height: 1.45; padding-right: 0.5rem; }
+#tour-oferta p, #rec-oferta p { margin: 0.35rem 0 0.75rem; font-size: 0.86rem; color: var(--text-secondary); line-height: 1.45; padding-right: 0.5rem; }
 @keyframes tour-entra { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 @media (max-width: 768px) {
     /* En el celular deja libre la columna de los botones flotantes. */
-    #tour-oferta { left: 0.75rem; width: calc(100vw - 0.75rem - 5rem); bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); }
+    #tour-oferta, #rec-oferta { left: 0.75rem; width: calc(100vw - 0.75rem - 5rem); bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); }
 }
-@media print { #tour-fab, #tour-menu, .tour-resaltado, .tour-tarjeta, #tour-oferta { display: none !important; } }
+@media print { #tour-fab, #tour-menu, .tour-resaltado, .tour-tarjeta, #tour-oferta, #rec-oferta { display: none !important; } }
 
 /* ==================== INSTALAR LA APP ==================== */
 .app-instalada .nav-instalar { display: none; }
@@ -5610,3 +5610,13 @@ table th {
 .inst-boton { width: 100%; justify-content: center; margin: 0.25rem 0; }
 .tour-contenido { margin: -0.4rem 0 0.8rem; }
 .tour-contenido .inst-pasos { font-size: 0.85rem; }
+
+/* ==================== RECOMENDAR A UN COLEGA ==================== */
+.rec-mensaje { font-size: 0.88rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 0.9rem;
+    background: var(--bg-secondary); border-radius: var(--radius); padding: 0.6rem 0.75rem; }
+.rec-opciones { display: grid; gap: 0.45rem; }
+.rec-opciones .btn { justify-content: center; text-decoration: none; }
+.rec-whatsapp { background: #25D366; color: #fff; border-color: #25D366; font-weight: 650; }
+.rec-whatsapp:hover { background: #1ebe5b; color: #fff; }
+.nav-recomendar { font-weight: 600; }
+@media print { #rec-oferta, #modal-recomendar { display: none !important; } }
