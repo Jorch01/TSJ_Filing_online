@@ -19,7 +19,7 @@
 // No guarda nada: cada consulta se hace y se olvida.
 // ============================================================
 
-const WORKER_VERSION = '2026-09-28-prueba-estrados';
+const WORKER_VERSION = '2026-09-28-prueba-estrados-2';
 
 const TSJ_BASE = 'https://www.tsjqroo.gob.mx/estrados/';
 const RUTAS_PERMITIDAS = ['buscador_primera.php', 'buscador_segunda.php'];
@@ -38,7 +38,8 @@ const USER_AGENT = 'Mozilla/5.0 (compatible; TSJFilingOnline/1.0; +https://tsjia
  * Devuelve null si no es una consulta de estrados del TSJ.
  */
 export function urlDeConsulta(params) {
-    const url = params.get('url');
+    // Si se pegaron varias URLs (al copiar todas de la app), se usa la primera.
+    const url = (params.get('url') || '').trim().split(/\s+/)[0];
     if (url) {
         let u;
         try { u = new URL(url); } catch (e) { return null; }
@@ -136,18 +137,24 @@ export function pistasDeCargaDinamica(html) {
 
 // ==================== CONSULTA ====================
 
-async function consultar(url) {
+async function consultar(url, esperaMs = 25000) {
     const t0 = Date.now();
     let resp;
+    const control = new AbortController();
+    const temporizador = setTimeout(() => control.abort(), esperaMs);
     try {
         resp = await fetch(url, {
             headers: { 'User-Agent': USER_AGENT, 'Accept': 'text/html,application/xhtml+xml', 'Accept-Language': 'es-MX,es;q=0.9' },
             redirect: 'follow',
+            signal: control.signal,
             cf: { cacheTtl: 0 }
         });
     } catch (e) {
-        return { ok: false, error: 'No se pudo conectar con el TSJ: ' + (e && e.message ? e.message : e), ms: Date.now() - t0 };
+        clearTimeout(temporizador);
+        const motivo = e && e.name === 'AbortError' ? `sin respuesta en ${Math.round(esperaMs / 1000)} s` : (e && e.message ? e.message : String(e));
+        return { ok: false, error: 'No se pudo conectar con el TSJ: ' + motivo, ms: Date.now() - t0 };
     }
+    clearTimeout(temporizador);
     const bytes = new Uint8Array(await resp.arrayBuffer());
     const { texto, charset } = decodificar(bytes, resp.headers.get('content-type'));
     const acuerdos = extraerAcuerdos(texto);
@@ -193,9 +200,24 @@ async function diagnostico(url, repeticiones) {
         if (i > 0) await new Promise(r => setTimeout(r, 1500));   // sin prisas: somos visita
         ultima = await consultar(url);
         intentos.push({ status: ultima.status, ms: ultima.ms, bytes: ultima.bytes, acuerdos: ultima.acuerdos ? ultima.acuerdos.length : 0, error: ultima.error });
+        // Si ni siquiera conecta, repetir solo hace esperar: se pasa a revisar el sitio.
+        if (ultima.error || ultima.status >= 500) break;
+    }
+    // Si no hubo respuesta útil: ¿es esta página o todo el sitio? El 522 de
+    // Cloudflare significa que el servidor del TSJ no aceptó la conexión.
+    let conectividad = null;
+    if (!ultima || ultima.error || ultima.status >= 500) {
+        conectividad = [];
+        for (const variante of ['https://www.tsjqroo.gob.mx/', 'http://www.tsjqroo.gob.mx/',
+            'https://tsjqroo.gob.mx/', 'https://www.tsjqroo.gob.mx/estrados/']) {
+            const v = await consultar(variante, 12000);
+            conectividad.push({ url: variante, status: v.status || null, ms: v.ms, bytes: v.bytes || 0, error: v.error });
+        }
     }
     const html = (ultima && ultima.html) || '';
+    const sitioInalcanzable = conectividad && conectividad.every(c => c.error || !c.status || c.status >= 500);
     const conclusion = !ultima || ultima.error ? 'NO_CONECTA'
+        : sitioInalcanzable ? 'SITIO_INALCANZABLE_DESDE_CLOUDFLARE'
         : ultima.status >= 400 ? 'BLOQUEADO_O_ERROR'
         : ultima.acuerdos.length > 0 ? 'LEE_ACUERDOS'
         : ultima.sinResultados ? 'SIN_RESULTADOS_PARA_ESTE_EXPEDIENTE'
@@ -209,10 +231,12 @@ async function diagnostico(url, repeticiones) {
             LEE_ACUERDOS: '✅ El TSJ responde y los acuerdos se leen directo del HTML. La etapa 1 es viable tal cual.',
             SIN_RESULTADOS_PARA_ESTE_EXPEDIENTE: '🟡 El TSJ responde, pero este expediente no tiene publicaciones. Prueba con uno que sí tenga acuerdos.',
             TABLA_NO_ENCONTRADA: '🟠 El TSJ responde pero la tabla no viene en el HTML: la carga aparte. Las "pistas" dicen de dónde.',
+            SITIO_INALCANZABLE_DESDE_CLOUDFLARE: '🔴 Ninguna página del TSJ responde a Cloudflare (ni la principal). Si en tu navegador sí abre, el TSJ bloquea las conexiones desde Cloudflare.',
             BLOQUEADO_O_ERROR: '🔴 El TSJ respondió con error a Cloudflare. Puede estar bloqueando estas consultas.',
             NO_CONECTA: '🔴 Cloudflare no pudo conectarse con el TSJ (certificado, bloqueo o sitio caído).'
         }[conclusion],
         intentos,
+        conectividad,
         respuesta: ultima && !ultima.error ? {
             status: ultima.status, urlFinal: ultima.urlFinal, contentType: ultima.contentType,
             charset: ultima.charset, bytes: ultima.bytes
@@ -243,13 +267,14 @@ function paginaPrueba() {
 <h1>🔎 Prueba técnica: estrados del TSJ desde Cloudflare</h1>
 <p><small>Versión ${WORKER_VERSION}. Pega la URL de estrados de un expediente que <b>sí tenga acuerdos publicados</b> (en la app: Tribunales → Expedientes TSJ → Selección masiva → 📋 Copiar URLs).</small></p>
 <input id="url" value="${EJEMPLO}">
+<p><small>Si pegas varias URLs, se prueba la primera.</small></p>
 <button onclick="probar()">Probar</button> <button class="sec" onclick="copiar()">📋 Copiar informe</button>
 <div class="con" id="con"></div><pre id="out">—</pre>
 <script>
 async function probar(){
-  document.getElementById('con').textContent='Consultando (tres veces, con pausa)…';
+  document.getElementById('con').textContent='Consultando… (puede tardar hasta un minuto)';
   const r=await fetch('/api/diagnostico?repeticiones=3&url='+encodeURIComponent(document.getElementById('url').value));
-  const d=await r.json(); document.getElementById('con').textContent=d.explicacion||d.error||'';
+  const d=await r.json(); document.getElementById('con').textContent=(d.explicacion||d.error||'')+(d.intentos&&d.intentos[0]&&d.intentos[0].status===522?' (tarda cerca de un minuto en revisar el resto del sitio)':'');
   document.getElementById('out').textContent=JSON.stringify(d,null,2);
 }
 function copiar(){navigator.clipboard.writeText(document.getElementById('out').textContent);}

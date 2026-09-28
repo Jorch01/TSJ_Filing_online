@@ -99,6 +99,25 @@ const TABLA = `<!DOCTYPE html><html><head><meta charset="iso-8859-1"><title>Estr
     d = await (await llamar('/api/diagnostico?int=1&findexp=9/2026')).json();
     igual('diagnóstico: detecta bloqueo', d.conclusion, 'BLOQUEADO_O_ERROR');
 
+    // 522: Cloudflare no pudo conectarse con el servidor del TSJ, en ninguna página.
+    respuesta = () => new Response('error code: 522', { status: 522 });
+    pedidas.length = 0;
+    d = await (await llamar('/api/diagnostico?repeticiones=3&int=1&findexp=9/2026')).json();
+    igual('522: concluye que el sitio no es alcanzable desde Cloudflare', d.conclusion, 'SITIO_INALCANZABLE_DESDE_CLOUDFLARE');
+    igual('522: no repite la consulta que no conecta', d.intentos.length, 1);
+    igual('522: prueba la página principal, http y sin www', d.conectividad.map(c => c.url),
+        ['https://www.tsjqroo.gob.mx/', 'http://www.tsjqroo.gob.mx/', 'https://tsjqroo.gob.mx/', 'https://www.tsjqroo.gob.mx/estrados/']);
+
+    // Si la principal sí responde, el problema es esa página, no un bloqueo.
+    respuesta = () => pedidas.length === 1 ? new Response('error code: 522', { status: 522 }) : new Response('<html>TSJ</html>', { status: 200 });
+    pedidas.length = 0;
+    d = await (await llamar('/api/diagnostico?int=1&findexp=9/2026')).json();
+    igual('522 solo en estrados: no lo confunde con un bloqueo del sitio', d.conclusion, 'BLOQUEADO_O_ERROR');
+
+    // Varias URLs pegadas juntas: se usa la primera.
+    igual('varias URLs pegadas: toma la primera', q({ url: 'https://www.tsjqroo.gob.mx/estrados/buscador_primera.php?int=158&metodo=1&findexp=1421%2F2025 https://www.tsjqroo.gob.mx/estrados/buscador_primera.php?int=109&metodo=1&findexp=2500%2F2025' }),
+        'https://www.tsjqroo.gob.mx/estrados/buscador_primera.php?int=158&metodo=1&findexp=1421%2F2025');
+
     global.fetch = async () => { throw new Error('TLS handshake failed'); };
     d = await (await llamar('/api/diagnostico?int=1&findexp=9/2026')).json();
     igual('diagnóstico: detecta que no conecta', d.conclusion, 'NO_CONECTA');
