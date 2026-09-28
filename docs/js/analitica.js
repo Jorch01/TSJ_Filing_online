@@ -19,7 +19,7 @@
 (function () {
     'use strict';
 
-    const GA_ID = '';
+    const GA_ID = 'G-YHSKT7WH3Q';
 
     const CLAVE_DESACTIVADA = 'analitica_desactivada';
     // Los únicos parámetros que pueden salir, y sus valores permitidos.

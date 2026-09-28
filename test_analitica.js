@@ -21,7 +21,10 @@ function verificar(desc, cond, detalle) {
     fallos.push(desc + (detalle ? `\n      ${detalle}` : ''));
 }
 
-function entorno({ id, host = 'tsjia.empirica.mx', desactivada = false } = {}) {
+// El caso "sin ID" se prueba con la constante vaciada en una copia.
+const fuenteSinId = fuente.replace(/const GA_ID = '[^']*';/, "const GA_ID = '';");
+
+function entorno({ id, host = 'tsjia.empirica.mx', desactivada = false, codigo = fuenteSinId } = {}) {
     const almacen = desactivada ? { analitica_desactivada: '1' } : {};
     const scripts = [];
     const w = {
@@ -43,7 +46,7 @@ function entorno({ id, host = 'tsjia.empirica.mx', desactivada = false } = {}) {
     w.window = w;
     if (id) w.TSJ_GA_ID = id;
     vm.createContext(w);
-    vm.runInContext(fuente, w);
+    vm.runInContext(codigo, w);
     return { w, scripts, almacen };
 }
 
@@ -80,6 +83,17 @@ function entorno({ id, host = 'tsjia.empirica.mx', desactivada = false } = {}) {
     w.medir('seccion_vista', { seccion: 'notas' });
     verificar('desactivar: deja de enviar', eventos().length === 4);
     verificar('desactivar: y apaga el script ya cargado', w['ga-disable-G-PRUEBA'] === true);
+}
+
+// El ID real está puesto, y en la computadora de pruebas (localhost) no mide.
+verificar('el ID de GA4 está configurado', /const GA_ID = 'G-[A-Z0-9]{6,}';/.test(fuente));
+{
+    const real = entorno({ codigo: fuente });
+    real.w.medir('seccion_vista', { seccion: 'notas' });
+    verificar('con el ID real, en el sitio publicado sí mide', real.scripts.length === 1);
+    const local = entorno({ codigo: fuente, host: 'localhost' });
+    local.w.medir('seccion_vista', { seccion: 'notas' });
+    verificar('con el ID real, en localhost no mide', local.scripts.length === 0 && !local.w.dataLayer);
 }
 
 // Desactivada desde antes, en pruebas locales o en file://.
