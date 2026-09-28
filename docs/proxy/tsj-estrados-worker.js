@@ -19,7 +19,7 @@
 // No guarda nada: cada consulta se hace y se olvida.
 // ============================================================
 
-const WORKER_VERSION = '2026-09-28-prueba-estrados-2';
+const WORKER_VERSION = '2026-09-28-prueba-estrados-3';
 
 const TSJ_BASE = 'https://www.tsjqroo.gob.mx/estrados/';
 const RUTAS_PERMITIDAS = ['buscador_primera.php', 'buscador_segunda.php'];
@@ -38,8 +38,12 @@ const USER_AGENT = 'Mozilla/5.0 (compatible; TSJFilingOnline/1.0; +https://tsjia
  * Devuelve null si no es una consulta de estrados del TSJ.
  */
 export function urlDeConsulta(params) {
-    // Si se pegaron varias URLs (al copiar todas de la app), se usa la primera.
-    const url = (params.get('url') || '').trim().split(/\s+/)[0];
+    // Se toma la primera dirección de estrados del texto pegado: con o sin
+    // https://, entre corchetes o paréntesis, o varias juntas (al copiar
+    // todas desde la app).
+    const pegado = params.get('url') || '';
+    const hallada = /(?:https?:\/\/)?(?:www\.)?tsjqroo\.gob\.mx\/[^\s\])"'<>]+/i.exec(pegado);
+    const url = hallada ? (/^https?:\/\//i.test(hallada[0]) ? hallada[0] : 'https://' + hallada[0]) : pegado.trim().split(/\s+/)[0];
     if (url) {
         let u;
         try { u = new URL(url); } catch (e) { return null; }

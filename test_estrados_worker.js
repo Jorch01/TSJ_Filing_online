@@ -114,6 +114,14 @@ const TABLA = `<!DOCTYPE html><html><head><meta charset="iso-8859-1"><title>Estr
     d = await (await llamar('/api/diagnostico?int=1&findexp=9/2026')).json();
     igual('522 solo en estrados: no lo confunde con un bloqueo del sitio', d.conclusion, 'BLOQUEADO_O_ERROR');
 
+    // Como se pega en la vida real: sin https://, o con los corchetes de un enlace.
+    const esperada = 'https://www.tsjqroo.gob.mx/estrados/buscador_primera.php?int=182&metodo=1&findexp=174%2F2026';
+    igual('acepta la URL sin https://', q({ url: 'www.tsjqroo.gob.mx/estrados/buscador_primera.php?int=182&metodo=1&findexp=174%2F2026' }), esperada);
+    igual('acepta la URL con corchetes y paréntesis de un enlace copiado',
+        q({ url: '[www.tsjqroo.gob.mx/estrados/buscador_primera.php?int=182&metodo=1&findexp=174%2F2026](https://www.tsjqroo.gob.mx/estrados/buscador_primera.php?int=182&metodo=1&findexp=174%2F2026)' }), esperada);
+    igual('pero sigue rechazando otros sitios aunque mencionen al TSJ',
+        q({ url: 'https://evil.com/?r=tsjqroo.gob.mx' }), null);
+
     // Varias URLs pegadas juntas: se usa la primera.
     igual('varias URLs pegadas: toma la primera', q({ url: 'https://www.tsjqroo.gob.mx/estrados/buscador_primera.php?int=158&metodo=1&findexp=1421%2F2025 https://www.tsjqroo.gob.mx/estrados/buscador_primera.php?int=109&metodo=1&findexp=2500%2F2025' }),
         'https://www.tsjqroo.gob.mx/estrados/buscador_primera.php?int=158&metodo=1&findexp=1421%2F2025');
