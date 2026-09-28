@@ -1,0 +1,55 @@
+name: Prueba de conexión al TSJ
+
+# Prueba técnica del aviso de acuerdos nuevos: ¿el servidor del TSJ acepta
+# conexiones desde los servidores de GitHub (Azure, EE. UU.)? Desde Cloudflare
+# no responde ni la página principal (error 522). Corre solo al cambiar este
+# archivo o a mano; no toca el sitio.
+on:
+  push:
+    paths:
+      - '.github/workflows/prueba-tsj.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  conexion:
+    runs-on: ubuntu-latest
+    steps:
+      - name: IP de salida de este servidor
+        run: curl -s --max-time 10 https://ipinfo.io/json || true
+
+      - name: Resolver el dominio del TSJ
+        run: getent hosts www.tsjqroo.gob.mx tsjqroo.gob.mx || true
+
+      - name: Conexión TCP a los puertos 443 y 80
+        run: |
+          for p in 443 80; do
+            if timeout 15 bash -c "cat < /dev/null > /dev/tcp/201.116.118.19/$p"; then
+              echo "✓ puerto $p abierto"; else echo "✗ puerto $p sin respuesta"; fi
+          done
+
+      - name: Páginas del TSJ
+        run: |
+          for u in \
+            "https://www.tsjqroo.gob.mx/" \
+            "http://www.tsjqroo.gob.mx/" \
+            "https://www.tsjqroo.gob.mx/estrados/" \
+            "https://www.tsjqroo.gob.mx/estrados/buscador_primera.php?int=182&metodo=1&findexp=174%2F2026"; do
+            echo "── $u"
+            curl -sS -o /tmp/pagina.html -w "status=%{http_code} tiempo=%{time_total}s bytes=%{size_download}\n" \
+              --max-time 30 -A "Mozilla/5.0 (compatible; TSJFilingOnline/1.0; +https://tsjia.empirica.mx/)" "$u" || echo "✗ sin respuesta"
+          done
+
+      - name: Estructura de la página de estrados (si respondió)
+        run: |
+          if [ -s /tmp/pagina.html ]; then
+            echo "filas <tr>: $(grep -oi '<tr' /tmp/pagina.html | wc -l)"
+            echo "filas odd/even: $(grep -oiE 'class=\"(odd|even)' /tmp/pagina.html | wc -l)"
+            echo "charset: $(grep -oiE 'charset=[a-z0-9-]+' /tmp/pagina.html | head -1)"
+            echo "scripts: $(grep -oiE '<script[^>]+src=\"[^\"]+' /tmp/pagina.html | head -10 | tr '\n' ' ')"
+            echo "ajax/datatables: $(grep -oiE 'DataTable|ajax|\.php\?[a-z_=&]+' /tmp/pagina.html | sort -u | head -15 | tr '\n' ' ')"
+            echo "--- inicio (sin nombres: solo etiquetas) ---"
+            sed -e 's/>[^<]*</></g' /tmp/pagina.html | tr -s ' \n' ' ' | head -c 3000
+          fi
