@@ -173,6 +173,126 @@ async function abrirChromium() {
 }
 
 /**
+ * Estadísticas y "recomendar a un colega", en un navegador de verdad.
+ * Con un ID de prueba (TSJ_GA_ID) y el script de Google interceptado: se
+ * revisa lo que la app pondría en dataLayer, sin que salga nada a internet.
+ */
+async function probarAnaliticaYRecomendar(navegador) {
+    const contexto = await navegador.newContext({ viewport: { width: 1400, height: 900 } });
+    await contexto.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: `http://localhost:${PUERTO}` });
+    await contexto.route('**/googletagmanager.com/**', r => r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
+    await contexto.addInitScript(() => { window.TSJ_GA_ID = 'G-PRUEBA'; });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => typeof medir === 'function' && typeof crearExpedienteCore === 'function' &&
+            typeof db !== 'undefined' && !!db, { timeout: 15000 });
+        await page.waitForTimeout(600);
+        const r = await page.evaluate(async () => {
+            const pausa = (ms) => new Promise(res => setTimeout(res, ms));
+            try { localStorage.setItem('tour_bienvenida_visto', '1'); } catch (e) {}
+            document.getElementById('tour-oferta')?.remove();
+            const eventos = () => (window.dataLayer || []).filter(a => a[0] === 'event').map(a => [a[1], a[2]]);
+            const out = {};
+            out.abierta = eventos().some(e => e[0] === 'app_abierta');
+            navegarA('calendario');
+            out.seccion = eventos().some(e => e[0] === 'seccion_vista' && e[1].seccion === 'calendario');
+
+            // Primer expediente: se cuenta (sin datos) y se ofrece recomendar una vez.
+            await crearExpedienteCore({ numero: '9876/2026', nombre: 'Rosa Canul Pech', institucion: 'TSJ',
+                juzgado: 'JUZGADO PRIMERO CIVIL CANCUN', comentario: 'Cliente confidencial' });
+            await pausa(3000);
+            out.alta = eventos().find(e => e[0] === 'expediente_creado');
+            out.oferta = !!document.getElementById('rec-oferta');
+            [...document.querySelectorAll('#rec-oferta button')].find(b => /Ahora no/.test(b.textContent))?.click();
+            await crearExpedienteCore({ numero: '9877/2026', institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' });
+            await pausa(3000);
+            out.unaVez = !document.getElementById('rec-oferta');
+
+            // La calculadora se mide por tipo de cálculo, sin importes.
+            navegarA('laboral');
+            const fijar = (id, v) => { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+            fijar('lab-ingreso', '2020-01-15'); fijar('lab-baja', '2026-09-26'); fijar('lab-salario', '15000');
+            await pausa(100);
+            out.calculo = eventos().find(e => e[0] === 'calculo_laboral');
+
+            // Recomendar en la computadora: ventanita con WhatsApp y copiar.
+            await recomendarApp('menu');
+            const modal = document.getElementById('modal-recomendar');
+            out.modal = !!modal;
+            out.whatsapp = modal?.querySelector('a[data-canal="whatsapp"]')?.href || '';
+            modal.querySelector('[data-canal="copiar"]').click();
+            await pausa(300);
+            out.copiado = await navigator.clipboard.readText().catch(() => '');
+            out.compartir = eventos().find(e => e[0] === 'compartir');
+            cerrarModalRecomendar();
+
+            // Nada de lo que se envía lleva datos del expediente.
+            out.todo = JSON.stringify(window.dataLayer);
+
+            // Desactivar desde Configuración: deja de enviar.
+            navegarA('config');
+            const casilla = document.getElementById('config-analitica');
+            out.casillaMarcada = casilla.checked;
+            casilla.click();
+            const antes = eventos().length;
+            navegarA('notas');
+            out.apagada = eventos().length === antes;
+            casilla.click();
+            return out;
+        });
+        igual('estadísticas: registra que se abrió la app', r.abierta, true);
+        igual('estadísticas: registra la sección visitada', r.seccion, true);
+        igual('estadísticas: cuenta el alta de expediente sin datos', r.alta, ['expediente_creado', { cantidad: 1 }]);
+        verificar('estadísticas: nunca envía número, nombre, juzgado ni notas',
+            !/9876|Rosa|Canul|JUZGADO|confidencial|15000/i.test(r.todo), r.todo.slice(0, 300));
+        igual('estadísticas: la calculadora cuenta el tipo de cálculo', r.calculo, ['calculo_laboral', { supuesto: 'despidoInjustificado', origen: 'app' }]);
+        igual('estadísticas: Configuración empieza con ellas activadas', r.casillaMarcada, true);
+        igual('estadísticas: desactivarlas deja de enviar', r.apagada, true);
+        igual('recomendar: se ofrece tras el primer expediente', r.oferta, true);
+        igual('recomendar: solo una vez', r.unaVez, true);
+        igual('recomendar: en la computadora abre sus opciones', r.modal, true);
+        verificar('recomendar: WhatsApp con el mensaje y el enlace medible',
+            /^https:\/\/wa\.me\/\?text=/.test(r.whatsapp) && /utm_source%3Drecomendacion/.test(r.whatsapp), r.whatsapp);
+        verificar('recomendar: copiar deja el mensaje con el enlace',
+            /TSJ Filing Online/.test(r.copiado) && /tsjia\.empirica\.mx\/\?utm_source=recomendacion&utm_medium=copiar/.test(r.copiado), r.copiado);
+        igual('recomendar: se mide por canal', r.compartir, ['compartir', { canal: 'copiar', origen: 'menu' }]);
+        igual('estadísticas y recomendar: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+
+    // En el celular: el menú de compartir del teléfono.
+    const movil = await navegador.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    await movil.addInitScript(() => {
+        window.__compartido = null;
+        navigator.share = async (datos) => { window.__compartido = datos; };
+    });
+    const pm = await movil.newPage();
+    try {
+        await pm.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await pm.waitForFunction(() => typeof recomendarApp === 'function' && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+        const m = await pm.evaluate(async () => {
+            document.getElementById('menuToggle').click();
+            await new Promise(res => setTimeout(res, 100));
+            const boton = document.querySelector('#mobileNav .nav-recomendar');
+            boton.click();
+            await new Promise(res => setTimeout(res, 200));
+            return { compartido: window.__compartido, modal: !!document.getElementById('modal-recomendar'),
+                pagina: !!document.querySelector('.page.active') };
+        });
+        verificar('recomendar celular: abre el menú de compartir del teléfono',
+            !!m.compartido && /utm_medium=nativo/.test(m.compartido.url) && /Quintana Roo/.test(m.compartido.text), JSON.stringify(m.compartido));
+        igual('recomendar celular: sin ventanita extra', m.modal, false);
+        igual('recomendar celular: sin dejar la página en blanco', m.pagina, true);
+    } finally {
+        await movil.close();
+    }
+}
+
+/**
  * Instalar en el celular: es lo primero que enseña el recorrido, con los
  * pasos de cada plataforma, y la app tiene lo que los sistemas piden para
  * ponerla en la pantalla de inicio con su ícono.
@@ -409,6 +529,8 @@ async function probarSitioPublico(navegador) {
             verificar(`sitio ${ruta}: tiene título principal`, r.h1.length > 10, r.h1);
             igual(`sitio ${ruta}: con sus estilos`, r.estilos, true);
             verificar(`sitio ${ruta}: invita a abrir la app`, r.cta >= 2, String(r.cta));
+            igual(`sitio ${ruta}: botón para recomendar por WhatsApp`,
+                await page.evaluate(() => /^https:\/\/wa\.me\/\?text=.*utm_source%3Drecomendacion/.test(document.querySelector('.sitio-recomendar')?.href || '')), true);
             igual(`sitio ${ruta}: sin desbordarse a lo ancho`, r.ancho, true);
         }
         // La calculadora pública calcula de verdad.
@@ -2308,6 +2430,7 @@ async function main() {
         // ---- Recorrido guiado y páginas públicas ----
         await probarRecorridoGuiado(navegador);
         await probarInstalacion(navegador);
+        await probarAnaliticaYRecomendar(navegador);
         await probarSitioPublico(navegador);
 
     } finally {

@@ -149,3 +149,8 @@ body.sitio { background: var(--bg-primary); }
 .sitio-instalar ol strong { color: var(--text-primary); }
 .sitio-instalar-icono { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem; text-align: center; background: var(--primary-suave) !important; }
 .sitio-instalar-icono img { border-radius: 22px; box-shadow: var(--shadow-md); }
+
+/* ---------- Recomendar ---------- */
+.sitio-cta-botones { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; }
+.sitio-cta-final .sitio-recomendar { background: transparent; color: #fff; border: 1px solid rgba(255, 255, 255, 0.6); }
+.sitio-cta-final .sitio-recomendar:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }

@@ -22,6 +22,10 @@ const vm = require('vm');
 const RAIZ = path.join(__dirname, '..');
 const SITIO = 'https://tsjia.empirica.mx';
 const APP = '/docs/';
+// Sin JavaScript, el botón de recomendar abre WhatsApp con este mensaje.
+const WHATSAPP_RECOMENDAR = 'https://wa.me/?text=' + encodeURIComponent(
+    'Te recomiendo TSJ Filing Online: estrados del TSJ de Quintana Roo y del PJF, agenda de audiencias, IA que lee los acuerdos y calculadora de finiquito. Gratis y sin registro. ' +
+    'https://tsjia.empirica.mx/?utm_source=recomendacion&utm_medium=whatsapp&utm_campaign=colega');
 const ACTUALIZADO = '2026-09-27';
 
 // ==================== DATOS DE LOS CATÁLOGOS ====================
@@ -60,6 +64,7 @@ function formularioCalculadora() {
     bloque = bloque.replace(/<div class="card-footer lab-acciones"[\s\S]*?<\/div>/, `<div class="card-footer lab-acciones" id="lab-acciones" style="display:none;">
                             <button class="btn btn-secondary btn-sm" onclick="copiarResumenLaboral()">📋 Copiar</button>
                             <button class="btn btn-secondary btn-sm" onclick="imprimirCalculoLaboral()">🖨️ Imprimir</button>
+                            <button class="btn btn-secondary btn-sm" onclick="recomendarApp('calculadora_sitio', 'calculadora')">💬 Compartir calculadora</button>
                             <a class="btn btn-success btn-sm" href="${APP}?tour=1#laboral">📁 Guardar en un expediente (gratis)</a>
                         </div>`);
     return bloque;
@@ -137,7 +142,11 @@ function pie() {
         <div class="sitio-ancho">
             <h2>Deja de perseguir acuerdos. Empieza hoy.</h2>
             <p>Abre la app, agrega tu primer expediente con ayuda de la IA y ten tu agenda de audiencias al día. Sin registro y gratis para empezar.</p>
-            <a class="btn btn-primary btn-lg" href="${APP}?tour=1">Probar gratis ahora →</a>
+            <div class="sitio-cta-botones">
+                <a class="btn btn-primary btn-lg" href="${APP}?tour=1">Probar gratis ahora →</a>
+                <a class="btn btn-lg sitio-recomendar" href="${WHATSAPP_RECOMENDAR}" target="_blank" rel="noopener"
+                   onclick="if (window.recomendarApp) { event.preventDefault(); recomendarApp('sitio'); }">🤝 Recomendar a un colega</a>
+            </div>
         </div>
     </section>
 
@@ -161,9 +170,12 @@ function pie() {
                 <strong>Contacto</strong>
                 <p><a href="mailto:jorge_clemente@empirica.mx">jorge_clemente@empirica.mx</a></p>
                 <p class="sitio-legal">Herramienta independiente: no está afiliada al Tribunal Superior de Justicia de Quintana Roo, al Poder Judicial de la Federación ni al IMPI. Las consultas se hacen en sus portales oficiales.</p>
+                <p class="sitio-legal">Usamos estadísticas de uso anónimas para mejorar el sitio; nunca datos de tus expedientes.</p>
             </div>
         </div>
     </footer>
+    <script src="/docs/js/recomendar.js"></script>
+    <script src="/docs/js/analitica.js"></script>
 </body>
 </html>
 `;

@@ -199,6 +199,7 @@
         <button class="nav-btn" data-page="impi">🔰 IMPI Marcas</button>
         <button class="nav-btn" data-page="config">⚙️ Configuración</button>
         <button class="nav-btn nav-instalar" type="button" onclick="instalarApp()">📲 Instalar en mi celular</button>
+        <button class="nav-btn nav-recomendar" type="button" onclick="recomendarApp('menu')">🤝 Recomendar a un colega</button>
     </nav>
 
     <!-- Main Content -->
@@ -2313,6 +2314,7 @@
                             <button class="btn btn-success btn-sm" onclick="guardarCalculoComoNota()">📝 Guardar como nota</button>
                             <button class="btn btn-secondary btn-sm" onclick="copiarResumenLaboral()">📋 Copiar</button>
                             <button class="btn btn-secondary btn-sm" onclick="imprimirCalculoLaboral()">🖨️ Imprimir</button>
+                            <button class="btn btn-secondary btn-sm" onclick="recomendarApp('calculadora', 'calculadora')">💬 Compartir calculadora</button>
                         </div>
                     </div>
                     <p class="lab-aviso-legal">Parámetros 2026: salario mínimo $315.04 (general) y $440.87 (frontera norte), UMA $117.31, tarifa ISR del Anexo 8 RMF 2026. Es una estimación orientativa; cada caso puede tener prestaciones, convenios o criterios judiciales que cambien el resultado.</p>
@@ -2901,6 +2903,31 @@
             </div>
 
             <div class="config-section">
+                <h3>🤝 Recomienda TSJ Filing</h3>
+                <div class="config-item">
+                    <div class="config-info">
+                        <h4>¿Conoces a alguien que litigue en Quintana Roo?</h4>
+                        <p>Compártele la app por WhatsApp, correo o como prefieras. Es gratis y sin registro.</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="recomendarApp('configuracion')">🤝 Recomendar</button>
+                </div>
+            </div>
+
+            <div class="config-section">
+                <h3>📊 Privacidad</h3>
+                <div class="config-item">
+                    <div class="config-info">
+                        <h4>Estadísticas de uso anónimas</h4>
+                        <p>Nos ayudan a saber qué secciones se usan para mejorarlas. Solo se cuenta el nombre de la acción (por ejemplo "abrió el calendario"); nunca números de expediente, nombres, juzgados, notas ni importes.</p>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="config-analitica" checked onchange="desactivarAnalitica(!this.checked)">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="config-section">
                 <h3>🐞 Reportar un problema</h3>
                 <div class="config-item">
                     <div class="config-info">
@@ -3018,5 +3045,7 @@
     <script src="js/voice-assistant.js"></script>
     <script src="js/calculadora-laboral.js"></script>
     <script src="js/tour.js"></script>
+    <script src="js/recomendar.js"></script>
+    <script src="js/analitica.js"></script>
 </body>
 </html>

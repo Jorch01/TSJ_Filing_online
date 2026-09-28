@@ -16,6 +16,7 @@
     'use strict';
 
     let promptDiferido = null;
+    const medir = (e, p) => { if (typeof window.medir === 'function') window.medir(e, p); };
 
     window.addEventListener('beforeinstallprompt', (e) => {
         // Sin esto Chrome muestra su propia barrita; la instalación la
@@ -26,6 +27,7 @@
     });
 
     window.addEventListener('appinstalled', () => {
+        medir('app_instalada', { plataforma: plataformaInstalacion() });
         promptDiferido = null;
         document.documentElement.classList.remove('instalable');
         try { localStorage.setItem('app_instalada', '1'); } catch (e) { /* sin almacenamiento */ }
@@ -111,6 +113,7 @@
             evento.prompt();
             try {
                 const { outcome } = await evento.userChoice;
+                medir('instalar_ventana', { respuesta: outcome === 'accepted' ? 'aceptada' : 'rechazada' });
                 if (outcome !== 'accepted' && typeof mostrarToast === 'function') {
                     mostrarToast('Cuando quieras, la instalas desde 🧭 → Instalar en tu celular', 'info');
                 }
@@ -122,6 +125,7 @@
     }
 
     function mostrarModalInstalar() {
+        medir('instalar_instrucciones', { plataforma: plataformaInstalacion() });
         cerrarModalInstalar();
         const fondo = document.createElement('div');
         fondo.id = 'modal-instalar';
