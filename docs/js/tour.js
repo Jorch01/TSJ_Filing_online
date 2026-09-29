@@ -100,7 +100,7 @@
                 {
                     objetivo: '#voz-fab',
                     titulo: 'O simplemente díctalo',
-                    texto: 'El asistente entiende cosas como "agenda audiencia del 120/2026 el martes a las 10" o "¿qué tengo esta semana?".'
+                    texto: 'El asistente entiende cosas como "agenda audiencia del 120/2026 el martes a las 10", "¿qué tengo esta semana?" o "calcula la liquidación de un trabajador que ganaba 12 mil al mes".'
                 },
                 {
                     objetivo: '#tour-fab',
@@ -160,7 +160,7 @@
         laboral: {
             icono: '🧮',
             titulo: 'Calculadora de finiquito y liquidación',
-            duracion: '30 s',
+            duracion: '40 s',
             pasos: [
                 {
                     antes: ir('laboral'),
@@ -177,6 +177,11 @@
                     objetivo: '.lab-resultado-card',
                     titulo: 'Cada peso, con su artículo',
                     texto: 'Verás cada concepto con su fórmula y fundamento, el ISR estimado y el neto. Guárdalo como nota en el expediente, cópialo o imprímelo.'
+                },
+                {
+                    objetivo: '#voz-fab',
+                    titulo: 'También se lo puedes pedir al asistente',
+                    texto: 'Dile "calcula el finiquito de alguien que renunció hoy y ganaba 9,500 a la quincena". Si le falta un dato (cómo terminó, fechas, salario) te lo pregunta hasta poder calcular, y luego puedes ajustarlo: "¿y si el juicio duró 8 meses?".'
                 }
             ]
         },

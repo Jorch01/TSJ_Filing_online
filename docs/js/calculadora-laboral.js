@@ -560,9 +560,63 @@
         };
     }
 
+    // ==================== DATOS QUE FALTAN ====================
+
+    const PERIODOS = ['diario', 'semanal', 'catorcenal', 'quincenal', 'mensual'];
+
+    /**
+     * Lo que falta para poder calcular, en orden y con la pregunta con que se
+     * pide. El asistente de voz lo usa para ir pidiendo los datos uno por uno
+     * en vez de calcular con supuestos. Con `exigirPeriodo`, un salario sin
+     * periodo cuenta como faltante: "gana 5,000" puede ser a la semana o al mes.
+     */
+    function datosFaltantes(d, { exigirPeriodo = false } = {}) {
+        d = d || {};
+        const faltan = [];
+        const s = SUPUESTOS[d.supuesto];
+        if (!s) {
+            faltan.push({ campo: 'supuesto', pregunta: '¿Cómo terminó la relación de trabajo: renuncia, despido injustificado, despido justificado, mutuo acuerdo u otro motivo?' });
+        }
+        const ingreso = fecha(d.fechaIngreso);
+        const baja = fecha(d.fechaBaja);
+        if (!ingreso) faltan.push({ campo: 'fechaIngreso', pregunta: '¿En qué fecha entró a trabajar?' });
+        if (!baja) faltan.push({ campo: 'fechaBaja', pregunta: '¿En qué fecha terminó la relación de trabajo?' });
+        if (ingreso && baja && baja < ingreso) {
+            faltan.push({ campo: 'fechaBaja', pregunta: 'La fecha de terminación quedó antes que la de ingreso. ¿Cuáles son las fechas correctas?' });
+        }
+        if (!(Number(d.salario) > 0)) {
+            faltan.push({ campo: 'salario', pregunta: '¿Cuánto ganaba y cada cuándo le pagaban: al día, a la semana, a la quincena o al mes?' });
+        } else if (!PERIODOS.includes(d.periodo) && (exigirPeriodo || d.periodo)) {
+            faltan.push({ campo: 'periodo', pregunta: `¿Los ${dinero(Number(d.salario))} eran por día, por semana, por quincena o por mes?` });
+        }
+        if (s && s.riesgo === 'parcial' && !(Number(d.porcentajeIncapacidad) > 0)) {
+            faltan.push({ campo: 'porcentajeIncapacidad', pregunta: '¿Qué porcentaje de incapacidad le dictaminaron (tabla del artículo 514)?' });
+        }
+        return faltan;
+    }
+
+    // ==================== RESUMEN EN TEXTO ====================
+
+    function resumen(r) {
+        if (!r || !r.ok) return '';
+        const a = r.datos.antiguedad;
+        const lineas = [
+            `CÁLCULO LABORAL — ${r.supuesto.nombre}`,
+            `Antigüedad: ${a.aniosCompletos} años y ${a.diasAnioEnCurso} días · Salario diario ${dinero(r.datos.salarioDiario)} · SDI ${dinero(r.datos.salarioDiarioIntegrado)}`,
+            ''
+        ];
+        for (const c of r.conceptos) lineas.push(`• ${c.concepto}: ${dinero(c.importe)}  (${c.formula}; ${c.fundamento})`);
+        lineas.push('', `Finiquito: ${dinero(r.totales.finiquito)}`);
+        if (r.totales.indemnizacion) lineas.push(`Indemnizaciones: ${dinero(r.totales.indemnizacion)}`);
+        lineas.push(`TOTAL BRUTO: ${dinero(r.totales.bruto)}`);
+        if (r.isr) lineas.push(`ISR estimado: ${dinero(r.isr.total)} · NETO ESTIMADO: ${dinero(r.totales.neto)}`);
+        lineas.push('', `Parámetros ${PARAMETROS.anio}: salario mínimo ${dinero(r.datos.salarioMinimo)}, UMA ${dinero(r.datos.uma)}. Estimación orientativa.`);
+        return lineas.join('\n');
+    }
+
     const motor = {
-        PARAMETROS, SUPUESTOS, calcular, estimarISR, diasVacaciones, antiguedad,
-        isrTarifaMensual, salarioDiarioDe, fecha, redondear, dinero
+        PARAMETROS, SUPUESTOS, PERIODOS, calcular, datosFaltantes, resumen, estimarISR,
+        diasVacaciones, antiguedad, isrTarifaMensual, salarioDiarioDe, fecha, redondear, dinero
     };
 
     if (typeof module !== 'undefined' && module.exports) module.exports = motor;
@@ -705,25 +759,8 @@
         return ultimoResultado;
     }
 
-    function resumenTexto(r) {
-        if (!r || !r.ok) return '';
-        const a = r.datos.antiguedad;
-        const lineas = [
-            `CÁLCULO LABORAL — ${r.supuesto.nombre}`,
-            `Antigüedad: ${a.aniosCompletos} años y ${a.diasAnioEnCurso} días · Salario diario ${dinero(r.datos.salarioDiario)} · SDI ${dinero(r.datos.salarioDiarioIntegrado)}`,
-            ''
-        ];
-        for (const c of r.conceptos) lineas.push(`• ${c.concepto}: ${dinero(c.importe)}  (${c.formula}; ${c.fundamento})`);
-        lineas.push('', `Finiquito: ${dinero(r.totales.finiquito)}`);
-        if (r.totales.indemnizacion) lineas.push(`Indemnizaciones: ${dinero(r.totales.indemnizacion)}`);
-        lineas.push(`TOTAL BRUTO: ${dinero(r.totales.bruto)}`);
-        if (r.isr) lineas.push(`ISR estimado: ${dinero(r.isr.total)} · NETO ESTIMADO: ${dinero(r.totales.neto)}`);
-        lineas.push('', `Parámetros ${PARAMETROS.anio}: salario mínimo ${dinero(r.datos.salarioMinimo)}, UMA ${dinero(r.datos.uma)}. Estimación orientativa.`);
-        return lineas.join('\n');
-    }
-
     async function copiarResumenLaboral() {
-        const texto = resumenTexto(ultimoResultado || recalcularLaboral());
+        const texto = resumen(ultimoResultado || recalcularLaboral());
         if (!texto) return;
         try {
             await navigator.clipboard.writeText(texto);
@@ -740,7 +777,7 @@
         try {
             await crearNotaCore({
                 titulo: `🧮 ${r.supuesto.nombre}: ${dinero(r.totales.bruto)}`,
-                contenido: resumenTexto(r),
+                contenido: resumen(r),
                 expedienteId,
                 color: '#e3f2fd'
             });
@@ -785,8 +822,39 @@
         recalcularLaboral();
     }
 
+    // Llena el formulario con los datos que reunió el asistente de voz y
+    // calcula. Los campos que no vienen quedan en su valor por omisión, para
+    // no arrastrar lo que hubiera de un cálculo anterior.
+    const CAMPOS_FORMULARIO = {
+        supuesto: 'lab-supuesto', fechaIngreso: 'lab-ingreso', fechaBaja: 'lab-baja',
+        salario: 'lab-salario', periodo: 'lab-periodo', zona: 'lab-zona',
+        tipoContrato: 'lab-contrato', mesesJuicio: 'lab-meses-juicio',
+        porcentajeIncapacidad: 'lab-pct-incapacidad', diasSalarioPendientes: 'lab-dias-pendientes',
+        vacacionesPendientesDias: 'lab-vac-pendientes', vacacionesTomadasAnioDias: 'lab-vac-tomadas',
+        aguinaldoPagado: 'lab-aguinaldo-pagado', otrasPercepciones: 'lab-otras',
+        otrasPercepcionesConcepto: 'lab-otras-concepto', diasAguinaldo: 'lab-aguinaldo-dias',
+        primaVacacionalPct: 'lab-prima-pct', diasVacacionesAnio: 'lab-vac-contrato'
+    };
+    const OMISIONES_FORMULARIO = { periodo: 'mensual', zona: 'general', tipoContrato: 'indeterminado' };
+
+    async function cargarCalculoLaboral(datos, expedienteId) {
+        datos = datos || {};
+        await prepararCalculadoraLaboral();
+        for (const [campo, id] of Object.entries(CAMPOS_FORMULARIO)) {
+            const el = $(id);
+            if (!el) continue;
+            const v = datos[campo];
+            el.value = v != null && v !== '' ? v : (OMISIONES_FORMULARIO[campo] || '');
+        }
+        if ($('lab-veinte')) $('lab-veinte').checked = !!datos.incluirVeinteDias;
+        if ($('lab-sm')) $('lab-sm').placeholder = PARAMETROS.salarioMinimo[valor('lab-zona')] || '';
+        const sel = $('lab-expediente');
+        if (sel) sel.value = expedienteId ? String(expedienteId) : '';
+        return recalcularLaboral();
+    }
+
     Object.assign(global, {
-        recalcularLaboral, prepararCalculadoraLaboral, copiarResumenLaboral,
+        recalcularLaboral, prepararCalculadoraLaboral, cargarCalculoLaboral, copiarResumenLaboral,
         guardarCalculoComoNota, imprimirCalculoLaboral, cambiarZonaLaboral
     });
 })(typeof window !== 'undefined' ? window : globalThis);

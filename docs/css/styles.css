@@ -4919,6 +4919,15 @@ button.pendiente-prioridad:focus-visible {
     font-style: italic;
 }
 
+/* Resultado de un cálculo laboral en el chat del asistente */
+.voz-laboral-conceptos { font-size: 0.85rem; }
+.voz-laboral-totales {
+    margin-top: 0.4rem; padding: 0.45rem 0.6rem;
+    background: var(--bg-tertiary); border-radius: var(--radius-sm, 6px);
+}
+.voz-laboral-total { font-size: 1.02rem; }
+.voz-laboral-btns { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
+
 .voz-mas {
     margin-top: 0.4rem;
     font-size: 0.78rem;
