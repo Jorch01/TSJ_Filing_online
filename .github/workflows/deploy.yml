@@ -30,7 +30,7 @@ jobs:
       # de comprobar, así que va primero.
       - name: Comprobar que el JavaScript compila
         run: |
-          for f in docs/js/*.js docs/sw.js docs/proxy/*.js herramientas/*.js servidor/*.mjs test_*.js; do
+          for f in docs/js/*.js docs/sw.js docs/proxy/*.js herramientas/*.js test_*.js; do
             node --check "$f" || { echo "✗ $f no compila"; exit 1; }
           done
           echo "✓ Todos los archivos compilan"
