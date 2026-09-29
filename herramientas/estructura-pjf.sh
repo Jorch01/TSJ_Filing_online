@@ -7,8 +7,20 @@
 PEGADO="${1:?Falta la URL de vercaptura.aspx}"
 URL=$(printf '%s' "$PEGADO" | grep -oE '(https?://)?[A-Za-z0-9.-]*cjf\.gob\.mx/[^] )"<>[:space:]]+' | head -1)
 case "$URL" in http://*|https://*) ;; *) URL="https://$URL" ;; esac
-curl -s -L --max-time 40 -A "Mozilla/5.0 (compatible; TSJFilingOnline/1.0; +https://tsjia.empirica.mx/)" \
-     -o /tmp/pjf.html "$URL" || { echo "✗ no se pudo descargar"; exit 1; }
+HOST=$(echo "$URL" | sed -E 's#^https?://([^/]+).*#\1#')
+# Igual que el TSJ, el servidor puede no enviar su certificado intermedio:
+# se descarga de la dirección "CA Issuers" del propio certificado.
+CAS=/tmp/pjf-cadena.pem
+cat /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt 2>/dev/null > "$CAS"
+AIA=$(echo | timeout 15 openssl s_client -connect "$HOST:443" -servername "$HOST" 2>/dev/null \
+      | openssl x509 -noout -text 2>/dev/null | grep -oE 'CA Issuers - URI:[^ ]+' | head -1 | sed 's/CA Issuers - URI://')
+if [ -n "$AIA" ] && curl -s --max-time 15 -o /tmp/pjf-inter "$AIA"; then
+  (openssl x509 -inform DER -in /tmp/pjf-inter 2>/dev/null || openssl x509 -in /tmp/pjf-inter 2>/dev/null) >> "$CAS"
+fi
+if ! curl -sS -L --max-time 40 --cacert "$CAS" -A "Mozilla/5.0 (compatible; TSJFilingOnline/1.0; +https://tsjia.empirica.mx/)" \
+     -o /tmp/pjf.html "$URL" 2>/tmp/pjf.err; then
+  echo "✗ no se pudo descargar:"; sed 's/^/   /' /tmp/pjf.err | head -3; exit 1
+fi
 python3 - <<'PY'
 import re, html
 raw = open('/tmp/pjf.html', 'rb').read()
