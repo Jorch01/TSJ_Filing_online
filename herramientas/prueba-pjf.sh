@@ -5,7 +5,13 @@
 # expediente federal (cópiala de la barra de direcciones de esa ventana):
 #   curl -s <url-de-este-archivo> | bash -s -- "<url de vercaptura.aspx>"
 # No imprime nombres: el texto de las celdas sale recortado a 3 letras.
-URL="${1:-https://www.dgej.cjf.gob.mx/siseinternet/reportes/vercaptura.aspx}"
+PEGADO="${1:-https://www.dgej.cjf.gob.mx/siseinternet/reportes/vercaptura.aspx}"
+# Se toma la primera dirección del portal que aparezca en lo pegado: con o sin
+# https://, entre corchetes o paréntesis (como a veces se copia de un chat).
+URL=$(printf '%s' "$PEGADO" | grep -oE '(https?://)?[A-Za-z0-9.-]*cjf\.gob\.mx/[^] )"<>[:space:]]+' | head -1)
+[ -z "$URL" ] && URL="$PEGADO"
+case "$URL" in http://*|https://*) ;; *) URL="https://$URL" ;; esac
+echo "Consulta: $URL"
 HOST=$(echo "$URL" | sed -E 's#^https?://([^/]+).*#\1#')
 UA="Mozilla/5.0 (compatible; TSJFilingOnline/1.0; +https://tsjia.empirica.mx/)"
 
