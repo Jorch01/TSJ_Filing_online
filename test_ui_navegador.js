@@ -784,7 +784,7 @@ async function probarCalendarioEnCancun(navegador) {
             const pausa = (ms) => new Promise(res => setTimeout(res, ms));
             const esperar = async (condicion, ms = 5000) => {
                 const hasta = Date.now() + ms;
-                while (Date.now() < hasta) { if (condicion()) return true; await pausa(50); }
+                while (Date.now() < hasta) { if (await condicion()) return true; await pausa(50); }
                 return false;
             };
             const confirmacion = () => document.getElementById('voz-confirmacion');
@@ -793,7 +793,11 @@ async function probarCalendarioEnCancun(navegador) {
             try { localStorage.setItem('voz_auto_escucha', '0'); } catch (e) { /* sin almacenamiento */ }
             await guardarConfig('ia_api_key', 'CLAVE-DE-PRUEBA');
             let respuesta = null;
-            window.llamarIA = async () => JSON.stringify(respuesta);
+            const historiales = [];
+            window.llamarIA = async (_, opciones) => {
+                historiales.push(JSON.parse(JSON.stringify((opciones && opciones.historial) || [])));
+                return JSON.stringify(respuesta);
+            };
             const abiertas = [];
             const openOriginal = window.open;
             window.open = (url, nombre) => { abiertas.push({ url, nombre }); return { focus() {} }; };
@@ -871,6 +875,42 @@ async function probarCalendarioEnCancun(navegador) {
                 document.getElementById('voz-btn-confirmar').click();
                 await pausa(600);
                 r.juntaB = (await obtenerEvento(idB)).fechaInicio === new Date(2026, 9, 21, 17).toISOString();
+
+                // 5) Cálculo laboral: pide lo que falta, de uno en uno, y calcula.
+                const ultimoMensaje = () => { const m = document.querySelectorAll('#voz-chat .voz-msg'); return m[m.length - 1].textContent; };
+                await decir('calcula la liquidación de un trabajador que despidieron hoy', {
+                    accion: 'calcular_laboral', faltan_datos: false, resumen: 'Calcular',
+                    parametros: { supuesto: 'despidoInjustificado', fechaBaja: '2026-09-26' }
+                });
+                r.laboralPide1 = ultimoMensaje();
+                await decir('entró el 15 de enero de 2020 y ganaba 15 mil', {
+                    accion: 'calcular_laboral', faltan_datos: false, resumen: 'Calcular',
+                    parametros: { supuesto: 'despidoInjustificado', fechaIngreso: '2020-01-15', fechaBaja: '2026-09-26', salario: '15,000' }
+                });
+                r.laboralHistorial = historiales[historiales.length - 1].map(t => t.content).join('\n');
+                r.laboralPide2 = ultimoMensaje();
+                await decir('al mes', {
+                    accion: 'calcular_laboral', faltan_datos: false, resumen: 'Calcular',
+                    parametros: { supuesto: 'despidoInjustificado', fechaIngreso: '2020-01-15', fechaBaja: '2026-09-26', salario: 15000, periodo: 'al mes' }
+                });
+                const esperado = CalculadoraLaboral.calcular({ supuesto: 'despidoInjustificado', fechaIngreso: '2020-01-15',
+                    fechaBaja: '2026-09-26', salario: 15000, periodo: 'mensual' });
+                r.laboralTotalEsperado = CalculadoraLaboral.dinero(esperado.totales.bruto);
+                r.laboralResultado = ultimoMensaje();
+                const botones = [...document.querySelectorAll('#voz-chat .voz-laboral-btns button')];
+                r.laboralBotones = botones.map(b => b.textContent);
+                const notasAntes = (await obtenerNotas()).length;
+                botones.find(b => /Guardar/.test(b.textContent)).click();
+                await esperar(async () => (await obtenerNotas()).length > notasAntes, 3000);
+                const nota = (await obtenerNotas()).find(n => /TOTAL BRUTO/.test(n.contenido) && n.titulo.includes(r.laboralTotalEsperado));
+                r.laboralNota = !!nota;
+                if (nota) await eliminarNotaCore(nota.id);
+                botones.find(b => /calculadora/.test(b.textContent)).click();
+                await esperar(() => document.getElementById('page-laboral').classList.contains('active') &&
+                    document.getElementById('lab-total-bruto')?.textContent === r.laboralTotalEsperado, 3000);
+                r.laboralFormulario = [document.getElementById('lab-supuesto').value, document.getElementById('lab-ingreso').value,
+                    document.getElementById('lab-salario').value, document.getElementById('lab-periodo').value,
+                    document.getElementById('lab-total-bruto')?.textContent];
             } finally {
                 window.open = openOriginal;
             }
@@ -893,6 +933,16 @@ async function probarCalendarioEnCancun(navegador) {
         igual('voz: con dos juntas ese día, ofrece las dos', voz.opciones, 2);
         igual('voz: al elegir una, confirma esa', voz.confirmaLaElegida, true);
         igual('voz: y mueve la elegida', voz.juntaB, true);
+        verificar('voz laboral: sin fecha de ingreso, la pide', /¿En qué fecha entró a trabajar\?/.test(voz.laboralPide1), voz.laboralPide1);
+        verificar('voz laboral: enseña lo que ya lleva', /Llevo: Despido injustificado/.test(voz.laboralPide1), voz.laboralPide1);
+        verificar('voz laboral: el modelo ve la pregunta que se hizo', /En qué fecha entró a trabajar/.test(voz.laboralHistorial), voz.laboralHistorial);
+        verificar('voz laboral: con salario sin periodo, pregunta cada cuándo', /\$15,000\.00 eran por día, por semana, por quincena o por mes/.test(voz.laboralPide2), voz.laboralPide2);
+        verificar('voz laboral: completo, calcula con el motor', voz.laboralResultado.includes('Total bruto: ' + voz.laboralTotalEsperado), voz.laboralResultado);
+        verificar('voz laboral: sugiere sumar el juicio', /cuántos meses duró/.test(voz.laboralResultado), voz.laboralResultado);
+        igual('voz laboral: ofrece abrir, guardar y copiar', voz.laboralBotones.length, 3);
+        igual('voz laboral: guardar crea la nota', voz.laboralNota, true);
+        igual('voz laboral: abre la calculadora con los datos',
+            voz.laboralFormulario, ['despidoInjustificado', '2020-01-15', '15000', 'mensual', voz.laboralTotalEsperado]);
 
         igual('cancún: la página no lanza errores de JavaScript', errores, []);
     } finally {

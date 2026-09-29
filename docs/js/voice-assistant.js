@@ -78,6 +78,7 @@
         'Busca la queja y el amparo directo 486/2026 en el primer colegiado del 27 circuito',
         'Cambia la audiencia del jueves para el viernes a las 12',
         '¿Qué audiencias tengo esta semana?',
+        'Calcula la liquidación de un trabajador que ganaba 12 mil al mes y lo despidieron hoy',
         'Cambia el comentario del expediente 78/2025 a "pendiente de sentencia"'
     ];
 
@@ -136,9 +137,20 @@
             ]
         },
         {
+            titulo: '🧮 Calculadora laboral',
+            items: [
+                'Calcula el finiquito de alguien que renunció hoy, entró el 1 de marzo de 2020 y ganaba 9,500 a la quincena',
+                'Calcula la liquidación de un trabajador que despidieron sin causa',
+                '¿Cuánto le toca a mi cliente del 123/2025 si lo corrieron? Ganaba 600 diarios',
+                '¿Y si el juicio duró 8 meses?',
+                'Ahora súmale los 20 días por año'
+            ]
+        },
+        {
             titulo: '🧭 Navegación',
             items: [
                 'Llévame al calendario',
+                'Abre la calculadora laboral',
                 'Abre la búsqueda del PJF',
                 'Ve a configuración'
             ]
@@ -150,6 +162,7 @@
         'Toda acción que modifica datos te pedirá confirmación: responde "sí" o "no" por voz, o usa los botones.',
         'Si propongo algo con un error, dime la corrección directamente: "mejor a las 11".',
         'Si falta un dato (hora, juzgado…), te lo preguntaré; puedes responder por voz o escribiendo.',
+        'Para un finiquito o liquidación dime lo que sepas; te pido lo que falte (cómo terminó, fechas, salario) hasta poder calcular, y luego puedes ajustarlo: "¿y si fueron 6 meses de juicio?".',
         'Si mencionas un expediente de tu catálogo, uso su juzgado guardado automáticamente en las búsquedas.',
         'Puedes pedir varias búsquedas en una sola orden: varios tipos de asunto ("la queja y el amparo directo"), "en todos los tipos de asunto", varios órganos, o asuntos del TSJ y del PJF juntos. Antes de abrir te enseño la lista.',
         'Para cambiar un evento basta con decir cuál y qué cambia: "pospón una semana la audiencia del 123/2025", "agrégale a la descripción…". Antes de guardar te enseño el antes y el después.',
@@ -172,6 +185,7 @@
     let estado = Estado.INACTIVO;
     let conversacion = [];        // turnos user/assistant para el LLM (sin system)
     let accionPendiente = null;   // acción interpretada esperando confirmación
+    let ultimoCalculoLaboral = null; // datos del último cálculo laboral, para ajustarlo después
     let recognition = null;
     let descartarTranscript = false;  // true = el stop fue intencional (texto enviado,
                                       // panel cerrado, confirmación): ignorar el transcript
@@ -841,6 +855,12 @@
             await prepararCambioDeEventos(r);
             return;
         }
+        // Cálculo laboral: no modifica nada, pero antes de calcular la app
+        // revisa que estén todos los datos y, si no, pide el que falte.
+        if (accion === 'calcular_laboral') {
+            try { await prepararCalculoLaboral(r); } catch (e) { informarFallo(e); }
+            return;
+        }
 
         // 3) Acción que modifica datos → confirmar
         if (ACCIONES_MUTANTES.has(accion)) {
@@ -936,6 +956,7 @@
                 case 'buscar_tsj':          mensajeFinal = plan ? ejecutarPlanBusqueda(plan) : await accBuscarTSJ(p); break;
                 case 'buscar_pjf':          mensajeFinal = plan ? ejecutarPlanBusqueda(plan) : await accBuscarPJF(p); break;
                 case 'buscar_varios':       mensajeFinal = plan ? ejecutarPlanBusqueda(plan) : await accBuscarVarios(p); break;
+                case 'calcular_laboral':    mensajeFinal = await accCalcularLaboral(p); break;
                 case 'navegar':             mensajeFinal = accNavegar(p); break;
                 default:
                     mensajeFinal = 'Listo.';
@@ -2280,11 +2301,209 @@
     }
 
     function accNavegar(p) {
-        const paginas = ['inicio', 'expedientes', 'calendario', 'pendientes', 'notas', 'tribunales', 'busqueda', 'pjf', 'impi', 'config'];
+        const paginas = ['inicio', 'expedientes', 'calendario', 'pendientes', 'notas', 'tribunales', 'busqueda', 'pjf', 'laboral', 'impi', 'config'];
         const pagina = paginas.includes(p.pagina) ? p.pagina : null;
         if (!pagina) throw new Error('No identifiqué a qué sección navegar');
         if (typeof navegarA === 'function') navegarA(pagina);
         return 'Listo, estás en ' + pagina + '.';
+    }
+
+    // ==================== CALCULADORA LABORAL ====================
+    // "Calcula la liquidación de alguien que ganaba 12 mil al mes": el modelo
+    // junta los datos de la conversación y la app decide si ya alcanzan. Lo
+    // que falte se pregunta de uno en uno —la pregunta la redacta el motor,
+    // no el modelo— hasta poder calcular; así nunca se calcula con un dato
+    // supuesto (un salario sin periodo, una fecha inventada).
+
+    const PERIODOS_HABLADOS = [
+        [/\bmes(es)?\b|\bmensual/, 'mensual'],
+        [/\bquincen/, 'quincenal'],
+        [/\bcatorcen/, 'catorcenal'],
+        [/\bsemana/, 'semanal'],
+        [/\bdias?\b|\bdiari/, 'diario']
+    ];
+
+    function cifra(v) {
+        if (v == null || v === '') return undefined;
+        if (typeof v === 'number') return isFinite(v) ? v : undefined;
+        const n = parseFloat(String(v).replace(/[$,\s]/g, ''));
+        return isNaN(n) ? undefined : n;
+    }
+
+    // Los parámetros del modelo, en la forma que espera CalculadoraLaboral.calcular.
+    function normalizarDatosLaborales(p) {
+        p = p || {};
+        const d = {};
+        const motor = window.CalculadoraLaboral;
+        if (p.supuesto) {
+            const claves = motor ? Object.keys(motor.SUPUESTOS) : [];
+            d.supuesto = claves.find(k => k.toLowerCase() === String(p.supuesto).toLowerCase()) || String(p.supuesto);
+        }
+        const hoy = fechaLocalISO(new Date());
+        for (const campo of ['fechaIngreso', 'fechaBaja']) {
+            const v = String(p[campo] || '').trim();
+            if (v) d[campo] = normalizar(v) === 'hoy' ? hoy : v;
+        }
+        d.salario = cifra(p.salario);
+        if (p.periodo) {
+            const t = normalizar(String(p.periodo));
+            const par = PERIODOS_HABLADOS.find(([re]) => re.test(t));
+            d.periodo = par ? par[1] : t;
+        }
+        for (const campo of ['mesesJuicio', 'porcentajeIncapacidad', 'diasSalarioPendientes',
+                             'vacacionesPendientesDias', 'vacacionesTomadasAnioDias', 'aguinaldoPagado',
+                             'otrasPercepciones', 'diasAguinaldo', 'primaVacacionalPct', 'diasVacacionesAnio']) {
+            const n = cifra(p[campo]);
+            if (n !== undefined) d[campo] = n;
+        }
+        if (p.otrasPercepcionesConcepto) d.otrasPercepcionesConcepto = String(p.otrasPercepcionesConcepto);
+        if (p.zona === 'frontera' || p.zona === 'general') d.zona = p.zona;
+        if (p.tipoContrato === 'determinado' || p.tipoContrato === 'indeterminado') d.tipoContrato = p.tipoContrato;
+        if (p.incluirVeinteDias === true || p.incluirVeinteDias === 'true') d.incluirVeinteDias = true;
+        for (const k of Object.keys(d)) if (d[k] === undefined) delete d[k];
+        return d;
+    }
+
+    function faltantesCalculoLaboral(datos) {
+        const motor = window.CalculadoraLaboral;
+        return motor ? motor.datosFaltantes(datos, { exigirPeriodo: true }) : [];
+    }
+
+    // Lo que ya se sabe, para que el usuario vea que no tiene que repetirlo.
+    function datosLaboralesReunidos(d) {
+        const motor = window.CalculadoraLaboral;
+        const partes = [];
+        if (motor && motor.SUPUESTOS[d.supuesto]) partes.push(motor.SUPUESTOS[d.supuesto].nombre);
+        if (motor && motor.fecha(d.fechaIngreso)) partes.push('ingreso ' + d.fechaIngreso);
+        if (motor && motor.fecha(d.fechaBaja)) partes.push('terminación ' + d.fechaBaja);
+        if (d.salario > 0) partes.push(motor.dinero(d.salario) + (d.periodo ? ' ' + d.periodo : ''));
+        return partes;
+    }
+
+    async function prepararCalculoLaboral(r) {
+        if (!window.CalculadoraLaboral) throw ErrorAviso('La calculadora laboral no está disponible en esta pantalla.');
+        const datos = normalizarDatosLaborales(r.parametros);
+        const faltan = faltantesCalculoLaboral(datos);
+        if (!faltan.length) {
+            await ejecutarAccion({ ...r, parametros: { ...r.parametros, ...datos } });
+            return;
+        }
+
+        // Se pregunta lo primero que falte. La respuesta que quedó en la
+        // conversación se reescribe con esa pregunta: en el turno siguiente
+        // el modelo sabe qué se le preguntó y conserva lo ya reunido.
+        const pregunta = faltan[0].pregunta;
+        const ultima = conversacion[conversacion.length - 1];
+        const pendiente = { ...r, parametros: { ...r.parametros, ...datos }, faltan_datos: true, pregunta };
+        if (ultima && ultima.role === 'assistant') ultima.content = JSON.stringify(pendiente);
+        else conversacion.push({ role: 'assistant', content: JSON.stringify(pendiente) });
+
+        estado = Estado.ESPERANDO_DATO;
+        const reunidos = datosLaboralesReunidos(datos);
+        agregarMensaje('asistente', '🧮 ❓ ' + esc(pregunta) +
+            (reunidos.length ? '<br><small class="voz-motivo">Llevo: ' + esc(reunidos.join(' · ')) + '</small>' : ''));
+        hablar(pregunta, () => { if (panelAbierto()) iniciarEscucha(); });
+    }
+
+    async function accCalcularLaboral(p) {
+        const motor = window.CalculadoraLaboral;
+        if (!motor) throw ErrorAviso('La calculadora laboral no está disponible en esta pantalla.');
+        const datos = normalizarDatosLaborales(p);
+        const faltan = faltantesCalculoLaboral(datos);
+        if (faltan.length) throw ErrorAviso(faltan[0].pregunta);
+        const r = motor.calcular(datos);
+        if (!r.ok) throw ErrorAviso(r.errores.join(' '));
+
+        // El expediente solo sirve para guardar el cálculo como nota; si hay
+        // varios posibles, se elige y el cálculo se reanuda con él.
+        const exp = (p.expedienteId || p.expedienteRef)
+            ? await resolverExpedienteDeParametros(p, 'calcular_laboral') : null;
+
+        ultimoCalculoLaboral = { ...datos, expedienteId: exp ? exp.id : null };
+        mostrarResultadoLaboral(r, datos, exp);
+        const neto = r.isr ? `, neto estimado ${motor.dinero(r.totales.neto)}` : '';
+        hablar(`${r.supuesto.nombre.split(' (')[0]}: total bruto ${motor.dinero(r.totales.bruto)}${neto}.`);
+        return '';
+    }
+
+    // Lo opcional que cambia mucho el resultado y que no se pregunta: se
+    // sugiere al final, por si aplica.
+    function sugerenciasLaborales(r, datos) {
+        const s = window.CalculadoraLaboral.SUPUESTOS[datos.supuesto] || {};
+        const lista = [];
+        if (s.salariosVencidos && !datos.mesesJuicio) lista.push('Si hubo juicio, dime cuántos meses duró y sumo los salarios vencidos.');
+        if (s.veinteDias === 'opcional' && !datos.incluirVeinteDias) lista.push('Si se pactan los 20 días por año, pídemelo y los sumo.');
+        if (!datos.vacacionesPendientesDias && r.datos.antiguedad.aniosCompletos >= 1) lista.push('¿Le deben vacaciones de años anteriores? Dime cuántos días y las agrego.');
+        return lista;
+    }
+
+    function mostrarResultadoLaboral(r, datos, exp) {
+        const motor = window.CalculadoraLaboral;
+        const $$ = motor.dinero;
+        const a = r.datos.antiguedad;
+        const filas = r.conceptos.map(c =>
+            `<li>${esc(c.concepto)}: <strong>${esc($$(c.importe))}</strong></li>`).join('');
+        const totales = [`Finiquito: <strong>${esc($$(r.totales.finiquito))}</strong>`];
+        if (r.totales.indemnizacion) totales.push(`Indemnizaciones: <strong>${esc($$(r.totales.indemnizacion))}</strong>`);
+        totales.push(`<span class="voz-laboral-total">Total bruto: <strong>${esc($$(r.totales.bruto))}</strong></span>`);
+        if (r.isr) totales.push(`ISR estimado: − ${esc($$(r.isr.total))} · Neto estimado: <strong>${esc($$(r.totales.neto))}</strong>`);
+
+        const div = agregarMensaje('asistente',
+            `🧮 <strong>${esc(r.supuesto.nombre)}</strong>` +
+            `<br><small>Antigüedad: ${a.aniosCompletos} año${a.aniosCompletos !== 1 ? 's' : ''} y ${a.diasAnioEnCurso} día${a.diasAnioEnCurso !== 1 ? 's' : ''}` +
+            ` · Salario diario ${esc($$(r.datos.salarioDiario))} · SDI ${esc($$(r.datos.salarioDiarioIntegrado))}</small>` +
+            `<ul class="voz-lista voz-laboral-conceptos">${filas}</ul>` +
+            `<div class="voz-laboral-totales">${totales.join('<br>')}</div>` +
+            r.avisos.map(x => `<br><small>⚠️ ${esc(x)}</small>`).join('') +
+            (exp ? `<br><small>📁 ${esc(exp.numero || exp.nombre || 'Expediente')}</small>` : '') +
+            sugerenciasLaborales(r, datos).map(x => `<br><small>💡 ${esc(x)}</small>`).join('') +
+            '<br><small class="voz-motivo">Estimación orientativa: revísala en la calculadora.</small>');
+        if (!div) return;
+
+        const btns = document.createElement('div');
+        btns.className = 'voz-laboral-btns';
+        const boton = (texto, alTocar) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'voz-chip';
+            b.textContent = texto;
+            b.addEventListener('click', () => alTocar(b));
+            btns.appendChild(b);
+            return b;
+        };
+        boton('🧮 Abrir en la calculadora', async () => {
+            if (typeof navegarA === 'function') navegarA('laboral');
+            if (typeof cargarCalculoLaboral === 'function') await cargarCalculoLaboral(datos, exp ? exp.id : null);
+            if (window.innerWidth < 768) cerrarPanel();
+        });
+        boton('📝 Guardar como nota', async (b) => {
+            b.disabled = true;
+            try {
+                const id = await crearNotaCore({
+                    titulo: `🧮 ${r.supuesto.nombre}: ${$$(r.totales.bruto)}`,
+                    contenido: motor.resumen(r),
+                    expedienteId: exp ? exp.id : null,
+                    color: '#e3f2fd'
+                });
+                registrarDeshacer({ tipo: 'nota_creada', id, etiqueta: 'nota del cálculo laboral' });
+                b.textContent = '✅ Guardado en Notas';
+                toast('Cálculo guardado en Notas', 'success');
+            } catch (e) {
+                b.disabled = false;
+                toast('No se pudo guardar: ' + e.message, 'error');
+            }
+        });
+        boton('📋 Copiar', async () => {
+            try {
+                await navigator.clipboard.writeText(motor.resumen(r));
+                toast('Resumen copiado', 'success');
+            } catch (e) {
+                toast('No se pudo copiar', 'error');
+            }
+        });
+        div.appendChild(btns);
+        const chat = document.getElementById('voz-chat');
+        if (chat) chat.scrollTop = chat.scrollHeight;
     }
 
     // ==================== LLM ====================
@@ -2409,7 +2628,10 @@ EVENTOS DEL CALENDARIO (${agenda.lista.length} de ${agenda.total}; "fecha" y "ho
 ${JSON.stringify(agenda.lista)}
 ${agenda.total > agenda.lista.length ? 'ATENCIÓN: la lista de eventos es parcial. Si el usuario se refiere a un evento que no ves aquí, NO digas que no existe: usa "buscar" con eventoId null.' : ''}
 
-JUZGADOS TSJ QUINTANA ROO VÁLIDOS (usa el nombre EXACTO):
+${ultimoCalculoLaboral ? `ÚLTIMO CÁLCULO LABORAL (parámetros de calcular_laboral; úsalos si pide ajustarlo):
+${JSON.stringify(ultimoCalculoLaboral)}
+
+` : ''}JUZGADOS TSJ QUINTANA ROO VÁLIDOS (usa el nombre EXACTO):
 ${JSON.stringify(juzgadosTSJ)}
 
 RESPONDE SIEMPRE Y ÚNICAMENTE CON UN OBJETO JSON (sin texto adicional) con esta estructura:
@@ -2491,8 +2713,33 @@ CÓMO DECIDIR ENTRE ESTRADOS DEL TSJ Y DEL PJF (importante):
 - Ejemplo mixto: "busca el 123/2025 en el juzgado primero civil de Cancún y el amparo indirecto 45/2026 en el juzgado primero de distrito de Quintana Roo" → buscar_varios con busquedas=[{accion:"buscar_tsj", parametros:{valor:"123/2025", tipoBusqueda:"numero", juzgado:"JUZGADO PRIMERO CIVIL CANCUN"}}, {accion:"buscar_pjf", parametros:{numero:"45/2026", organismo:"juzgado primero de distrito en quintana roo", tiposAsunto:["amparo indirecto"]}}].
 - Ejemplo con números distintos: "busca el amparo directo 100/2026 y la queja 7/2026 en el primer colegiado del 27" → buscar_varios con dos buscar_pjf, uno por número.
 - NO hace falta que el asunto esté en el catálogo del usuario: si dicta el órgano y el número, manda esos datos y deja expedienteId y expedienteRef en null. Solo usa expedienteRef cuando se refiera a algo SUYO sin dar el órgano ("abre los estrados de lo de Ramírez").
-15. "navegar": {pagina:"inicio"|"expedientes"|"calendario"|"pendientes"|"notas"|"tribunales"|"busqueda"|"pjf"|"impi"|"config"} — "tribunales" abre el apartado de tribunales; "busqueda" es su parte del TSJ y "pjf" la del PJF.
+15. "navegar": {pagina:"inicio"|"expedientes"|"calendario"|"pendientes"|"notas"|"tribunales"|"busqueda"|"pjf"|"laboral"|"impi"|"config"} — "tribunales" abre el apartado de tribunales; "busqueda" es su parte del TSJ y "pjf" la del PJF; "laboral" es la calculadora de finiquito y liquidación (solo abrirla, sin calcular).
 16. "responder": para preguntas generales, saludos o cuando ninguna acción aplica. Usa el campo "respuesta".
+17. "calcular_laboral": calcula finiquito, liquidación o indemnización de un trabajador con la Ley Federal del Trabajo ("calcula el finiquito de…", "cuánto le toca a…", "¿cuánto es la liquidación si lo despidieron?"). Parámetros:
+    {supuesto, fechaIngreso:"YYYY-MM-DD", fechaBaja:"YYYY-MM-DD", salario:número, periodo:"diario"|"semanal"|"catorcenal"|"quincenal"|"mensual",
+     mesesJuicio, porcentajeIncapacidad, incluirVeinteDias:bool, tipoContrato:"indeterminado"|"determinado", zona:"general"|"frontera",
+     diasSalarioPendientes, vacacionesPendientesDias, vacacionesTomadasAnioDias, aguinaldoPagado, otrasPercepciones, otrasPercepcionesConcepto,
+     diasAguinaldo, primaVacacionalPct, diasVacacionesAnio, expedienteId, expedienteRef}
+    - OBLIGATORIOS: supuesto, fechaIngreso, fechaBaja, salario y periodo. Con incapacidadParcial, también porcentajeIncapacidad. Todo lo demás es OPCIONAL: ponlo solo si el usuario lo dice y NUNCA lo preguntes.
+    - "supuesto" es una de estas claves EXACTAS:
+      · renuncia — renunció, se fue por su voluntad.
+      · mutuo — mutuo acuerdo, terminó su contrato, fin de la obra o del tiempo pactado.
+      · despidoJustificado — lo despidieron CON causa (art. 47): faltas, robo, indisciplina.
+      · despidoInjustificado — lo corrieron sin causa o sin decirle por qué (liquidación, art. 48). Es el despido "normal" cuando no se sabe si hubo causa.
+      · negativaReinstalar — el patrón se niega a reinstalarlo (arts. 49 y 50).
+      · rescisionTrabajador — el trabajador se fue por culpa del patrón: no le pagaban, le bajaron el sueldo, malos tratos (art. 51).
+      · cierreEmpresa — cierre o quiebra de la empresa.
+      · reajuste — recorte de personal por nueva maquinaria o procedimientos.
+      · incapacidadNoProfesional — incapacidad que no viene del trabajo.
+      · muerte — murió por causa ajena al trabajo. muerteRiesgo — murió por un accidente o enfermedad de trabajo.
+      · incapacidadTotal / incapacidadParcial — incapacidad permanente por riesgo de trabajo (total o parcial).
+      Si dice solo "despido" o "lo corrieron" sin causa, usa despidoInjustificado. Si no dice cómo terminó, pregunta.
+    - fechaBaja: "hoy", "ya no trabaja desde hoy" o "lo acaban de correr" → la fecha de hoy. "Entró en marzo de 2020" sin día → el 1 de ese mes. Solo el año o nada → pregunta.
+    - salario: número sin signos ("12 mil" → 12000). Si dice cuánto gana pero no cada cuándo ("gana 5,000"), pregunta si es por día, semana, quincena o mes. "Al mes", "mensuales" → mensual; "a la semana" → semanal; "al día", "diarios" → diario.
+    - mesesJuicio: meses que duró el juicio (salarios vencidos), solo si lo dice. incluirVeinteDias=true solo si pide sumar los 20 días por año en un despido injustificado.
+    - Ve pidiendo lo que falte de UNO EN UNO (faltan_datos=true y una sola "pregunta"), conservando en "parametros" todo lo reunido, hasta tener los obligatorios. Si en una sola frase da varios datos, tómalos todos.
+    - Si pide ajustar el último cálculo ("¿y si fueron 6 meses de juicio?", "ahora con 20 días por año", "¿y si renunciara?"), parte de ÚLTIMO CÁLCULO LABORAL y cambia solo lo que dice.
+    - Si menciona un expediente, pon su id o expedienteRef: sirve para guardar el cálculo como nota del expediente.
 
 CÓMO REFERIRSE A UN EXPEDIENTE (importante):
 - Toda acción que reciba "expedienteId" acepta también "expedienteRef": el texto TAL CUAL lo dijo el usuario para referirse al expediente ("el 123", "lo de Ramírez", "el del juzgado segundo", "123 diagonal 2025").
