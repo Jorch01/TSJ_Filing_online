@@ -19,11 +19,12 @@ function verificar(desc, cond, detalle) {
 }
 const igual = (d, a, b) => verificar(d, JSON.stringify(a) === JSON.stringify(b), `esperado ${JSON.stringify(b)}, obtenido ${JSON.stringify(a)}`);
 
-const TABLA = `<!DOCTYPE html><html><head><meta charset="iso-8859-1"><title>Estrados</title></head><body>
-<table id="tabla" class="display"><thead><tr><th>Acuerdo</th><th>Documento</th><th>Juicio</th><th>Promovente</th><th>Demandado</th><th>Extracto</th><th>Publicación</th></tr></thead>
-<tbody>
-<tr class="odd"><td>1234</td><td>ACUERDO</td><td>ORDINARIO CIVIL</td><td>JOSÉ PÉREZ</td><td>MARÍA NÚÑEZ</td><td>Se tiene por contestada la demanda &amp; se abre el periodo de pruebas.<br>Notifíquese.</td><td>26/09/2026</td></tr>
-<tr class="even"><td>1201</td><td><a href="#">AUTO</a></td><td>ORDINARIO CIVIL</td><td>JOSÉ PÉREZ</td><td>MARÍA NÚÑEZ</td><td>Se admite la demanda.</td><td>10/09/2026</td></tr>
+// Estructura REAL de la página de estrados (vista desde Oracle Querétaro el
+// 29-sep-2026): UTF-8, encabezados en <th>, 7 columnas de datos más una celda
+// con el enlace a gestión, IdAcuerdo numérico y fecha AAAA-MM-DD.
+const TABLA = `<!DOCTYPE html><html><head><meta charset="utf-8" /><title>Lista de acuerdos</title><link rel="stylesheet" href="css/main.css" /><link rel="stylesheet" href="css/bootstrap.min.css" /></head><body class="list_acuerdos"><h1>JUZGADO</h1><h3>Expediente</h3><br><table class="tinytable floatThead-table"><thead><tr><th class="head">IdAcuerdo</th><th class="head">Documento</th><th class="head">Juicio</th><th class="head">Promoventes</th><th class="head">Demandados</th><th class="head">Extracto</th><th class="head">Fecha Publicación</th><th></th></tr></thead><tbody>
+<tr><td>1234</td><td>ACUERDO</td><td>ORDINARIO CIVIL</td><td>JOSÉ PÉREZ</td><td>MARÍA NÚÑEZ</td><td>Se tiene por contestada la demanda &amp; se abre el periodo de pruebas.<br>Notifíquese.</td><td>2026-09-26</td><td><a href="https://gestionchetumal.tsjqroo.gob.mx/Consulta" target="_blank"><img alt="Exp" src="images/exp3.png" width="28px"></a></td></tr>
+<tr><td>1201</td><td><a href="#">AUTO</a></td><td>ORDINARIO CIVIL</td><td>JOSÉ PÉREZ</td><td>MARÍA NÚÑEZ</td><td>Se admite la demanda.</td><td>2026-09-10</td><td><a href="https://gestionchetumal.tsjqroo.gob.mx/Consulta" target="_blank"><img alt="Exp" src="images/exp3.png" width="28px"></a></td></tr>
 </tbody></table></body></html>`;
 
 (async () => {
@@ -49,12 +50,14 @@ const TABLA = `<!DOCTYPE html><html><head><meta charset="iso-8859-1"><title>Estr
     // ---------- Lectura ----------
     const acuerdos = W.extraerAcuerdos(TABLA);
     igual('lee las dos filas de acuerdos (y no el encabezado)', acuerdos.length, 2);
-    igual('separa cada columna', [acuerdos[0].idAcuerdo, acuerdos[0].documento, acuerdos[0].fecha], ['1234', 'ACUERDO', '26/09/2026']);
+    igual('separa cada columna', [acuerdos[0].idAcuerdo, acuerdos[0].documento, acuerdos[0].fecha], ['1234', 'ACUERDO', '2026-09-26']);
+    igual('la celda del enlace no estorba', acuerdos[0].extra, ['']);
     igual('limpia etiquetas, saltos y entidades del extracto', acuerdos[0].extracto,
         'Se tiene por contestada la demanda & se abre el periodo de pruebas. Notifíquese.');
     igual('lee el texto dentro de enlaces', acuerdos[1].documento, 'AUTO');
 
-    const latin1 = Buffer.from(TABLA, 'latin1');
+    // El TSJ hoy responde en UTF-8; si algún día cambia a latin-1, se sigue leyendo.
+    const latin1 = Buffer.from(TABLA.replace('charset="utf-8"', 'charset="iso-8859-1"'), 'latin1');
     const dec = W.decodificar(new Uint8Array(latin1), 'text/html');
     igual('respeta el charset de la página (latin-1)', W.extraerAcuerdos(dec.texto)[0].promoventes, 'JOSÉ PÉREZ');
 
@@ -84,7 +87,7 @@ const TABLA = `<!DOCTYPE html><html><head><meta charset="iso-8859-1"><title>Estr
     r = await llamar('/api/diagnostico?url=' + encodeURIComponent('https://www.tsjqroo.gob.mx/estrados/buscador_primera.php?int=1&metodo=1&findexp=100%2F2025'));
     d = await r.json();
     igual('diagnóstico: concluye que lee acuerdos', d.conclusion, 'LEE_ACUERDOS');
-    igual('diagnóstico: muestra la estructura', d.muestraAcuerdos[0].fecha, '26/09/2026');
+    igual('diagnóstico: muestra la estructura', d.muestraAcuerdos[0].fecha, '2026-09-26');
 
     respuesta = () => new Response('<html><body><table id="t"></table><script src="x.js"></script><script>$("#t").DataTable({ajax:"lista.php"})</script></body></html>', { status: 200 });
     d = await (await llamar('/api/diagnostico?int=1&findexp=9/2026')).json();
