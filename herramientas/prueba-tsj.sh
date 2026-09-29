@@ -23,15 +23,42 @@ for p in 443 80; do
 done
 
 echo
-echo "════ 3. Páginas del TSJ"
+echo "════ 3. Certificado del TSJ"
+# El servidor del TSJ no envía el certificado intermedio de su cadena. Los
+# navegadores lo descargan solos (de la dirección "CA Issuers" que trae el
+# propio certificado); aquí se hace lo mismo, sin desactivar la verificación.
+CERT=$(echo | timeout 15 openssl s_client -connect www.tsjqroo.gob.mx:443 -servername www.tsjqroo.gob.mx 2>/dev/null | openssl x509 2>/dev/null)
+if [ -n "$CERT" ]; then
+  echo "$CERT" | openssl x509 -noout -subject -issuer -enddate 2>/dev/null | sed 's/^/   /'
+  AIA=$(echo "$CERT" | openssl x509 -noout -text 2>/dev/null | grep -oE 'CA Issuers - URI:[^ ]+' | head -1 | sed 's/CA Issuers - URI://')
+  echo "   intermedio publicado en: ${AIA:-(no indicado)}"
+  CAS=/tmp/tsj-cadena.pem
+  cat /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt 2>/dev/null > "$CAS"
+  if [ -n "$AIA" ] && curl -s --max-time 15 -o /tmp/intermedio "$AIA"; then
+    (openssl x509 -inform DER -in /tmp/intermedio 2>/dev/null || openssl x509 -in /tmp/intermedio 2>/dev/null) >> "$CAS"
+    echo "   ✓ intermedio descargado y agregado a la cadena de confianza"
+  fi
+  CURL_CA="--cacert $CAS"
+else
+  echo "   (no se pudo leer el certificado)"
+  CURL_CA=""
+fi
+
+echo
+echo "════ 4. Páginas del TSJ (verificando el certificado completo)"
+VERIFICADO=0
 for u in "https://www.tsjqroo.gob.mx/" "$ESTRADOS"; do
   echo "── $u"
-  curl -sS -o /tmp/tsj.html -w "   status=%{http_code}  tiempo=%{time_total}s  bytes=%{size_download}\n" \
-       --max-time 30 -A "$UA" "$u" 2>&1 | sed 's/^/   /'
+  codigo=$(curl -sS -o /tmp/tsj.html -w "%{http_code} %{time_total} %{size_download}" \
+       --max-time 30 -A "$UA" $CURL_CA "$u" 2>/tmp/tsj.err) || true
+  set -- $codigo
+  echo "   status=${1:-000}  tiempo=${2:-?}s  bytes=${3:-0}"
+  [ -s /tmp/tsj.err ] && sed 's/^/   /' /tmp/tsj.err | head -2
+  [ "${1:-000}" = "200" ] && VERIFICADO=1
 done
 
 echo
-echo "════ 4. Estructura de la página de estrados"
+echo "════ 5. Estructura de la página de estrados"
 if [ -s /tmp/tsj.html ]; then
   echo "   filas <tr>: $(grep -oi '<tr' /tmp/tsj.html | wc -l)"
   echo "   filas odd/even: $(grep -oiE 'class="(odd|even)' /tmp/tsj.html | wc -l)"
@@ -43,8 +70,10 @@ else
 fi
 
 echo
-if [ "$ABIERTO" = 1 ] && [ -s /tmp/tsj.html ]; then
-  echo "✅ RESULTADO: el TSJ SÍ responde a esta máquina. Oracle Querétaro sirve para el aviso de acuerdos."
+if [ "$VERIFICADO" = 1 ] && [ -s /tmp/tsj.html ]; then
+  echo "✅ RESULTADO: el TSJ SÍ responde a esta máquina, con conexión segura verificada. Oracle Querétaro sirve para el aviso de acuerdos."
+elif [ "$ABIERTO" = 1 ]; then
+  echo "🟡 RESULTADO: el TSJ acepta la conexión, pero la página no se pudo leer (ver arriba)."
 else
   echo "🔴 RESULTADO: el TSJ tampoco responde aquí."
 fi
