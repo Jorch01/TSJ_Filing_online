@@ -520,13 +520,13 @@ ${faqHTML(PREGUNTAS_PJF)}
 
 const PREGUNTAS_LABORAL = [
     ['¿Qué incluye el finiquito?',
-        'Lo que se debe siempre que termina la relación de trabajo, sin importar la causa: salarios pendientes, aguinaldo proporcional, vacaciones no disfrutadas y proporcionales, prima vacacional y otras prestaciones adeudadas.'],
+        'Lo que se debe siempre que termina la relación de trabajo, sin importar la causa: salarios pendientes, aguinaldo proporcional, vacaciones no disfrutadas y proporcionales, prima vacacional y otras prestaciones adeudadas. Se calcula con el salario base; el salario integrado solo entra en las indemnizaciones.'],
     ['¿Cuál es la diferencia entre finiquito y liquidación?',
         'El finiquito se paga en toda terminación. La liquidación se suma cuando hay despido injustificado u otra causa que da derecho a indemnización: tres meses de salario integrado, prima de antigüedad y, según el caso, 20 días por año y salarios vencidos.'],
     ['¿Cuándo se pagan los 20 días por año?',
         'Cuando el patrón se niega a reinstalar (artículos 49 y 50), cuando el trabajador rescinde por causa imputable al patrón (artículo 52) o en el reajuste por maquinaria nueva (artículo 439). En el despido injustificado del artículo 48 no son obligatorios, aunque suelen pactarse en convenio.'],
     ['¿Cómo se calcula la prima de antigüedad?',
-        'Son 12 días de salario por cada año de servicio. El salario se topa al doble del salario mínimo (artículos 485 y 486). En renuncia solo se paga con 15 años o más; en despido, siempre.'],
+        'Son 12 días de salario por cada año de servicio. El salario se topa al doble del salario mínimo de la zona —la general o la Zona Libre de la Frontera Norte— y nunca baja de un salario mínimo (artículos 485 y 486). En renuncia solo se paga con 15 años o más; en despido, siempre.'],
     ['¿Cuántos días de vacaciones corresponden en 2026?',
         '12 días el primer año, 14 el segundo, 16 el tercero, 18 el cuarto y 20 el quinto; a partir del sexto año, dos días más por cada cinco años de servicio (reforma de "vacaciones dignas").'],
     ['¿La indemnización paga ISR?',
@@ -573,9 +573,9 @@ function paginaCalculadora() {
             <div class="sitio-ancho sitio-angosto">
                 <h2>Qué calcula</h2>
                 <ul class="sitio-lista">
-                    <li><strong>Finiquito:</strong> salarios devengados, aguinaldo proporcional, vacaciones proporcionales por año de servicio y pendientes, prima vacacional y otras percepciones.</li>
+                    <li><strong>Finiquito:</strong> salarios devengados, aguinaldo proporcional, vacaciones proporcionales por año de servicio y pendientes, prima vacacional y otras percepciones, con el salario base.</li>
                     <li><strong>Liquidación:</strong> indemnización constitucional de 3 meses con salario integrado, 20 días por año cuando la ley los da, prima de antigüedad topada y salarios vencidos con su tope de 12 meses e intereses.</li>
-                    <li><strong>Otros supuestos:</strong> rescisión por causa del patrón, cierre de la empresa, reajuste por maquinaria, incapacidad, muerte y riesgos de trabajo (1,095 y 5,000 días).</li>
+                    <li><strong>Otros supuestos:</strong> rescisión por causa del patrón, cierre de la empresa, reajuste por maquinaria, incapacidad, muerte y riesgos de trabajo (1,095 y 5,000 días, con el tope de 2 salarios mínimos de la zona).</li>
                     <li><strong>ISR:</strong> exenciones en UMA y tasa efectiva del artículo 95 de la Ley del ISR con la tarifa 2026.</li>
                 </ul>
                 <p>¿Llevas el juicio? <a href="${APP}?tour=1">Guarda el cálculo en el expediente</a>, agenda las audiencias y lleva los plazos en la misma herramienta.</p>

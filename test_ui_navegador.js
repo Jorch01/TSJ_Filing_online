@@ -2700,10 +2700,17 @@ async function main() {
             r.ayudaVacaciones = document.getElementById('lab-vac-pendientes-ayuda').textContent;
             const visible = (id) => document.getElementById(id).style.display !== 'none';
             r.camposDespido = [visible('lab-grupo-veinte'), visible('lab-grupo-juicio'), visible('lab-grupo-incapacidad')];
+            const bases = () => document.querySelector('#lab-resultados .lab-bases')?.textContent.replace(/\s+/g, ' ') || '';
+            const formulas = () => [...document.querySelectorAll('#lab-resultados .lab-formula')].map(f => f.textContent);
+            r.basesDespido = bases();
+            r.primaDespido = formulas().find(t => /^12 días/.test(t)) || '';
+            r.ayudaZona = document.getElementById('lab-zona').parentElement.querySelector('.form-help')?.textContent || '';
             const sel = document.getElementById('lab-supuesto');
             sel.value = 'renuncia'; sel.dispatchEvent(new Event('change'));
             await pausa(50);
             r.camposRenuncia = [visible('lab-grupo-veinte'), visible('lab-grupo-juicio'), visible('lab-grupo-incapacidad')];
+            r.basesRenuncia = bases();
+            r.formulasRenuncia = formulas();
             sel.value = 'incapacidadParcial'; sel.dispatchEvent(new Event('change'));
             await pausa(50);
             r.campoPorcentaje = visible('lab-grupo-incapacidad');
@@ -2731,6 +2738,17 @@ async function main() {
             /año 6 de servicio, son 22 días/.test(lab.ayudaVacaciones), lab.ayudaVacaciones);
         igual('laboral: el despido muestra 20 días opcionales y juicio', lab.camposDespido, [true, true, false]);
         igual('laboral: la renuncia los oculta', lab.camposRenuncia, [false, false, false]);
+        igual('laboral: la renuncia no enseña salario integrado', /integrado/i.test(lab.basesRenuncia), false);
+        verificar('laboral: enseña el salario base del finiquito', /Salario base \(finiquito\): \$500\.00/.test(lab.basesRenuncia), lab.basesRenuncia);
+        verificar('laboral: y cada fórmula del finiquito va con el salario base',
+            lab.formulasRenuncia.length >= 3 && lab.formulasRenuncia.every(f => /\(salario base\)/.test(f)), JSON.stringify(lab.formulasRenuncia));
+        verificar('laboral: el despido sí enseña el integrado, para las indemnizaciones',
+            /Salario integrado \(indemnizaciones\): \$528\.\d\d/.test(lab.basesDespido), lab.basesDespido);
+        verificar('laboral: y el salario mínimo de la zona con su tope',
+            /Salario mínimo \(zona general\): \$315\.04, tope de 2: \$630\.08/.test(lab.basesDespido), lab.basesDespido);
+        verificar('laboral: la prima de antigüedad dice su tope de la zona',
+            /no rebasa el tope de 2 veces el salario mínimo de la zona general: \$630\.08/.test(lab.primaDespido), lab.primaDespido);
+        verificar('laboral: la zona explica qué topes fija', /tope de 2 salarios mínimos/.test(lab.ayudaZona), lab.ayudaZona);
         igual('laboral: la incapacidad parcial pide el porcentaje', lab.campoPorcentaje, true);
         igual('laboral: sumar los 20 días los agrega al desglose', lab.conVeinte, true);
         igual('laboral: guardar el cálculo crea una nota', lab.nota, true);
