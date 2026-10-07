@@ -88,7 +88,7 @@
           "name": "¿Qué incluye el finiquito?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Lo que se debe siempre que termina la relación de trabajo, sin importar la causa: salarios pendientes, aguinaldo proporcional, vacaciones no disfrutadas y proporcionales, prima vacacional y otras prestaciones adeudadas."
+            "text": "Lo que se debe siempre que termina la relación de trabajo, sin importar la causa: salarios pendientes, aguinaldo proporcional, vacaciones no disfrutadas y proporcionales, prima vacacional y otras prestaciones adeudadas. Se calcula con el salario base; el salario integrado solo entra en las indemnizaciones."
           }
         },
         {
@@ -112,7 +112,7 @@
           "name": "¿Cómo se calcula la prima de antigüedad?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Son 12 días de salario por cada año de servicio. El salario se topa al doble del salario mínimo (artículos 485 y 486). En renuncia solo se paga con 15 años o más; en despido, siempre."
+            "text": "Son 12 días de salario por cada año de servicio. El salario se topa al doble del salario mínimo de la zona —la general o la Zona Libre de la Frontera Norte— y nunca baja de un salario mínimo (artículos 485 y 486). En renuncia solo se paga con 15 años o más; en despido, siempre."
           }
         },
         {
@@ -233,8 +233,9 @@
                             </div>
                             <div class="form-row">
                                 <div class="form-group">
-                                    <label for="lab-salario">Salario *</label>
+                                    <label for="lab-salario">Salario base *</label>
                                     <input type="number" id="lab-salario" min="0" step="0.01" placeholder="Ej: 15000" oninput="recalcularLaboral()">
+                                    <span class="form-help">Sin prestaciones. Con él se paga el finiquito; el integrado se calcula solo, y solo para las indemnizaciones.</span>
                                 </div>
                                 <div class="form-group">
                                     <label for="lab-periodo">Periodo del salario</label>
@@ -252,6 +253,7 @@
                                         <option value="general">General</option>
                                         <option value="frontera">Zona Libre de la Frontera Norte</option>
                                     </select>
+                                    <span class="form-help">Fija el tope de 2 salarios mínimos de la prima de antigüedad y de las indemnizaciones por riesgo de trabajo.</span>
                                 </div>
                             </div>
                         </div>
@@ -318,7 +320,7 @@
                                 </div>
                                 <div class="form-group">
                                     <label for="lab-sdi-manual">Salario diario integrado conocido ($)</label>
-                                    <input type="number" id="lab-sdi-manual" min="0" step="0.01" placeholder="Se calcula solo" oninput="recalcularLaboral()">
+                                    <input type="number" id="lab-sdi-manual" min="0" step="0.01" placeholder="Se calcula solo; solo para indemnizaciones" oninput="recalcularLaboral()">
                                 </div>
                             </div>
                             <div class="form-row">
@@ -377,9 +379,9 @@
             <div class="sitio-ancho sitio-angosto">
                 <h2>Qué calcula</h2>
                 <ul class="sitio-lista">
-                    <li><strong>Finiquito:</strong> salarios devengados, aguinaldo proporcional, vacaciones proporcionales por año de servicio y pendientes, prima vacacional y otras percepciones.</li>
+                    <li><strong>Finiquito:</strong> salarios devengados, aguinaldo proporcional, vacaciones proporcionales por año de servicio y pendientes, prima vacacional y otras percepciones, con el salario base.</li>
                     <li><strong>Liquidación:</strong> indemnización constitucional de 3 meses con salario integrado, 20 días por año cuando la ley los da, prima de antigüedad topada y salarios vencidos con su tope de 12 meses e intereses.</li>
-                    <li><strong>Otros supuestos:</strong> rescisión por causa del patrón, cierre de la empresa, reajuste por maquinaria, incapacidad, muerte y riesgos de trabajo (1,095 y 5,000 días).</li>
+                    <li><strong>Otros supuestos:</strong> rescisión por causa del patrón, cierre de la empresa, reajuste por maquinaria, incapacidad, muerte y riesgos de trabajo (1,095 y 5,000 días, con el tope de 2 salarios mínimos de la zona).</li>
                     <li><strong>ISR:</strong> exenciones en UMA y tasa efectiva del artículo 95 de la Ley del ISR con la tarifa 2026.</li>
                 </ul>
                 <p>¿Llevas el juicio? <a href="/docs/?tour=1">Guarda el cálculo en el expediente</a>, agenda las audiencias y lleva los plazos en la misma herramienta.</p>
@@ -387,7 +389,7 @@
 
                 <details class="sitio-faq">
                     <summary>¿Qué incluye el finiquito?</summary>
-                    <p>Lo que se debe siempre que termina la relación de trabajo, sin importar la causa: salarios pendientes, aguinaldo proporcional, vacaciones no disfrutadas y proporcionales, prima vacacional y otras prestaciones adeudadas.</p>
+                    <p>Lo que se debe siempre que termina la relación de trabajo, sin importar la causa: salarios pendientes, aguinaldo proporcional, vacaciones no disfrutadas y proporcionales, prima vacacional y otras prestaciones adeudadas. Se calcula con el salario base; el salario integrado solo entra en las indemnizaciones.</p>
                 </details>
                 <details class="sitio-faq">
                     <summary>¿Cuál es la diferencia entre finiquito y liquidación?</summary>
@@ -399,7 +401,7 @@
                 </details>
                 <details class="sitio-faq">
                     <summary>¿Cómo se calcula la prima de antigüedad?</summary>
-                    <p>Son 12 días de salario por cada año de servicio. El salario se topa al doble del salario mínimo (artículos 485 y 486). En renuncia solo se paga con 15 años o más; en despido, siempre.</p>
+                    <p>Son 12 días de salario por cada año de servicio. El salario se topa al doble del salario mínimo de la zona —la general o la Zona Libre de la Frontera Norte— y nunca baja de un salario mínimo (artículos 485 y 486). En renuncia solo se paga con 15 años o más; en despido, siempre.</p>
                 </details>
                 <details class="sitio-faq">
                     <summary>¿Cuántos días de vacaciones corresponden en 2026?</summary>

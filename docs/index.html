@@ -2180,8 +2180,9 @@
                             </div>
                             <div class="form-row">
                                 <div class="form-group">
-                                    <label for="lab-salario">Salario *</label>
+                                    <label for="lab-salario">Salario base *</label>
                                     <input type="number" id="lab-salario" min="0" step="0.01" placeholder="Ej: 15000" oninput="recalcularLaboral()">
+                                    <span class="form-help">Sin prestaciones. Con él se paga el finiquito; el integrado se calcula solo, y solo para las indemnizaciones.</span>
                                 </div>
                                 <div class="form-group">
                                     <label for="lab-periodo">Periodo del salario</label>
@@ -2199,6 +2200,7 @@
                                         <option value="general">General</option>
                                         <option value="frontera">Zona Libre de la Frontera Norte</option>
                                     </select>
+                                    <span class="form-help">Fija el tope de 2 salarios mínimos de la prima de antigüedad y de las indemnizaciones por riesgo de trabajo.</span>
                                 </div>
                             </div>
                         </div>
@@ -2265,7 +2267,7 @@
                                 </div>
                                 <div class="form-group">
                                     <label for="lab-sdi-manual">Salario diario integrado conocido ($)</label>
-                                    <input type="number" id="lab-sdi-manual" min="0" step="0.01" placeholder="Se calcula solo" oninput="recalcularLaboral()">
+                                    <input type="number" id="lab-sdi-manual" min="0" step="0.01" placeholder="Se calcula solo; solo para indemnizaciones" oninput="recalcularLaboral()">
                                 </div>
                             </div>
                             <div class="form-row">

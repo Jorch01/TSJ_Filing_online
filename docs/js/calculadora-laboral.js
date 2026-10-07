@@ -8,10 +8,13 @@
  *
  * La lógica básica sigue la de las calculadoras públicas (PROFEDET y las más
  * usadas), afinada contra la ley donde esas se simplifican:
+ *  - el finiquito con el salario base; el integrado (arts. 84 y 89) solo en
+ *    las indemnizaciones, y solo se calcula si el motivo da alguna que lo use;
  *  - vacaciones con la tabla de "vacaciones dignas" (reforma 2023);
  *  - proporcionales por AÑO DE SERVICIO (art. 79), no por año calendario;
  *  - prima de antigüedad con el salario topado entre 1 y 2 salarios mínimos
- *    (arts. 485 y 486), y en renuncia solo con 15 años o más (art. 162-III);
+ *    de la zona (arts. 485 y 486), y en renuncia solo con 15 años o más
+ *    (art. 162-III); las de riesgo de trabajo, con el mismo tope;
  *  - los 20 días por año solo donde la ley los da (arts. 49, 50, 52, 439),
  *    con la opción de sumarlos cuando se negocian en un convenio;
  *  - salarios vencidos topados a 12 meses más intereses (art. 48);
@@ -44,6 +47,9 @@
             [425642.00, 133488.54, 35.00]
         ]
     };
+
+    // Cómo se nombra cada zona en las fórmulas: los topes dependen de ella.
+    const NOMBRES_ZONA = { general: 'zona general', frontera: 'Zona Libre de la Frontera Norte' };
 
     // ==================== SUPUESTOS ====================
     // Qué paga cada forma de terminar la relación. `primaAntiguedad`:
@@ -206,6 +212,19 @@
     const dinero = (n) => '$' + redondear(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const num = (n, dec = 2) => redondear(n).toLocaleString('es-MX', { maximumFractionDigits: dec });
 
+    /**
+     * El salario para la prima de antigüedad y las indemnizaciones por riesgo
+     * de trabajo: nunca menos de un salario mínimo de la zona ni más de dos
+     * (arts. 485 y 486). La nota va en la fórmula y dice qué se tomó y por
+     * qué, con la zona y el monto, para que el tope no quede escondido.
+     */
+    function salarioEntreMinimos(salario, nombreSalario, sm, smDe) {
+        const tope = 2 * sm;
+        if (salario > tope) return { base: tope, nota: `tope: 2 veces el salario mínimo ${smDe}, 2 × ${dinero(sm)}` };
+        if (salario < sm) return { base: sm, nota: `mínimo: el salario mínimo ${smDe}` };
+        return { base: salario, nota: `${nombreSalario}; no rebasa el tope de 2 veces el salario mínimo ${smDe}: ${dinero(tope)}` };
+    }
+
     // ==================== MOTOR ====================
 
     /**
@@ -245,7 +264,10 @@
         if (errores.length) return { ok: false, errores };
 
         const n = (v) => Math.max(0, Number(v) || 0);
-        const sm = n(d.salarioMinimo) || PARAMETROS.salarioMinimo[d.zona] || PARAMETROS.salarioMinimo.general;
+        const zona = PARAMETROS.salarioMinimo[d.zona] ? d.zona : 'general';
+        const smCapturado = n(d.salarioMinimo);
+        const sm = smCapturado || PARAMETROS.salarioMinimo[zona];
+        const smDe = smCapturado ? 'capturado' : `de la ${NOMBRES_ZONA[zona]}`;
         const uma = n(d.uma) || PARAMETROS.uma;
         const primaPct = Math.max(25, n(d.primaVacacionalPct)) / 100;
         if (n(d.primaVacacionalPct) < 25) avisos.push('La prima vacacional no puede ser menor al 25% (art. 80); se usó 25%.');
@@ -261,12 +283,19 @@
         const vacLey = diasVacaciones(anioEnCurso);
         const vacAnio = Math.max(vacLey, n(d.diasVacacionesAnio));
 
-        // Salario diario integrado (art. 84 y 89): cuota diaria más la parte
-        // diaria de aguinaldo y prima vacacional, más lo demás que se pague
-        // con regularidad.
+        const veinte = supuesto.veinteDias === 'siempre' ||
+            (supuesto.veinteDias === 'opcional' && d.incluirVeinteDias);
+        const meses = n(d.mesesJuicio);
+
+        // El finiquito se paga con el salario base. El integrado (arts. 84 y
+        // 89: cuota diaria más la parte diaria de aguinaldo y prima vacacional,
+        // más lo demás que se pague con regularidad) es solo para las
+        // indemnizaciones, y solo se calcula si el motivo da alguna que lo use:
+        // en una renuncia no hay nada que integrar.
+        const usaIntegrado = !!(supuesto.tresMeses || supuesto.cuatroMeses || supuesto.unMes || veinte ||
+            supuesto.riesgo || (supuesto.salariosVencidos && meses > 0));
         const factor = 1 + (diasAguinaldo + vacAnio * primaPct) / 365;
-        const sdiCalculado = sd * factor + n(d.otrasPrestacionesDiarias);
-        const sdi = n(d.sdiManual) || sdiCalculado;
+        const sdi = usaIntegrado ? (n(d.sdiManual) || sd * factor + n(d.otrasPrestacionesDiarias)) : null;
 
         const conceptos = [];
         const agregar = (c) => { c.importe = redondear(c.importe); if (c.importe > 0 || c.mostrarEnCero) conceptos.push(c); };
@@ -275,7 +304,7 @@
         agregar({
             clave: 'salarios', grupo: 'finiquito', fiscal: 'ordinario',
             concepto: 'Salarios devengados no pagados',
-            formula: `${num(n(d.diasSalarioPendientes))} días × ${dinero(sd)}`,
+            formula: `${num(n(d.diasSalarioPendientes))} días × ${dinero(sd)} (salario base)`,
             fundamento: 'Arts. 82 y 88 LFT',
             importe: n(d.diasSalarioPendientes) * sd
         });
@@ -290,7 +319,7 @@
         agregar({
             clave: 'aguinaldo', grupo: 'finiquito', fiscal: 'aguinaldo',
             concepto: 'Aguinaldo proporcional',
-            formula: `${diasAguinaldo} días × ${diasAnioCalendario}/${diasDelAnio} días trabajados en ${anioBaja} = ${num(aguinaldoDias, 4)} días × ${dinero(sd)}` +
+            formula: `${diasAguinaldo} días × ${diasAnioCalendario}/${diasDelAnio} días trabajados en ${anioBaja} = ${num(aguinaldoDias, 4)} días × ${dinero(sd)} (salario base)` +
                 (n(d.aguinaldoPagado) ? ` − ${dinero(n(d.aguinaldoPagado))} ya pagado` : ''),
             fundamento: 'Art. 87 LFT',
             importe: Math.max(0, aguinaldoBruto - n(d.aguinaldoPagado)),
@@ -303,7 +332,7 @@
             concepto: `Vacaciones proporcionales (año de servicio ${anioEnCurso})`,
             formula: `${vacAnio} días × ${ant.diasAnioEnCurso}/365 días del año en curso` +
                 (n(d.vacacionesTomadasAnioDias) ? ` − ${num(n(d.vacacionesTomadasAnioDias))} ya tomados` : '') +
-                ` = ${num(vacPropDias, 4)} días × ${dinero(sd)}`,
+                ` = ${num(vacPropDias, 4)} días × ${dinero(sd)} (salario base)`,
             fundamento: 'Arts. 76 y 79 LFT',
             importe: vacPropDias * sd,
             mostrarEnCero: true
@@ -313,7 +342,7 @@
         agregar({
             clave: 'vacacionesPendientes', grupo: 'finiquito', fiscal: 'ordinario',
             concepto: 'Vacaciones de años anteriores no disfrutadas',
-            formula: `${num(vacPendDias)} días × ${dinero(sd)}`,
+            formula: `${num(vacPendDias)} días × ${dinero(sd)} (salario base)`,
             fundamento: 'Arts. 76, 81 y 516 LFT (prescriben al año)',
             importe: vacPendDias * sd
         });
@@ -322,7 +351,7 @@
         agregar({
             clave: 'primaVacacional', grupo: 'finiquito', fiscal: 'primaVacacional',
             concepto: `Prima vacacional (${num(primaPct * 100)}%)`,
-            formula: `${num(primaVacDias, 4)} días de vacaciones × ${dinero(sd)} × ${num(primaPct * 100)}%`,
+            formula: `${num(primaVacDias, 4)} días de vacaciones × ${dinero(sd)} (salario base) × ${num(primaPct * 100)}%`,
             fundamento: 'Art. 80 LFT',
             importe: primaVacDias * sd * primaPct,
             mostrarEnCero: true
@@ -365,17 +394,15 @@
             });
         }
 
-        const veinte = supuesto.veinteDias === 'siempre' ||
-            (supuesto.veinteDias === 'opcional' && d.incluirVeinteDias);
         if (veinte) {
             let importe, formula, fundamento;
             if (d.tipoContrato === 'determinado') {
                 if (ant.decimal < 1) {
                     importe = sdi * ant.diasServicio / 2;
-                    formula = `Mitad del tiempo de servicios: ${ant.diasServicio} días ÷ 2 × ${dinero(sdi)}`;
+                    formula = `Mitad del tiempo de servicios: ${ant.diasServicio} días ÷ 2 × ${dinero(sdi)} (salario integrado)`;
                 } else {
                     importe = 180 * sdi + 20 * sdi * (ant.decimal - 1);
-                    formula = `6 meses (180 días) por el primer año + 20 días × ${num(ant.decimal - 1, 4)} años siguientes, × ${dinero(sdi)}`;
+                    formula = `6 meses (180 días) por el primer año + 20 días × ${num(ant.decimal - 1, 4)} años siguientes, × ${dinero(sdi)} (salario integrado)`;
                 }
                 fundamento = 'Art. 50-I LFT (contrato por tiempo determinado)';
             } else {
@@ -392,31 +419,30 @@
             });
         }
 
-        // Prima de antigüedad: 12 días por año con el salario entre 1 y 2 mínimos.
+        // Prima de antigüedad: 12 días por año con el salario entre 1 y 2
+        // mínimos de la zona.
         const aplicaPrima = supuesto.primaAntiguedad === 'siempre' ||
             (supuesto.primaAntiguedad === 'quince' && ant.aniosCompletos >= 15);
-        const basePrima = Math.min(Math.max(sd, sm), 2 * sm);
+        const prima = salarioEntreMinimos(sd, 'salario base', sm, smDe);
         if (aplicaPrima) {
             agregar({
                 clave: 'primaAntiguedad', grupo: 'indemnizacion', fiscal: 'separacion',
                 concepto: 'Prima de antigüedad',
-                formula: `12 días × ${num(ant.decimal, 4)} años × ${dinero(basePrima)}` +
-                    (sd > 2 * sm ? ` (tope: 2 salarios mínimos)` : sd < sm ? ' (mínimo: 1 salario mínimo)' : ''),
+                formula: `12 días × ${num(ant.decimal, 4)} años × ${dinero(prima.base)} (${prima.nota})`,
                 fundamento: 'Arts. 162, 485 y 486 LFT',
-                importe: 12 * basePrima * ant.decimal
+                importe: 12 * prima.base * ant.decimal
             });
         } else if (supuesto.primaAntiguedad === 'quince') {
             avisos.push(`Sin prima de antigüedad: en ${supuesto.nombre.toLowerCase()} solo se paga con 15 años o más (art. 162-III); lleva ${ant.aniosCompletos}.`);
         }
 
         // Salarios vencidos: hasta 12 meses; después, 2% mensual sobre 15 meses.
-        const meses = n(d.mesesJuicio);
         if (supuesto.salariosVencidos && meses > 0) {
             const mesesTopados = Math.min(meses, 12);
             agregar({
                 clave: 'salariosVencidos', grupo: 'indemnizacion', fiscal: 'separacion',
                 concepto: 'Salarios vencidos (caídos)',
-                formula: `${num(mesesTopados)} meses × 30 días × ${dinero(sdi)}` + (meses > 12 ? ' (tope de 12 meses)' : ''),
+                formula: `${num(mesesTopados)} meses × 30 días × ${dinero(sdi)} (salario integrado)` + (meses > 12 ? ', tope de 12 meses' : ''),
                 fundamento: 'Art. 48 LFT',
                 importe: mesesTopados * 30 * sdi
             });
@@ -424,30 +450,32 @@
                 agregar({
                     clave: 'interesesVencidos', grupo: 'indemnizacion', fiscal: 'separacion',
                     concepto: 'Intereses después de 12 meses de juicio',
-                    formula: `15 meses × 30 días × ${dinero(sdi)} × 2% × ${num(meses - 12)} meses`,
+                    formula: `15 meses × 30 días × ${dinero(sdi)} (salario integrado) × 2% × ${num(meses - 12)} meses`,
                     fundamento: 'Art. 48 LFT (2% mensual sobre 15 meses de salario)',
                     importe: 15 * 30 * sdi * 0.02 * (meses - 12)
                 });
             }
         }
 
-        // Riesgos de trabajo: salario del día del riesgo, entre 1 y 2 mínimos.
+        // Riesgos de trabajo: salario integrado del día del riesgo, entre 1 y 2
+        // mínimos de la zona.
         if (supuesto.riesgo) {
-            const baseRiesgo = Math.min(Math.max(sdi, sm), 2 * sm);
-            const nota = sdi > 2 * sm ? ' (tope: 2 salarios mínimos, art. 486)' : sdi < sm ? ' (mínimo: art. 485)' : '';
+            const riesgo = salarioEntreMinimos(sdi, 'salario integrado', sm, smDe);
+            const baseRiesgo = riesgo.base;
+            const nota = ` (${riesgo.nota})`;
             if (supuesto.riesgo === 'muerte') {
                 agregar({
                     clave: 'muerteRiesgo', grupo: 'indemnizacion', fiscal: 'riesgo',
                     concepto: 'Indemnización por muerte',
                     formula: `5,000 días × ${dinero(baseRiesgo)}${nota}`,
-                    fundamento: 'Arts. 502, 484 y 486 LFT',
+                    fundamento: 'Arts. 502, 484, 485 y 486 LFT',
                     importe: 5000 * baseRiesgo
                 });
                 agregar({
                     clave: 'funerarios', grupo: 'indemnizacion', fiscal: 'riesgo',
                     concepto: 'Gastos funerarios (2 meses)',
                     formula: `60 días × ${dinero(baseRiesgo)}${nota}`,
-                    fundamento: 'Art. 500-I LFT',
+                    fundamento: 'Arts. 500-I, 485 y 486 LFT',
                     importe: 60 * baseRiesgo
                 });
             } else if (supuesto.riesgo === 'total') {
@@ -455,7 +483,7 @@
                     clave: 'incapacidadTotal', grupo: 'indemnizacion', fiscal: 'riesgo',
                     concepto: 'Indemnización por incapacidad permanente total',
                     formula: `1,095 días × ${dinero(baseRiesgo)}${nota}`,
-                    fundamento: 'Arts. 495, 484 y 486 LFT',
+                    fundamento: 'Arts. 495, 484, 485 y 486 LFT',
                     importe: 1095 * baseRiesgo
                 });
             } else if (supuesto.riesgo === 'parcial') {
@@ -465,7 +493,7 @@
                     clave: 'incapacidadParcial', grupo: 'indemnizacion', fiscal: 'riesgo',
                     concepto: `Indemnización por incapacidad permanente parcial (${num(pct)}%)`,
                     formula: `${num(pct)}% × 1,095 días × ${dinero(baseRiesgo)}${nota}`,
-                    fundamento: 'Arts. 492, 514 y 486 LFT',
+                    fundamento: 'Arts. 492, 514, 485 y 486 LFT',
                     importe: pct / 100 * 1095 * baseRiesgo,
                     mostrarEnCero: true
                 });
@@ -495,10 +523,15 @@
             ok: true,
             supuesto: Object.assign({ clave: d.supuesto }, supuesto),
             datos: {
-                salarioDiario: redondear(sd), salarioDiarioIntegrado: redondear(sdi),
-                factorIntegracion: Math.round(factor * 10000) / 10000,
-                sdiManual: !!n(d.sdiManual),
-                salarioMinimo: sm, uma, basePrimaAntiguedad: redondear(basePrima),
+                // El integrado es null cuando nada lo usa (solo finiquito).
+                salarioDiario: redondear(sd),
+                salarioDiarioIntegrado: sdi === null ? null : redondear(sdi),
+                factorIntegracion: sdi === null ? null : Math.round(factor * 10000) / 10000,
+                sdiManual: sdi !== null && !!n(d.sdiManual),
+                salarioMinimo: sm, zona, salarioMinimoCapturado: !!smCapturado,
+                topeSalarioMinimo: redondear(2 * sm),
+                usaTopeSalarioMinimo: aplicaPrima || !!supuesto.riesgo,
+                uma, basePrimaAntiguedad: redondear(prima.base),
                 antiguedad: ant, anioDeServicioEnCurso: anioEnCurso, diasVacacionesAnio: vacAnio,
                 diasAguinaldo, primaVacacionalPct: primaPct * 100
             },
@@ -597,12 +630,19 @@
 
     // ==================== RESUMEN EN TEXTO ====================
 
+    /** La zona del salario mínimo de un resultado, como se dice al usuario. */
+    function nombreZona(datos) {
+        return datos.salarioMinimoCapturado ? 'capturado' : NOMBRES_ZONA[datos.zona] || NOMBRES_ZONA.general;
+    }
+
     function resumen(r) {
         if (!r || !r.ok) return '';
         const a = r.datos.antiguedad;
         const lineas = [
             `CÁLCULO LABORAL — ${r.supuesto.nombre}`,
-            `Antigüedad: ${a.aniosCompletos} años y ${a.diasAnioEnCurso} días · Salario diario ${dinero(r.datos.salarioDiario)} · SDI ${dinero(r.datos.salarioDiarioIntegrado)}`,
+            `Antigüedad: ${a.aniosCompletos} años y ${a.diasAnioEnCurso} días · Salario base ${dinero(r.datos.salarioDiario)}` +
+                (r.datos.salarioDiarioIntegrado !== null
+                    ? ` · Salario integrado ${dinero(r.datos.salarioDiarioIntegrado)} (solo indemnizaciones)` : ''),
             ''
         ];
         for (const c of r.conceptos) lineas.push(`• ${c.concepto}: ${dinero(c.importe)}  (${c.formula}; ${c.fundamento})`);
@@ -610,12 +650,13 @@
         if (r.totales.indemnizacion) lineas.push(`Indemnizaciones: ${dinero(r.totales.indemnizacion)}`);
         lineas.push(`TOTAL BRUTO: ${dinero(r.totales.bruto)}`);
         if (r.isr) lineas.push(`ISR estimado: ${dinero(r.isr.total)} · NETO ESTIMADO: ${dinero(r.totales.neto)}`);
-        lineas.push('', `Parámetros ${PARAMETROS.anio}: salario mínimo ${dinero(r.datos.salarioMinimo)}, UMA ${dinero(r.datos.uma)}. Estimación orientativa.`);
+        lineas.push('', `Parámetros ${PARAMETROS.anio}: salario mínimo ${dinero(r.datos.salarioMinimo)} (${nombreZona(r.datos)}), ` +
+            `UMA ${dinero(r.datos.uma)}. Estimación orientativa.`);
         return lineas.join('\n');
     }
 
     const motor = {
-        PARAMETROS, SUPUESTOS, PERIODOS, calcular, datosFaltantes, resumen, estimarISR,
+        PARAMETROS, SUPUESTOS, PERIODOS, NOMBRES_ZONA, calcular, datosFaltantes, resumen, estimarISR, nombreZona,
         diasVacaciones, antiguedad, isrTarifaMensual, salarioDiarioDe, fecha, redondear, dinero
     };
 
@@ -711,8 +752,9 @@
 
             <div class="lab-bases">
                 <span>Antigüedad: <strong>${a.aniosCompletos} año${a.aniosCompletos !== 1 ? 's' : ''} y ${a.diasAnioEnCurso} día${a.diasAnioEnCurso !== 1 ? 's' : ''}</strong> (${num(a.decimal, 4)} años)</span>
-                <span>Salario diario: <strong>${dinero(r.datos.salarioDiario)}</strong></span>
-                <span>Salario integrado: <strong>${dinero(r.datos.salarioDiarioIntegrado)}</strong>${r.datos.sdiManual ? ' (capturado)' : ` (factor ${r.datos.factorIntegracion})`}</span>
+                <span>Salario base (finiquito): <strong>${dinero(r.datos.salarioDiario)}</strong></span>
+                ${r.datos.salarioDiarioIntegrado !== null ? `<span>Salario integrado (indemnizaciones): <strong>${dinero(r.datos.salarioDiarioIntegrado)}</strong>${r.datos.sdiManual ? ' (capturado)' : ` (factor ${r.datos.factorIntegracion})`}</span>` : ''}
+                ${r.datos.usaTopeSalarioMinimo ? `<span>Salario mínimo (${escapar(nombreZona(r.datos))}): <strong>${dinero(r.datos.salarioMinimo)}</strong>, tope de 2: <strong>${dinero(r.datos.topeSalarioMinimo)}</strong></span>` : ''}
                 <span>Vacaciones del año en curso: <strong>${r.datos.diasVacacionesAnio} días</strong></span>
             </div>
 

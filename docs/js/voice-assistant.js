@@ -2496,7 +2496,10 @@
         const div = agregarMensaje('asistente',
             `🧮 <strong>${esc(r.supuesto.nombre)}</strong>` +
             `<br><small>Antigüedad: ${a.aniosCompletos} año${a.aniosCompletos !== 1 ? 's' : ''} y ${a.diasAnioEnCurso} día${a.diasAnioEnCurso !== 1 ? 's' : ''}` +
-            ` · Salario diario ${esc($$(r.datos.salarioDiario))} · SDI ${esc($$(r.datos.salarioDiarioIntegrado))}</small>` +
+            ` · Salario base ${esc($$(r.datos.salarioDiario))}` +
+            // El integrado solo se calcula cuando hay indemnización que lo use.
+            (r.datos.salarioDiarioIntegrado !== null
+                ? ` · Integrado ${esc($$(r.datos.salarioDiarioIntegrado))} (indemnizaciones)` : '') + '</small>' +
             `<ul class="voz-lista voz-laboral-conceptos">${filas}</ul>` +
             `<div class="voz-laboral-totales">${totales.join('<br>')}</div>` +
             r.avisos.map(x => `<br><small>⚠️ ${esc(x)}</small>`).join('') +

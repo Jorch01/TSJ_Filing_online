@@ -153,8 +153,11 @@ cerca('finiquito: vacaciones pendientes', concepto(ajustes, 'vacacionesPendiente
 cerca('finiquito: prima vacacional de contrato sobre todas las vacaciones',
     concepto(ajustes, 'primaVacacional'), (propDias + 20) * 500 * 0.5);
 cerca('finiquito: otras percepciones', concepto(ajustes, 'otras'), 2500);
-cerca('finiquito: el integrado usa el aguinaldo y la prima del contrato',
-    ajustes.datos.salarioDiarioIntegrado, 500 * (1 + (30 + 22 * 0.5) / 365));
+// En una renuncia no hay integrado; en un despido, sale con el aguinaldo y la
+// prima del contrato.
+cerca('indemnización: el integrado usa el aguinaldo y la prima del contrato',
+    C.calcular({ ...base, diasAguinaldo: 30, primaVacacionalPct: 50 }).datos.salarioDiarioIntegrado,
+    500 * (1 + (30 + 22 * 0.5) / 365));
 const minimos = C.calcular({ ...base, diasAguinaldo: 10, primaVacacionalPct: 10 });
 igual('mínimos de ley: aguinaldo 15 días y prima 25% aunque se capture menos',
     [minimos.datos.diasAguinaldo, minimos.datos.primaVacacionalPct], [15, 25]);
@@ -183,6 +186,65 @@ cerca('ISR: neto = bruto − ISR', conIsr.totales.neto, conIsr.totales.bruto - i
 const riesgoIsr = C.calcular({ ...base, supuesto: 'incapacidadTotal', calcularISR: true });
 verificar('ISR: la indemnización por riesgo de trabajo está exenta',
     riesgoIsr.isr.exentoRiesgo > 0 && riesgoIsr.isr.gravadoSeparacion < concepto(riesgoIsr, 'incapacidadTotal'));
+
+// ---------- Salario base para el finiquito; el integrado, solo en indemnizaciones ----------
+// El finiquito se paga con el salario base. El integrado solo se calcula si el
+// motivo da una indemnización que lo use: en una renuncia no aparece.
+const formulas = (res, grupo) => res.conceptos.filter(c => c.grupo === grupo).map(c => c.formula);
+igual('renuncia: no calcula salario integrado', [renuncia.datos.salarioDiarioIntegrado, renuncia.datos.factorIntegracion], [null, null]);
+verificar('renuncia: ninguna fórmula usa el integrado',
+    renuncia.conceptos.every(c => !/integrado/.test(c.formula)), JSON.stringify(renuncia.conceptos.map(c => c.formula)));
+verificar('finiquito: cada fórmula dice que va con el salario base',
+    formulas(ajustes, 'finiquito').filter(f => !/Importe capturado/.test(f)).every(f => /\$500\.00 \(salario base\)/.test(f)),
+    JSON.stringify(formulas(ajustes, 'finiquito')));
+verificar('despido: el finiquito sigue con el salario base aunque haya integrado',
+    formulas(r, 'finiquito').every(f => /salario base/.test(f) && !/integrado/.test(f)), JSON.stringify(formulas(r, 'finiquito')));
+verificar('despido: los 3 meses dicen que van con el integrado', /\(salario integrado\)/.test(
+    (r.conceptos.find(c => c.clave === 'tresMeses') || {}).formula || ''));
+verificar('salarios vencidos: también con el integrado, y dicho',
+    /\(salario integrado\)/.test((juicio20.conceptos.find(c => c.clave === 'salariosVencidos') || {}).formula || '') &&
+    /\(salario integrado\)/.test((juicio20.conceptos.find(c => c.clave === 'interesesVencidos') || {}).formula || ''));
+igual('despido justificado: solo finiquito y prima, así que sin integrado', justificado.datos.salarioDiarioIntegrado, null);
+const renunciaConSdi = C.calcular({ ...base, supuesto: 'renuncia', sdiManual: 900, otrasPrestacionesDiarias: 50 });
+igual('renuncia: un integrado capturado no cambia el finiquito', renunciaConSdi.totales.bruto, renuncia.totales.bruto);
+igual('renuncia: ni se reporta', renunciaConSdi.datos.salarioDiarioIntegrado, null);
+verificar('resumen de una renuncia: sin salario integrado', !/integrado/i.test(C.resumen(C.calcular({ ...base, supuesto: 'renuncia', calcularISR: true }))));
+verificar('resumen de un despido: el integrado, aclarando que es de las indemnizaciones',
+    /Salario integrado \$528\.\d\d \(solo indemnizaciones\)/.test(C.resumen(r)), C.resumen(r).split('\n')[1]);
+
+// ---------- Topes de 2 salarios mínimos de la zona, a la vista ----------
+const formulaDe = (res, clave) => (res.conceptos.find(c => c.clave === clave) || {}).formula || '';
+verificar('tope de la prima: la fórmula dice la zona y el monto',
+    /\$630\.08 \(tope: 2 veces el salario mínimo de la zona general, 2 × \$315\.04\)/.test(formulaDe(alto, 'primaAntiguedad')),
+    formulaDe(alto, 'primaAntiguedad'));
+verificar('tope de la prima en la frontera norte: su zona y su salario mínimo',
+    /\$881\.74 \(tope: 2 veces el salario mínimo de la Zona Libre de la Frontera Norte, 2 × \$440\.87\)/.test(formulaDe(frontera, 'primaAntiguedad')),
+    formulaDe(frontera, 'primaAntiguedad'));
+verificar('prima bajo el mínimo: dice que se tomó el salario mínimo de la zona',
+    /\$315\.04 \(mínimo: el salario mínimo de la zona general\)/.test(formulaDe(bajo, 'primaAntiguedad')), formulaDe(bajo, 'primaAntiguedad'));
+verificar('prima dentro del tope: dice que va con el salario base y cuál es el tope',
+    /\$500\.00 \(salario base; no rebasa el tope de 2 veces el salario mínimo de la zona general: \$630\.08\)/.test(formulaDe(r, 'primaAntiguedad')),
+    formulaDe(r, 'primaAntiguedad'));
+verificar('riesgo de trabajo: el tope de la zona en la fórmula',
+    /\$630\.08 \(tope: 2 veces el salario mínimo de la zona general/.test(formulaDe(muerte, 'muerteRiesgo')), formulaDe(muerte, 'muerteRiesgo'));
+const muerteFrontera = C.calcular({ ...base, supuesto: 'muerteRiesgo', salario: 60000, zona: 'frontera' });
+cerca('riesgo de trabajo en la frontera norte: tope con su salario mínimo', concepto(muerteFrontera, 'muerteRiesgo'), 5000 * 881.74);
+verificar('incapacidad total dentro del tope: con el integrado, y dicho',
+    /\(salario integrado; no rebasa el tope de 2 veces el salario mínimo de la zona general: \$630\.08\)/.test(formulaDe(total, 'incapacidadTotal')),
+    formulaDe(total, 'incapacidadTotal'));
+const capturado = C.calcular({ ...base, salario: 60000, salarioMinimo: 400 });
+verificar('salario mínimo capturado: se dice que es el capturado',
+    /\$800\.00 \(tope: 2 veces el salario mínimo capturado, 2 × \$400\.00\)/.test(formulaDe(capturado, 'primaAntiguedad')),
+    formulaDe(capturado, 'primaAntiguedad'));
+igual('una zona que no existe usa la general', C.calcular({ ...base, salario: 60000, zona: 'marte' }).datos.salarioMinimo, 315.04);
+igual('el tope se reporta con la zona',
+    [frontera.datos.zona, frontera.datos.salarioMinimo, frontera.datos.topeSalarioMinimo, frontera.datos.usaTopeSalarioMinimo],
+    ['frontera', 440.87, 881.74, true]);
+igual('sin prima ni riesgo no hay tope que enseñar', renuncia.datos.usaTopeSalarioMinimo, false);
+verificar('resumen: el salario mínimo con su zona', /salario mínimo \$440\.87 \(Zona Libre de la Frontera Norte\)/.test(C.resumen(frontera)));
+// La exención de ISR de las indemnizaciones sigue en UMA (como la aplica el SAT).
+cerca('ISR: la frontera no cambia la exención de la separación (va en UMA)',
+    C.calcular({ ...base, calcularISR: true, zona: 'frontera' }).isr.exentoSeparacion, i.exentoSeparacion);
 
 // ---------- Validación ----------
 verificar('valida: sin fechas no calcula', !C.calcular({ supuesto: 'renuncia', salario: 1000 }).ok);
