@@ -1475,7 +1475,10 @@
 
     // La resolución vive en juzgados.js (misma regla que usa la carga masiva
     // por CSV), para que voz y CSV acepten exactamente los mismos nombres.
+    // reconocerJuzgadoTSJ() la amplía al nombre largo de un acuerdo ("Juzgado
+    // Primero Civil de Primera Instancia del Distrito Judicial de Cancún").
     function matchJuzgadoTSJ(nombre) {
+        if (typeof reconocerJuzgadoTSJ === 'function') return reconocerJuzgadoTSJ(nombre);
         if (typeof resolverJuzgadoTSJ !== 'function') return null;
         return resolverJuzgadoTSJ(nombre);
     }
@@ -1485,12 +1488,21 @@
         const institucion = ['TSJ', 'PJF', 'OTRO'].includes(p.institucion) ? p.institucion : 'TSJ';
 
         let juzgado = p.juzgado || '';
+        let datosPJF = {};
         if (institucion === 'TSJ') {
             const match = matchJuzgadoTSJ(juzgado);
             if (!match) throw new Error('No identifiqué el juzgado "' + juzgado + '" en el catálogo del TSJ');
             juzgado = match;
         } else if (institucion === 'PJF') {
             juzgado = juzgado || 'PJF - Por determinar';
+            // El órgano y el tipo de asunto salen del catálogo oficial: así la
+            // consulta en el portal abre directo, sin pedirle ids a nadie.
+            if (typeof completarDatosPJF === 'function') {
+                if (typeof asegurarCatalogosPJF === 'function') await asegurarCatalogosPJF();
+                datosPJF = completarDatosPJF({ institucion, juzgado, numero: p.valor, comentario: p.comentario },
+                    { pistas: [p.tipoAsunto], renombrar: true });
+                if (datosPJF.juzgado) juzgado = datosPJF.juzgado;
+            }
         } else {
             juzgado = juzgado || 'Autoridad no especificada';
         }
@@ -1501,6 +1513,8 @@
         }
 
         const expediente = { juzgado, institucion, comentario: p.comentario || undefined };
+        if (datosPJF.pjfOrgId) expediente.pjfOrgId = datosPJF.pjfOrgId;
+        if (datosPJF.pjfTipoAsunto) expediente.pjfTipoAsunto = datosPJF.pjfTipoAsunto;
         if (p.carpetaId != null) expediente.carpetaId = parseInt(p.carpetaId);
         if (p.tipoRegistro === 'nombre') expediente.nombre = p.valor;
         else expediente.numero = p.valor;
@@ -1508,7 +1522,14 @@
         const nuevoId = await crearExpedienteCore(expediente);
         registrarDeshacer({ tipo: 'expediente_creado', id: nuevoId, etiqueta: `expediente ${p.valor}` });
         toast('Expediente agregado', 'success');
-        return `Expediente ${p.valor} (${institucion}) agregado en ${juzgado}.`;
+        // El tipo de asunto se dice: si se dedujo mal, así se nota ahora y no
+        // cuando la consulta del portal salga vacía.
+        const tipoPJF = expediente.pjfTipoAsunto && typeof tiposAsuntoDeOrgano === 'function'
+            ? tiposAsuntoDeOrgano(organismoPJFPorId(expediente.pjfOrgId))
+                .find(t => String(t.id) === expediente.pjfTipoAsunto)
+            : null;
+        return `Expediente ${p.valor} (${institucion}) agregado en ${juzgado}` +
+            (tipoPJF ? ` como ${tipoPJF.nombre}.` : '.');
     }
 
     async function accEditarExpediente(p) {
@@ -1534,6 +1555,22 @@
             } else {
                 cambios.juzgado = c.juzgado;
             }
+        }
+        // Otro órgano federal (o un expediente que pasa a ser federal) deja
+        // viejos el órgano y el tipo de asunto guardados: la consulta abriría
+        // el tribunal anterior. Se vuelven a sacar del catálogo con el nuevo.
+        // Solo si de verdad cambian: el modelo a veces repite la institución
+        // al editar otra cosa, y recalcular borraría un órgano elegido a mano.
+        const institucionFinal = cambios.institucion || exp.institucion || 'TSJ';
+        const cambiaOrgano = (cambios.juzgado && cambios.juzgado !== exp.juzgado) ||
+            (cambios.institucion && cambios.institucion !== (exp.institucion || 'TSJ'));
+        if (institucionFinal === 'PJF' && cambiaOrgano && typeof completarDatosPJF === 'function') {
+            if (typeof asegurarCatalogosPJF === 'function') await asegurarCatalogosPJF();
+            const datos = completarDatosPJF({ institucion: 'PJF', juzgado: cambios.juzgado || exp.juzgado,
+                numero: cambios.numero || exp.numero, comentario: exp.comentario }, { renombrar: true });
+            if (datos.juzgado) cambios.juzgado = datos.juzgado;
+            cambios.pjfOrgId = datos.pjfOrgId || '';
+            cambios.pjfTipoAsunto = datos.pjfTipoAsunto || '';
         }
         if (!Object.keys(cambios).length) throw new Error('No hay cambios que aplicar');
 
@@ -1970,6 +2007,14 @@
         const plan = { consultas: [], avisos: [], numero };
         if (typeof construirURLPJF !== 'function') throw new Error('El buscador del PJF no está disponible');
         if (typeof asegurarCatalogosPJF === 'function') await asegurarCatalogosPJF();
+
+        // Un expediente guardado sin el órgano o el tipo de asunto (los que
+        // daba de alta la IA antes de deducirlos) se completa con el catálogo,
+        // igual que al pulsar "Buscar" en su tarjeta.
+        if (exp && typeof completarDatosPJF === 'function') {
+            const faltan = completarDatosPJF(exp);
+            if (Object.keys(faltan).length) exp = { ...exp, ...faltan };
+        }
 
         // Órganos: los dictados. Si no dictó ninguno, el del expediente guardado.
         // Cada referencia puede abarcar varios: "los colegiados del 27" son tres.
@@ -2664,8 +2709,9 @@ ACCIONES DISPONIBLES y sus parámetros:
    - Ejemplo: "a la audiencia del viernes agrégale que hay que llevar testigos" → cambios:{agregarDescripcion:"Llevar testigos"}.
 3. "eliminar_evento": {eventos:[{eventoId:número o null, buscar:{texto, fecha, hora, expediente, tipo} o null}]} — una entrada por evento a borrar; se identifican igual que en editar_evento.
 4. "consultar_agenda": {fechaInicio:"YYYY-MM-DD", fechaFin:"YYYY-MM-DD"} — para "¿qué tengo esta semana?", "audiencias de mañana", etc.
-5. "crear_expediente": {tipoRegistro:"numero"|"nombre", valor, institucion:"TSJ"|"PJF"|"OTRO", juzgado, comentario, carpetaId:número o null}
+5. "crear_expediente": {tipoRegistro:"numero"|"nombre", valor, institucion:"TSJ"|"PJF"|"OTRO", juzgado, tipoAsunto:texto o null, comentario, carpetaId:número o null}
    - Para TSJ el juzgado es OBLIGATORIO y debe ser un nombre EXACTO de la lista de juzgados. Si el usuario no lo dice o no coincide, pregunta.
+   - Para PJF pasa el órgano TAL CUAL lo diga en "juzgado" ("juzgado segundo de distrito en quintana roo", "primer colegiado del 27 circuito") y, si lo menciona, el tipo de asunto en "tipoAsunto" ("amparo indirecto", "amparo directo", "queja"). La app saca del catálogo oficial el órgano y el tipo de asunto: nunca le pidas al usuario un ID.
 6. "editar_expediente": {expedienteId:número o null, expedienteRef:texto o null, cambios:{numero?, nombre?, juzgado?, comentario?, institucion?}}
    - Resuelve el expediente contra el catálogo (por número tipo 123/2025 o por nombre de las partes). Si hay ambigüedad, pregunta.
 7. "archivar_expediente": {expedienteId:número o null, expedienteRef:texto o null, motivo:"concluido"|"suspendido"|"otro"}
