@@ -267,6 +267,125 @@ function resolverJuzgadoTSJ(nombre) {
     return parciales.length === 1 ? parciales[0] : null;
 }
 
+// ==================== EL JUZGADO COMO LO ESCRIBE UN ACUERDO ====================
+// El catálogo usa nombres cortos ("JUZGADO PRIMERO CIVIL CANCUN") y un acuerdo
+// los escribe completos: "Juzgado Primero Civil de Primera Instancia del
+// Distrito Judicial de Cancún, Quintana Roo". resolverJuzgadoTSJ() no llega a
+// tanto —es la regla de lo que se teclea, y está bien que sea estricta—, así
+// que la IA guardaba el nombre largo y el expediente se quedaba sin estrados.
+// Esto reconoce el juzgado por sus rasgos: sala o juzgado, número, materia, si
+// es oral y la ciudad, también dicha por su municipio.
+
+const CIUDADES_TSJ = [
+    ['cancun', ['cancun', 'benito juarez']],
+    ['playa', ['playa del carmen', 'solidaridad', 'playa']],
+    ['chetumal', ['chetumal', 'othon p blanco', 'othon pompeyo blanco']],
+    ['cozumel', ['cozumel']],
+    ['carrillo puerto', ['felipe carrillo puerto', 'carrillo puerto']],
+    ['isla mujeres', ['isla mujeres']],
+    ['tulum', ['tulum']],
+    ['bacalar', ['bacalar']]
+];
+
+const ORDINALES_TSJ = {
+    primero: 1, primer: 1, primera: 1, segundo: 2, segunda: 2, tercero: 3, tercer: 3, tercera: 3,
+    cuarto: 4, cuarta: 4, quinto: 5, quinta: 5, sexto: 6, sexta: 6, septimo: 7, septima: 7,
+    octavo: 8, octava: 8, noveno: 9, novena: 9, decimo: 10, decima: 10
+};
+
+const MATERIAS_TSJ = ['civil', 'familiar', 'mercantil', 'laboral', 'penal', 'constitucional'];
+
+/** Los rasgos que distinguen un juzgado o una sala del TSJ, sacados del nombre. */
+function rasgosJuzgadoTSJ(nombre) {
+    let t = ' ' + normalizarNombreJuzgado(nombre).replace(/[^a-z0-9]+/g, ' ') + ' ';
+
+    let ciudad = null;
+    for (const [clave, variantes] of CIUDADES_TSJ) {
+        const v = variantes.find(x => t.includes(' ' + x + ' '));
+        if (v) { ciudad = clave; t = t.split(' ' + v + ' ').join(' '); break; }
+    }
+    // "Primera Instancia" no es el número del juzgado.
+    t = t.replace(/ (primera|segunda) instancia /g, ' ');
+
+    const palabras = t.trim().split(' ');
+    let ordinal = null;
+    for (const p of palabras) {
+        if (ORDINALES_TSJ[p] !== undefined) { ordinal = ORDINALES_TSJ[p]; break; }
+        const m = /^(\d{1,2})(?:o|a|er|ro|do|to|vo|no|mo)?$/.exec(p);
+        if (m) { ordinal = Number(m[1]); break; }
+    }
+
+    const materias = MATERIAS_TSJ.filter(m => palabras.includes(m) || palabras.includes(m + 'es'));
+    if (palabras.includes('trabajo') && !materias.includes('laboral')) materias.push('laboral');
+
+    return {
+        sala: palabras.includes('sala'),
+        ordinal,
+        materias,
+        oral: palabras.some(p => /^oral(es|idad)?$/.test(p)),
+        tradicional: palabras.includes('tradicional'),
+        ciudad
+    };
+}
+
+let _catalogoRasgosTSJ = null;
+
+function _catalogoConRasgosTSJ() {
+    if (!_catalogoRasgosTSJ) {
+        _catalogoRasgosTSJ = Object.keys(JUZGADOS).concat(Object.keys(SALAS_SEGUNDA_INSTANCIA))
+            .map(nombre => ({ nombre, rasgos: rasgosJuzgadoTSJ(nombre) }));
+    }
+    return _catalogoRasgosTSJ;
+}
+
+/**
+ * El nombre del catálogo del juzgado o sala del TSJ al que se refiere un
+ * nombre escrito como en un acuerdo, o null si no se puede saber con
+ * seguridad: entre dos que encajan igual no se adivina, porque abrir los
+ * estrados de otro juzgado es peor que no abrir ninguno.
+ */
+function reconocerJuzgadoTSJ(texto) {
+    const directo = resolverJuzgadoTSJ(texto);
+    if (directo) return directo;
+    if (!texto) return null;
+
+    // Los federales no son del TSJ aunque se parezcan: "Juzgado Primero de
+    // Distrito" no es el Juzgado Primero Civil.
+    const normal = normalizarNombreJuzgado(texto);
+    if (/\bde distrito\b(?! judicial)|colegiad|circuito|federal|unitario/.test(normal)) return null;
+
+    const q = rasgosJuzgadoTSJ(texto);
+    // Sin materia no hay forma de saber cuál ("Juzgado Primero de Cancún").
+    if (!q.materias.length) return null;
+
+    let mejores = [];
+    let mejor = -1;
+    for (const { nombre, rasgos: r } of _catalogoConRasgosTSJ()) {
+        if (r.sala !== q.sala) continue;
+        if (q.materias.some(m => !r.materias.includes(m))) continue;
+        if (q.ciudad && r.ciudad && q.ciudad !== r.ciudad) continue;
+        // Uno con número se nombra con su número, y uno sin número solo puede
+        // ser "el primero": un "Juzgado Tercero Civil de Chetumal" no es el
+        // Juzgado Civil de Chetumal.
+        if (r.ordinal !== null && q.ordinal !== null && r.ordinal !== q.ordinal) continue;
+        if (r.ordinal === null && q.ordinal !== null && q.ordinal !== 1) continue;
+        if (q.oral && !r.oral) continue;
+        if (q.tradicional && !r.tradicional) continue;
+
+        // Lo que no se escribió no descarta, pero pesa: "Juzgado Civil de
+        // Cancún", sin número, queda empatado entre los cinco de allí.
+        let puntos = 0;
+        if (r.ordinal === q.ordinal) puntos += 2;
+        if (r.oral === q.oral) puntos += 2;
+        if (q.ciudad && r.ciudad === q.ciudad) puntos += 1;
+        if (r.materias.length === q.materias.length) puntos += 1;
+
+        if (puntos > mejor) { mejor = puntos; mejores = [nombre]; }
+        else if (puntos === mejor) mejores.push(nombre);
+    }
+    return mejores.length === 1 ? mejores[0] : null;
+}
+
 /**
  * Construye la URL correcta de búsqueda según el tipo de juzgado
  * - Primera Instancia: buscador_primera.php

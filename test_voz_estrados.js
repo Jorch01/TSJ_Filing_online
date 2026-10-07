@@ -47,7 +47,8 @@ function extraerIndentado(fuente, nombre, archivo) {
 }
 
 function crearEntorno() {
-    const estado = { ventanas: [], navegado: [], mensajes: [], resolverDevuelve: null, resolverLanza: null };
+    const estado = { ventanas: [], navegado: [], mensajes: [], resolverDevuelve: null, resolverLanza: null,
+                     creados: [], actualizados: [], expedientes: {} };
 
     const sandbox = {
         console: { log: () => {}, warn: () => {}, error: () => {} },
@@ -71,7 +72,13 @@ function crearEntorno() {
         agregarMensaje: (rol, html) => { estado.mensajes.push(html); return null; },
         esc: (t) => String(t == null ? '' : t),
         // Estas llegan desde el resto del asistente; aquí no hacen falta.
-        pedirConfirmacion: () => {}, ejecutarAccion: async () => {}, informarFallo: () => {}
+        pedirConfirmacion: () => {}, ejecutarAccion: async () => {}, informarFallo: () => {},
+        // Dar de alta y editar: se anota lo que se guardaría.
+        crearExpedienteCore: async (exp) => { estado.creados.push(exp); return 100 + estado.creados.length; },
+        actualizarExpedienteCore: async (id, cambios) => { estado.actualizados.push({ id, cambios }); },
+        obtenerExpediente: async (id) => estado.expedientes[id] || null,
+        verificarLimiteExpedientes: async () => true,
+        registrarDeshacer: () => {}, toast: () => {}
     };
     sandbox.window = sandbox;
     vm.createContext(sandbox);
@@ -112,7 +119,7 @@ function crearEntorno() {
         if (!tope) throw new Error(`No se encontró ${nombre} (¿se renombró?)`);
         vm.runInContext(tope[0].trim(), sandbox, { filename: 'voice-assistant.js:' + nombre });
     }
-    for (const nombre of ['normalizar', 'matchJuzgadoTSJ']) {
+    for (const nombre of ['normalizar', 'matchJuzgadoTSJ', 'accCrearExpediente', 'accEditarExpediente']) {
         vm.runInContext(extraerIndentado(voz, nombre, 'voice-assistant.js'),
             sandbox, { filename: 'voice-assistant.js:' + nombre });
     }
@@ -570,6 +577,86 @@ async function pruebaVariosAsuntos() {
         aviso && aviso.message);
 }
 
+// ==================== DAR DE ALTA Y EDITAR POR VOZ ====================
+// El asistente también es "la IA": lo que da de alta tiene que poder
+// consultarse después sin que nadie teclee el id del órgano.
+
+async function pruebaAltaPorVoz() {
+    const { sandbox, estado } = crearEntorno();
+
+    const respuesta = await sandbox.accCrearExpediente({ tipoRegistro: 'numero', valor: '45/2026', institucion: 'PJF',
+        juzgado: 'juzgado segundo de distrito en quintana roo', tipoAsunto: 'amparo indirecto' });
+    const federal = estado.creados[0] || {};
+    igual('alta por voz: el federal se guarda con su órgano', federal.pjfOrgId, '790');
+    igual('alta por voz: y con su tipo de asunto', federal.pjfTipoAsunto, '1');
+    igual('alta por voz: con el nombre oficial del órgano',
+        federal.juzgado, 'Juzgado Segundo de Distrito en el Estado de Quintana Roo');
+    verificar('alta por voz: y dice con qué tipo de asunto quedó', /como Amparo Indirecto/.test(respuesta || ''), respuesta);
+
+    await sandbox.accCrearExpediente({ tipoRegistro: 'numero', valor: '12/2026', institucion: 'PJF',
+        juzgado: 'primer colegiado del 27', tipoAsunto: null });
+    const colegiado = estado.creados[1] || {};
+    igual('alta por voz: sin tipo dicho, el más común del órgano (Amparo Directo)',
+        [colegiado.pjfOrgId, colegiado.pjfTipoAsunto], ['462', '10']);
+
+    await sandbox.accCrearExpediente({ tipoRegistro: 'numero', valor: '1/2026', institucion: 'PJF', juzgado: '' });
+    const sinOrgano = estado.creados[2] || {};
+    igual('alta por voz: sin órgano se crea igual, sin ids inventados',
+        [sinOrgano.juzgado, sinOrgano.pjfOrgId, sinOrgano.pjfTipoAsunto], ['PJF - Por determinar', undefined, undefined]);
+
+    await sandbox.accCrearExpediente({ tipoRegistro: 'numero', valor: '654/2026', institucion: 'TSJ',
+        juzgado: 'Juzgado Primero Civil de Primera Instancia del Distrito Judicial de Cancún' });
+    igual('alta por voz: el del TSJ con el nombre largo queda con el del catálogo',
+        (estado.creados[3] || {}).juzgado, 'JUZGADO PRIMERO CIVIL CANCUN');
+}
+
+async function pruebaCambiarDeOrgano() {
+    // Cambiarle el órgano a un federal dejaba el id del anterior, y la
+    // consulta seguía abriendo el tribunal viejo.
+    const { sandbox, estado } = crearEntorno();
+    estado.expedientes[7] = { id: 7, numero: '33/2026', institucion: 'PJF', pjfOrgId: '790', pjfTipoAsunto: '1',
+                              juzgado: 'Juzgado Segundo de Distrito en el Estado de Quintana Roo' };
+    estado.resolverDevuelve = estado.expedientes[7];
+
+    await sandbox.accEditarExpediente({ expedienteId: 7, cambios: { juzgado: 'juzgado tercero de distrito en quintana roo' } });
+    const cambios = (estado.actualizados[0] || {}).cambios || {};
+    igual('editar: el órgano nuevo sustituye al viejo', cambios.pjfOrgId, '425');
+    igual('editar: con su tipo de asunto', cambios.pjfTipoAsunto, '1');
+    igual('editar: y su nombre oficial', cambios.juzgado, 'Juzgado Tercero de Distrito en el Estado de Quintana Roo');
+
+    // Si el nuevo no se reconoce, el id viejo se borra: mejor elegirlo al
+    // buscar que abrir el tribunal equivocado.
+    estado.actualizados = [];
+    await sandbox.accEditarExpediente({ expedienteId: 7, cambios: { juzgado: 'un tribunal que no existe' } });
+    const borrado = (estado.actualizados[0] || {}).cambios || {};
+    igual('editar: un órgano que no se reconoce no conserva el id del anterior',
+        [borrado.pjfOrgId, borrado.pjfTipoAsunto], ['', '']);
+
+    // Repetir la institución al editar otra cosa no es cambiar de órgano: un
+    // órgano elegido a mano para un nombre ambiguo se tiene que quedar.
+    estado.actualizados = [];
+    estado.expedientes[8] = { id: 8, numero: '40/2026', institucion: 'PJF', pjfOrgId: '944', pjfTipoAsunto: '10',
+                              juzgado: 'Tribunal Colegiado del 27' };
+    estado.resolverDevuelve = estado.expedientes[8];
+    await sandbox.accEditarExpediente({ expedienteId: 8, cambios: { institucion: 'PJF', comentario: 'Turnado' } });
+    const soloComentario = (estado.actualizados[0] || {}).cambios || {};
+    igual('editar: cambiar solo el comentario no toca el órgano elegido',
+        [soloComentario.comentario, 'pjfOrgId' in soloComentario, 'pjfTipoAsunto' in soloComentario], ['Turnado', false, false]);
+}
+
+async function pruebaBuscarGuardadoSinDatos() {
+    // Uno guardado antes de deducirse los datos: la orden de buscarlo abre el
+    // portal directo en vez de mandar a elegir circuito y órgano.
+    const { sandbox, estado } = crearEntorno();
+    estado.resolverDevuelve = { id: 3, numero: '15/2025', institucion: 'PJF', comentario: 'Amparo en revisión',
+        juzgado: 'Tercer Tribunal Colegiado del Vigésimo Séptimo Circuito, con residencia en Cancún, Quintana Roo' };
+    await sandbox.accBuscarPJF({ expedienteRef: 'el 15' });
+    igual('buscar guardado: se abre una ventana', estado.ventanas.length, 1);
+    verificar('buscar guardado: con el órgano y el tipo de asunto deducidos',
+        /[?&]tipoasunto=11&organismo=1319&/.test(estado.ventanas[0]?.url || ''), estado.ventanas[0]?.url);
+    igual('buscar guardado: sin mandar a la página del PJF a elegirlos', estado.navegado, []);
+}
+
 // ==================== LAS INSTRUCCIONES AL MODELO ====================
 
 function pruebaInstrucciones() {
@@ -600,6 +687,9 @@ function pruebaInstrucciones() {
     verificar('prompt: varios juzgados del TSJ', /VARIOS JUZGADOS/.test(voz) && /juzgados:\[/.test(voz));
     verificar('prompt: existe buscar_varios para asuntos distintos', /"buscar_varios": \{busquedas:/.test(voz));
     verificar('prompt: con un ejemplo que mezcla TSJ y PJF', /Ejemplo mixto/.test(voz));
+    verificar('prompt: al dar de alta un federal se pasa el tipo de asunto',
+        /"crear_expediente": \{[^}]*tipoAsunto/.test(voz));
+    verificar('prompt: y se le dice que nunca pida un ID', /nunca le pidas al usuario un ID/.test(voz));
 }
 
 (async () => {
@@ -614,6 +704,9 @@ function pruebaInstrucciones() {
         ['todos los tipos de asunto', pruebaTodosLosTipos],
         ['varios juzgados del TSJ', pruebaVariosJuzgadosTSJ],
         ['varios asuntos en una orden', pruebaVariosAsuntos],
+        ['dar de alta por voz', pruebaAltaPorVoz],
+        ['cambiar de órgano por voz', pruebaCambiarDeOrgano],
+        ['buscar uno guardado sin datos', pruebaBuscarGuardadoSinDatos],
         ['las instrucciones al modelo', pruebaInstrucciones]
     ];
     for (const [nombre, fn] of pruebas) {

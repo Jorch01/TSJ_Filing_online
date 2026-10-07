@@ -344,6 +344,8 @@ function navegarA(pagina) {
         try { localStorage.setItem(CLAVE_TRIBUNAL, pagina); } catch (e) { /* sin almacenamiento */ }
     }
 
+    const anterior = document.querySelector('.page.active');
+
     // Ocultar todas las páginas
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
 
@@ -351,6 +353,8 @@ function navegarA(pagina) {
     const paginaEl = document.getElementById(`page-${pagina}`);
     if (paginaEl) {
         paginaEl.classList.add('active');
+        // Cada cambio de pantalla alterna el anuncio destacado.
+        if (paginaEl !== anterior) rotarAnuncios(paginaEl);
     }
 
     // Actualizar botones de navegación
@@ -1578,13 +1582,15 @@ async function editarExpediente(id, event) {
 
         if (institucion === 'PJF') {
             document.getElementById('expediente-juzgado').value = '';
-            // Restore PJF cascade: find the organ by name and set circuit + organ + tipo de asunto
-            await restaurarCascadaPJFParaEdicion(exp.juzgado, exp.pjfTipoAsunto);
+            // Restore PJF cascade: find the organ (by its id, or by name) and set circuit + organ + tipo de asunto
+            await restaurarCascadaPJFParaEdicion(exp.juzgado, exp.pjfTipoAsunto, exp.pjfOrgId);
         } else if (institucion === 'OTRO') {
             const autoridadInput = document.getElementById('expediente-autoridad');
             if (autoridadInput) autoridadInput.value = exp.juzgado || '';
         } else {
-            document.getElementById('expediente-juzgado').value = exp.juzgado;
+            // El del catálogo: con el nombre largo de un acuerdo el selector
+            // se quedaba en blanco.
+            document.getElementById('expediente-juzgado').value = juzgadoTSJDeExpediente(exp);
         }
 
         const tipo = exp.numero ? 'numero' : 'nombre';
@@ -4805,7 +4811,17 @@ function urlEstradosExpediente(exp) {
     const valor = exp.numero || exp.nombre;
     if (!valor || !exp.juzgado) return null;
 
-    return construirUrlBusqueda(exp.juzgado, exp.numero ? 'numero' : 'nombre', valor);
+    return construirUrlBusqueda(juzgadoTSJDeExpediente(exp), exp.numero ? 'numero' : 'nombre', valor);
+}
+
+// El juzgado del catálogo de un expediente del TSJ. Casi siempre es el que
+// tiene guardado; los que daba de alta la IA traían el nombre largo del
+// acuerdo ("Juzgado Primero Civil de Primera Instancia del Distrito Judicial
+// de Cancún"), con el que no hay estrados, y aquí se reconocen.
+function juzgadoTSJDeExpediente(exp) {
+    const juzgado = exp && exp.juzgado;
+    if (!juzgado || typeof obtenerIdJuzgado !== 'function' || obtenerIdJuzgado(juzgado)) return juzgado;
+    return (typeof reconocerJuzgadoTSJ === 'function' && reconocerJuzgadoTSJ(juzgado)) || juzgado;
 }
 
 async function abrirEstradosExpediente(id, event) {
@@ -4835,6 +4851,17 @@ async function abrirEstradosExpediente(id, event) {
     }
 
     abrirBusquedaPopup(url, exp.numero || exp.nombre);
+
+    // Si el juzgado se reconoció por su nombre largo, se queda guardado el del
+    // catálogo: así también lo encuentra el formulario de edición.
+    const canonico = juzgadoTSJDeExpediente(exp);
+    if (canonico && canonico !== exp.juzgado) {
+        try {
+            await actualizarExpedienteCore(exp.id, { juzgado: canonico });
+        } catch (e) {
+            Logger.warn('No se pudo guardar el nombre del juzgado:', e);
+        }
+    }
 }
 
 // Abrir búsqueda en popup window
@@ -7390,6 +7417,7 @@ Responde ÚNICAMENTE en formato JSON con la siguiente estructura (sin explicacio
     "numero_expediente": "Número de expediente mencionado en el acuerdo (ej: 123/2025) o null si no se encuentra",
     "juzgado_origen": "Nombre del juzgado, sala u órgano jurisdiccional que emite el acuerdo, o null si no se identifica",
     "institucion": "TSJ|PJF|OTRO - identifica si es del Tribunal Superior de Justicia estatal (TSJ), del Poder Judicial de la Federación (PJF), o de otra autoridad/dependencia (OTRO)",
+    "tipo_asunto": "Solo si es del PJF: el tipo de asunto federal tal como lo dice el acuerdo (ej: Amparo Indirecto, Amparo Directo, Amparo en Revisión, Queja, Causa Penal, Juicio Oral Mercantil), o null",
     "resumen": "Resumen breve del acuerdo en 1-2 oraciones",
     "tipo_acuerdo": "admisión|sentencia|auto|citación|notificación|otro",
     "fechas": [
@@ -7415,7 +7443,7 @@ Responde ÚNICAMENTE en formato JSON con la siguiente estructura (sin explicacio
     ]
 }
 
-IMPORTANTE: Siempre intenta extraer el número de expediente del texto del acuerdo. Busca patrones como "Expediente:", "Exp.", "Causa:", "Toca:", seguidos de un número con formato número/año (ej: 123/2025, 45/2024). También identifica el juzgado u órgano que emite el acuerdo y si es del TSJ estatal o del PJF federal.
+IMPORTANTE: Siempre intenta extraer el número de expediente del texto del acuerdo. Busca patrones como "Expediente:", "Exp.", "Causa:", "Toca:", seguidos de un número con formato número/año (ej: 123/2025, 45/2024). También identifica el juzgado u órgano que emite el acuerdo y si es del TSJ estatal o del PJF federal. Si es del PJF, copia el nombre COMPLETO del órgano como aparece en el encabezado (ej: "Juzgado Segundo de Distrito en el Estado de Quintana Roo", "Primer Tribunal Colegiado del Vigésimo Séptimo Circuito").
 Si algún campo no tiene información, usa un array vacío [] o null según corresponda.`;
 
     try {
@@ -7450,6 +7478,7 @@ function mostrarResultadosIA(resultado) {
                 <h4>🔢 Expediente Detectado</h4>
                 <p><strong>Número:</strong> ${escapeText(resultado.numero_expediente)}</p>
                 ${resultado.juzgado_origen ? `<p><strong>Órgano:</strong> ${escapeText(resultado.juzgado_origen)}</p>` : ''}
+                ${resultado.institucion === 'PJF' && resultado.tipo_asunto ? `<p><strong>Tipo de asunto:</strong> ${escapeText(resultado.tipo_asunto)}</p>` : ''}
                 <p><strong>Institución:</strong> ${institucionLabel}</p>
             </div>
         `;
@@ -7533,6 +7562,58 @@ function mostrarResultadosIA(resultado) {
     document.getElementById('resultados-ia').style.display = 'block';
 }
 
+/**
+ * Le pone a un expediente federal recién leído por la IA lo que el portal del
+ * PJF necesita para consultarlo: el órgano y el tipo de asunto del catálogo, y
+ * el nombre oficial del órgano. Sin esto, "Buscar" pedía después el "ID de
+ * Organismo". Si el catálogo no carga o el nombre no basta para saber el
+ * órgano, el expediente se crea igual y lo que falte se resuelve al buscarlo.
+ */
+async function _completarExpedientePJFNuevo(exp, tipoAsuntoIA) {
+    if (typeof completarDatosPJF !== 'function') return exp;
+    try {
+        if (typeof asegurarCatalogosPJF === 'function') await asegurarCatalogosPJF();
+        Object.assign(exp, completarDatosPJF(exp, { pistas: [tipoAsuntoIA], renombrar: true }));
+    } catch (e) {
+        Logger.warn('No se pudieron deducir los datos del PJF:', e);
+    }
+    return exp;
+}
+
+// Lo que delata a un órgano federal. "Distrito" a secas no basta: los del TSJ
+// son "del Distrito Judicial de Cancún".
+const _RE_ORGANO_FEDERAL = /\bde distrito\b(?! judicial)|colegiad|circuito|federal|unitario/;
+
+/**
+ * Deja un expediente que leyó la IA listo para consultarse en su tribunal sin
+ * preguntar nada: si es del TSJ, con el nombre del catálogo (con el nombre
+ * largo del acuerdo no había estrados que abrir); si es federal, con el órgano
+ * y el tipo de asunto del catálogo del PJF. Corrige la institución solo cuando
+ * el nombre no deja dudas —un "Juzgado Segundo de Distrito" es federal aunque
+ * la IA lo marque del TSJ—, y lo que no reconoce lo deja como lo escribió.
+ */
+async function _ubicarExpedienteIA(exp, tipoAsuntoIA) {
+    if (exp.institucion === 'OTRO') return exp;
+
+    const tsj = typeof reconocerJuzgadoTSJ === 'function' ? reconocerJuzgadoTSJ(exp.juzgado) : null;
+    if (tsj) {
+        exp.institucion = 'TSJ';
+        exp.juzgado = tsj;
+        if (typeof obtenerCategoriaJuzgado === 'function') exp.categoria = obtenerCategoriaJuzgado(tsj);
+        return exp;
+    }
+
+    const pareceFederal = _RE_ORGANO_FEDERAL.test(normalizarNombreJuzgado(exp.juzgado || ''));
+    if (exp.institucion === 'PJF' || pareceFederal) {
+        const federal = await _completarExpedientePJFNuevo({ ...exp, institucion: 'PJF' }, tipoAsuntoIA);
+        // Si la IA dijo TSJ, solo se pasa a federal con el órgano encontrado.
+        if (exp.institucion === 'PJF' || federal.pjfOrgId) {
+            Object.assign(exp, federal, { categoria: 'PJF Federal' });
+        }
+    }
+    return exp;
+}
+
 async function guardarResultadosIA() {
     if (!resultadosIAActuales) return;
 
@@ -7542,7 +7623,7 @@ async function guardarResultadosIA() {
     // Determinar el número de expediente: priorizar el extraído por IA, luego el seleccionado manualmente
     const numExpExtraido = resultado.numero_expediente || null;
     const juzgadoExtraido = resultado.juzgado_origen || null;
-    const institucionExtraida = resultado.institucion || 'TSJ';
+    let institucionExtraida = resultado.institucion || 'TSJ';
 
     // Si la IA extrajo un número de expediente y no se seleccionó uno manualmente, usarlo
     if (numExpExtraido && !resultado.expedienteId && !resultado.expedienteTexto) {
@@ -7572,6 +7653,8 @@ async function guardarResultadosIA() {
                     institucion: institucionExtraida,
                     comentario: `Creado automáticamente desde análisis IA${juzgadoExtraido ? ' - ' + juzgadoExtraido : ''}`
                 };
+                await _ubicarExpedienteIA(nuevoExp, resultado.tipo_asunto);
+                institucionExtraida = nuevoExp.institucion;
                 const idNuevo = await agregarExpediente(nuevoExp);
                 resultado.expedienteId = idNuevo;
                 guardados++;
@@ -7797,9 +7880,8 @@ async function ejecutarBusquedaAhora() {
     // Abrir búsquedas en popups
     let delay = 0;
     expedientes.forEach(exp => {
-        const tipoBusqueda = exp.numero ? 'numero' : 'nombre';
         const valor = exp.numero || exp.nombre;
-        const url = construirUrlBusqueda(exp.juzgado, tipoBusqueda, valor);
+        const url = urlEstradosExpediente(exp);
 
         setTimeout(() => {
             abrirBusquedaPopup(url, valor);
@@ -9110,6 +9192,9 @@ function copiarTextoReporte() {
 
 // Configuración de anuncios (pueden ser cargados de un servidor o configurados manualmente)
 const WHATSAPP_EDICTOS = '529981399930';
+// El mismo número que el de los edictos. Si las consultas para asociarse
+// deben ir a otro, basta con ponerlo aquí.
+const WHATSAPP_DESARROLLADOR = WHATSAPP_EDICTOS;
 
 const ANUNCIOS_CONFIG = [
     {
@@ -9124,6 +9209,20 @@ const ANUNCIOS_CONFIG = [
         llamada: '💬 Consultar por WhatsApp',
         enlace: `https://wa.me/${WHATSAPP_EDICTOS}?text=` + encodeURIComponent(
             'Hola, necesito publicar un edicto en Quintana Roo o Yucatán. ¿Me pueden dar informes?'),
+        activo: true
+    },
+    {
+        // Se alterna con el de edictos: uno en cada cambio de pantalla.
+        id: 'socio-desarrollador',
+        tipo: 'texto',
+        titulo: '🤝 ¿Te interesa asociarte con el desarrollador?',
+        contenido: 'TSJ Filing Online es un proyecto independiente, en desarrollo constante y pensado ' +
+                   'para litigantes de Quintana Roo. Busco socios —abogados, despachos o inversionistas— ' +
+                   'que aporten experiencia, clientes o capital y compartan lo que resulte. Sin promesas ' +
+                   'infladas: platiquemos y vemos si nos conviene a los dos.',
+        llamada: '💬 Platicarlo por WhatsApp',
+        enlace: `https://wa.me/${WHATSAPP_DESARROLLADOR}?text=` + encodeURIComponent(
+            'Hola, uso TSJ Filing Online y me interesa platicar sobre asociarme con el desarrollador.'),
         activo: true
     },
     {
@@ -9174,6 +9273,12 @@ async function inicializarAnuncios() {
     }
 }
 
+// Qué anuncio destacado toca. Avanza cada vez que el usuario cambia a una
+// pantalla con anuncio (rotarAnuncios), así que con dos destacados —edictos y
+// la invitación a asociarse— se ve uno y luego el otro, en vez de siempre el
+// mismo en cada pantalla.
+let _turnoAnuncio = 0;
+
 // Mostrar anuncios en los contenedores
 function mostrarAnuncios() {
     const anunciosActivos = ANUNCIOS_CONFIG.filter(a => a.activo);
@@ -9185,8 +9290,35 @@ function mostrarAnuncios() {
         const bodyEl = contenedor.querySelector('.ad-body');
         if (bodyEl) {
             bodyEl.innerHTML = generarHTMLAnuncio(
-                elegirAnuncio(anunciosActivos, i, contenedores.length));
+                elegirAnuncio(anunciosActivos, i, contenedores.length, _turnoAnuncio));
         }
+    });
+}
+
+/**
+ * Al llegar a otra pantalla, su anuncio pasa al siguiente destacado. Solo
+ * cuenta si la pantalla tiene un hueco de destacado a la vista: las que no
+ * tienen anuncio, o solo el de relleno, no gastan turno —si no, entre una
+ * pantalla y otra con anuncio podría repetirse el mismo—.
+ */
+function rotarAnuncios(paginaEl) {
+    if (!paginaEl || document.body.classList.contains('ads-hidden')) return;
+    const anunciosActivos = ANUNCIOS_CONFIG.filter(a => a.activo);
+    const contenedores = Array.from(document.querySelectorAll('.ad-banner'));
+    const total = contenedores.length;
+    const visibles = contenedores
+        .map((contenedor, indice) => ({ contenedor, indice }))
+        .filter(h => paginaEl.contains(h.contenedor) && h.contenedor.style.display !== 'none');
+    const conDestacado = visibles.filter(h => {
+        const ad = elegirAnuncio(anunciosActivos, h.indice, total, _turnoAnuncio);
+        return ad && !ad.relleno;
+    });
+    if (!conDestacado.length) return;
+
+    _turnoAnuncio++;
+    conDestacado.forEach(h => {
+        const bodyEl = h.contenedor.querySelector('.ad-body');
+        if (bodyEl) bodyEl.innerHTML = generarHTMLAnuncio(elegirAnuncio(anunciosActivos, h.indice, total, _turnoAnuncio));
     });
 }
 
@@ -9198,21 +9330,24 @@ function mostrarAnuncios() {
  * con un anunciante real y tres rellenos el anuncio de pago salía una de cada
  * cuatro veces y daba la impresión de no estar puesto.
  *
+ * Entre los destacados manda el turno, no el sorteo: todos los huecos
+ * enseñan el del turno, y el turno avanza al cambiar de pantalla.
+ *
  * El último hueco se reserva para el relleno: es de donde salen los
  * anunciantes nuevos y conviene que la invitación siga estando en algún sitio.
  * Si no hay anuncios reales, todos los huecos son de relleno, que es como se
  * comportaba antes.
  */
-function elegirAnuncio(anunciosActivos, indice, total) {
+function elegirAnuncio(anunciosActivos, indice, total, turno = 0) {
     const reales = anunciosActivos.filter(a => !a.relleno);
     const relleno = anunciosActivos.filter(a => a.relleno);
 
     if (reales.length === 0) return relleno[indice % relleno.length];
-    if (relleno.length === 0) return reales[indice % reales.length];
+    if (relleno.length === 0) return reales[turno % reales.length];
 
     return indice === total - 1
         ? relleno[Math.floor(Math.random() * relleno.length)]
-        : reales[indice % reales.length];
+        : reales[turno % reales.length];
 }
 
 // Generar HTML para un anuncio (con sanitización)
@@ -9323,16 +9458,17 @@ document.addEventListener('DOMContentLoaded', () => {
 // ==================== INTEGRACIÓN PJF FEDERAL ====================
 
 // Restaurar cascada PJF al editar un expediente federal
-async function restaurarCascadaPJFParaEdicion(juzgadoNombre, pjfTipoAsunto) {
-    if (!juzgadoNombre) return;
+async function restaurarCascadaPJFParaEdicion(juzgadoNombre, pjfTipoAsunto, pjfOrgId) {
+    if (!juzgadoNombre && !pjfOrgId) return;
 
     // Ensure PJF catalogs are loaded
     if (!pjfDatosCargados) {
         await cargarCatalogosPJF();
     }
 
-    // Find the organ by name
-    const organo = pjfOrganismos.find(o => o.nombre === juzgadoNombre);
+    // El órgano guardado; si no lo tiene, el del nombre (también el largo de
+    // un acuerdo, que con la búsqueda exacta se quedaba sin encontrar).
+    const organo = organismoPJFPorId(pjfOrgId) || resolverOrganismoPJF(juzgadoNombre);
     if (!organo) return;
 
     // Set circuit
@@ -10126,14 +10262,20 @@ async function actualizarBadgeArchivoPJF() {
     return _actualizarBadgeArchivoComun('count-archivo-badge-pjf', true);
 }
 
-// Abrir búsqueda en PJF para un expediente guardado
-// Estado temporal para el picker de tipo de asunto PJF
+// ==== Abrir un expediente guardado en el portal del PJF ====
+// El portal necesita el id del órgano y el del tipo de asunto. Se deducen del
+// catálogo (completarDatosPJF) y se guardan, así que lo normal es que el botón
+// abra directo. Solo si el nombre guardado no basta para saber el órgano
+// ("Por determinar", o uno que encaja con varios) se pregunta, y eligiendo de
+// listas: antes se pedía teclear el "ID de Organismo" —un dato interno del
+// portal— y el tipo de asunto solo ofrecía "Otro" sin dejar escribir nada.
+
+// El expediente cuyo órgano se está eligiendo.
 let _pendingPJFExp = null;
 
 async function abrirBusquedaPJFGuardado(id, event) {
     if (event) { event.stopPropagation(); event.preventDefault(); }
 
-    // Asegurar catálogos cargados para resolver orgId por nombre
     await cargarCatalogosPJF();
 
     // También se busca en el archivo: obtenerExpedientes() solo trae los
@@ -10150,49 +10292,41 @@ async function abrirBusquedaPJFGuardado(id, event) {
         return;
     }
 
-    // Resolver orgId: usar el guardado o buscar por nombre en el catálogo
-    let orgId = exp.pjfOrgId;
-    if (!orgId && exp.juzgado) {
-        const organo = pjfOrganismos.find(o => o.nombre === exp.juzgado);
-        orgId = organo ? String(organo.id) : '';
-    }
+    const faltan = completarDatosPJF(exp);
+    Object.assign(exp, faltan);
 
-    // Si tenemos todo, abrir popup directamente
-    if (orgId && exp.pjfTipoAsunto) {
-        _abrirPopupPJF(orgId, exp.pjfTipoAsunto, exp.numero);
+    if (exp.pjfOrgId && exp.pjfTipoAsunto) {
+        _abrirPopupPJF(exp.pjfOrgId, exp.pjfTipoAsunto, exp.numero);
+        // Se guarda lo deducido: la próxima vez ya está, y el formulario de
+        // edición enseña el órgano y el tipo de asunto con que se consulta.
+        if (Object.keys(faltan).length) await _guardarDatosPJF(exp.id, faltan);
         return;
     }
 
-    // Falta algún dato: mostrar picker usando el modal existente
-    _pendingPJFExp = { ...exp, _resolvedOrgId: orgId };
+    _mostrarSelectorPJF(exp);
+}
 
-    // Resolver tipos de asunto: por tipoOrganismoId del órgano (catálogo completo)
-    let tiposDisponibles = [];
-    if (orgId) {
-        const organoEncontrado = pjfOrganismos.find(o => String(o.id) === String(orgId));
-        if (organoEncontrado && organoEncontrado.tipoOrganismoId) {
-            const tipoOrgData = pjfTiposOrgano[organoEncontrado.tipoOrganismoId];
-            if (tipoOrgData) {
-                // tiposAsuntoArr es el array fusionado (unión) por TipoOrganismoId
-                tiposDisponibles = tipoOrgData.tiposAsuntoArr || [];
-            }
-        }
+async function _guardarDatosPJF(id, cambios) {
+    try {
+        await actualizarExpedienteCore(id, cambios);
+        if (typeof cargarExpedientesPJF === 'function') await cargarExpedientesPJF();
+    } catch (e) {
+        Logger.warn('No se pudieron guardar los datos del PJF:', e);
     }
-    // Fallback: buscar por nombre si todavía está vacío
-    if (tiposDisponibles.length === 0 && exp.juzgado) {
-        const organoNombre = pjfOrganismos.find(o => o.nombre === exp.juzgado);
-        if (organoNombre) {
-            const tipoOrgData = pjfTiposOrgano[organoNombre.tipoOrganismoId];
-            if (tipoOrgData) tiposDisponibles = tipoOrgData.tiposAsuntoArr || [];
-        }
-    }
+}
 
-    const tiposOptionsHTML = [
-        ...tiposDisponibles.map(t => `<option value="${t.id}">${escapeText(t.nombre)}</option>`),
-        '<option value="__manual__">Otro (ingresar ID manualmente)</option>'
-    ].join('');
+function _mostrarSelectorPJF(exp) {
+    _pendingPJFExp = exp;
 
-    const needsOrgId = !orgId;
+    // Se parte del circuito del órgano guardado o, si no hay, del de Quintana Roo.
+    const guardado = organismoPJFPorId(exp.pjfOrgId);
+    const deAqui = pjfOrganismos.find(o => normalizarTextoPJF(o.estado) === PJF_ESTADO_PREFERIDO);
+    const circuito = guardado ? guardado.circuito_id : (deAqui ? deAqui.circuito_id : null);
+    // Solo el nombre: el número es un id interno del portal (el Vigésimo
+    // Séptimo es el 54) y junto al nombre confunde.
+    const opcionesCircuito = pjfCircuitos.map(c =>
+        `<option value="${c.numero_circuito}"${c.numero_circuito === circuito ? ' selected' : ''}>` +
+        `${escapeText(c.nombre)}</option>`).join('');
 
     document.getElementById('modal-titulo').textContent = '🔍 Abrir Expediente en PJF';
     document.getElementById('modal-body').innerHTML = `
@@ -10200,30 +10334,89 @@ async function abrirBusquedaPJFGuardado(id, event) {
             <strong>${escapeText(exp.numero)}</strong><br>
             <small style="color:var(--text-secondary);">${escapeText(exp.juzgado || '')}</small>
         </p>
-        ${needsOrgId ? `
+        <p class="form-help" style="margin-bottom:1rem;">
+            Con este nombre no se sabe cuál es el órgano. Elígelo una sola vez: queda guardado
+            y las siguientes búsquedas abren directo.
+        </p>
         <div class="form-group">
-            <label for="_pjf-pick-org">ID de Organismo</label>
-            <input type="number" id="_pjf-pick-org" class="form-control" placeholder="Ej: 12345" min="1">
-            <span class="form-help">ID numérico del órgano en el portal SISE/DGEJ</span>
-        </div>` : ''}
+            <label for="_pjf-pick-circuito">Circuito</label>
+            <select id="_pjf-pick-circuito" class="form-control" onchange="_pjfSelectorCircuito()">${opcionesCircuito}</select>
+        </div>
         <div class="form-group">
-            <label for="_pjf-pick-tipo">Tipo de Asunto</label>
-            <select id="_pjf-pick-tipo" class="form-control"
-                onchange="document.getElementById('_pjf-pick-manual-wrap').style.display=this.value==='__manual__'?'block':'none'">
-                ${tiposOptionsHTML}
-            </select>
+            <label for="_pjf-pick-org">Órgano</label>
+            <select id="_pjf-pick-org" class="form-control" onchange="_pjfSelectorOrgano()"></select>
+        </div>
+        <div class="form-group">
+            <label for="_pjf-pick-tipo">Tipo de asunto</label>
+            <select id="_pjf-pick-tipo" class="form-control" onchange="_pjfSelectorTipo()"></select>
             <div id="_pjf-pick-manual-wrap" style="display:none;margin-top:0.5rem;">
                 <input type="number" id="_pjf-pick-tipo-manual" class="form-control"
                     placeholder="ID numérico del tipo de asunto" min="1">
             </div>
         </div>
-        <p class="form-help" style="margin-top:0.5rem;">El valor se guardará para búsquedas futuras.</p>
     `;
     document.getElementById('modal-footer').innerHTML = `
         <button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>
         <button class="btn btn-primary" onclick="_confirmarAbrirPJF()">🔍 Abrir en PJF</button>
     `;
     document.getElementById('modal-overlay').classList.add('active');
+    _pjfSelectorCircuito();
+}
+
+function _pjfSelectorCircuito() {
+    const exp = _pendingPJFExp;
+    const select = document.getElementById('_pjf-pick-org');
+    if (!exp || !select) return;
+    const circuito = Number(document.getElementById('_pjf-pick-circuito')?.value);
+
+    const organos = pjfOrganismos
+        .filter(o => o.circuito_id === circuito)
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    let html = '<option value="">-- Elige el órgano --</option>';
+    // Un id guardado que el catálogo no conoce (de una importación, por
+    // ejemplo) puede ser bueno igual: se ofrece tal cual.
+    if (exp.pjfOrgId && !organismoPJFPorId(exp.pjfOrgId)) {
+        html += `<option value="${escapeText(String(exp.pjfOrgId))}" selected>` +
+            `${escapeText(exp.juzgado || 'Órgano guardado')} (ID ${escapeText(String(exp.pjfOrgId))})</option>`;
+    }
+    html += organos.map(o => `<option value="${o.id}"${String(o.id) === String(exp.pjfOrgId) ? ' selected' : ''}>` +
+        `${escapeText(o.nombre)}</option>`).join('');
+    select.innerHTML = html;
+    _pjfSelectorOrgano();
+}
+
+function _pjfSelectorOrgano() {
+    const exp = _pendingPJFExp;
+    const select = document.getElementById('_pjf-pick-tipo');
+    if (!exp || !select) return;
+    const orgId = document.getElementById('_pjf-pick-org')?.value || '';
+    select.disabled = !orgId;
+    if (!orgId) {
+        select.innerHTML = '<option value="">-- Elige primero el órgano --</option>';
+        _pjfSelectorTipo();
+        return;
+    }
+    const organo = organismoPJFPorId(orgId);
+    const tipos = organo ? tiposAsuntoDeOrgano(organo) : [];
+    // El más probable ya elegido: casi siempre basta con pulsar "Abrir".
+    const sugerido = organo
+        ? (tipos.find(t => String(t.id) === String(exp.pjfTipoAsunto)) ||
+           deducirTipoAsuntoPJF(organo, [exp.numero, exp.nombre, exp.juzgado, exp.comentario]))
+        : null;
+
+    select.innerHTML = tipos.map(t =>
+        `<option value="${t.id}"${sugerido && t.id === sugerido.id ? ' selected' : ''}>${escapeText(t.nombre)}</option>`).join('') +
+        `<option value="__manual__">${tipos.length ? 'Otro (escribir el ID)' : 'Escribir el ID del tipo de asunto'}</option>`;
+    _pjfSelectorTipo();
+}
+
+// Sin tipos en el catálogo, "Otro" es la única opción y viene ya elegida: el
+// campo para escribirlo tiene que verse sin esperar a un cambio que nunca
+// llega. Ese era el fallo de "solo sale Otro y no deja escribir".
+function _pjfSelectorTipo() {
+    const tipo = document.getElementById('_pjf-pick-tipo')?.value;
+    const manual = document.getElementById('_pjf-pick-manual-wrap');
+    if (manual) manual.style.display = tipo === '__manual__' ? 'block' : 'none';
 }
 
 function _abrirPopupPJF(orgId, tipoAsunto, expediente) {
@@ -10235,35 +10428,42 @@ function _abrirPopupPJF(orgId, tipoAsunto, expediente) {
           '&expediente=' + encodeURIComponent(expediente) +
           '&tipoprocedimiento=0';
     window.open(url, '_blank', 'width=1024,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no');
-    mostrarToast(`Abriendo ${expediente} en PJF...`, 'success');
+    // Se dice con qué tipo de asunto se consulta: si se dedujo mal, así se
+    // entiende por qué el portal no encuentra nada.
+    const organo = typeof organismoPJFPorId === 'function' ? organismoPJFPorId(orgId) : null;
+    const tipo = organo ? tiposAsuntoDeOrgano(organo).find(t => String(t.id) === String(tipoAsunto)) : null;
+    mostrarToast(`Abriendo ${expediente} en PJF${tipo ? ` (${tipo.nombre})` : ''}...`, 'success');
 }
 
 async function _confirmarAbrirPJF() {
-    if (!_pendingPJFExp) return;
+    const exp = _pendingPJFExp;
+    if (!exp) return;
 
-    const tipoSelect = document.getElementById('_pjf-pick-tipo');
-    const tipoManual = document.getElementById('_pjf-pick-tipo-manual');
-    const orgInput = document.getElementById('_pjf-pick-org');
+    const orgId = document.getElementById('_pjf-pick-org')?.value || '';
+    let tipoAsunto = document.getElementById('_pjf-pick-tipo')?.value || '';
+    if (tipoAsunto === '__manual__') tipoAsunto = document.getElementById('_pjf-pick-tipo-manual')?.value.trim() || '';
 
-    let tipoAsunto = tipoSelect?.value || '';
-    if (tipoAsunto === '__manual__') tipoAsunto = tipoManual?.value.trim() || '';
-    const orgId = _pendingPJFExp._resolvedOrgId || orgInput?.value.trim() || '';
-
-    if (!tipoAsunto || !orgId) {
-        mostrarToast('Completa todos los campos requeridos', 'warning');
+    if (!orgId) {
+        mostrarToast('Elige el órgano', 'warning');
+        return;
+    }
+    if (!tipoAsunto) {
+        mostrarToast('Elige o escribe el tipo de asunto', 'warning');
         return;
     }
 
-    // Guardar para no preguntar de nuevo
-    try {
-        await actualizarExpediente(_pendingPJFExp.id, { pjfTipoAsunto: tipoAsunto, pjfOrgId: orgId });
-    } catch (e) {
-        Logger.warn('No se pudo guardar metadatos PJF:', e);
+    const cambios = { pjfOrgId: String(orgId), pjfTipoAsunto: String(tipoAsunto) };
+    // Con el órgano elegido, el nombre deja de ser "Por determinar". Un nombre
+    // escrito por el usuario no se toca.
+    const organo = organismoPJFPorId(orgId);
+    if (organo && (!exp.juzgado || PJF_ORGANO_SIN_DETERMINAR.test(normalizarTextoPJF(exp.juzgado)))) {
+        cambios.juzgado = organo.nombre;
     }
 
     cerrarModal();
-    _abrirPopupPJF(orgId, tipoAsunto, _pendingPJFExp.numero);
     _pendingPJFExp = null;
+    _abrirPopupPJF(cambios.pjfOrgId, cambios.pjfTipoAsunto, exp.numero);
+    await _guardarDatosPJF(exp.id, cambios);
 }
 
 // PJF view toggle
@@ -10682,6 +10882,7 @@ Responde ÚNICAMENTE en formato JSON con la siguiente estructura (sin explicacio
     "numero_expediente": "Número de expediente mencionado en el acuerdo (ej: 67/2021, Amparo 123/2024) o null",
     "juzgado_origen": "Nombre del juzgado, tribunal o órgano federal que emite el acuerdo, o null",
     "institucion": "PJF",
+    "tipo_asunto": "Tipo de asunto federal tal como lo dice el acuerdo (ej: Amparo Indirecto, Amparo Directo, Amparo en Revisión, Queja, Causa Penal, Juicio Oral Mercantil), o null",
     "resumen": "Resumen breve del acuerdo en 1-2 oraciones",
     "tipo_acuerdo": "admisión|sentencia|auto|citación|notificación|amparo|otro",
     "fechas": [
@@ -10697,7 +10898,7 @@ Responde ÚNICAMENTE en formato JSON con la siguiente estructura (sin explicacio
     "montos": [{"concepto": "Descripción", "cantidad": "$X,XXX.XX"}]
 }
 
-IMPORTANTE: Siempre intenta extraer el número de expediente del texto. Busca patrones como "Expediente:", "Exp.", "Amparo:", "Juicio:", "Toca:", seguidos de un número. También identifica el órgano jurisdiccional federal.
+IMPORTANTE: Siempre intenta extraer el número de expediente del texto. Busca patrones como "Expediente:", "Exp.", "Amparo:", "Juicio:", "Toca:", seguidos de un número. También identifica el órgano jurisdiccional federal y copia su nombre COMPLETO como aparece en el encabezado (ej: "Juzgado Segundo de Distrito en el Estado de Quintana Roo", "Primer Tribunal Colegiado del Vigésimo Séptimo Circuito").
 Si algún campo no tiene información, usa un array vacío [] o null.`;
 
     try {
@@ -10731,6 +10932,7 @@ function mostrarResultadosIAPJF(resultado) {
                 <h4>🔢 Expediente Federal Detectado</h4>
                 <p><strong>Número:</strong> ${escapeText(resultado.numero_expediente)}</p>
                 ${resultado.juzgado_origen ? `<p><strong>Órgano:</strong> ${escapeText(resultado.juzgado_origen)}</p>` : ''}
+                ${resultado.tipo_asunto ? `<p><strong>Tipo de asunto:</strong> ${escapeText(resultado.tipo_asunto)}</p>` : ''}
                 <p><strong>Institución:</strong> 🏛️ PJF Federal</p>
             </div>
         `;
@@ -10836,6 +11038,7 @@ async function guardarResultadosIAPJF() {
                     institucion: 'PJF',
                     comentario: `Creado desde análisis IA PJF${juzgadoExtraido ? ' - ' + juzgadoExtraido : ''}`
                 };
+                await _completarExpedientePJFNuevo(nuevoExp, resultado.tipo_asunto);
                 const idNuevo = await agregarExpediente(nuevoExp);
                 resultado.expedienteId = idNuevo;
                 guardados++;
@@ -11062,9 +11265,10 @@ function deseleccionarTodosExpedientesPJF() {
 }
 
 /**
- * Abre una ventana de búsqueda PJF para cada expediente seleccionado.
- * Los que tengan orgId + tipoAsunto guardados se abren directamente;
- * los que falten datos se omiten con un aviso.
+ * Abre una ventana de búsqueda PJF para cada expediente seleccionado. El
+ * órgano y el tipo de asunto que falten se deducen del catálogo y se guardan;
+ * solo se omiten, con aviso, los que no tienen número o cuyo órgano no se
+ * puede saber por el nombre.
  */
 async function abrirExpedientesPJFSeleccionados() {
     if (expedientesPJFSeleccionados.size === 0) {
@@ -11078,25 +11282,25 @@ async function abrirExpedientesPJFSeleccionados() {
 
     let abiertos = 0;
     let sinDatos = 0;
+    const porGuardar = [];
 
+    // Las ventanas se abren todas seguidas y lo deducido se guarda después:
+    // esperar a la base entre una y otra hace que el navegador las bloquee.
     seleccionados.forEach(function(exp) {
         if (!exp.numero) { sinDatos++; return; }
 
-        // Resolver orgId
-        let orgId = exp.pjfOrgId;
-        if (!orgId && exp.juzgado) {
-            const organo = pjfOrganismos.find(o => o.nombre === exp.juzgado);
-            if (organo) orgId = String(organo.id);
+        const faltan = completarDatosPJF(exp);
+        if (Object.keys(faltan).length) {
+            Object.assign(exp, faltan);
+            porGuardar.push([exp.id, faltan]);
         }
 
-        const tipoAsunto = exp.pjfTipoAsunto;
-
-        if (orgId && tipoAsunto) {
+        if (exp.pjfOrgId && exp.pjfTipoAsunto) {
             const url = (typeof construirURLPJF === 'function')
-                ? construirURLPJF(orgId, tipoAsunto, exp.numero, 0)
+                ? construirURLPJF(exp.pjfOrgId, exp.pjfTipoAsunto, exp.numero, 0)
                 : PJF_VERCAPTURA_URL +
-                  '?tipoasunto=' + encodeURIComponent(tipoAsunto) +
-                  '&organismo=' + encodeURIComponent(orgId) +
+                  '?tipoasunto=' + encodeURIComponent(exp.pjfTipoAsunto) +
+                  '&organismo=' + encodeURIComponent(exp.pjfOrgId) +
                   '&expediente=' + encodeURIComponent(exp.numero) +
                   '&tipoprocedimiento=0';
             window.open(url, '_blank', 'width=1024,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no');
@@ -11109,17 +11313,25 @@ async function abrirExpedientesPJFSeleccionados() {
     if (abiertos > 0) {
         mostrarToast(
             abiertos + ' ventana' + (abiertos !== 1 ? 's' : '') + ' abierta' + (abiertos !== 1 ? 's' : '') +
-            (sinDatos > 0 ? '. ' + sinDatos + ' sin datos PJF completos.' : '') +
+            (sinDatos > 0 ? '. ' + sinDatos + ' sin órgano identificado: búscalos uno por uno para elegirlo.' : '') +
             ' (Permite ventanas emergentes si el navegador las bloquea)',
             'success'
         );
     } else {
         mostrarToast(
-            'Ningún expediente tiene ID de organismo y tipo de asunto guardados. ' +
-            'Abre cada expediente manualmente primero para guardar esos datos.',
+            'No se pudo identificar el órgano de ninguno. Búscalos uno por uno para elegirlo de la lista.',
             'warning'
         );
     }
+
+    for (const [id, cambios] of porGuardar) {
+        try {
+            await actualizarExpediente(id, cambios);
+        } catch (e) {
+            Logger.warn('No se pudieron guardar los datos del PJF:', e);
+        }
+    }
+    if (porGuardar.length && typeof marcarYSincronizar === 'function') await marcarYSincronizar();
 }
 
 // ==================== SIN CONEXIÓN ====================

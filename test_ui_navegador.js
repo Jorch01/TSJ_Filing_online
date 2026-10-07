@@ -950,6 +950,255 @@ async function probarCalendarioEnCancun(navegador) {
     }
 }
 
+/**
+ * Lo que da de alta la IA tiene que poder consultarse en su tribunal sin que
+ * nadie teclee ids: el expediente federal con su órgano y su tipo de asunto,
+ * el del TSJ con el nombre del catálogo. Antes la búsqueda pedía "ID de
+ * Organismo" y un tipo de asunto en un selector que solo ofrecía "Otro" y no
+ * dejaba escribir. Y los anuncios destacados se turnan al cambiar de pantalla.
+ */
+async function probarAltaConIAyConsulta(navegador) {
+    const contexto = await navegador.newContext({ viewport: { width: 1400, height: 900 } });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => typeof guardarResultadosIA === 'function' && typeof db !== 'undefined' && !!db,
+            { timeout: 15000 });
+        await page.waitForTimeout(1200);   // los anuncios se pintan a los 500 ms
+
+        // ---- Alta desde el análisis de un acuerdo ----
+        const alta = await page.evaluate(async () => {
+            const guardar = async (resultado) => {
+                resultadosIAActuales = { expedienteId: null, expedienteTexto: null, fechas: [],
+                    puntos_importantes: [], acciones_requeridas: [], montos: [], ...resultado };
+                await guardarResultadosIA();
+                return (await obtenerExpedientes()).find(e => e.numero === resultado.numero_expediente) || null;
+            };
+            return {
+                federal: await guardar({ numero_expediente: '321/2026', institucion: 'PJF',
+                    juzgado_origen: 'JUZGADO SEGUNDO DE DISTRITO EN EL ESTADO DE QUINTANA ROO, CON RESIDENCIA EN CANCÚN',
+                    tipo_asunto: 'Juicio de Amparo Indirecto' }),
+                colegiado: await guardar({ numero_expediente: '486/2026', institucion: 'PJF',
+                    juzgado_origen: 'Primer Tribunal Colegiado del Vigésimo Séptimo Circuito', tipo_asunto: null }),
+                estatal: await guardar({ numero_expediente: '654/2026', institucion: 'TSJ',
+                    juzgado_origen: 'Juzgado Primero Civil de Primera Instancia del Distrito Judicial de Cancún, Quintana Roo' }),
+                malEtiquetado: await guardar({ numero_expediente: '777/2026', institucion: 'TSJ',
+                    juzgado_origen: 'Juzgado Tercero de Distrito en el Estado de Quintana Roo' }),
+                sinOrgano: await guardar({ numero_expediente: '888/2026', institucion: 'PJF', juzgado_origen: null })
+            };
+        });
+
+        const f = alta.federal || {};
+        igual('alta IA: el federal queda con su órgano del catálogo', f.pjfOrgId, '790');
+        igual('alta IA: y con el tipo de asunto que dice el acuerdo (Amparo Indirecto)', f.pjfTipoAsunto, '1');
+        igual('alta IA: con el nombre oficial del órgano',
+            f.juzgado, 'Juzgado Segundo de Distrito en el Estado de Quintana Roo');
+        igual('alta IA: y en la categoría federal', f.categoria, 'PJF Federal');
+        igual('alta IA: un colegiado sin tipo dicho queda como Amparo Directo',
+            [alta.colegiado && alta.colegiado.pjfOrgId, alta.colegiado && alta.colegiado.pjfTipoAsunto], ['462', '10']);
+        igual('alta IA: el del TSJ queda con el nombre del catálogo',
+            alta.estatal && alta.estatal.juzgado, 'JUZGADO PRIMERO CIVIL CANCUN');
+        igual('alta IA: y en su categoría', alta.estatal && alta.estatal.categoria, 'CANCÚN - Civil');
+        igual('alta IA: un Juzgado de Distrito marcado como TSJ se guarda como federal',
+            [alta.malEtiquetado && alta.malEtiquetado.institucion, alta.malEtiquetado && alta.malEtiquetado.pjfOrgId],
+            ['PJF', '425']);
+        igual('alta IA: sin órgano en el acuerdo no se inventa uno',
+            [alta.sinOrgano && alta.sinOrgano.institucion, alta.sinOrgano && alta.sinOrgano.pjfOrgId],
+            ['PJF', undefined]);
+
+        // ---- Buscar en el PJF: directo, sin preguntar nada ----
+        const consulta = await page.evaluate(async (idFederal) => {
+            const abiertas = [];
+            const openOriginal = window.open;
+            window.open = (url) => { abiertas.push(url); return { focus() {} }; };
+            try {
+                await abrirBusquedaPJFGuardado(idFederal);
+                const modalFederal = document.getElementById('modal-overlay').classList.contains('active');
+                // Uno guardado antes de este arreglo, sin los datos: se deducen al buscarlo.
+                const idViejo = await agregarExpediente({ numero: '15/2025', institucion: 'PJF', categoria: 'PJF Federal',
+                    juzgado: 'Tercer Tribunal Colegiado del Vigésimo Séptimo Circuito, con residencia en Cancún, Quintana Roo',
+                    comentario: 'Amparo en revisión contra la sentencia' });
+                await abrirBusquedaPJFGuardado(idViejo);
+                const modalViejo = document.getElementById('modal-overlay').classList.contains('active');
+                return { abiertas, modalFederal, modalViejo, viejo: await obtenerExpediente(idViejo) };
+            } finally {
+                window.open = openOriginal;
+            }
+        }, f.id);
+
+        igual('buscar PJF: no se abre ningún cuadro que pida datos', [consulta.modalFederal, consulta.modalViejo], [false, false]);
+        verificar('buscar PJF: abre el portal con el órgano y el tipo de asunto guardados',
+            /[?&]tipoasunto=1&organismo=790&expediente=321%2F2026/.test(consulta.abiertas[0] || ''), consulta.abiertas[0]);
+        verificar('buscar PJF: uno viejo sin datos también abre directo, con lo deducido',
+            /[?&]tipoasunto=11&organismo=1319&/.test(consulta.abiertas[1] || ''), consulta.abiertas[1]);
+        igual('buscar PJF: y lo deducido se queda guardado',
+            [consulta.viejo.pjfOrgId, consulta.viejo.pjfTipoAsunto], ['1319', '11']);
+        verificar('buscar PJF: sin cambiarle el nombre que tenía',
+            /con residencia en Cancún/.test(consulta.viejo.juzgado), consulta.viejo.juzgado);
+
+        // ---- Cuando el nombre no basta: se elige de listas, no se teclean ids ----
+        const selector = await page.evaluate(async (id) => {
+            await abrirBusquedaPJFGuardado(id);
+            const $ = (x) => document.getElementById(x);
+            const visible = (x) => getComputedStyle($(x)).display !== 'none';
+            const r = {
+                modal: $('modal-overlay').classList.contains('active'),
+                pideId: /ID de Organismo/i.test($('modal-body').textContent),
+                organoEs: $('_pjf-pick-org') && $('_pjf-pick-org').tagName,
+                circuito: $('_pjf-pick-circuito') && $('_pjf-pick-circuito').value,
+                organos: [...$('_pjf-pick-org').options].map(o => o.value).filter(Boolean),
+                tipoSinOrgano: $('_pjf-pick-tipo').disabled,
+                manualSinOrgano: visible('_pjf-pick-manual-wrap')
+            };
+            $('_pjf-pick-org').value = '790';
+            $('_pjf-pick-org').dispatchEvent(new Event('change'));
+            const tipo = $('_pjf-pick-tipo');
+            r.tipoSugerido = tipo.options[tipo.selectedIndex] && tipo.options[tipo.selectedIndex].text;
+            r.manualConOrgano = visible('_pjf-pick-manual-wrap');
+            tipo.value = '__manual__';
+            tipo.dispatchEvent(new Event('change'));
+            r.manualAlElegirOtro = visible('_pjf-pick-manual-wrap');
+            tipo.value = '1';
+            tipo.dispatchEvent(new Event('change'));
+
+            const abiertas = [];
+            const openOriginal = window.open;
+            window.open = (url) => { abiertas.push(url); return { focus() {} }; };
+            try { await _confirmarAbrirPJF(); } finally { window.open = openOriginal; }
+            r.abiertas = abiertas;
+            r.cerrado = !$('modal-overlay').classList.contains('active');
+            r.guardado = await obtenerExpediente(id);
+            return r;
+        }, alta.sinOrgano.id);
+
+        igual('selector: se abre solo cuando el nombre no basta', selector.modal, true);
+        igual('selector: ya no pide el "ID de Organismo"', selector.pideId, false);
+        igual('selector: el órgano se elige de una lista', selector.organoEs, 'SELECT');
+        igual('selector: empezando por el circuito de Quintana Roo', selector.circuito, '54');
+        verificar('selector: con los órganos de ese circuito',
+            selector.organos.includes('790') && selector.organos.includes('462'), JSON.stringify(selector.organos));
+        igual('selector: el tipo espera a que haya órgano', [selector.tipoSinOrgano, selector.manualSinOrgano], [true, false]);
+        igual('selector: con el órgano, el tipo más probable ya viene elegido', selector.tipoSugerido, 'Amparo Indirecto');
+        igual('selector: sin campo de id a la vista', selector.manualConOrgano, false);
+        igual('selector: "Otro" sí deja escribir', selector.manualAlElegirOtro, true);
+        verificar('selector: abre el portal con lo elegido',
+            /[?&]tipoasunto=1&organismo=790&expediente=888%2F2026/.test(selector.abiertas[0] || ''), selector.abiertas[0]);
+        igual('selector: y lo guarda, con el nombre del órgano en lugar de "Por determinar"',
+            [selector.guardado.pjfOrgId, selector.guardado.pjfTipoAsunto, selector.guardado.juzgado],
+            ['790', '1', 'Juzgado Segundo de Distrito en el Estado de Quintana Roo']);
+
+        // ---- El fallo de "solo sale Otro y no deja escribir" ----
+        // Un órgano que el catálogo no conoce no tiene tipos: "Otro" es la única
+        // opción y viene ya elegida, así que el campo nunca aparecía.
+        const soloOtro = await page.evaluate(async () => {
+            const id = await agregarExpediente({ numero: '99/2026', institucion: 'PJF', categoria: 'PJF Federal',
+                juzgado: 'Órgano de una importación', pjfOrgId: '987654' });
+            await abrirBusquedaPJFGuardado(id);
+            const tipo = document.getElementById('_pjf-pick-tipo');
+            const r = {
+                organo: document.getElementById('_pjf-pick-org').value,
+                opciones: [...tipo.options].map(o => o.value),
+                campoVisible: getComputedStyle(document.getElementById('_pjf-pick-manual-wrap')).display !== 'none'
+            };
+            document.getElementById('_pjf-pick-tipo-manual').value = '27';
+            const abiertas = [];
+            const openOriginal = window.open;
+            window.open = (url) => { abiertas.push(url); return { focus() {} }; };
+            try { await _confirmarAbrirPJF(); } finally { window.open = openOriginal; }
+            r.abiertas = abiertas;
+            return r;
+        });
+        igual('solo "Otro": se respeta el órgano guardado', soloOtro.organo, '987654');
+        igual('solo "Otro": es la única opción', soloOtro.opciones, ['__manual__']);
+        igual('solo "Otro": y el campo para escribirlo se ve sin tener que cambiar nada', soloOtro.campoVisible, true);
+        verificar('solo "Otro": lo escrito llega al portal',
+            /[?&]tipoasunto=27&organismo=987654&/.test(soloOtro.abiertas[0] || ''), soloOtro.abiertas[0]);
+
+        // ---- El del TSJ, con su botón de estrados en la tarjeta ----
+        const tarjeta = await page.evaluate(async (id) => {
+            navegarA('expedientes');
+            await cargarExpedientes();
+            await new Promise(r => setTimeout(r, 400));
+            const card = document.querySelector(`#lista-expedientes [data-id="${id}"]`);
+            return { hay: !!card, estrados: !!card && /abrirEstradosExpediente\(/.test(card.innerHTML) };
+        }, alta.estatal.id);
+        igual('alta IA: el del TSJ sale en Expedientes con su botón de estrados', tarjeta, { hay: true, estrados: true });
+
+        // ---- Anuncios: uno y otro, al cambiar de pantalla ----
+        const anuncios = await page.evaluate(async () => {
+            const pausa = (ms) => new Promise(r => setTimeout(r, ms));
+            const visto = (pagina) => {
+                const cuerpo = document.querySelector(`#page-${pagina} .ad-banner .ad-body`);
+                const t = cuerpo ? cuerpo.textContent : '';
+                return /Edictos/.test(t) ? 'edictos' : /asociarte/.test(t) ? 'socio'
+                    : /anunciarte|Espacio/.test(t) ? 'relleno' : '?';
+            };
+            const ir = async (p) => { navegarA(p); await pausa(30); return visto(p); };
+
+            const recorrido = [];
+            for (const p of ['inicio', 'expedientes', 'calendario', 'notas', 'expedientes']) recorrido.push(await ir(p));
+            await ir('pendientes');                      // sin anuncio: no gasta turno
+            const trasPendientes = await ir('calendario');
+            const enConfig = await ir('config');         // solo el de relleno: tampoco
+            const trasConfig = await ir('notas');
+            const mismaPantalla = await ir('notas');     // pulsar donde ya se está no es cambiar
+
+            document.body.classList.add('ads-hidden');   // premium sin anuncios
+            const turno = _turnoAnuncio;
+            await ir('expedientes');
+            await ir('calendario');
+            const ocultosNoGiran = _turnoAnuncio === turno;
+            document.body.classList.remove('ads-hidden');
+
+            const enlace = document.querySelector('#page-notas .ad-detallado');
+            const ad = ANUNCIOS_CONFIG.find(a => a.id === 'socio-desarrollador');
+            return {
+                recorrido, ultimo: recorrido[recorrido.length - 1], trasPendientes, enConfig, trasConfig,
+                mismaPantalla, ocultosNoGiran,
+                ad: ad ? { titulo: ad.titulo, contenido: ad.contenido, llamada: ad.llamada, enlace: ad.enlace } : null,
+                pintado: enlace ? { href: enlace.getAttribute('href'), target: enlace.getAttribute('target'),
+                                    rel: enlace.getAttribute('rel') } : null
+            };
+        });
+
+        verificar('anuncios: cada pantalla enseña uno de los dos destacados',
+            anuncios.recorrido.every(a => a === 'edictos' || a === 'socio'), JSON.stringify(anuncios.recorrido));
+        verificar('anuncios: y al cambiar de pantalla sale el otro',
+            anuncios.recorrido.every((a, i, l) => i === 0 || a !== l[i - 1]), JSON.stringify(anuncios.recorrido));
+        verificar('anuncios: una pantalla sin anuncio no se salta el turno',
+            anuncios.trasPendientes !== anuncios.ultimo, JSON.stringify(anuncios));
+        igual('anuncios: Configuración conserva la invitación a anunciarse', anuncios.enConfig, 'relleno');
+        verificar('anuncios: y tampoco se salta el turno',
+            anuncios.trasConfig !== anuncios.trasPendientes, JSON.stringify(anuncios));
+        igual('anuncios: volver a pulsar la misma pantalla no lo cambia', anuncios.mismaPantalla, anuncios.trasConfig);
+        igual('anuncios: con los anuncios ocultos no se gira nada', anuncios.ocultosNoGiran, true);
+
+        const ad = anuncios.ad || {};
+        verificar('asociarse: pregunta si quiere asociarse con el desarrollador',
+            /asociarte con el desarrollador/.test(ad.titulo || ''), ad.titulo);
+        verificar('asociarse: el texto no es largo', (ad.contenido || '').length <= 350, `${(ad.contenido || '').length} caracteres`);
+        verificar('asociarse: dice a quién busca y qué se ofrece',
+            /socios/.test(ad.contenido || '') && /experiencia, clientes o capital/.test(ad.contenido || ''), ad.contenido);
+        verificar('asociarse: invita a consultar por WhatsApp', /WhatsApp/.test(ad.llamada || ''), ad.llamada);
+        verificar('asociarse: con el número de WhatsApp y el mensaje escrito',
+            (ad.enlace || '').startsWith('https://wa.me/529981399930?text=') &&
+            /asociarme/.test(decodeURIComponent((ad.enlace || '').split('text=')[1] || '')), ad.enlace);
+        if (anuncios.pintado) {
+            verificar('asociarse: el enlace no lo descarta el sanitizador', anuncios.pintado.href !== '#', anuncios.pintado.href);
+            igual('asociarse: se abre en otra pestaña', anuncios.pintado.target, '_blank');
+            verificar('asociarse: sin acceso a la ventana de origen', /noopener/.test(anuncios.pintado.rel || ''),
+                anuncios.pintado.rel);
+        }
+
+        igual('alta IA y anuncios: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
 async function main() {
     const servidor = await servidorEstatico(PUERTO);
     const navegador = await abrirChromium();
@@ -1286,22 +1535,39 @@ async function main() {
         // aunque en la página no saliera nunca: el reparto sorteaba entre los
         // cuatro anuncios por igual y el de pago caía una de cada cuatro veces.
         // Esto ejecuta el reparto de verdad y mira lo que queda en pantalla.
+        // Los destacados (edictos y la invitación a asociarse) se turnan: en
+        // un turno salen unos, en el siguiente los otros, y entre los dos
+        // turnos el de edictos ocupa todos los huecos destacados.
         const reparto = await page.evaluate(() => {
-            mostrarAnuncios();
-            const cuerpos = [...document.querySelectorAll('.ad-banner .ad-body')];
-            return {
-                huecos: cuerpos.length,
-                conEdictos: cuerpos.filter(b => /Edictos/.test(b.textContent)).length,
-                conRelleno: cuerpos.filter(b => /anunciarte aquí|Espacio/.test(b.textContent)).length
+            const contar = () => {
+                mostrarAnuncios();
+                const cuerpos = [...document.querySelectorAll('.ad-banner .ad-body')];
+                return {
+                    huecos: cuerpos.length,
+                    conEdictos: cuerpos.filter(b => /Edictos/.test(b.textContent)).length,
+                    conSocio: cuerpos.filter(b => /asociarte/.test(b.textContent)).length,
+                    conRelleno: cuerpos.filter(b => /anunciarte aquí|Espacio/.test(b.textContent)).length
+                };
             };
+            const turno = _turnoAnuncio;
+            const uno = contar();
+            _turnoAnuncio++;
+            const otro = contar();
+            _turnoAnuncio = turno;
+            mostrarAnuncios();
+            return { uno, otro };
         });
+        const { uno, otro } = reparto;
 
-        verificar('anuncio: hay huecos de anuncio en la página', reparto.huecos > 0,
+        verificar('anuncio: hay huecos de anuncio en la página', uno.huecos > 0,
             JSON.stringify(reparto));
         verificar('anuncio: el reparto real lo saca en pantalla, no una vez de cada cuatro',
-            reparto.conEdictos >= reparto.huecos - 1, JSON.stringify(reparto));
+            Math.max(uno.conEdictos, otro.conEdictos) >= uno.huecos - 1, JSON.stringify(reparto));
+        verificar('anuncio: y en el turno siguiente sale la invitación a asociarse',
+            Math.max(uno.conSocio, otro.conSocio) >= uno.huecos - 1 &&
+            Math.min(uno.conEdictos, otro.conEdictos) === 0, JSON.stringify(reparto));
         verificar('anuncio: queda un hueco para la invitación a anunciarse',
-            reparto.conRelleno >= 1, JSON.stringify(reparto));
+            uno.conRelleno >= 1 && otro.conRelleno >= 1, JSON.stringify(reparto));
 
         // Y no depende de la suerte: diez repartos seguidos, siempre igual.
         const constante = await page.evaluate(() => {
@@ -2476,6 +2742,9 @@ async function main() {
 
         // ---- Sin internet ----
         await probarSinConexion(navegador);
+
+        // ---- Alta con IA, consulta en su tribunal y anuncios ----
+        await probarAltaConIAyConsulta(navegador);
 
         // ---- Recorrido guiado y páginas públicas ----
         await probarRecorridoGuiado(navegador);

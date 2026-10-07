@@ -34,7 +34,7 @@ function extraerDeclaracion(fuente, nombre, archivo) {
 }
 
 function crearEntorno(expedientes, archivados) {
-    const estado = { toasts: [], popups: [] };
+    const estado = { toasts: [], popups: [], guardados: [] };
 
     const sandbox = {
         console: { log: () => {}, warn: () => {}, error: () => {} },
@@ -49,6 +49,8 @@ function crearEntorno(expedientes, archivados) {
         // El popup real se sustituye por su registro: lo que importa es a dónde
         // apunta, no que se abra una ventana.
         abrirBusquedaPopup: (url, titulo) => { estado.popups.push({ url, titulo }); },
+        // Guardar se anota: importa qué se guarda, no la base de datos.
+        actualizarExpedienteCore: async (id, cambios) => { estado.guardados.push({ id, cambios }); },
 
         // Lo que necesitan los renderizadores de tarjeta y fila.
         _badgeInstitucionHTML: () => '', _badgeCarpetaHTML: () => '',
@@ -63,7 +65,7 @@ function crearEntorno(expedientes, archivados) {
         { filename: 'juzgados.js' });
 
     const app = fs.readFileSync(path.join(JS, 'app.js'), 'utf8');
-    for (const n of ['urlEstradosExpediente', 'abrirEstradosExpediente',
+    for (const n of ['urlEstradosExpediente', 'juzgadoTSJDeExpediente', 'abrirEstradosExpediente',
                      '_puedeBuscarEnPJF', '_menuMasAccionesHTML', 'renderTarjetaExpedienteHTML',
                      'renderFilaExpedienteHTML', 'renderCardArchivado']) {
         vm.runInContext(extraerDeclaracion(app, n, 'app.js'), sandbox, { filename: `app.js:${n}` });
@@ -327,6 +329,51 @@ function pruebaBotonPJF() {
         /abrirBusquedaPJFGuardado\(10, event\)/.test(htmlPJF), htmlPJF);
 }
 
+// ==================== EL NOMBRE LARGO DE UN ACUERDO ====================
+// La IA guardaba el juzgado como lo escribe el acuerdo, no como lo llama el
+// catálogo, y con ese nombre el expediente se quedaba sin estrados.
+
+const LARGO = { id: 13, numero: '432/2026', institucion: 'TSJ',
+                juzgado: 'Juzgado Primero Civil de Primera Instancia del Distrito Judicial de Cancún, Quintana Roo' };
+
+async function pruebaNombreLargoDeAcuerdo() {
+    const { sandbox, estado } = crearEntorno([LARGO, TSJ]);
+    const tieneBoton = (html) => /onclick="abrirEstradosExpediente\(/.test(html);
+    const comoCatalogo = { ...LARGO, juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' };
+
+    igual('largo: da la misma URL que el nombre del catálogo',
+        sandbox.urlEstradosExpediente(LARGO), sandbox.urlEstradosExpediente(comoCatalogo));
+    verificar('largo: y la tarjeta trae su botón de estrados',
+        tieneBoton(sandbox.renderTarjetaExpedienteHTML(LARGO)));
+
+    await sandbox.abrirEstradosExpediente(13, null);
+    igual('largo: pulsarlo abre los estrados', estado.popups.length, 1);
+    igual('largo: los de su juzgado',
+        estado.popups[0] && estado.popups[0].url, sandbox.urlEstradosExpediente(comoCatalogo));
+    igual('largo: y se queda guardado el nombre del catálogo', estado.guardados,
+        [{ id: 13, cambios: { juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' } }]);
+
+    estado.guardados = [];
+    await sandbox.abrirEstradosExpediente(1, null);
+    igual('un nombre que ya es el del catálogo no se vuelve a guardar', estado.guardados, []);
+
+    // Del municipio también: Playa del Carmen es Solidaridad.
+    verificar('largo: por el nombre del municipio',
+        /[?&]int=83(&|$)/.test(sandbox.urlEstradosExpediente({ ...LARGO,
+            juzgado: 'Juzgado Primero Civil de Primera Instancia del Distrito Judicial de Solidaridad' }) || ''));
+    verificar('largo: una sala con todo su nombre usa el buscador de segunda instancia',
+        /buscador_segunda\.php/.test(sandbox.urlEstradosExpediente({ ...LARGO,
+            juzgado: 'Primera Sala Civil, Mercantil y Familiar del Tribunal Superior de Justicia del Estado de Quintana Roo' }) || ''));
+
+    // Lo que no se puede saber no se adivina: estrados de otro juzgado serían
+    // peor que ningún botón.
+    igual('largo: "Juzgado Civil de Cancún" son cinco juzgados, así que ninguno',
+        sandbox.urlEstradosExpediente({ ...LARGO, juzgado: 'Juzgado Civil de Cancún' }), null);
+    igual('largo: un Juzgado de Distrito no es del TSJ aunque esté marcado así',
+        sandbox.urlEstradosExpediente({ ...LARGO,
+            juzgado: 'Juzgado Segundo de Distrito en el Estado de Quintana Roo' }), null);
+}
+
 (async () => {
     const pruebas = [
         ['la URL de estrados', pruebaURL],
@@ -335,7 +382,8 @@ function pruebaBotonPJF() {
         ['abrir los estrados', pruebaAbrir],
         ['salas de segunda instancia', pruebaSalaSegundaInstancia],
         ['expedientes archivados', pruebaArchivo],
-        ['el botón del portal del PJF', pruebaBotonPJF]
+        ['el botón del portal del PJF', pruebaBotonPJF],
+        ['el nombre largo de un acuerdo', pruebaNombreLargoDeAcuerdo]
     ];
     for (const [nombre, fn] of pruebas) {
         try { await fn(); }
