@@ -10,7 +10,7 @@
  * Lo que no es de la app —sincronización, IA, tribunales, IMPI— pasa directo
  * a la red: sin conexión falla como siempre y la app lo avisa.
  */
-const CACHE = 'tsj-app-v1';
+const CACHE = 'tsj-app-v2';
 const CACHE_CDN = 'tsj-cdn-v1';
 // Pasado este tiempo sin respuesta de la red se usa la copia guardada.
 const ESPERA_RED_MS = 4000;
@@ -78,15 +78,26 @@ self.addEventListener('fetch', (event) => {
     if (req.method !== 'GET') return;
     const url = new URL(req.url);
 
-    // Librerías del CDN: primero la copia guardada.
-    if (url.hostname === 'cdn.jsdelivr.net') {
+    // Librerías del CDN que la app carga al abrir: primero la copia guardada.
+    // Si no la hay y la red se cuelga (señal débil, Wi-Fi sin internet), no
+    // se espera indefinidamente: el <script> bloquea el resto de la página y
+    // la app abriría sin leer sus datos. Se falla y la app sigue sin ella.
+    // Las demás (Tesseract, que se pide al usarse) van directo a la red.
+    if (CDN_ESENCIALES.includes(req.url)) {
         event.respondWith((async () => {
             const cdn = await caches.open(CACHE_CDN);
             const guardada = await cdn.match(req);
             if (guardada) return guardada;
-            const resp = await fetch(req);
-            if (resp.ok && CDN_ESENCIALES.includes(req.url)) cdn.put(req, resp.clone());
-            return resp;
+            try {
+                const resp = await Promise.race([
+                    fetch(req),
+                    new Promise((_, no) => setTimeout(() => no(new Error('lenta')), ESPERA_RED_MS))
+                ]);
+                if (resp.ok) cdn.put(req, resp.clone());
+                return resp;
+            } catch (e) {
+                return Response.error();
+            }
         })());
         return;
     }
