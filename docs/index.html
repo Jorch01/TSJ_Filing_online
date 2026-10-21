@@ -3032,8 +3032,9 @@
             aria-label="Sugerir una mejora o reportar un problema">💡</button>
 
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
-    <!-- Tesseract.js para OCR en navegador -->
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <!-- Tesseract.js (OCR) no va aquí: se carga al usarse (cargarTesseract en
+         app.js). Como <script> normal, con señal débil la página se quedaba
+         esperándolo y la app abría sin mostrar ningún dato. -->
     <script src="js/juzgados.js"></script>
     <script src="js/database.js"></script>
     <script src="js/acciones-core.js"></script>

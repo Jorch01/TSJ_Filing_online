@@ -7165,16 +7165,34 @@ function capturarFotoAcuerdo() {
 
 // ==================== OCR CON TESSERACT.JS (NAVEGADOR) ====================
 
+// Tesseract pesa varios MB y solo hace falta al leer una imagen: se pide
+// entonces. Cargado desde index.html bloqueaba el arranque cuando la red se
+// colgaba (señal débil, Wi-Fi sin internet) y la app abría sin datos.
+let _cargaTesseract = null;
+function cargarTesseract() {
+    if (typeof Tesseract !== 'undefined') return Promise.resolve();
+    if (!_cargaTesseract) {
+        _cargaTesseract = new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+            s.onload = () => resolve();
+            s.onerror = () => { _cargaTesseract = null; s.remove(); reject(new Error('Tesseract.js no está cargado')); };
+            document.head.appendChild(s);
+        });
+    }
+    return _cargaTesseract;
+}
+
 // Extraer texto usando Tesseract.js (OCR en el navegador)
 async function extraerTextoConTesseract(imagenBase64, textareaId = 'ia-texto-acuerdo', statusElId = 'ia-ocr-status') {
     const statusEl = document.getElementById(statusElId);
     const statusText = statusEl?.querySelector('span:not(.loading-spinner)') || statusEl;
 
     try {
-        // Verificar que Tesseract esté disponible
-        if (typeof Tesseract === 'undefined') {
-            throw new Error('Tesseract.js no está cargado');
+        if (statusText) {
+            statusText.textContent = ' Preparando el OCR del navegador...';
         }
+        await cargarTesseract();
 
         Logger.log('Iniciando OCR con Tesseract.js...');
 
@@ -11342,6 +11360,10 @@ function registrarServiceWorker() {
     // Solo en https o en localhost: en file:// el navegador no lo permite.
     if (!(location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) return;
     navigator.serviceWorker.register('sw.js').catch(e => Logger.warn('Service worker no registrado:', e));
+    // Los datos viven solo en este dispositivo hasta que se sincronizan: se
+    // pide que el navegador no los borre para liberar espacio (Safari limpia
+    // lo de las páginas que no se abren en días).
+    navigator.storage?.persist?.().catch(() => {});
 }
 
 function actualizarAvisoConexion() {

@@ -48,6 +48,16 @@ const enCdn = (cdn ? cdn[1] : '').match(/'([^']+)'/g)?.map(s => s.slice(1, -1)) 
 verificar('DOMPurify (lo usa la app para pintar) se guarda para abrir sin internet',
     enCdn.some(u => /dompurify/.test(u)) && html.includes(enCdn.find(u => /dompurify/.test(u))));
 
+// Un <script src> externo sin async/defer detiene la página hasta que llega.
+// Si no está guardado y la red se cuelga (señal débil), la app abre sin
+// datos: así pasó con Tesseract en un iPhone sin internet.
+for (const m of html.matchAll(/<script([^>]*)src="(https?:[^"]+)"([^>]*)>/g)) {
+    const atributos = m[1] + m[3];
+    if (/\b(async|defer)\b/.test(atributos) || /^\s*<!--/.test(m[0])) continue;
+    verificar(`sin conexión: "${m[2]}" bloquea el arranque y no está guardado en el service worker`,
+        enCdn.includes(m[2]));
+}
+
 verificar('la app registra el service worker', /serviceWorker\.register\('sw\.js'\)/.test(
     fs.readFileSync(path.join(DOCS, 'js', 'app.js'), 'utf8')));
 
