@@ -1562,6 +1562,13 @@ async function editarExpediente(id, event) {
             return;
         }
 
+        // El formulario vive en la página de Expedientes. Abierto desde otra
+        // (el detalle que sale al buscar en el inicio), se llenaba oculto: el
+        // modal se cerraba y parecía que Editar no hacía nada.
+        if (!formContainer.closest('.page')?.classList.contains('active')) {
+            navegarA('expedientes');
+        }
+
         formContainer.style.display = 'block';
         document.getElementById('form-expediente-titulo').textContent = 'Editar Expediente';
         document.getElementById('expediente-id').value = id;

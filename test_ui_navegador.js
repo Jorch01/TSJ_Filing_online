@@ -1680,6 +1680,27 @@ async function main() {
         await page.evaluate(() => cerrarModal());
         await page.waitForTimeout(300);
 
+        // Editar desde el detalle abierto en el inicio (lo que sale al buscar):
+        // el formulario vive en Expedientes, y se llenaba oculto. El modal se
+        // cerraba y en el iPhone parecía que Editar no hacía nada.
+        await page.evaluate(async () => {
+            navegarA('inicio');
+            const id = (await obtenerExpedientes()).find(e => e.numero === '77/2026').id;
+            await verDetalleExpediente(id);
+        });
+        await page.waitForTimeout(400);
+        await page.click('#modal-footer button:has-text("Editar")');
+        await page.waitForTimeout(500);
+        const edicion = await page.evaluate(() => ({
+            pagina: document.querySelector('.page.active')?.id,
+            formularioVisible: document.getElementById('form-expediente').offsetParent !== null,
+            valor: document.getElementById('expediente-valor').value
+        }));
+        igual('editar desde el inicio: lleva a Expedientes', edicion.pagina, 'page-expedientes');
+        igual('editar desde el inicio: el formulario se ve', edicion.formularioVisible, true);
+        igual('editar desde el inicio: con el expediente cargado', edicion.valor, '77/2026');
+        await page.evaluate(() => cerrarFormularioExpediente());
+
         // ---- Reporte de errores ----
         await page.evaluate(() => navegarA('config'));
         await page.waitForTimeout(500);
