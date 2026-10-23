@@ -5629,3 +5629,239 @@ table th {
 .rec-whatsapp:hover { background: #1ebe5b; color: #fff; }
 .nav-recomendar { font-weight: 600; }
 @media print { #rec-oferta, #modal-recomendar { display: none !important; } }
+
+/* ==================== CUENTAS COMPARTIDAS ==================== */
+/* Se abre solo desde el asistente. Va por debajo de los avisos (1100) para que
+   "Gasto registrado" se vea, y por encima de todo lo demás. */
+.cta-overlay {
+    position: fixed; inset: 0; z-index: 1080;
+    background: rgba(10, 18, 28, 0.55);
+    display: flex; align-items: center; justify-content: center;
+    padding: 1rem;
+}
+.cta-overlay[hidden] { display: none; }
+body.cta-abierto { overflow: hidden; }
+/* Lo que flota sobre la app (botones, la invitación al recorrido) taparía
+   "Guardar" en el teléfono y no tiene nada que hacer aquí. */
+body.cta-abierto #voz-fab, body.cta-abierto #fab-feedback, body.cta-abierto #tour-fab,
+body.cta-abierto #tour-menu, body.cta-abierto #tour-oferta, body.cta-abierto #rec-oferta { display: none !important; }
+
+.cta-ventana {
+    position: relative;
+    background: var(--bg-primary); color: var(--text-primary);
+    width: 100%; max-width: 980px; max-height: calc(100vh - 2rem);
+    border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
+    display: flex; flex-direction: column; overflow: hidden;
+    animation: modal-entra 0.16s ease-out;
+}
+.cta-cabecera {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.85rem 1.25rem; border-bottom: 1px solid var(--border-color);
+    background: var(--bg-primary);
+}
+.cta-titulos { flex: 1; min-width: 0; }
+.cta-cabecera h2 { margin: 0; font-size: 1.15rem; line-height: 1.3; overflow-wrap: anywhere; }
+.cta-cabecera h2:focus { outline: none; }
+.cta-subtitulo { font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.15rem; overflow-wrap: anywhere; }
+.cta-volver {
+    border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary);
+    width: 34px; height: 34px; border-radius: var(--radius-sm); cursor: pointer; font-size: 1rem; flex-shrink: 0;
+}
+.cta-volver:hover { background: var(--bg-tertiary); }
+.cta-cerrar { width: 34px; height: 34px; flex-shrink: 0; }
+.cta-cuerpo { overflow-y: auto; padding: 1rem 1.25rem 1.5rem; display: grid; gap: 1rem; align-content: start; }
+
+.cta-nota { font-size: 0.8rem; color: var(--text-secondary); margin: 0.25rem 0; line-height: 1.45; }
+.cta-ok { color: var(--success); margin: 0.25rem 0; font-weight: 600; }
+.cta-mal { color: var(--danger); }
+.cta-vacio { color: var(--text-secondary); text-align: center; padding: 1.5rem 0.5rem; margin: 0; }
+.cta-vacio p { margin: 0.35rem auto; max-width: 46ch; }
+
+/* Catálogo */
+.cta-barra { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem; }
+.cta-pestanas { display: inline-flex; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-full); padding: 3px; }
+.cta-pestana {
+    border: none; background: transparent; color: var(--text-secondary);
+    padding: 0.35rem 0.9rem; border-radius: var(--radius-full); cursor: pointer; font-size: 0.85rem; font-weight: 500;
+}
+.cta-pestana.activa { background: var(--bg-primary); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+.cta-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.75rem; }
+.cta-tarjeta {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; text-align: left;
+    background: var(--bg-primary); color: var(--text-primary);
+    border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0.9rem 1rem;
+    cursor: pointer; box-shadow: var(--shadow-sm); font: inherit;
+}
+.cta-tarjeta:hover { border-color: var(--primary-light); box-shadow: var(--shadow); }
+.cta-tarjeta-nombre { font-weight: 650; font-size: 1rem; overflow-wrap: anywhere; }
+.cta-tarjeta-personas { font-size: 0.8rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+.cta-tarjeta-resumen { font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+.cta-etiqueta {
+    font-size: 0.72rem; padding: 0.1rem 0.5rem; border-radius: var(--radius-full);
+    background: var(--bg-tertiary); color: var(--text-secondary);
+}
+.cta-etiqueta-aviso { background: rgba(217, 119, 6, 0.14); color: var(--warning); font-weight: 600; }
+
+/* Identidad y avisos */
+.cta-yo {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+    font-size: 0.88rem; padding: 0.55rem 0.8rem;
+    background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius);
+}
+.cta-yo-falta { border-color: var(--primary-light); background: var(--primary-suave); }
+.cta-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.cta-chip {
+    background: var(--bg-primary); border: 1px solid var(--border-fuerte); color: var(--text-primary);
+    border-radius: var(--radius-full); padding: 0.3rem 0.75rem; font-size: 0.8rem; cursor: pointer; font: inherit; font-size: 0.8rem;
+}
+.cta-chip:hover:not(:disabled) { background: var(--primary); border-color: var(--primary); color: #fff; }
+.cta-chip:disabled { opacity: 0.5; cursor: not-allowed; }
+.cta-banner {
+    display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 0.75rem;
+    padding: 0.75rem 0.9rem; border-radius: var(--radius); font-size: 0.88rem; line-height: 1.45;
+    background: var(--bg-secondary); border: 1px solid var(--border-color);
+}
+.cta-banner-aviso { background: rgba(217, 119, 6, 0.1); border-color: rgba(217, 119, 6, 0.4); }
+.cta-banner-archivo { background: var(--primary-suave); border-color: var(--primary-light); }
+.cta-banner-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.cta-conformidades { list-style: none; display: flex; flex-wrap: wrap; gap: 0.3rem 0.9rem; margin: 0.4rem 0 0; padding: 0; }
+
+/* Saldos */
+.cta-saldos { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.6rem; }
+.cta-saldo {
+    display: flex; flex-direction: column; gap: 0.1rem; padding: 0.75rem 0.9rem;
+    border: 1px solid var(--border-color); border-left: 4px solid var(--border-fuerte);
+    border-radius: var(--radius); background: var(--bg-primary);
+}
+.cta-saldo small { color: var(--text-secondary); font-size: 0.74rem; font-variant-numeric: tabular-nums; }
+.cta-saldo-nombre { font-weight: 600; font-size: 0.9rem; overflow-wrap: anywhere; }
+.cta-saldo-leyenda { font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em; }
+.cta-saldo-monto { font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cta-saldo.positivo { border-left-color: var(--success); }
+.cta-saldo.positivo .cta-saldo-monto { color: var(--success); }
+.cta-saldo.negativo { border-left-color: var(--danger); }
+.cta-saldo.negativo .cta-saldo-monto { color: var(--danger); }
+.cta-saldo.cero .cta-saldo-monto { color: var(--text-muted); }
+.cta-saldo-yo { box-shadow: var(--shadow-anillo); }
+
+.cta-bloque { border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0.85rem 1rem; background: var(--bg-primary); }
+.cta-bloque h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+.cta-pagos, .cta-relacion, .cta-participantes, .cta-categorias { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+.cta-pagos li, .cta-participantes li, .cta-categorias li {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem;
+    font-size: 0.9rem; font-variant-numeric: tabular-nums;
+}
+.cta-categorias li { border-bottom: 1px dashed var(--border-color); padding-bottom: 0.3rem; }
+.cta-relacion li { font-size: 0.9rem; }
+.cta-acciones { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.cta-desplegable > summary { cursor: pointer; font-weight: 600; font-size: 0.92rem; }
+.cta-desplegable[open] > summary { margin-bottom: 0.6rem; }
+
+/* Histórico */
+.cta-filtros { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem; }
+.cta-filtros input[type="search"] { flex: 1 1 220px; min-width: 0; }
+.cta-filtros select { flex: 1 1 170px; width: auto; min-width: 0; }
+.cta-filtros input[type="date"] { width: auto; }
+.cta-filtros input, .cta-filtros select, .cta-form input, .cta-form select, .cta-form textarea,
+.cta-dialogo input, .cta-bloque form input {
+    padding: 0.45rem 0.6rem; border: 1px solid var(--border-fuerte); border-radius: var(--radius-sm);
+    background: var(--bg-primary); color: var(--text-primary); font: inherit; font-size: 0.88rem; max-width: 100%;
+}
+.cta-filtro-fecha { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; color: var(--text-secondary); }
+.cta-check { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; cursor: pointer; }
+.cta-movs { display: grid; gap: 0.5rem; }
+.cta-mov {
+    display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) auto; gap: 0.25rem 0.85rem; align-items: start;
+    padding: 0.7rem 0.85rem; border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--bg-primary);
+}
+.cta-mov-pago { background: var(--bg-secondary); }
+.cta-mov-fecha { font-size: 0.8rem; color: var(--text-secondary); padding-top: 0.1rem; }
+.cta-mov-cuerpo { min-width: 0; display: grid; gap: 0.2rem; }
+.cta-mov-titulo { font-weight: 600; font-size: 0.92rem; overflow-wrap: anywhere; }
+.cta-mov-detalle, .cta-mov-nota { font-size: 0.82rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+.cta-mov-pie { font-size: 0.74rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.cta-mov-pie strong { color: var(--text-secondary); }
+.cta-mov-monto { font-weight: 700; font-size: 1rem; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.cta-mov-btns { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: flex-end; }
+.cta-cat {
+    display: inline-block; font-size: 0.7rem; font-weight: 500; padding: 0.05rem 0.45rem; margin-left: 0.25rem;
+    border-radius: var(--radius-full); background: var(--bg-tertiary); color: var(--text-secondary); vertical-align: 0.1em;
+}
+.cta-anulado { opacity: 0.72; }
+.cta-anulado .cta-mov-titulo, .cta-anulado .cta-mov-monto { text-decoration: line-through; }
+.cta-mov-anulado { font-size: 0.8rem; color: var(--danger); }
+.cta-bitacora { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.35rem; font-size: 0.82rem; max-height: 22rem; overflow-y: auto; }
+.cta-bitacora-fecha { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* Formularios */
+.cta-form { display: grid; gap: 0.75rem; }
+.cta-form h3 { margin: 0; font-size: 1rem; }
+.cta-fila { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; }
+.cta-fila > .cta-campo { flex: 1 1 160px; }
+.cta-fila > .cta-campo-ancho { flex: 3 1 240px; }
+.cta-bloque form.cta-fila input { flex: 1 1 200px; }
+.cta-campo { display: grid; gap: 0.25rem; font-size: 0.82rem; font-weight: 500; color: var(--text-secondary); min-width: 0; }
+.cta-campo input, .cta-campo select, .cta-campo textarea { width: 100%; font-weight: 400; }
+.cta-reparto { border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0.6rem 0.85rem 0.75rem; margin: 0; display: grid; gap: 0.45rem; min-width: 0; }
+.cta-reparto legend { font-size: 0.85rem; font-weight: 600; padding: 0 0.3rem; }
+.cta-reparto-fila, .cta-nuevo {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto 7rem; align-items: center; gap: 0.6rem;
+    font-size: 0.88rem; font-variant-numeric: tabular-nums;
+}
+.cta-nuevo { grid-template-columns: minmax(0, 1fr) auto 2rem; }
+.cta-nuevo input[name="p-nombre"] { width: 100%; min-width: 0; }
+.cta-nuevo .btn-close:disabled { opacity: 0.3; cursor: not-allowed; }
+.cta-reparto-nombre { overflow-wrap: anywhere; }
+.cta-pct { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--text-secondary); }
+.cta-pct input { width: 5rem; text-align: right; }
+.cta-pct input:disabled { opacity: 0.5; }
+.cta-cuota { text-align: right; color: var(--text-secondary); }
+.cta-reparto-suma { font-size: 0.82rem; color: var(--success); font-weight: 600; }
+.cta-reparto-suma.cta-mal { color: var(--danger); }
+.cta-pista { font-size: 0.85rem; color: var(--text-secondary); display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.cta-pista:empty { display: none; }
+.cta-error {
+    color: var(--danger); background: rgba(220, 38, 38, 0.08); border: 1px solid rgba(220, 38, 38, 0.3);
+    border-radius: var(--radius-sm); padding: 0.5rem 0.7rem; font-size: 0.85rem;
+}
+.cta-error[hidden] { display: none; }
+.cta-form-btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; }
+
+/* Preguntas encima de la cuenta (PIN, motivos, confirmaciones) */
+.cta-dialogo {
+    position: absolute; inset: 0; z-index: 2;
+    background: rgba(10, 18, 28, 0.45);
+    display: flex; align-items: center; justify-content: center; padding: 1rem;
+}
+.cta-dialogo[hidden] { display: none; }
+.cta-dialogo-caja {
+    background: var(--bg-primary); color: var(--text-primary);
+    width: 100%; max-width: 420px; border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
+    padding: 1.1rem 1.2rem 1rem; display: grid; gap: 0.7rem;
+}
+.cta-dialogo-caja h3 { margin: 0; font-size: 1.02rem; }
+.cta-dialogo-caja p { margin: 0; font-size: 0.88rem; color: var(--text-secondary); line-height: 1.5; }
+.cta-dialogo-caja p strong { color: var(--text-primary); }
+.cta-dialogo-opciones .cta-chip { font-size: 0.9rem; padding: 0.45rem 0.95rem; }
+
+[data-theme="dark"] .cta-overlay, [data-theme="dark"] .cta-dialogo { background: rgba(0, 0, 0, 0.6); }
+[data-theme="dark"] .cta-etiqueta-aviso { background: rgba(251, 191, 36, 0.14); }
+[data-theme="dark"] .cta-banner-aviso { background: rgba(251, 191, 36, 0.08); border-color: rgba(251, 191, 36, 0.35); }
+
+@media (max-width: 640px) {
+    .cta-overlay { padding: 0; align-items: stretch; }
+    .cta-ventana { max-width: none; max-height: none; height: 100%; border-radius: 0; }
+    .cta-cabecera { padding: 0.7rem 0.9rem; padding-top: calc(0.7rem + env(safe-area-inset-top, 0px)); }
+    .cta-cuerpo { padding: 0.85rem 0.9rem calc(1.25rem + env(safe-area-inset-bottom, 0px)); }
+    .cta-mov { grid-template-columns: minmax(0, 1fr) auto; }
+    .cta-mov-fecha { grid-column: 1 / -1; }
+    .cta-mov-btns { grid-column: 1 / -1; justify-content: flex-start; }
+    .cta-reparto-fila { grid-template-columns: minmax(0, 1fr) auto; }
+    .cta-reparto-fila .cta-cuota { grid-column: 1 / -1; text-align: left; margin-top: -0.35rem; font-size: 0.78rem; }
+    .cta-reparto-fila .cta-cuota:empty { display: none; }
+    .cta-saldos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cta-acciones .btn { flex: 1 1 calc(50% - 0.5rem); justify-content: center; }
+    .cta-filtro-fecha { flex: 1 1 calc(50% - 0.5rem); }
+    .cta-filtro-fecha input { flex: 1; min-width: 0; }
+}
+@media print { .cta-overlay { display: none !important; } }

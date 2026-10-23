@@ -435,7 +435,8 @@ function huellaContenido(datos) {
         carpetas: datos.carpetas || [],
         eliminados: datos.eliminados || [],
         historial: histNorm,
-        sigaGuardadas: datos.sigaGuardadas || []
+        sigaGuardadas: datos.sigaGuardadas || [],
+        cuentas: datos.cuentas || []
     };
     try {
         return JSON.stringify(copia);
@@ -786,6 +787,11 @@ function fusionarDatos(local, remoto) {
         // sofisticado, basta con la unión sin duplicados.
         historial: fusionarHistorial(local.historial || [], remoto.historial || []),
         sigaGuardadas: fusionarBusquedasGuardadas(local.sigaGuardadas || [], remoto.sigaGuardadas || []),
+        // Cuentas compartidas: cada una es una bitácora que solo crece, así
+        // que fusionar es unir los hechos de los dos lados (cuentas.js).
+        cuentas: typeof fusionarCuentasCompartidas === 'function'
+            ? fusionarCuentasCompartidas(local.cuentas || [], remoto.cuentas || [])
+            : (local.cuentas || remoto.cuentas || []),
         eliminados: eliminadosFusionados,
         metadata: local.metadata
     };
@@ -1550,6 +1556,11 @@ async function obtenerTodosLosDatos() {
     const pendientes = typeof obtenerPendientes === 'function'
         ? await obtenerPendientes().catch(() => []) : [];
 
+    // Cuentas compartidas del despacho (cuentas.js). Viajan en el mismo
+    // bloque para que las vean todos los dispositivos de la licencia.
+    const cuentas = typeof obtenerCuentasCompartidas === 'function'
+        ? await obtenerCuentasCompartidas().catch(() => []) : [];
+
     return {
         expedientes: [...expedientes, ...archivados],
         notas,
@@ -1558,7 +1569,8 @@ async function obtenerTodosLosDatos() {
         eliminados,
         historial,
         sigaGuardadas,
-        carpetas
+        carpetas,
+        cuentas
     };
 }
 
@@ -1634,6 +1646,11 @@ async function aplicarDatosLocalmente(datos) {
     }
     if (typeof reemplazarPendientes === 'function' && datos.pendientes) {
         try { await reemplazarPendientes(datos.pendientes); } catch (e) { console.warn('No se pudieron aplicar pendientes sincronizados:', e); }
+    }
+    // Se juntan con las de aquí en vez de sustituirlas: un gasto registrado
+    // mientras se descargaba no se pierde.
+    if (typeof aplicarCuentasCompartidas === 'function' && Array.isArray(datos.cuentas)) {
+        try { await aplicarCuentasCompartidas(datos.cuentas); } catch (e) { console.warn('No se pudieron aplicar las cuentas compartidas:', e); }
     }
 
     // El blob remoto trae nuevas notas e historial: invalidar el caché de

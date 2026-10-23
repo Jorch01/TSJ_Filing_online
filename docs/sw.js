@@ -29,6 +29,7 @@ const ARCHIVOS_APP = [
     'js/impi-search.js',
     'js/app.js',
     'js/sync.js',
+    'js/cuentas.js',
     'js/timeline.js',
     'js/gcal-sync.js',
     'js/command-palette.js',

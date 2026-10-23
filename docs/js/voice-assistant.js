@@ -481,6 +481,9 @@
     }
 
     function cerrarPanel() {
+        // Un catálogo de cuentas que se dejó sin elegir no debe tomar como
+        // elección lo próximo que se diga al volver a abrir.
+        eleccionCuenta = null;
         detenerEscucha();
         if ('speechSynthesis' in window) speechSynthesis.cancel();
         const p = document.getElementById('voz-panel');
@@ -783,6 +786,9 @@
     async function procesarEntradaUsuario(texto) {
         cerrarAyuda();
         agregarMensaje('usuario', esc(texto));
+
+        // Las cuentas compartidas se atienden aquí mismo, sin pasar por la IA.
+        if (await atenderCuentas(texto)) return;
 
         // Respondiendo a una confirmación pendiente. Nota: se detecta por
         // accionPendiente (no por `estado`) porque el estado del micrófono
@@ -2552,6 +2558,167 @@
         div.appendChild(btns);
         const chat = document.getElementById('voz-chat');
         if (chat) chat.scrollTop = chat.scrollHeight;
+    }
+
+    // ==================== CUENTAS COMPARTIDAS ====================
+    // Función reservada (cuentas.js): no está en la guía, en los ejemplos ni
+    // en el prompt del modelo. "Abre las cuentas" se reconoce aquí, antes de
+    // llamar a la IA, para que nombres y montos no salgan del navegador y para
+    // que funcione aunque no haya API key configurada. El asistente enseña el
+    // catálogo y espera a que se elija una por número, por nombre o con su
+    // botón.
+
+    let eleccionCuenta = null;   // catálogo en pantalla: { archivadas, items }
+
+    /** true si el texto era para las cuentas y ya se atendió. */
+    async function atenderCuentas(texto) {
+        const C = window.CUENTAS;
+        if (!C) return false;
+        try {
+            if (eleccionCuenta) {
+                let r = C.elegirDeCatalogo(texto, eleccionCuenta.items);
+                if (!r && RE_SI.test(normalizar(texto))) {
+                    if (eleccionCuenta.items.length === 1) r = { tipo: 'cuenta', item: eleccionCuenta.items[0] };
+                    else if (!eleccionCuenta.items.length && !eleccionCuenta.archivadas) r = { tipo: 'nueva' };
+                }
+                if (r) { await responderEleccionCuenta(r); return true; }
+                if (C.esPeticionAbrir(texto)) { await mostrarCatalogoCuentas(false); return true; }
+                // Una respuesta corta que no encaja es un intento de elegir y se
+                // vuelve a preguntar; una frase larga es otra orden y sigue su
+                // camino normal.
+                if (normalizar(texto).split(' ').length <= 4) {
+                    const msg = 'No identifiqué esa cuenta. Dime su número o su nombre, o «cancelar».';
+                    agregarMensaje('asistente', esc(msg));
+                    hablar(msg, () => { if (panelAbierto()) iniciarEscucha(); });
+                    return true;
+                }
+                eleccionCuenta = null;
+                estado = Estado.INACTIVO;
+                return false;
+            }
+            if (C.esPeticionAbrir(texto)) { await mostrarCatalogoCuentas(false); return true; }
+        } catch (e) {
+            console.error('[VOZ] Cuentas:', e);
+            eleccionCuenta = null;
+            estado = Estado.INACTIVO;
+            agregarMensaje('asistente', '⚠️ ' + esc('No pude abrir las cuentas: ' + (e.message || e)));
+            return true;
+        }
+        return false;
+    }
+
+    async function mostrarCatalogoCuentas(archivadas) {
+        // Lo que estuviera a medias se descarta: ahora se habla de cuentas.
+        accionPendiente = null;
+        ocultarConfirmacion();
+        limpiarEleccionPendiente();
+        conversacion = [];
+
+        const cat = await window.CUENTAS.catalogo({ archivadas });
+        eleccionCuenta = { archivadas, items: cat.items };
+        estado = Estado.ESPERANDO_DATO;
+
+        let encabezado, pregunta;
+        if (cat.items.length) {
+            encabezado = archivadas ? '🗄️ Cuentas archivadas.' : '🔐 Cuentas compartidas.';
+            pregunta = '¿Cuál quieres abrir? Dime el número o el nombre.';
+        } else if (archivadas) {
+            encabezado = '🗄️ No hay cuentas archivadas.';
+            pregunta = '¿Vuelvo a las activas?';
+        } else {
+            encabezado = '🔐 Todavía no hay cuentas compartidas.';
+            pregunta = '¿Creamos la primera?';
+        }
+        const div = agregarMensaje('asistente', '<strong>' + esc(encabezado) + '</strong> ' + esc(pregunta));
+        if (div) {
+            cat.items.forEach(item => {
+                const fila = document.createElement('div');
+                fila.className = 'voz-resultado';
+                fila.innerHTML =
+                    '<div class="voz-resultado-info">' +
+                        '<strong>' + esc(item.numero + '. ' + item.nombre) + '</strong>' +
+                        (item.porConfirmar ? ' <span class="voz-tag">archivo por confirmar</span>' : '') +
+                        '<br><small>' + esc(item.participantes.join(' · ')) + '</small>' +
+                        '<br><small class="voz-motivo">' + esc(item.resumen) + '</small>' +
+                    '</div>';
+                const btns = document.createElement('div');
+                btns.className = 'voz-resultado-btns';
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'voz-chip';
+                b.textContent = 'Abrir';
+                b.onclick = () => {
+                    agregarMensaje('usuario', esc(item.nombre));
+                    responderEleccionCuenta({ tipo: 'cuenta', item });
+                };
+                btns.appendChild(b);
+                fila.appendChild(btns);
+                div.appendChild(fila);
+            });
+
+            const extras = document.createElement('div');
+            extras.className = 'voz-ejemplos';
+            const chip = (texto, r) => {
+                const c = document.createElement('button');
+                c.type = 'button';
+                c.className = 'voz-chip';
+                c.textContent = texto;
+                c.onclick = () => {
+                    agregarMensaje('usuario', esc(texto));
+                    responderEleccionCuenta(r);
+                };
+                extras.appendChild(c);
+            };
+            if (archivadas) chip(`← Activas (${cat.activas})`, { tipo: 'activas' });
+            else {
+                chip('➕ Nueva cuenta', { tipo: 'nueva' });
+                if (cat.archivadas) chip(`🗄️ Archivadas (${cat.archivadas})`, { tipo: 'archivadas' });
+            }
+            div.appendChild(extras);
+            const chat = document.getElementById('voz-chat');
+            if (chat) chat.scrollTop = chat.scrollHeight;
+        }
+
+        const dicho = cat.items.length
+            ? (cat.items.length === 1 ? 'Hay una cuenta: ' + cat.items[0].nombre + '. ¿La abro?' : `Hay ${cat.items.length} cuentas. ${pregunta}`)
+            : encabezado.replace(/^\S+\s/, '') + ' ' + pregunta;
+        hablar(dicho, () => { if (panelAbierto() && eleccionCuenta) iniciarEscucha(); });
+    }
+
+    async function responderEleccionCuenta(r) {
+        const C = window.CUENTAS;
+        const terminar = () => { eleccionCuenta = null; estado = Estado.INACTIVO; };
+        switch (r.tipo) {
+            case 'cuenta':
+                terminar();
+                agregarMensaje('asistente', '✅ ' + esc('Abrí «' + r.item.nombre + '».'));
+                cerrarPanel();
+                await C.abrir(r.item.uid);
+                return;
+            case 'nueva':
+                terminar();
+                agregarMensaje('asistente', '✅ Vamos a crear una cuenta nueva.');
+                cerrarPanel();
+                await C.abrirNueva();
+                return;
+            case 'archivadas':
+                await mostrarCatalogoCuentas(true);
+                return;
+            case 'activas':
+                await mostrarCatalogoCuentas(false);
+                return;
+            case 'cancelar':
+                terminar();
+                agregarMensaje('asistente', 'De acuerdo. ¿Algo más?');
+                hablar('De acuerdo');
+                return;
+            case 'ambigua': {
+                const msg = 'Coinciden varias: ' + r.candidatos.map(c => c.numero + '. ' + c.nombre).join(', ') + '. ¿Cuál?';
+                agregarMensaje('asistente', esc(msg));
+                hablar(msg, () => { if (panelAbierto()) iniciarEscucha(); });
+                return;
+            }
+        }
     }
 
     // ==================== LLM ====================
