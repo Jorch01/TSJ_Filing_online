@@ -1199,6 +1199,313 @@ async function probarAltaConIAyConsulta(navegador) {
     }
 }
 
+/**
+ * Cuentas compartidas del despacho: una función que no está en ningún menú y
+ * se abre solo pidiéndosela al asistente. Se recorre como la usaría el
+ * despacho: crear la cuenta, el caso de 1,000 y 600, liquidar, anular,
+ * archivar de común acuerdo, PIN, exportar, y lo que llega de otro
+ * dispositivo de la misma licencia.
+ */
+async function probarCuentasCompartidas(navegador) {
+    const contexto = await navegador.newContext({ acceptDownloads: true, viewport: { width: 1280, height: 860 },
+        locale: 'es-MX', timezoneId: 'America/Cancun' });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    const pausa = (ms) => page.waitForTimeout(ms);
+    const saldos = () => page.$$eval('.cta-saldo', els => els.map(e =>
+        e.querySelector('.cta-saldo-nombre').textContent.replace(' (tú)', '') + ' ' +
+        (e.classList.contains('positivo') ? '+' : e.classList.contains('negativo') ? '-' : '') +
+        e.querySelector('.cta-saldo-monto').textContent));
+    const decirAlAsistente = async (texto) => {
+        await page.fill('#voz-input', texto);
+        await page.press('#voz-input', 'Enter');
+        await pausa(400);
+    };
+    const responderDialogo = async (valor) => {
+        if (valor !== undefined) await page.fill('#cta-dialogo input[name="valor"]', valor);
+        await page.click('#cta-dialogo button[type="submit"]');
+        await pausa(350);
+    };
+    const registrarGasto = async (concepto, monto, pagoNombre, categoria) => {
+        await page.click('[data-acc="nuevo-gasto"]');
+        await pausa(250);
+        await page.fill('#cta-cuerpo input[name="concepto"]', concepto);
+        await page.fill('#cta-cuerpo input[name="monto"]', monto);
+        await page.selectOption('#cta-cuerpo select[name="pagadoPor"]', { label: pagoNombre });
+        if (categoria) await page.fill('#cta-cuerpo input[name="categoria"]', categoria);
+        await page.click('#cta-cuerpo button[type="submit"]');
+        await pausa(600);
+    };
+
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => window.CUENTAS && window.VOZ && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+        await pausa(1200);
+
+        // ---- Oculta ----
+        const oculta = await page.evaluate(() => ({
+            texto: /cuentas compartidas/i.test(document.body.innerText),
+            enMenu: [...document.querySelectorAll('nav a, nav button, .mobile-nav a, .mobile-nav button')]
+                .some(el => /cuentas/i.test(el.textContent)),
+            ventana: !!document.getElementById('cta-overlay')
+        }));
+        igual('cuentas: no aparecen en ningún lado de la app', oculta, { texto: false, enMenu: false, ventana: false });
+
+        // ---- Se piden al asistente ----
+        await page.evaluate(() => VOZ.abrir());
+        await pausa(400);
+        await decirAlAsistente('abre las cuentas');
+        const chat = await page.textContent('#voz-chat');
+        verificar('cuentas: el asistente las abre aunque no haya API key', /Todavía no hay cuentas compartidas/.test(chat), chat.slice(-200));
+        await page.click('#voz-chat .voz-chip:has-text("Nueva cuenta")');
+        await pausa(500);
+        igual('cuentas: al elegir se cierra el asistente', await page.evaluate(() => document.getElementById('voz-panel').classList.contains('activo')), false);
+        igual('cuentas: y se abre la ventana de cuentas', await page.isVisible('#cta-overlay'), true);
+        igual('cuentas: con el formulario de cuenta nueva', (await page.textContent('#cta-titulo')).trim(), 'Nueva cuenta compartida');
+        igual('cuentas: el botón del asistente no tapa la ventana', await page.isVisible('#voz-fab'), false);
+
+        // ---- Crear: de 2 a 20 participantes ----
+        verificar('cuentas: con dos participantes no se puede quitar ninguno',
+            await page.$$eval('#cta-nuevos [data-acc="quitar-fila"]', bs => bs.every(b => b.disabled)));
+        const agregar = page.locator('[data-acc="agregar-fila"]');
+        for (let i = 0; i < 25 && !(await agregar.isDisabled()); i++) await agregar.click();
+        igual('cuentas: se pueden agregar hasta 20 participantes, no más', await page.locator('#cta-nuevos .cta-nuevo').count(), 20);
+        igual('cuentas: con 20 el botón de agregar se apaga', await agregar.isDisabled(), true);
+        while (await page.locator('#cta-nuevos .cta-nuevo').count() > 2) {
+            await page.locator('#cta-nuevos [data-acc="quitar-fila"]').last().click();
+        }
+        await page.fill('#cta-cuerpo input[name="nombre"]', 'Gastos de oficina');
+        const nombres = page.locator('#cta-nuevos input[name="p-nombre"]');
+        await nombres.nth(0).fill('Jorge');
+        await nombres.nth(1).fill('Frida');
+        await page.selectOption('#cta-cuerpo select[name="yo"]', 'Jorge');
+        await page.click('#cta-cuerpo button[type="submit"]');
+        await pausa(700);
+        igual('cuentas: creada, se abre', (await page.textContent('#cta-titulo')).trim(), 'Gastos de oficina');
+        verificar('cuentas: dice que soy Jorge', /Estás como\s+Jorge/.test(await page.textContent('.cta-yo')));
+
+        // ---- El caso con el que se pidió ----
+        await registrarGasto('Renta de octubre', '1,000', 'Jorge', 'Renta');
+        igual('cuentas: Jorge paga 1,000 mitad y mitad: 500 a su favor', await saldos(), ['Jorge +$500.00', 'Frida -$500.00']);
+        await registrarGasto('Papelería', '600', 'Frida', 'Papelería');
+        igual('cuentas: Frida paga 600: se descuentan 300 y queda la diferencia', await saldos(), ['Jorge +$200.00', 'Frida -$200.00']);
+        verificar('cuentas: dice cómo quedar a mano', /Frida paga \$200\.00 a Jorge/.test(await page.textContent('.cta-pagos')));
+        igual('cuentas: el histórico tiene los dos', await page.locator('.cta-mov').count(), 2);
+
+        // Un 70-30 en un gasto suelto.
+        await page.click('[data-acc="nuevo-gasto"]');
+        await pausa(250);
+        await page.fill('#cta-cuerpo input[name="concepto"]', 'Luz');
+        await page.fill('#cta-cuerpo input[name="monto"]', '100');
+        const pcts = page.locator('#cta-cuerpo .cta-reparto-fila input[type="text"]');
+        await pcts.nth(0).fill('70');
+        await pcts.nth(1).fill('20');
+        await page.click('#cta-cuerpo button[type="submit"]');
+        await pausa(300);
+        verificar('cuentas: un reparto que no suma 100% no se guarda',
+            /suman 90%/.test(await page.textContent('#cta-error')));
+        await pcts.nth(1).fill('30');
+        await pausa(150);
+        igual('cuentas: se ve cuánto le toca a cada quien', (await page.textContent('[data-cuota]')).trim(), '$70.00');
+        await page.click('#cta-cuerpo button[type="submit"]');
+        await pausa(600);
+        igual('cuentas: 70-30 sobre 100 pagados por Jorge', await saldos(), ['Jorge +$230.00', 'Frida -$230.00']);
+
+        // ---- Liquidar y anular ----
+        await page.click('[data-acc="liquidar"]');
+        await pausa(300);
+        igual('cuentas: "registrar este pago" propone el monto', await page.inputValue('#cta-cuerpo input[name="monto"]'), '230.00');
+        await page.click('#cta-cuerpo button[type="submit"]');
+        await pausa(600);
+        igual('cuentas: tras el pago quedan a mano', await saldos(), ['Jorge $0.00', 'Frida $0.00']);
+        verificar('cuentas: lo dice', /Todos están a mano/.test(await page.textContent('#cta-cuerpo')));
+
+        await page.locator('.cta-mov').first().locator('[data-acc="anular"]').click();
+        await pausa(300);
+        await responderDialogo('');
+        verificar('cuentas: anular pide el motivo', /Escribe el motivo/.test(await page.textContent('#cta-dialogo')));
+        await responderDialogo('Se registró por error');
+        igual('cuentas: el pago anulado deja de contar', await saldos(), ['Jorge +$230.00', 'Frida -$230.00']);
+        verificar('cuentas: pero sigue en el histórico con su motivo',
+            /Se registró por error/.test(await page.textContent('.cta-anulado')));
+
+        // ---- Exportar ----
+        const espera = page.waitForEvent('download', { timeout: 8000 });
+        await page.click('[data-acc="csv"]');
+        const descarga = await espera.catch(() => null);
+        verificar('cuentas: exporta el estado de cuenta en CSV', !!descarga && /^cuenta-gastos-de-oficina-\d{4}-\d{2}-\d{2}\.csv$/.test(descarga.suggestedFilename()),
+            descarga && descarga.suggestedFilename());
+        if (descarga) {
+            const csv = fs.readFileSync(await descarga.path(), 'utf8');
+            verificar('cuentas: el CSV trae cada movimiento con la parte de cada quien',
+                csv.includes('Renta de octubre') && csv.includes('Parte de Frida') && csv.includes('Anulado'), csv.slice(0, 300));
+        }
+
+        // ---- Archivar de común acuerdo ----
+        await page.click('[data-acc="solicitar-archivo"]');
+        await pausa(300);
+        verificar('cuentas: al pedir archivo avisa que hay saldo pendiente', /saldos pendientes/.test(await page.textContent('#cta-dialogo')));
+        await responderDialogo('Cerramos el trimestre');
+        verificar('cuentas: pedirlo no la archiva: falta Frida', /pidió archivar/.test(await page.textContent('.cta-banner')));
+        verificar('cuentas: y se sigue pudiendo registrar', await page.isVisible('[data-acc="nuevo-gasto"]'));
+
+        await page.click('[data-acc="cambiar-yo"]');
+        await pausa(300);
+        await page.click('#cta-dialogo [data-dialogo]:has-text("Frida")');
+        await pausa(400);
+        await page.click('[data-acc="confirmar-archivo"]');
+        await pausa(300);
+        await responderDialogo();
+        verificar('cuentas: con la conformidad de los dos queda archivada', /Cuenta archivada/.test(await page.textContent('.cta-banner')));
+        igual('cuentas: archivada ya no admite movimientos', await page.isVisible('[data-acc="nuevo-gasto"]'), false);
+        igual('cuentas: los saldos se conservan', await saldos(), ['Jorge +$230.00', 'Frida -$230.00']);
+
+        await page.click('[data-acc="reactivar"]');
+        await pausa(300);
+        await responderDialogo('Falta un recibo');
+        igual('cuentas: reactivada vuelve a admitir movimientos', await page.isVisible('[data-acc="nuevo-gasto"]'), true);
+
+        // ---- PIN ----
+        await page.click('[data-acc="ajustes"]');
+        await pausa(300);
+        await page.click('[data-acc="pin-poner"]');
+        await pausa(300);
+        await responderDialogo('12');
+        verificar('cuentas: el PIN pide de 4 a 8 dígitos', /de 4 a 8 dígitos/.test(await page.textContent('#cta-dialogo')));
+        await responderDialogo('2468');
+        await responderDialogo('2468');
+        verificar('cuentas: el PIN queda puesto', /Cambiar mi PIN/.test(await page.textContent('#cta-cuerpo')));
+        const pinGuardado = await page.evaluate(async () => JSON.stringify(await obtenerCuentasCompartidas()));
+        verificar('cuentas: el PIN no se guarda en claro', !pinGuardado.includes('2468'));
+        await page.click('[data-acc="volver"]');
+        await pausa(300);
+        await page.click('[data-acc="cambiar-yo"]');
+        await pausa(300);
+        await page.click('#cta-dialogo [data-dialogo]:has-text("Jorge")');
+        await pausa(300);
+        await page.click('[data-acc="cambiar-yo"]');
+        await pausa(300);
+        await page.click('#cta-dialogo [data-dialogo]:has-text("Frida")');
+        await pausa(300);
+        await responderDialogo('0000');
+        verificar('cuentas: con otro PIN no se puede actuar como Frida', /PIN incorrecto/.test(await page.textContent('#cta-dialogo')));
+        await responderDialogo('2468');
+        verificar('cuentas: con el suyo sí', /Estás como\s+Frida/.test(await page.textContent('.cta-yo')));
+
+        // ---- Lo que llega de otro dispositivo de la licencia ----
+        const otro = await page.evaluate(async () => {
+            const local = await obtenerTodosLosDatos();
+            local.metadata = { ultimaModificacion: Date.now(), dispositivo: 'este', version: '2.0' };
+            const nube = JSON.parse(JSON.stringify(local));
+            const c = nube.cuentas[0];
+            const ids = c.eventos[0].participantes.map(p => p.id);
+            c.eventos.push({ id: 'ev_zzzotro', fecha: new Date(Date.now() + 1000).toISOString(), dispositivo: 'otro', tipo: 'gasto', por: ids[1],
+                mov: { concepto: 'Internet (desde otro dispositivo)', monto: 50000, pagadoPor: ids[1], reparto: { [ids[0]]: 50, [ids[1]]: 50 }, fechaMov: '2026-10-22' } });
+            const fusion = fusionarDatos(local, nube);
+            const subeAlgo = huellaContenido(fusion) !== huellaContenido(local);
+            await aplicarDatosLocalmente(fusion);
+            await new Promise(r => setTimeout(r, 400));
+            return { subeAlgo, cuentas: fusion.cuentas.length };
+        });
+        igual('cuentas: lo de otro dispositivo se junta, sin duplicar la cuenta', otro.cuentas, 1);
+        verificar('cuentas: y la ventana abierta se actualiza sola',
+            /Internet \(desde otro dispositivo\)/.test(await page.textContent('#cta-historial')));
+        igual('cuentas: con el saldo nuevo', await saldos(), ['Jorge -$20.00', 'Frida +$20.00']);
+
+        // ---- El catálogo desde el asistente, eligiendo por número ----
+        await page.keyboard.press('Escape');
+        await pausa(200);
+        igual('cuentas: Escape la cierra', await page.isVisible('#cta-overlay'), false);
+        await page.evaluate(() => VOZ.abrir());
+        await pausa(300);
+        await decirAlAsistente('muéstrame las cuentas');
+        verificar('cuentas: el catálogo enseña la cuenta con su saldo',
+            /1\. Gastos de oficina[\s\S]*Jorge debe \$20\.00 a Frida/.test(await page.textContent('#voz-chat')));
+        await decirAlAsistente('la 1');
+        await pausa(400);
+        igual('cuentas: "la 1" abre la primera', (await page.textContent('#cta-titulo')).trim(), 'Gastos de oficina');
+
+        // ---- Corregir, repetir y ajustes ----
+        await page.locator('.cta-mov:has-text("Papelería")').locator('[data-acc="corregir"]').click();
+        await pausa(300);
+        igual('cuentas: corregir abre el gasto con sus datos', await page.inputValue('#cta-cuerpo input[name="monto"]'), '600.00');
+        await page.fill('#cta-cuerpo input[name="monto"]', '800');
+        await page.click('#cta-cuerpo button[type="submit"]');
+        // Frida tiene PIN y corregir anula el original: se lo pide.
+        await responderDialogo('2468');
+        await pausa(400);
+        igual('cuentas: la corrección sustituye al original', await saldos(), ['Jorge -$120.00', 'Frida +$120.00']);
+        verificar('cuentas: y el original queda anulado en el histórico',
+            /Corregido: se registró de nuevo/.test(await page.textContent('#cta-historial')));
+
+        await page.locator('.cta-mov:has-text("Renta de octubre")').first().locator('[data-acc="repetir"]').click();
+        await pausa(300);
+        igual('cuentas: repetir propone el mismo concepto', await page.inputValue('#cta-cuerpo input[name="concepto"]'), 'Renta de octubre');
+        await page.click('[data-acc="volver"]');
+        await pausa(300);
+
+        await page.click('[data-acc="ajustes"]');
+        await pausa(300);
+        await page.fill('#cta-cuerpo form[data-form="agregar-participante"] input[name="nombre"]', 'Ana');
+        await page.click('#cta-cuerpo form[data-form="agregar-participante"] button[type="submit"]');
+        await pausa(500);
+        verificar('cuentas: se puede sumar a alguien más', /Ana/.test(await page.textContent('.cta-participantes')));
+        const repartoAjustes = page.locator('#cta-cuerpo form[data-form="reparto"] .cta-reparto-fila input[type="text"]');
+        await repartoAjustes.nth(0).fill('70');
+        await repartoAjustes.nth(1).fill('30');
+        await repartoAjustes.nth(2).fill('0');
+        await page.click('#cta-cuerpo form[data-form="reparto"] button[type="submit"]');
+        await pausa(500);
+        await page.locator('[data-acc="renombrar"]').nth(2).click();
+        await pausa(300);
+        await responderDialogo('Ana López');
+        verificar('cuentas: se puede renombrar', /Ana López/.test(await page.textContent('.cta-participantes')));
+        await page.click('[data-acc="volver"]');
+        await pausa(300);
+        igual('cuentas: quien se suma no hereda saldo', (await saldos())[2], 'Ana López $0.00');
+        await page.click('[data-acc="nuevo-gasto"]');
+        await pausa(300);
+        igual('cuentas: el gasto nuevo propone el reparto habitual guardado (70-30, Ana fuera)',
+            await page.$$eval('#cta-cuerpo .cta-reparto-fila input[type="text"]', ins => ins.map(i => i.value)), ['70', '30', '0']);
+        await page.click('[data-acc="volver"]');
+        await pausa(300);
+
+        // Una cuenta vacía se puede eliminar.
+        await page.evaluate(() => CUENTAS.abrirNueva());
+        await pausa(300);
+        await page.fill('#cta-cuerpo input[name="nombre"]', 'Por error');
+        await page.locator('#cta-nuevos input[name="p-nombre"]').nth(0).fill('Uno');
+        await page.locator('#cta-nuevos input[name="p-nombre"]').nth(1).fill('Dos');
+        await page.click('#cta-cuerpo button[type="submit"]');
+        await pausa(600);
+        await page.click('[data-acc="ajustes"]');
+        await pausa(300);
+        await page.click('[data-acc="eliminar-cuenta"]');
+        await pausa(300);
+        await responderDialogo();
+        await pausa(300);
+        verificar('cuentas: la cuenta vacía desaparece del catálogo',
+            !/Por error/.test(await page.textContent('#cta-cuerpo')) && /Gastos de oficina/.test(await page.textContent('#cta-cuerpo')));
+        await page.click('.cta-tarjeta:has-text("Gastos de oficina")');
+        await pausa(400);
+
+        // ---- En el teléfono ----
+        await page.setViewportSize({ width: 390, height: 844 });
+        await pausa(300);
+        const anchoCuenta = await page.evaluate(() => { const c = document.getElementById('cta-cuerpo'); return c.scrollWidth - c.clientWidth; });
+        igual('cuentas: en el teléfono la cuenta no se sale a lo ancho', anchoCuenta, 0);
+        await page.click('[data-acc="nuevo-gasto"]');
+        await pausa(300);
+        const anchoGasto = await page.evaluate(() => { const c = document.getElementById('cta-cuerpo'); return c.scrollWidth - c.clientWidth; });
+        igual('cuentas: ni el formulario de gasto', anchoGasto, 0);
+
+        igual('cuentas: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
 async function main() {
     const servidor = await servidorEstatico(PUERTO);
     const navegador = await abrirChromium();
@@ -2784,6 +3091,9 @@ async function main() {
 
         // ---- Alta con IA, consulta en su tribunal y anuncios ----
         await probarAltaConIAyConsulta(navegador);
+
+        // ---- Cuentas compartidas (solo desde el asistente) ----
+        await probarCuentasCompartidas(navegador);
 
         // ---- Recorrido guiado y páginas públicas ----
         await probarRecorridoGuiado(navegador);
