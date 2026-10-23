@@ -150,6 +150,7 @@
             titulo: '🧭 Navegación',
             items: [
                 'Llévame al calendario',
+                'Abre las estadísticas',
                 'Abre la calculadora laboral',
                 'Abre la búsqueda del PJF',
                 'Ve a configuración'
@@ -2352,7 +2353,7 @@
     }
 
     function accNavegar(p) {
-        const paginas = ['inicio', 'expedientes', 'calendario', 'pendientes', 'notas', 'tribunales', 'busqueda', 'pjf', 'laboral', 'impi', 'config'];
+        const paginas = ['inicio', 'expedientes', 'calendario', 'pendientes', 'notas', 'tribunales', 'busqueda', 'pjf', 'laboral', 'impi', 'estadisticas', 'config'];
         const pagina = paginas.includes(p.pagina) ? p.pagina : null;
         if (!pagina) throw new Error('No identifiqué a qué sección navegar');
         if (typeof navegarA === 'function') navegarA(pagina);
@@ -2929,7 +2930,7 @@ CÓMO DECIDIR ENTRE ESTRADOS DEL TSJ Y DEL PJF (importante):
 - Ejemplo mixto: "busca el 123/2025 en el juzgado primero civil de Cancún y el amparo indirecto 45/2026 en el juzgado primero de distrito de Quintana Roo" → buscar_varios con busquedas=[{accion:"buscar_tsj", parametros:{valor:"123/2025", tipoBusqueda:"numero", juzgado:"JUZGADO PRIMERO CIVIL CANCUN"}}, {accion:"buscar_pjf", parametros:{numero:"45/2026", organismo:"juzgado primero de distrito en quintana roo", tiposAsunto:["amparo indirecto"]}}].
 - Ejemplo con números distintos: "busca el amparo directo 100/2026 y la queja 7/2026 en el primer colegiado del 27" → buscar_varios con dos buscar_pjf, uno por número.
 - NO hace falta que el asunto esté en el catálogo del usuario: si dicta el órgano y el número, manda esos datos y deja expedienteId y expedienteRef en null. Solo usa expedienteRef cuando se refiera a algo SUYO sin dar el órgano ("abre los estrados de lo de Ramírez").
-15. "navegar": {pagina:"inicio"|"expedientes"|"calendario"|"pendientes"|"notas"|"tribunales"|"busqueda"|"pjf"|"laboral"|"impi"|"config"} — "tribunales" abre el apartado de tribunales; "busqueda" es su parte del TSJ y "pjf" la del PJF; "laboral" es la calculadora de finiquito y liquidación (solo abrirla, sin calcular).
+15. "navegar": {pagina:"inicio"|"expedientes"|"calendario"|"pendientes"|"notas"|"tribunales"|"busqueda"|"pjf"|"laboral"|"impi"|"estadisticas"|"config"} — "tribunales" abre el apartado de tribunales; "busqueda" es su parte del TSJ y "pjf" la del PJF; "laboral" es la calculadora de finiquito y liquidación (solo abrirla, sin calcular); "estadisticas" son las tablas y métricas del despacho (tiempos, resultados, clientes, pendientes).
 16. "responder": para preguntas generales, saludos o cuando ninguna acción aplica. Usa el campo "respuesta".
 17. "calcular_laboral": calcula finiquito, liquidación o indemnización de un trabajador con la Ley Federal del Trabajo ("calcula el finiquito de…", "cuánto le toca a…", "¿cuánto es la liquidación si lo despidieron?"). Parámetros:
     {supuesto, fechaIngreso:"YYYY-MM-DD", fechaBaja:"YYYY-MM-DD", salario:número, periodo:"diario"|"semanal"|"catorcenal"|"quincenal"|"mensual",
