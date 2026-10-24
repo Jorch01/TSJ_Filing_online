@@ -144,13 +144,53 @@ async function probarBotonTemplate(page, zona, indice) {
     }
 }
 
+// DOMPurify llega de jsdelivr con un <script> que detiene la carga de la
+// página hasta que la CDN contesta. Si la CDN se atasca, page.goto se agota a
+// los 30 s y la prueba falla sin que la app tenga nada mal: pasó en CI. CI
+// instala la misma versión desde npm y aquí se sirve esa copia; si no está
+// instalada, las páginas la piden a la CDN como antes.
+const URL_DOMPURIFY = 'https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js';
+
+function copiaLocalDOMPurify() {
+    try {
+        const ruta = require.resolve('dompurify/dist/purify.min.js');
+        const version = require(require.resolve('dompurify/package.json')).version;
+        if (!URL_DOMPURIFY.includes('@' + version + '/')) {
+            console.log(`⚠ DOMPurify ${version} instalado, pero la página pide otra versión: se usará la CDN.`);
+            return null;
+        }
+        return fs.readFileSync(ruta, 'utf8');
+    } catch (e) {
+        return null;
+    }
+}
+
+function servirDOMPurifyLocal(navegador) {
+    const copia = copiaLocalDOMPurify();
+    if (!copia) {
+        if (process.env.CI) console.log('⚠ DOMPurify no está instalado: las páginas dependerán de jsdelivr.');
+        return navegador;
+    }
+    const nuevoContexto = navegador.newContext.bind(navegador);
+    navegador.newContext = async (opciones) => {
+        const contexto = await nuevoContexto(opciones);
+        await contexto.route(URL_DOMPURIFY, r => r.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body: copia }));
+        return contexto;
+    };
+    return navegador;
+}
+
+async function abrirChromium() {
+    return servirDOMPurifyLocal(await lanzarChromium());
+}
+
 /**
  * Abre Chromium venga de donde venga. En CI lo instala Playwright y su ruta
  * por omisión funciona; en un contenedor con los navegadores preinstalados la
  * versión suele no coincidir con la del paquete npm y hay que buscarla. Antes
  * había una ruta fija, que servía en un sitio y fallaba en el otro.
  */
-async function abrirChromium() {
+async function lanzarChromium() {
     if (process.env.CHROMIUM_PATH) {
         return chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
     }
@@ -1376,8 +1416,22 @@ async function probarCuentasCompartidas(navegador) {
         await responderDialogo('2468');
         await responderDialogo('2468');
         verificar('cuentas: el PIN queda puesto', /Cambiar mi PIN/.test(await page.textContent('#cta-cuerpo')));
-        const pinGuardado = await page.evaluate(async () => JSON.stringify(await obtenerCuentasCompartidas()));
-        verificar('cuentas: el PIN no se guarda en claro', !pinGuardado.includes('2468'));
+        // Ningún valor guardado es el PIN; lo que se guarda es su huella. (Buscar
+        // "2468" en el texto daba falsos fallos: una huella SHA-256 contiene esos
+        // dígitos por casualidad una de cada ~800 veces.)
+        const pinGuardado = await page.evaluate(async () => {
+            const valores = [];
+            const recorrer = (v) => {
+                if (v && typeof v === 'object') Object.values(v).forEach(recorrer);
+                else valores.push(String(v));
+            };
+            const cuentas = await obtenerCuentasCompartidas();
+            recorrer(cuentas);
+            const huellas = cuentas.flatMap(c => c.eventos).filter(e => e.tipo === 'pin' && e.pinHash).map(e => e.pinHash);
+            return { enClaro: valores.some(v => v === '2468'), huellas };
+        });
+        verificar('cuentas: el PIN no se guarda en claro',
+            !pinGuardado.enClaro && pinGuardado.huellas.length > 0 && pinGuardado.huellas.every(h => /^[0-9a-f]{64}$/.test(h)), JSON.stringify(pinGuardado));
         await page.click('[data-acc="volver"]');
         await pausa(300);
         await page.click('[data-acc="cambiar-yo"]');
@@ -1656,7 +1710,150 @@ async function probarEstadisticas(navegador) {
     }
 }
 
+/**
+ * Estudio de viabilidad de marca, en un navegador de verdad. El IMPI no se
+ * consulta: proxyFetch se sustituye por un simulador que responde con la
+ * forma documentada de cada API (docs/data/) y que puede fallar a propósito.
+ * Se prueba lo que hace la app con esas respuestas: el formulario, las
+ * consultas que lanza, el reporte y sus acciones.
+ */
+async function probarViabilidadMarca(navegador) {
+    const contexto = await navegador.newContext({ acceptDownloads: true, viewport: { width: 1280, height: 900 }, locale: 'es-MX' });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    const pausa = (ms) => page.waitForTimeout(ms);
+
+    const simulador = (fallaSIGA) => {
+        window.__llamadas = [];
+        const marca = (id, title, status, owners, classes) => ({ id, applicationNumber: id.slice(-6), registrationNumber: status === 'REGISTRADO' ? '9' + id.slice(-5) : '',
+            title, status, appType: 'REGISTRO DE MARCA', owners, dates: { application: '10/02/2019', expiry: '10/02/2029' }, goodsAndServices: '', classes: classes || [], images: '' });
+        window.proxyFetch = async (ruta, opciones) => {
+            const body = opciones && opciones.body ? JSON.parse(opciones.body) : null;
+            window.__llamadas.push({ ruta, body });
+            if (ruta === '/marcia/csrf') return {};
+            if (ruta === '/marcia/search') return { id: (body.query.titleOption || 'identica') + ':' + body.query.title.toUpperCase(), count: 5 };
+            if (ruta === '/marcia/results') {
+                const [opcion, titulo] = body.searchId.split(':');
+                const clase = body.niceClassFilter[0];
+                let r = [];
+                if (opcion === 'similar' && titulo === 'LUNA AZUL' && clase === '30') {
+                    r = [marca('RM201900111111', 'LUNA AZUL', 'REGISTRADO', ['CAFES DEL SURESTE SA DE CV']),
+                         marca('RM201500333333', 'LUNA ROJA', 'REGISTRADO', ['ALIMENTOS ROJOS SA'])];
+                }
+                if (opcion === 'similar' && titulo === 'LUNA AZUL' && clase === '43') {
+                    r = [marca('RM201800444444', 'LA LUNA AZUL CAFETERIA', 'REGISTRADO', ['JUAN LOPEZ']),
+                         marca('RM201000555555', 'SOL Y MAR', 'REGISTRADO', ['MARISCOS SA'])];
+                }
+                if (opcion === 'identica' && !clase) r = [marca('RM202000777777', 'LUNA AZUL', 'REGISTRADO', ['MODAS LUNA AZUL SA'], [25])];
+                return { resultPage: r, totalResults: r.length, aggregates: { NICE_CLASSES: [{ key: '30', docCount: 2 }, { key: '43', docCount: 1 }] } };
+            }
+            if (ruta === '/marcanet/fonetica') {
+                return { results: body.clase === '30' ? [{ 'Denominación': 'LUNA AZUL', 'Expediente': '111111', 'Clase': '30', 'Titular': 'CAFES DEL SURESTE', 'Situación': 'REGISTRADA' }] : [] };
+            }
+            if (ruta === '/siga/search') {
+                if (fallaSIGA) throw new Error('HTTP 502');
+                return { successed: true, data: [{ fichaId: 7, gaceta: 'Solicitudes', seccion: 'Solicitudes publicadas', ejemplar: 'Octubre de 2026',
+                    datos: [{ descripcion: 'Denominación', datoTxt: 'LUNA AZUL CAFÉ' }, { descripcion: 'Clase', datoTxt: '43' }] }] };
+            }
+            throw new Error('Ruta no simulada: ' + ruta);
+        };
+    };
+
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => window.VIABILIDAD && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+        await pausa(800);
+        await page.evaluate(() => navegarA('impi'));
+        await page.evaluate(simulador, false);
+        await pausa(200);
+
+        igual('viabilidad: es la pestaña que abre IMPI', await page.isVisible('#vb-form'), true);
+        igual('viabilidad: las otras herramientas siguen ahí', await page.locator('.impi-tab').count(), 4);
+
+        // Sin clase no se hace nada.
+        await page.fill('#vb-denominacion', 'Luna Azul');
+        await page.click('#vb-ejecutar');
+        await pausa(300);
+        igual('viabilidad: sin clase no consulta al IMPI', await page.evaluate(() => window.__llamadas.length), 0);
+
+        await page.selectOption('#vb-clase-agregar', '30');
+        await page.selectOption('#vb-clase-agregar', '43');
+        await page.selectOption('#vb-clase-agregar', '30');
+        igual('viabilidad: las clases elegidas, sin repetir', await page.locator('#vb-clases-elegidas .vb-chip').count(), 2);
+        await page.fill('#vb-solicitante', 'Juan López');
+        await page.click('#vb-ejecutar');
+        await page.waitForSelector('.vb-reporte', { timeout: 15000 });
+        await pausa(300);
+
+        const llamadas = await page.evaluate(() => window.__llamadas.map(l => l.ruta + ' ' + JSON.stringify(l.body ? (l.body.niceClassFilter || l.body.clase || (l.body.query && l.body.query.titleOption) || l.body.Busqueda || '') : '')));
+        verificar('viabilidad: consulta las tres fuentes', ['/marcia/search', '/marcanet/fonetica', '/siga/search'].every(r => llamadas.some(l => l.startsWith(r))), llamadas.join(' | '));
+        verificar('viabilidad: MARCia busca parecidas y también idénticas', llamadas.includes('/marcia/search "similar"') && llamadas.includes('/marcia/search ""'), llamadas.join(' | '));
+        verificar('viabilidad: pide a MARCia cada clase que tiene resultados', llamadas.includes('/marcia/results ["30"]') && llamadas.includes('/marcia/results ["43"]'));
+        verificar('viabilidad: la fonética de Marcanet clase por clase', llamadas.includes('/marcanet/fonetica "30"') && llamadas.includes('/marcanet/fonetica "43"'));
+        verificar('viabilidad: busca también cada palabra distintiva', llamadas.includes('/marcia/search "similar"') && await page.evaluate(() =>
+            window.__llamadas.some(l => l.ruta === '/marcia/search' && l.body.query.title === 'LUNA') && window.__llamadas.some(l => l.ruta === '/marcia/search' && l.body.query.title === 'AZUL')));
+
+        const dictamen = await page.textContent('.vb-dictamen');
+        verificar('viabilidad: el dictamen es "baja" por la idéntica en la misma clase', /Viabilidad baja/.test(dictamen), dictamen);
+        const filas = await page.$$eval('.vb-tabla tbody tr', trs => trs.map(tr => tr.innerText.replace(/\s+/g, ' ')));
+        verificar('viabilidad: la marca que vieron MARCia y Marcanet sale una vez, con las dos fuentes',
+            filas.filter(f => /^⛔ Alto LUNA AZUL/.test(f)).length === 1 && filas.some(f => /LUNA AZUL.*MARCia, Marcanet/.test(f)), filas.join('\n'));
+        verificar('viabilidad: la del mismo solicitante no es obstáculo', filas.some(f => /Propia LA LUNA AZUL CAFETERIA/.test(f)), filas.join('\n'));
+        verificar('viabilidad: la idéntica en otra clase sale como riesgo bajo', filas.some(f => /Bajo LUNA AZUL.*25/.test(f)), filas.join('\n'));
+        verificar('viabilidad: y las publicaciones en Gaceta', /LUNA AZUL CAFÉ/.test(await page.textContent('.vb-reporte')));
+
+        // Acciones del reporte.
+        const espera = page.waitForEvent('download', { timeout: 8000 });
+        await page.click('[data-vb="csv"]');
+        const descarga = await espera.catch(() => null);
+        verificar('viabilidad: exporta a CSV', !!descarga && /^viabilidad-luna-azul-\d{4}-\d{2}-\d{2}\.csv$/.test(descarga.suggestedFilename()), descarga && descarga.suggestedFilename());
+        if (descarga) {
+            const csv = fs.readFileSync(await descarga.path(), 'utf8');
+            verificar('viabilidad: el CSV trae dictamen y antecedentes', /Viabilidad baja/.test(csv) && /LUNA ROJA/.test(csv), csv.slice(0, 200));
+        }
+        await page.click('[data-vb="nota"]');
+        await pausa(700);
+        verificar('viabilidad: se guarda como nota', await page.evaluate(async () => (await obtenerNotas()).some(n => /Viabilidad de marca: Luna Azul/.test(n.titulo) && /DICTAMEN/.test(n.contenido))));
+        await page.click('[data-vb="vigilar"]');
+        await pausa(700);
+        const vigiladas = await page.evaluate(() => savedSearchesState.searches.map(s => (s.tool || 'siga') + ':' + (s.subtype || '') + ':' + s.query));
+        verificar('viabilidad: vigila la denominación en Gaceta y la marca de riesgo alto',
+            vigiladas.includes('siga::Luna Azul') && vigiladas.some(v => v.startsWith('marcia:marca:')), vigiladas.join(' | '));
+        igual('viabilidad: lo ya publicado no llegará como novedad en la primera revisión',
+            await page.evaluate(() => (savedSearchesState.searches.find(s => s.query === 'Luna Azul') || {}).lastFichaIds), [7]);
+        await page.click('[data-vb="ver-bajos"]');
+        await pausa(200);
+        verificar('viabilidad: se pueden ver también los de riesgo bajo', /Ocultar/.test(await page.textContent('[data-vb="ver-bajos"]')));
+
+        // Estudios recientes.
+        verificar('viabilidad: queda en los estudios recientes', /Luna Azul/.test(await page.textContent('#vb-recientes')));
+
+        // Si una fuente no responde, el resultado lo dice.
+        await page.evaluate(simulador, true);
+        await page.click('[data-vb="repetir-reciente"]');
+        await page.waitForFunction(() => /no respondió/.test((document.querySelector('.vb-dictamen') || {}).textContent || ''), null, { timeout: 15000 }).catch(() => {});
+        verificar('viabilidad: si SIGA falla, el dictamen avisa que es parcial', /SIGA no respondió/.test(await page.textContent('.vb-dictamen')));
+        verificar('viabilidad: y la fuente aparece sin respuesta', /SIGA sin respuesta/.test((await page.textContent('.vb-fuentes')).replace(/\s+/g, ' ')));
+
+        // En el teléfono.
+        await page.setViewportSize({ width: 390, height: 844 });
+        await pausa(400);
+        igual('viabilidad: en el teléfono nada se sale a lo ancho',
+            await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), 0);
+        const ancho = await page.evaluate(() => { const r = document.querySelector('.vb-reporte').getBoundingClientRect(); return r.right <= document.documentElement.clientWidth + 1; });
+        igual('viabilidad: ni el reporte se sale de su tarjeta', ancho, true);
+
+        igual('viabilidad: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
 async function main() {
+    verificar('la copia local de DOMPurify es la que pide la página',
+        fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8').includes(`<script src="${URL_DOMPURIFY}"></script>`),
+        'index.html cambió la versión de DOMPurify: actualiza URL_DOMPURIFY y el workflow');
     const servidor = await servidorEstatico(PUERTO);
     const navegador = await abrirChromium();
     const contexto = await navegador.newContext({ acceptDownloads: true, viewport: { width: 1400, height: 900 } });
@@ -3247,6 +3444,9 @@ async function main() {
 
         // ---- Estadísticas del despacho ----
         await probarEstadisticas(navegador);
+
+        // ---- Estudio de viabilidad de marca (IMPI) ----
+        await probarViabilidadMarca(navegador);
 
         // ---- Recorrido guiado y páginas públicas ----
         await probarRecorridoGuiado(navegador);

@@ -194,12 +194,12 @@
                     antes: ir('impi'),
                     objetivo: '.impi-tabs',
                     titulo: 'Busca marcas registradas',
-                    texto: 'MARCia busca por denominación, titular o clase de Niza; SIGA revisa las gacetas del IMPI.'
+                    texto: 'Viabilidad junta las tres herramientas del IMPI en un estudio; MARCia, Marcanet y SIGA siguen a mano para buscar por separado.'
                 },
                 {
-                    objetivo: '#marcia-query',
-                    titulo: 'Escribe la marca',
-                    texto: 'Consulta antes de registrar o para vigilar marcas parecidas a las de tus clientes. Guarda búsquedas de SIGA y la app te avisa de publicaciones nuevas.'
+                    objetivo: '#vb-denominacion',
+                    titulo: '¿Se puede registrar?',
+                    texto: 'Escribe la marca y sus clases: la app busca idénticas y parecidas, compara cómo suenan y te da un dictamen con antecedentes y recomendaciones. Guarda búsquedas y la app te avisa de publicaciones nuevas.'
                 }
             ]
         },

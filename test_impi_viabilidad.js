@@ -1,0 +1,239 @@
+#!/usr/bin/env node
+/**
+ * Pruebas del estudio de viabilidad de marca (docs/js/impi-viabilidad.js).
+ *
+ *   node test_impi_viabilidad.js
+ *
+ * Sin red: el motor recibe lo que respondería cada fuente del IMPI, con la
+ * forma documentada en docs/data/ (MARCia y SIGA) y los nombres de columna que
+ * ya usa la pestaña de Marcanet. Se fija:
+ *   - cómo suena en español: B/V, C/K/QU, S/Z, GE/JE, H muda, LL/Y…;
+ *   - el parecido entre denominaciones: idéntica, igual al oído, una contiene
+ *     a la otra, comparten la palabra que distingue (y las genéricas no
+ *     cuentan);
+ *   - clases relacionadas y estatus;
+ *   - que la misma marca encontrada por varias fuentes cuente una vez, y que
+ *     dos marcas distintas nunca se junten;
+ *   - la matriz de riesgo, conservadora ante la duda;
+ *   - las observaciones sobre la denominación (descriptiva, geográfica,
+ *     oficial, corta) y el dictamen, también cuando una fuente no responde.
+ */
+
+const fs = require('fs');
+const path = require('path');
+const V = require('./docs/js/impi-viabilidad.js');
+
+let pasadas = 0;
+const fallos = [];
+function verificar(descripcion, condicion, detalle) {
+    if (condicion) { pasadas++; console.log('  ✓ ' + descripcion); }
+    else { fallos.push(descripcion); console.log('  ✗ ' + descripcion + (detalle !== undefined ? '\n      ' + detalle : '')); }
+}
+const igual = (d, a, b) => verificar(d, JSON.stringify(a) === JSON.stringify(b), `obtenido ${JSON.stringify(a)}, esperado ${JSON.stringify(b)}`);
+
+const AHORA = new Date(2026, 9, 24, 12).getTime();
+
+// Un resultado de MARCia como el de la documentación.
+function marcia(id, title, status, extra) {
+    return { id, applicationNumber: id.replace(/\D/g, '').slice(-6), registrationNumber: status === 'REGISTRADO' ? '8' + id.replace(/\D/g, '').slice(-5) : '',
+        title, status, appType: 'REGISTRO DE MARCA', owners: ['TITULAR DE ' + title], dates: { application: '10/02/2019', expiry: '10/02/2029' },
+        goodsAndServices: '', classes: [], images: '', ...(extra || {}) };
+}
+
+console.log('\nCómo suena');
+{
+    const igualOido = (a, b) => verificar(`"${a}" suena como "${b}"`, V.claveFonetica(a) === V.claveFonetica(b), `${V.claveFonetica(a)} / ${V.claveFonetica(b)}`);
+    const distintoOido = (a, b) => verificar(`"${a}" no suena como "${b}"`, V.claveFonetica(a) !== V.claveFonetica(b));
+    igualOido('Brisa', 'Vrisa');
+    igualOido('Casa', 'Kasa');
+    igualOido('Quiero', 'Kiero');
+    igualOido('Zapata', 'Sapata');
+    igualOido('Cielo', 'Sielo');
+    igualOido('Gente', 'Jente');
+    igualOido('Hermosa', 'Ermosa');
+    igualOido('Llave', 'Yave');
+    igualOido('Carro', 'Caro');
+    igualOido('Rey', 'Rei');
+    igualOido('Guerrero', 'Gerrero'.replace('Ge', 'Gue'));
+    distintoOido('Casa', 'Gasa');
+    distintoOido('Chico', 'Sico');
+    distintoOido('Gato', 'Jato');
+    igual('la Ñ se conserva como sonido propio', V.claveFonetica('Piña') !== V.claveFonetica('Pina'), true);
+}
+
+console.log('\nNormalización');
+{
+    igual('sin acentos, signos ni forma jurídica', V.normalizarMarca('Cafés del Sureste, S.A. de C.V.'), 'CAFES DEL SURESTE');
+    igual('S. de R.L. también', V.normalizarMarca('Luna S. de R.L. de C.V.'), 'LUNA');
+    igual('el & es "y"', V.normalizarMarca('Pérez & Hijos'), 'PEREZ Y HIJOS');
+}
+
+console.log('\nParecido entre denominaciones');
+{
+    const c = (a, b, cl) => V.compararMarcas(a, b, cl || [30]);
+    igual('idéntica aunque cambien mayúsculas y la forma jurídica', [c('Luna Azul', 'LUNA AZUL S.A. DE C.V.').puntaje, c('Luna Azul', 'LUNA AZUL S.A. DE C.V.').tipo], [100, 'identica']);
+    igual('igual al oído', [c('Brisa', 'Vrisa').puntaje, c('Brisa', 'Vrisa').tipo], [96, 'fonetica']);
+    igual('Coca-Cola y Koka Kola suenan igual', c('Coca-Cola', 'Koka Kola').tipo, 'fonetica');
+    igual('una contiene a la otra', [c('Luna Azul', 'Luna').puntaje, c('Luna Azul', 'Luna').tipo], [85, 'contiene']);
+    igual('y al revés', c('Luna', 'Luna Azul').tipo, 'contiene');
+    igual('comparten la palabra que distingue', [c('Café Luna', 'Luna Café').puntaje >= 75, c('Café Luna', 'Luna Café').detalle], [true, 'Comparten «LUNA»']);
+    verificar('compartir una palabra genérica de la clase no cuenta ("café" en la 30)', c('Café Luna', 'Café Olé').puntaje < 75, c('Café Luna', 'Café Olé').puntaje);
+    verificar('pero en otra clase "café" no es genérica', c('Café Luna', 'Café Olé', [9]).puntaje >= 75);
+    igual('muy distintas', c('Luna Azul', 'Sol Rojo').tipo, 'distinta');
+    verificar('un cambio de una letra se parece mucho', c('Lunazul', 'Lunasul').puntaje >= 90);
+    verificar('el parecido del principio pesa', c('Mondo', 'Monda').puntaje > c('Mondo', 'Rondo').puntaje);
+}
+
+console.log('\nClases');
+{
+    verificar('café (30) se relaciona con cafeterías (43) y bebidas (32)', [43, 32].every(c => V.clasesRelacionadas([30]).includes(c)));
+    verificar('las clases pedidas no se repiten como relacionadas', !V.clasesRelacionadas([30, 43]).includes(43));
+    igual('misma', V.relacionClases([30, 43], [43]), 'misma');
+    igual('relacionada', V.relacionClases([30], [32]), 'relacionada');
+    igual('distinta', V.relacionClases([30], [12]), 'distinta');
+    igual('sin dato', V.relacionClases([30], []), 'desconocida');
+}
+
+console.log('\nEstatus y titular');
+{
+    igual('estatus', ['REGISTRADO', 'EN TRÁMITE', 'CADUCADA', 'ABANDONADA', 'NEGADA', 'Cancelado', ''].map(V.situacionDe),
+        ['vigente', 'tramite', 'inactiva', 'inactiva', 'inactiva', 'inactiva', 'desconocida']);
+    verificar('reconoce al mismo titular con otra escritura', V.mismoTitular('Juan López', ['JUAN LOPEZ']));
+    verificar('y a la empresa sin su forma jurídica', V.mismoTitular('Cafés del Sureste', ['CAFES DEL SURESTE, S.A. DE C.V.']));
+    verificar('pero no a otro', !V.mismoTitular('Juan López', ['MARÍA PÉREZ']));
+    verificar('ni con un nombre demasiado corto', !V.mismoTitular('Ana', ['ANA MARIA SA']));
+}
+
+console.log('\nLo que responde cada fuente');
+{
+    const doc = V.desdeMARCia({ id: 'RM196800024621', applicationNumber: '24621', registrationNumber: '147263', title: 'COCA-COLA', status: 'REGISTRADO',
+        appType: 'REGISTRO DE MARCA', owners: ['THE COCA-COLA COMPANY'], dates: { application: '25/10/1968', expiry: '25/10/2013' }, classes: [], images: 'x' }, 32);
+    igual('MARCia (el ejemplo de la documentación), con la clase consultada', [doc.titulo, doc.registro, doc.expediente, doc.clases, doc.titulares[0], doc.vencimiento],
+        ['COCA-COLA', '147263', '24621', [32], 'THE COCA-COLA COMPANY', '25/10/2013']);
+    const mcn = V.desdeMarcanet({ 'Denominación': 'LUNAZUL', 'Expediente': '2345678', 'Clase': '30', 'Titular': 'TOSTADORES', 'Situación': 'EN TRÁMITE', _link_0: 'x' }, 30);
+    igual('Marcanet', [mcn.titulo, mcn.expediente, mcn.clases, mcn.estado, mcn.titulares], ['LUNAZUL', '2345678', [30], 'EN TRÁMITE', ['TOSTADORES']]);
+    const siga = V.desdeSIGA({ fichaId: 14660421, gaceta: 'Conservación de los Derechos', seccion: 'Marcas Renovadas en el Mes', ejemplar: 'Noviembre de 2025',
+        fechaPuestaCirculacion: '10/12/2025', datos: [{ descripcion: 'Resolución', datoTxt: '891873/2025' }, { descripcion: 'Registro de Marca', datoTxt: '913909' },
+            { descripcion: 'Clase', datoTxt: '32' }, { descripcion: 'Denominación', datoTxt: 'COCA-COLA ZERO' }] });
+    igual('SIGA (el ejemplo de la documentación)', [siga.denominacion, siga.clases, siga.registro, siga.seccion], ['COCA-COLA ZERO', [32], '913909', 'Marcas Renovadas en el Mes']);
+}
+
+console.log('\nLa misma marca, una vez');
+{
+    const a = V.desdeMARCia(marcia('RM201900111111', 'LUNA AZUL', 'REGISTRADO'), 30);
+    const b = V.desdeMarcanet({ 'Denominación': 'LUNA AZUL', 'Expediente': '111111', 'Clase': '30', 'Titular': 'OTRA FORMA DEL TITULAR', 'Situación': 'REGISTRADA' }, 30);
+    const c = V.desdeMARCia(marcia('RM201900111111', 'LUNA AZUL', 'REGISTRADO'), 43);
+    const juntas = V.consolidar([a, b, c]);
+    igual('MARCia y Marcanet la encuentran: una sola entrada (Marcanet solo trae el expediente)', juntas.length, 1);
+    igual('con las dos fuentes y las dos clases', [juntas[0].fuentes, juntas[0].clases], [['MARCia', 'Marcanet'], [30, 43]]);
+    igual('y los titulares de ambas', juntas[0].titulares.length, 2);
+    const distinta = V.desdeMARCia(marcia('RM201900111111', 'SOL ROJO', 'REGISTRADO'), 30);
+    igual('el mismo número con otra denominación no se junta', V.consolidar([a, distinta]).length, 2);
+    const sinNumero = (t, cl) => ({ fuentes: ['Marcanet'], id: null, titulo: t, expediente: '', registro: '', estado: '', titulares: [], clases: [cl], tipoSolicitud: '', solicitud: '', vencimiento: '', imagen: '' });
+    igual('sin números: por denominación y clase', V.consolidar([sinNumero('LUNA', 30), sinNumero('Luna', 30), sinNumero('LUNA', 31)]).length, 2);
+}
+
+console.log('\nEl riesgo de cada antecedente');
+{
+    const entrada = { denominacion: 'Luna Azul', clases: [30], solicitante: 'Juan López' };
+    const ant = (titulo, clases, estado, extra) => ({ fuentes: ['MARCia'], id: 'x', titulo, expediente: '1', registro: '', estado: estado || 'REGISTRADO',
+        titulares: ['ALGUIEN'], clases, tipoSolicitud: 'REGISTRO DE MARCA', solicitud: '', vencimiento: '', imagen: '', ...(extra || {}) });
+    const r = (a) => V.evaluarAntecedente(a, entrada, AHORA).riesgo;
+    igual('idéntica en la misma clase: alto', r(ant('LUNA AZUL', [30])), 'alto');
+    igual('igual al oído en la misma clase: alto', r(ant('LUNA ASUL', [30])), 'alto');
+    igual('en trámite también: alto', r(ant('LUNA AZUL', [30], 'EN TRÁMITE')), 'alto');
+    igual('comparte la palabra distintiva en la misma clase: medio', r(ant('LUNA ROJA', [30])), 'medio');
+    igual('idéntica en una clase relacionada: alto', r(ant('LUNA AZUL', [43])), 'alto');
+    igual('contenida en una clase relacionada: medio', r(ant('LUNA', [43])), 'medio');
+    igual('idéntica en otra clase: bajo', r(ant('LUNA AZUL', [12])), 'bajo');
+    igual('idéntica pero caducada: bajo', r(ant('LUNA AZUL', [30], 'CADUCADA')), 'bajo');
+    igual('notoria, aunque sea en otra clase: alto', r(ant('LUNA AZUL', [12], 'REGISTRADO', { tipoSolicitud: 'MARCAS NOTORIAS' })), 'alto');
+    igual('sin clase conocida y casi idéntica: medio (hay que confirmarla)', r(ant('LUNA AZUL', [])), 'medio');
+    igual('sin estatus se trata como vigente (conservador)', r(ant('LUNA AZUL', [30], '')), 'alto');
+    igual('del mismo solicitante: propia', r(ant('LUNA AZUL', [30], 'REGISTRADO', { titulares: ['JUAN LOPEZ'] })), 'propia');
+    const vencida = V.evaluarAntecedente(ant('LUNA AZUL', [30], 'REGISTRADO', { vencimiento: '10/02/2020' }), entrada, AHORA);
+    igual('vigencia reportada vencida: sigue alto, pero lo dice', [vencida.riesgo, vencida.motivos.some(m => /renov/.test(m))], ['alto', true]);
+    const motivos = V.evaluarAntecedente(ant('LUNA ASUL', [30], 'EN TRÁMITE'), entrada, AHORA).motivos.join(' ');
+    verificar('cada riesgo explica por qué', /Suena igual/.test(motivos) && /misma clase/.test(motivos) && /trámite/.test(motivos), motivos);
+}
+
+console.log('\nSobre la denominación misma');
+{
+    const obs = (denominacion, clases, extra) => V.observacionesRegistrabilidad({ denominacion, clases, ...(extra || {}) });
+    const niveles = o => o.map(x => x.nivel);
+    igual('una marca de fantasía no tiene observaciones', obs('Lunazul', [30]), []);
+    verificar('solo descriptiva y elogiosa: alto', niveles(obs('Café Premium', [30])).includes('alto'));
+    verificar('descriptiva más algo distintivo: medio', niveles(obs('Café Lunazul', [30])).includes('medio') && !niveles(obs('Café Lunazul', [30])).includes('alto'));
+    verificar('lo descriptivo también sale de los productos que se capturan', obs('Tostado Luna', [30], { productos: 'café tostado' }).some(o => /TOSTADO/.test(o.texto)));
+    verificar('solo descriptiva y geográfica: alto', niveles(obs('Café Cancún', [30])).includes('alto'));
+    verificar('con nombre geográfico: lo advierte', obs('Luna de Tulum', [30]).some(o => /geográfico/.test(o.texto)));
+    verificar('siglas oficiales: alto', obs('IMSS Express', [44]).some(o => o.nivel === 'alto' && /oficiales/.test(o.texto)));
+    verificar('letras sueltas: poca distintividad', obs('XJ', [25]).some(o => /aislados/.test(o.texto)));
+    verificar('mixta: recuerda la búsqueda por imagen', obs('Lunazul', [30], { tipo: 'mixta' }).some(o => /imagen/.test(o.texto)));
+}
+
+console.log('\nEl dictamen');
+{
+    const entrada = { denominacion: 'Luna Azul', clases: [30, 43], tipo: 'nominativa', productos: '', solicitante: '' };
+    const fuentesOk = { MARCia: { ok: true, total: 3 }, Marcanet: { ok: true, total: 1 }, SIGA: { ok: true, total: 1 } };
+    const limpio = V.analizar(entrada, { marcia: [{ clase: 30, resultados: [marcia('RM2019000001', 'SOL ROJO', 'REGISTRADO')] }], marcanet: [], siga: [], fuentes: fuentesOk }, AHORA);
+    igual('sin antecedentes parecidos: viabilidad alta', limpio.dictamen.nivel, 'alta');
+
+    const crudo = {
+        marcia: [
+            { clase: 30, resultados: [marcia('RM2019000002', 'LUNA AZUL', 'REGISTRADO'), marcia('RM2019000003', 'LUNA ROJA', 'REGISTRADO')] },
+            { clase: null, resultados: [marcia('RM2019000004', 'LUNA AZUL', 'REGISTRADO', { classes: [25] })] }
+        ],
+        marcanet: [{ clase: 30, resultados: [{ 'Denominación': 'LUNA AZUL', 'Expediente': '000002', 'Clase': '30', 'Situación': 'REGISTRADA' }] }],
+        siga: [
+            { fichaId: 1, gaceta: 'Solicitudes', seccion: 'Solicitudes publicadas', ejemplar: 'Oct 2026', datos: [{ descripcion: 'Denominación', datoTxt: 'LUNA AZUL CAFÉ' }, { descripcion: 'Clase', datoTxt: '43' }] },
+            { fichaId: 2, gaceta: 'Conservación', seccion: 'Renovadas', ejemplar: 'Mayo 2025', datos: [{ descripcion: 'Denominación', datoTxt: 'SOL Y MAR' }, { descripcion: 'Clase', datoTxt: '30' }] }
+        ],
+        fuentes: fuentesOk
+    };
+    const rep = V.analizar(entrada, crudo, AHORA);
+    igual('con una idéntica en la misma clase: viabilidad baja', rep.dictamen.nivel, 'baja');
+    igual('cuenta una vez la marca que vieron MARCia y Marcanet', rep.antecedentes.filter(a => a.titulo === 'LUNA AZUL' && a.clases.includes(30)).length, 1);
+    igual('conteo por riesgo', [rep.conteo.alto, rep.conteo.medio, rep.conteo.bajo], [1, 1, 1]);
+    igual('los de mayor riesgo van primero', rep.antecedentes[0].riesgo, 'alto');
+    igual('las publicaciones en Gaceta parecidas, no las demás', rep.publicaciones.map(p => p.denominacion), ['LUNA AZUL CAFÉ']);
+    verificar('recomienda cambiar la denominación', rep.recomendaciones.some(r => /Cambia la denominación/.test(r)));
+    verificar('y menciona la caducidad por falta de uso', rep.recomendaciones.some(r => /caducidad/.test(r)));
+    verificar('y la oposición en Gaceta', rep.recomendaciones.some(r => /oposición/.test(r)));
+    igual('revisa también las clases relacionadas', rep.relacionadas.includes(32), true);
+    igual('guarda qué fichas de SIGA ya vio (para vigilar sin falsas novedades)', rep.fichasSIGA, [1, 2]);
+
+    const parcial = V.analizar(entrada, { ...crudo, fuentes: { ...fuentesOk, SIGA: { ok: false, error: 'HTTP 502' } } }, AHORA);
+    verificar('si una fuente no respondió, el dictamen lo dice', parcial.dictamen.parcial && /SIGA no respondió/.test(parcial.dictamen.resumen), parcial.dictamen.resumen);
+    verificar('y recomienda repetirlo', parcial.recomendaciones.some(r => /Repite el estudio para completar SIGA/.test(r)));
+    const nada = V.analizar(entrada, { marcia: [], marcanet: [], siga: [], fuentes: { MARCia: { ok: false }, Marcanet: { ok: false }, SIGA: { ok: false } } }, AHORA);
+    igual('si no respondió ninguna, no hay dictamen', nada.dictamen.nivel, 'incompleta');
+
+    const descriptiva = V.analizar({ ...entrada, denominacion: 'Café Premium' }, { marcia: [], marcanet: [], siga: [], fuentes: fuentesOk }, AHORA);
+    igual('sin antecedentes pero puramente descriptiva: viabilidad baja', descriptiva.dictamen.nivel, 'baja');
+
+    const texto = V.resumenTexto(rep);
+    verificar('el resumen en texto lleva dictamen, antecedentes y recomendaciones',
+        /DICTAMEN: VIABILIDAD BAJA/.test(texto) && /\[ALTO\] LUNA AZUL/.test(texto) && /RECOMENDACIONES/.test(texto) && /orientativo/.test(texto));
+}
+
+console.log('\nConectado con la app');
+{
+    const html = fs.readFileSync(path.join(__dirname, 'docs', 'index.html'), 'utf8');
+    verificar('la pestaña de viabilidad es la primera y la que se abre', /<div class="impi-tabs">\s*<button class="impi-tab active" data-impi-tab="viabilidad"/.test(html));
+    verificar('su contenedor existe y es el activo', html.includes('<div class="impi-tab-content active" id="impi-tab-viabilidad">'));
+    verificar('MARCia ya no está activa de inicio', html.includes('<div class="impi-tab-content" id="impi-tab-marcia">'));
+    verificar('el script se carga después de impi-search.js',
+        html.indexOf('<script src="js/impi-viabilidad.js"></script>') > html.indexOf('<script src="js/impi-search.js"></script>'));
+    verificar('y se guarda para usarse sin internet', /'js\/impi-viabilidad\.js'/.test(fs.readFileSync(path.join(__dirname, 'docs', 'sw.js'), 'utf8')));
+    const proxy = fs.readFileSync(path.join(__dirname, 'docs', 'proxy', 'impi-proxy-worker.js'), 'utf8');
+    for (const ruta of ['/marcia/csrf', '/marcia/search', '/marcia/results', '/marcanet/fonetica', '/siga/search']) {
+        verificar(`el proxy atiende ${ruta}, que usa el estudio`, proxy.includes(`path === '${ruta}'`));
+    }
+}
+
+console.log(`\n${pasadas} pasadas, ${fallos.length} fallidas`);
+if (fallos.length) {
+    console.log('\nFallaron:\n  - ' + fallos.join('\n  - '));
+    process.exit(1);
+}

@@ -48,8 +48,11 @@ jobs:
 
       # Estas abren Chromium de verdad: ven lo que el DOM simulado no puede
       # (un botón tapado, un modal que no se pinta, un selector que no existe).
+      # DOMPurify, la misma versión que pide index.html: las pruebas la sirven
+      # local en vez de esperar a jsdelivr, que al atascarse dejaba la página
+      # sin cargar y tumbaba la ejecución sin que la app tuviera nada mal.
       - name: Instalar Chromium
-        run: npm install --no-save playwright && npx playwright install --with-deps chromium
+        run: npm install --no-save playwright dompurify@3.0.6 && npx playwright install --with-deps chromium
 
       - name: Pruebas de interfaz
         env:

@@ -1636,7 +1636,8 @@
 
             <!-- Tabs de navegación interna IMPI -->
             <div class="impi-tabs">
-                <button class="impi-tab active" data-impi-tab="marcia" onclick="cambiarTabIMPI('marcia')">🔍 MARCia</button>
+                <button class="impi-tab active" data-impi-tab="viabilidad" onclick="cambiarTabIMPI('viabilidad')">🧭 Viabilidad</button>
+                <button class="impi-tab" data-impi-tab="marcia" onclick="cambiarTabIMPI('marcia')">🔍 MARCia</button>
                 <button class="impi-tab" data-impi-tab="marcanet" onclick="cambiarTabIMPI('marcanet')">📋 Marcanet</button>
                 <button class="impi-tab" data-impi-tab="siga" onclick="cambiarTabIMPI('siga')">📰 SIGA</button>
             </div>
@@ -1647,8 +1648,12 @@
                 <span>Buscando en IMPI...</span>
             </div>
 
+            <!-- TAB: Estudio de viabilidad de una marca nueva. Combina MARCia,
+                 Marcanet y SIGA; lo pinta js/impi-viabilidad.js. -->
+            <div class="impi-tab-content active" id="impi-tab-viabilidad"></div>
+
             <!-- TAB: MARCia - Búsqueda de Marcas -->
-            <div class="impi-tab-content active" id="impi-tab-marcia">
+            <div class="impi-tab-content" id="impi-tab-marcia">
                 <!-- Búsqueda Rápida MARCia -->
                 <div class="card">
                     <div class="card-header">
@@ -3083,6 +3088,7 @@
     <script src="js/acciones-core.js"></script>
     <script src="js/pjf-search.js"></script>
     <script src="js/impi-search.js"></script>
+    <script src="js/impi-viabilidad.js"></script>
     <script src="js/app.js"></script>
     <script src="js/sync.js"></script>
     <script src="js/cuentas.js"></script>
