@@ -144,13 +144,53 @@ async function probarBotonTemplate(page, zona, indice) {
     }
 }
 
+// DOMPurify llega de jsdelivr con un <script> que detiene la carga de la
+// página hasta que la CDN contesta. Si la CDN se atasca, page.goto se agota a
+// los 30 s y la prueba falla sin que la app tenga nada mal: pasó en CI. CI
+// instala la misma versión desde npm y aquí se sirve esa copia; si no está
+// instalada, las páginas la piden a la CDN como antes.
+const URL_DOMPURIFY = 'https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js';
+
+function copiaLocalDOMPurify() {
+    try {
+        const ruta = require.resolve('dompurify/dist/purify.min.js');
+        const version = require(require.resolve('dompurify/package.json')).version;
+        if (!URL_DOMPURIFY.includes('@' + version + '/')) {
+            console.log(`⚠ DOMPurify ${version} instalado, pero la página pide otra versión: se usará la CDN.`);
+            return null;
+        }
+        return fs.readFileSync(ruta, 'utf8');
+    } catch (e) {
+        return null;
+    }
+}
+
+function servirDOMPurifyLocal(navegador) {
+    const copia = copiaLocalDOMPurify();
+    if (!copia) {
+        if (process.env.CI) console.log('⚠ DOMPurify no está instalado: las páginas dependerán de jsdelivr.');
+        return navegador;
+    }
+    const nuevoContexto = navegador.newContext.bind(navegador);
+    navegador.newContext = async (opciones) => {
+        const contexto = await nuevoContexto(opciones);
+        await contexto.route(URL_DOMPURIFY, r => r.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body: copia }));
+        return contexto;
+    };
+    return navegador;
+}
+
+async function abrirChromium() {
+    return servirDOMPurifyLocal(await lanzarChromium());
+}
+
 /**
  * Abre Chromium venga de donde venga. En CI lo instala Playwright y su ruta
  * por omisión funciona; en un contenedor con los navegadores preinstalados la
  * versión suele no coincidir con la del paquete npm y hay que buscarla. Antes
  * había una ruta fija, que servía en un sitio y fallaba en el otro.
  */
-async function abrirChromium() {
+async function lanzarChromium() {
     if (process.env.CHROMIUM_PATH) {
         return chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
     }
@@ -1811,6 +1851,9 @@ async function probarViabilidadMarca(navegador) {
 }
 
 async function main() {
+    verificar('la copia local de DOMPurify es la que pide la página',
+        fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8').includes(`<script src="${URL_DOMPURIFY}"></script>`),
+        'index.html cambió la versión de DOMPurify: actualiza URL_DOMPURIFY y el workflow');
     const servidor = await servidorEstatico(PUERTO);
     const navegador = await abrirChromium();
     const contexto = await navegador.newContext({ acceptDownloads: true, viewport: { width: 1400, height: 900 } });
