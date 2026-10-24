@@ -108,6 +108,91 @@ console.log('\nRepartos distintos de mitad y mitad');
     igual('y cada uno debe su parte', [e.saldos.p1, e.saldos.p2], [-15000, -7500]);
 }
 
+console.log('\nPagaron varios');
+{
+    // El caso con el que se pidió: un café de 190 mitad y mitad; Jorge puso
+    // 50 y Frida los otros 140.
+    const c = cuenta(['Jorge', 'Frida'], { p1: 50, p2: 50 });
+    gasto(c, 'p2', 19000, { p1: 50, p2: 50 }, { concepto: 'Café', aportes: { p1: 5000, p2: 14000 } });
+    const e = C.derivarCuenta(c);
+    igual('café de 190 mitad y mitad, Jorge puso 50 y Frida 140: Jorge le debe 45 a Frida', [e.saldos.p1, e.saldos.p2], [-4500, 4500]);
+    igual('para quedar a mano, Jorge le paga 45', C.liquidacionSugerida(e.saldos, ['p1', 'p2']), [{ de: 'p1', a: 'p2', monto: 4500 }]);
+    igual('en la relación entre los dos también son 45', C.deudaNeta(e, 'p1', 'p2'), 4500);
+    igual('a cada uno le cuenta lo que puso y le tocaron 95',
+        [e.totales.p1, e.totales.p2], [{ pagado: 5000, parte: 9500, dio: 0, recibio: 0 }, { pagado: 14000, parte: 9500, dio: 0, recibio: 0 }]);
+    igual('es un solo gasto de 190 en el total', [e.movimientos.length, e.totalGastos], [1, 19000]);
+    igual('el movimiento dice cuánto puso cada quien', e.movimientos[0].pagadores, { p1: 5000, p2: 14000 });
+    igual('el resumen del catálogo lo dice en una línea', C.resumenSaldos(e), 'Jorge debe $45.00 a Frida');
+
+    const dos = cuenta(['Jorge', 'Frida'], { p1: 50, p2: 50 });
+    gasto(dos, 'p2', 14000, { p1: 50, p2: 50 });
+    gasto(dos, 'p1', 5000, { p1: 50, p2: 50 });
+    igual('da lo mismo que registrarlo como dos gastos', C.derivarCuenta(dos).saldos, e.saldos);
+
+    igual('lo que deja el gasto, antes de guardarlo', C.efectoDeGasto({ monto: 19000, pagadoPor: 'p2', aportes: { p1: 5000, p2: 14000 }, reparto: { p1: 50, p2: 50 } }, ['p1', 'p2']), { p1: -4500, p2: 4500 });
+}
+{
+    // Una cena de 300 entre tres, por partes iguales: A puso 200 y B 100.
+    const c = cuenta(['A', 'B', 'C']);
+    gasto(c, 'p1', 30000, { p1: 100 / 3, p2: 100 / 3, p3: 100 / 3 }, { aportes: { p1: 20000, p2: 10000 } });
+    const e = C.derivarCuenta(c);
+    igual('tres en la cena, A puso 200 y B 100: A tiene 100 a favor, B queda a mano y C debe 100', [e.saldos.p1, e.saldos.p2, e.saldos.p3], [10000, 0, -10000]);
+    igual('C le debe a cada uno en proporción a lo que puso: 66.67 a A y 33.33 a B', [e.deudas.p3.p1, e.deudas.p3.p2], [6667, 3333]);
+    igual('la relación de cada quien con los demás suma su saldo',
+        ['p1', 'p2', 'p3'].map(i => ['p1', 'p2', 'p3'].filter(j => j !== i).reduce((s, j) => s + C.deudaNeta(e, j, i), 0)), [10000, 0, -10000]);
+}
+{
+    // Con muchos gastos al azar pagados entre varios: los saldos suman cero y
+    // la relación entre cada par cuadra con los saldos, al centavo.
+    let semilla = 4242;
+    const azar = n => { semilla = (semilla * 1103515245 + 12345) % 2147483648; return semilla % n; };
+    let saldosMal = 0, relacionMal = 0, deudasMal = 0;
+    for (let k = 0; k < 200; k++) {
+        const n = 2 + azar(9);
+        const ids = Array.from({ length: n }, (_, i) => 'p' + (i + 1));
+        const c = cuenta(ids.map(id => 'Persona ' + id), null, 'cta_v' + k);
+        for (let g = 0; g < 6; g++) {
+            const monto = 2 + azar(500000);
+            const elegidos = ids.filter(() => azar(3) > 0);
+            if (!elegidos.length) elegidos.push(ids[0]);
+            const pagan = ids.filter(() => azar(2) > 0).slice(0, 4);
+            if (pagan.length < 2) pagan.splice(0, pagan.length, ids[0], ids[1]);
+            const pesos = Object.fromEntries(pagan.map(id => [id, 1 + azar(50)]));
+            const aportes = C.repartirMonto(monto, pesos, ids);
+            const campos = C.pagadoresDe(aportes, ids);
+            gasto(c, campos.pagadoPor, monto, C.repartoIgual(elegidos), campos);
+            const D = C.deudasDeGasto(C.repartirMonto(monto, C.repartoIgual(elegidos), ids), C.aportesDe({ monto, ...campos }), ids);
+            for (const j of Object.keys(C.aportesDe({ monto, ...campos }))) {
+                if (Object.values(D).reduce((s, fila) => s + (fila[j] || 0), 0) !== C.aportesDe({ monto, ...campos })[j]) deudasMal++;
+            }
+        }
+        const e = C.derivarCuenta(c);
+        if (sumaSaldos(e.saldos) !== 0) saldosMal++;
+        for (const i of ids) {
+            if (ids.filter(j => j !== i).reduce((s, j) => s + C.deudaNeta(e, j, i), 0) !== e.saldos[i]) relacionMal++;
+        }
+    }
+    igual('200 cuentas al azar con gastos pagados entre varios: los saldos suman cero', saldosMal, 0);
+    igual('a cada pagador se le debe exactamente lo que puso', deudasMal, 0);
+    igual('y la relación de cada quien con los demás suma su saldo', relacionMal, 0);
+}
+{
+    const e = C.derivarCuenta(cuenta(['Jorge', 'Frida']));
+    const base = { concepto: 'Café', monto: 19000, reparto: { p1: 50, p2: 50 }, fechaMov: '2026-10-24' };
+    igual('lo que pusieron suma el monto: pasa', C.validarGasto(e, { ...base, pagadoPor: 'p2', aportes: { p1: 5000, p2: 14000 } }), null);
+    igual('si falta dinero lo dice', C.validarGasto(e, { ...base, pagadoPor: 'p2', aportes: { p1: 5000, p2: 13000 } }),
+        'Lo que pagó cada quien suma $180.00 y el gasto es de $190.00: faltan $10.00');
+    verificar('si sobra también', /sobran \$10\.00/.test(C.validarGasto(e, { ...base, pagadoPor: 'p2', aportes: { p1: 6000, p2: 14000 } })));
+    verificar('no puede pagar alguien ajeno a la cuenta', !!C.validarGasto(e, { ...base, pagadoPor: 'p2', aportes: { x: 5000, p2: 14000 } }));
+    verificar('ni una cantidad que no es número', !!C.validarGasto(e, { ...base, pagadoPor: 'p2', aportes: { p1: NaN, p2: 14000 } }));
+    verificar('sin ninguna cantidad pide escribirlas', /Indica cuánto pagó cada quien/.test(C.validarGasto(e, { ...base, pagadoPor: '', aportes: {} })));
+    igual('quien queda como pagador es quien puso más', C.pagadoresDe({ p1: 5000, p2: 14000 }, ['p1', 'p2']), { pagadoPor: 'p2', aportes: { p1: 5000, p2: 14000 } });
+    igual('si solo una persona puso dinero, es un gasto normal', C.pagadoresDe({ p1: 0, p2: 19000 }, ['p1', 'p2']), { pagadoPor: 'p2' });
+    igual('unos aportes que no suman el monto no se usan: cuenta quien pagó',
+        C.aportesDe({ monto: 19000, pagadoPor: 'p2', aportes: { p1: 5000, p2: 1000 } }), { p2: 19000 });
+    igual('un gasto de antes (sin aportes) es de quien lo pagó', C.aportesDe({ monto: 19000, pagadoPor: 'p1' }), { p1: 19000 });
+}
+
 console.log('\nEl dinero cuadra al centavo');
 {
     igual('100 entre tres: 33.34 + 33.33 + 33.33', C.repartirMonto(10000, C.repartoIgual(['a', 'b', 'c']), ['a', 'b', 'c']), { a: 3334, b: 3333, c: 3333 });
