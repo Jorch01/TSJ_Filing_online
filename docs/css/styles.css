@@ -6050,3 +6050,97 @@ body.cta-abierto #tour-menu, body.cta-abierto #tour-oferta, body.cta-abierto #re
     .est-filtros-btns, .est-tarjeta-btns, .est-indice { display: none !important; }
     .est-tarjeta, .est-kpi { break-inside: avoid; box-shadow: none; }
 }
+
+/* ==================== IMPI: ESTUDIO DE VIABILIDAD ==================== */
+/* Los colores de estado (alto, medio, bajo) solo se usan donde significan
+   estado, y siempre van con su icono y su palabra. */
+.vb-card .card-header h3, .vb-reporte h3 { margin: 0; }
+.vb-sub { margin: 0.3rem 0 0; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.45; }
+.vb-ayuda { display: block; margin-top: 0.25rem; font-size: 0.78rem; color: var(--text-muted); }
+.vb-clases { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.vb-clases select { flex: 1 1 220px; max-width: 360px; }
+.vb-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.vb-chip {
+    display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; padding: 0.25rem 0.35rem 0.25rem 0.65rem;
+    background: var(--primary-suave); color: var(--text-primary); border: 1px solid var(--primary-light); border-radius: var(--radius-full);
+}
+.vb-chip button { border: none; background: none; cursor: pointer; color: var(--text-secondary); font-size: 0.8rem; padding: 0 0.2rem; }
+.vb-chip button:hover { color: var(--danger); }
+.vb-sin-clases { font-size: 0.82rem; color: var(--text-muted); }
+.vb-opcion { display: flex; align-items: flex-end; }
+.vb-acciones-form { display: flex; justify-content: flex-end; margin-top: 0.5rem; }
+
+.vb-progreso { list-style: none; margin: 1rem 0 0; padding: 0.75rem 0.9rem; display: grid; gap: 0.3rem;
+    background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius); font-size: 0.85rem; }
+.vb-paso small { color: var(--text-muted); }
+.vb-paso-error small { color: var(--danger); }
+
+.vb-reporte { margin-top: 1rem; padding: 1rem 1.25rem 1.25rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+.vb-reporte > * { min-width: 0; }
+.vb-reporte-cab { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.75rem; align-items: flex-start; }
+.vb-reporte-cab p { margin: 0.25rem 0 0; font-size: 0.82rem; color: var(--text-secondary); }
+.vb-reporte-btns { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+.vb-dictamen {
+    display: flex; gap: 0.85rem; align-items: flex-start; padding: 0.9rem 1rem; border-radius: var(--radius);
+    border: 1px solid var(--border-color); border-left: 6px solid var(--text-muted); background: var(--bg-secondary);
+}
+.vb-dictamen-icono { font-size: 1.6rem; line-height: 1; }
+.vb-dictamen strong { font-size: 1.15rem; }
+.vb-dictamen p { margin: 0.25rem 0 0; font-size: 0.9rem; line-height: 1.45; }
+.vb-dictamen .vb-conteo { font-size: 0.8rem; color: var(--text-secondary); }
+.vb-dictamen-alta { border-left-color: #0ca30c; }
+.vb-dictamen-media { border-left-color: #fab219; }
+.vb-dictamen-baja { border-left-color: #d03b3b; }
+
+.vb-seccion h4 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+.vb-nota { margin: 0 0 0.5rem; font-size: 0.78rem; color: var(--text-muted); }
+.vb-vacio { margin: 0; font-size: 0.88rem; color: var(--text-secondary); }
+.vb-fuentes, .vb-observaciones, .vb-recomendaciones { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.35rem; font-size: 0.88rem; line-height: 1.45; }
+.vb-fuentes, .vb-observaciones { list-style: none; padding-left: 0; }
+.vb-falla { color: var(--text-secondary); }
+
+.vb-tabla-marco { overflow-x: auto; }
+.vb-tabla { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.vb-tabla th { text-align: left; font-size: 0.74rem; color: var(--text-secondary); font-weight: 600; padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid var(--border-fuerte); white-space: nowrap; }
+.vb-tabla td { padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--border-color); vertical-align: top; overflow-wrap: break-word; }
+.vb-tabla td small { color: var(--text-muted); }
+.vb-tabla .vb-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vb-motivos { min-width: 14rem; color: var(--text-secondary); }
+.vb-riesgo { display: inline-block; white-space: nowrap; font-size: 0.74rem; font-weight: 600; padding: 0.12rem 0.5rem;
+    border-radius: var(--radius-full); border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); }
+.vb-riesgo-alto { border-color: #d03b3b; background: rgba(208, 59, 59, 0.1); }
+.vb-riesgo-medio { border-color: #fab219; background: rgba(250, 178, 25, 0.14); }
+.vb-riesgo-propia { border-color: var(--primary-light); background: var(--primary-suave); }
+.vb-dictamen-chip-alta { border-color: #0ca30c; }
+.vb-dictamen-chip-media { border-color: #fab219; }
+.vb-dictamen-chip-baja { border-color: #d03b3b; }
+.vb-mas { margin-top: 0.5rem; }
+.vb-guardar label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.35rem; }
+.vb-guardar-fila { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.vb-guardar-fila select { flex: 1 1 240px; max-width: 420px; }
+.vb-aviso { margin: 0; font-size: 0.76rem; color: var(--text-muted); line-height: 1.45; border-top: 1px solid var(--border-color); padding-top: 0.75rem; }
+
+.vb-recientes { margin-top: 1rem; }
+.vb-recientes .card-header { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.vb-recientes ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.vb-recientes li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; font-size: 0.88rem; }
+.vb-recientes small { color: var(--text-muted); }
+.vb-recientes-btns { margin-left: auto; display: flex; gap: 0.35rem; }
+
+@media (max-width: 640px) {
+    .vb-reporte { padding: 0.85rem; }
+    .vb-reporte-btns .btn { flex: 1 1 calc(50% - 0.4rem); justify-content: center; }
+    .vb-recientes-btns { margin-left: 0; }
+}
+
+/* Al imprimir el estudio solo sale el reporte. */
+@media print {
+    body.imprimiendo-viabilidad * { visibility: hidden; }
+    body.imprimiendo-viabilidad #vb-reporte, body.imprimiendo-viabilidad #vb-reporte * { visibility: visible; }
+    body.imprimiendo-viabilidad #vb-reporte { position: absolute; left: 0; top: 0; width: 100%; }
+    body.imprimiendo-viabilidad .vb-reporte-btns, body.imprimiendo-viabilidad .vb-guardar,
+    body.imprimiendo-viabilidad .vb-mas, body.imprimiendo-viabilidad .vb-tabla button { display: none !important; }
+    body.imprimiendo-viabilidad .vb-reporte { box-shadow: none; border: none; }
+}

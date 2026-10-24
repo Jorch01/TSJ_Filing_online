@@ -27,6 +27,7 @@ const ARCHIVOS_APP = [
     'js/acciones-core.js',
     'js/pjf-search.js',
     'js/impi-search.js',
+    'js/impi-viabilidad.js',
     'js/app.js',
     'js/sync.js',
     'js/cuentas.js',
