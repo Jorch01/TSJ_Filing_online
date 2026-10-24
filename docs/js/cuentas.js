@@ -7,7 +7,8 @@
  * le tocaban al primero se descuentan de esos 500 y lo que se muestra es la
  * diferencia: 200. Cada cuenta admite de 2 a 20 participantes y cada gasto se
  * reparte con los porcentajes que se elijan (50-50, 70-30, solo entre
- * algunos…).
+ * algunos…). Un gasto lo puede pagar una persona o varias: el café de 190
+ * mitad y mitad que fue 140 de una y 50 de otra deja a la segunda debiendo 45.
  *
  * No aparece en el menú, en la paleta de comandos ni en la guía del
  * asistente: se abre pidiéndole al asistente "abre las cuentas" y eligiendo
@@ -151,6 +152,117 @@
         restos.sort((a, b) => (b.resto - a.resto) || (a.i - b.i));
         for (let k = 0; k < monto - asignado; k++) cuotas[restos[k % restos.length].id] += 1;
         return cuotas;
+    }
+
+    /**
+     * Cuánto puso cada quien de un gasto, en centavos. Lo normal es que pague
+     * una sola persona (pagadoPor). Si pagaron varios —el café de 190 que fue
+     * 140 de una y 50 de otra—, mov.aportes dice cuánto puso cada uno y
+     * pagadoPor es quien puso más. Unos aportes que no suman el monto (de una
+     * versión que no los conoce o mal formados) no se usan: cuenta pagadoPor.
+     */
+    function aportesDe(mov) {
+        const monto = Number(mov && mov.monto) || 0;
+        const aportes = mov && mov.aportes;
+        if (aportes && typeof aportes === 'object') {
+            const entradas = Object.entries(aportes).filter(([, c]) => Number.isInteger(c) && c > 0);
+            if (entradas.length && entradas.reduce((s, [, c]) => s + c, 0) === monto) {
+                return Object.fromEntries(entradas);
+            }
+        }
+        return mov && mov.pagadoPor ? { [mov.pagadoPor]: monto } : {};
+    }
+
+    /** null si lo que puso cada quien cuadra con el monto; si no, por qué. */
+    function validarAportes(aportes, monto, idsParticipantes, moneda) {
+        const ids = new Set(idsParticipantes || []);
+        const entradas = Object.entries(aportes || {});
+        for (const [id, c] of entradas) {
+            if (!ids.has(id)) return 'Lo que pagó cada quien incluye a alguien que no participa en la cuenta';
+            if (!Number.isInteger(c) || c < 0) return 'Cada cantidad pagada debe ser un monto válido';
+        }
+        if (!entradas.some(([, c]) => c > 0)) return 'Indica cuánto pagó cada quien';
+        const suma = entradas.reduce((s, [, c]) => s + c, 0);
+        if (suma !== monto) {
+            const diferencia = formatoMoneda(Math.abs(monto - suma), moneda);
+            return `Lo que pagó cada quien suma ${formatoMoneda(suma, moneda)} y el gasto es de ${formatoMoneda(monto, moneda)}: ` +
+                (suma < monto ? `faltan ${diferencia}` : `sobran ${diferencia}`);
+        }
+        return null;
+    }
+
+    /**
+     * Los campos de quién pagó para guardar el gasto. Si solo una persona puso
+     * algo, es un gasto de un solo pagador como cualquier otro.
+     */
+    function pagadoresDe(aportes, orden) {
+        const a = aportes || {};
+        const ids = (orden || []).filter(id => a[id] > 0)
+            .concat(Object.keys(a).filter(id => !(orden || []).includes(id) && a[id] > 0));
+        const principal = ids.reduce((mejor, id) => (mejor && a[mejor] >= a[id] ? mejor : id), null);
+        if (ids.length < 2) return { pagadoPor: principal || '' };
+        return { pagadoPor: principal, aportes: Object.fromEntries(ids.map(id => [id, a[id]])) };
+    }
+
+    /**
+     * Cuánto le debe cada quien a cada uno de los que pagaron un gasto, en
+     * proporción a lo que puso cada uno. Cuadra al centavo por los dos lados:
+     * lo de cada deudor suma su parte y lo que se le debe a cada pagador suma
+     * lo que puso, así la relación entre dos personas coincide con los saldos.
+     * Primero va la parte entera de cada proporción; los centavos que faltan
+     * se reparten deudor por deudor, siempre al pagador al que más le falta
+     * recibir (con eso nunca se queda nadie sin cuadrar). Van primero los que
+     * no pusieron nada: lo que un pagador "se debe a sí mismo" no se ve en
+     * ningún lado, así que el centavo que sobra mejor cae ahí.
+     */
+    function deudasDeGasto(cuotas, pagadores, orden) {
+        const enOrden = ids => (orden || []).filter(id => ids.includes(id)).concat(ids.filter(id => !(orden || []).includes(id)));
+        const deudores = enOrden(Object.keys(cuotas || {}));
+        const acreedores = enOrden(Object.keys(pagadores || {}));
+        const monto = acreedores.reduce((s, j) => s + pagadores[j], 0);
+        const deudas = {};
+        if (!(monto > 0)) return deudas;
+        const falta = {};
+        for (const j of acreedores) falta[j] = pagadores[j];
+        const fracciones = {};
+        for (const i of deudores) {
+            deudas[i] = {};
+            fracciones[i] = {};
+            for (const j of acreedores) {
+                const exacto = cuotas[i] * pagadores[j] / monto;
+                const base = Math.floor(exacto + 1e-9);
+                deudas[i][j] = base;
+                fracciones[i][j] = exacto - base;
+                falta[j] -= base;
+            }
+        }
+        const primero = deudores.filter(i => !acreedores.includes(i)).concat(deudores.filter(i => acreedores.includes(i)));
+        for (const i of primero) {
+            let sobra = cuotas[i] - acreedores.reduce((s, j) => s + deudas[i][j], 0);
+            const candidatos = acreedores.filter(j => falta[j] > 0)
+                .sort((a, b) => (falta[b] - falta[a]) || (fracciones[i][b] - fracciones[i][a]) || (acreedores.indexOf(a) - acreedores.indexOf(b)));
+            for (const j of candidatos) {
+                if (sobra <= 0) break;
+                deudas[i][j] += 1;
+                falta[j] -= 1;
+                sobra--;
+            }
+        }
+        return deudas;
+    }
+
+    /**
+     * Cómo deja un solo gasto a cada quien: lo que puso menos lo que le tocaba.
+     * Es lo que se le enseña a quien lo captura antes de guardarlo.
+     */
+    function efectoDeGasto(mov, orden) {
+        const saldos = {};
+        for (const id of orden || []) saldos[id] = 0;
+        const monto = Number(mov && mov.monto) || 0;
+        if (!(monto > 0)) return saldos;
+        for (const [id, c] of Object.entries(aportesDe(mov))) saldos[id] = (saldos[id] || 0) + c;
+        for (const [id, c] of Object.entries(repartirMonto(monto, (mov && mov.reparto) || {}, orden))) saldos[id] = (saldos[id] || 0) - c;
+        return saldos;
     }
 
     function ordenarEventos(eventos) {
@@ -319,20 +431,29 @@
             const monto = Number(mov.monto) || 0;
             if (mov.tipo === 'gasto') {
                 mov.cuotas = repartirMonto(monto, mov.reparto || {}, orden);
+                mov.pagadores = aportesDe(mov);
             } else {
                 mov.cuotas = {};
+                mov.pagadores = {};
             }
             if (!mov.anulado && monto > 0) {
                 if (mov.tipo === 'gasto') {
-                    sumarSaldo(mov.pagadoPor, monto);
-                    total(mov.pagadoPor).pagado += monto;
+                    for (const [id, puso] of Object.entries(mov.pagadores)) {
+                        sumarSaldo(id, puso);
+                        total(id).pagado += puso;
+                    }
                     totalGastos += monto;
                     const cat = String(mov.categoria || '').trim() || 'Sin categoría';
                     porCategoria[cat] = (porCategoria[cat] || 0) + monto;
                     for (const [id, cuota] of Object.entries(mov.cuotas)) {
                         sumarSaldo(id, -cuota);
                         total(id).parte += cuota;
-                        sumarDeuda(id, mov.pagadoPor, cuota);
+                    }
+                    // Si pagaron varios, lo que le toca a cada quien se les
+                    // debe a ellos en proporción a lo que puso cada uno.
+                    const porPagador = deudasDeGasto(mov.cuotas, mov.pagadores, orden);
+                    for (const [deudor, aCada] of Object.entries(porPagador)) {
+                        for (const [acreedor, parte] of Object.entries(aCada)) sumarDeuda(deudor, acreedor, parte);
                     }
                 } else if (mov.tipo === 'pago') {
                     // Quien paga reduce lo que debe: es como si el otro le
@@ -423,7 +544,13 @@
         const ids = estado.participantes.map(p => p.id);
         if (!String(mov.concepto || '').trim()) return 'Falta el concepto del gasto';
         if (!Number.isInteger(mov.monto) || mov.monto <= 0) return 'El monto debe ser mayor que cero';
-        if (!ids.includes(mov.pagadoPor)) return 'Indica quién pagó';
+        if (mov.aportes != null) {
+            const error = validarAportes(mov.aportes, mov.monto, ids, estado.moneda);
+            if (error) return error;
+            if (!(mov.aportes[mov.pagadoPor] > 0)) return 'Quien pagó debe ser uno de los que pusieron dinero';
+        } else if (!ids.includes(mov.pagadoPor)) {
+            return 'Indica quién pagó';
+        }
         if (!/^\d{4}-\d{2}-\d{2}$/.test(mov.fechaMov || '')) return 'La fecha no es válida';
         return validarReparto(mov.reparto, ids);
     }
@@ -551,7 +678,8 @@
     const Motor = {
         MIN_PARTICIPANTES, MAX_PARTICIPANTES, MONEDAS, CATEGORIAS,
         normalizar, aCentavos, formatoMoneda, formatoSaldo, repartoIgual, sumaReparto, validarReparto,
-        repartirMonto, ordenarEventos, derivarCuenta, deudaNeta, liquidacionSugerida, resumenSaldos,
+        repartirMonto, aportesDe, validarAportes, pagadoresDe, deudasDeGasto, efectoDeGasto,
+        ordenarEventos, derivarCuenta, deudaNeta, liquidacionSugerida, resumenSaldos,
         nombreDe, validarParticipantes, validarGasto, validarPago, fusionarCuentas,
         esPeticionAbrir, elegirDeCatalogo
     };
@@ -757,6 +885,24 @@
         return estado.participantes
             .filter(p => (reparto || {})[p.id] > 0)
             .map(p => `${p.nombre} ${textoPorcentaje(reparto[p.id])}`).join(' · ');
+    }
+
+    function unirConY(partes) {
+        return partes.length > 1 ? partes.slice(0, -1).join(', ') + ' y ' + partes[partes.length - 1] : (partes[0] || '');
+    }
+
+    /**
+     * Quién pagó un gasto: "Frida", o si pagaron varios "Frida ($140.00) y
+     * Jorge ($50.00)", en el orden de la cuenta. `envolver` le da formato a
+     * cada nombre (negritas en el histórico).
+     */
+    function textoPagadores(estado, mov, envolver) {
+        const orden = estado.participantes.map(p => p.id);
+        const pagadores = aportesDe(mov);
+        const ids = Object.keys(pagadores).sort((a, b) => orden.indexOf(a) - orden.indexOf(b));
+        const nombre = envolver || (t => t);
+        if (ids.length < 2) return nombre(nombreDe(estado, ids[0] || mov.pagadoPor));
+        return unirConY(ids.map(id => nombre(nombreDe(estado, id)) + ' (' + dinero(pagadores[id], estado) + ')'));
     }
 
     function hayLicencia() {
@@ -1127,7 +1273,7 @@
             if (f.categoria && String(m.categoria || '').trim() !== f.categoria) return false;
             if (f.persona) {
                 const involucra = m.tipo === 'gasto'
-                    ? (m.pagadoPor === f.persona || (m.cuotas[f.persona] || 0) > 0)
+                    ? ((m.pagadores[f.persona] || 0) > 0 || (m.cuotas[f.persona] || 0) > 0)
                     : (m.de === f.persona || m.a === f.persona);
                 if (!involucra) return false;
             }
@@ -1157,7 +1303,8 @@
             let titulo, detalle;
             if (m.tipo === 'gasto') {
                 titulo = esc(m.concepto || 'Gasto') + (m.categoria ? ' <span class="cta-cat">' + esc(m.categoria) + '</span>' : '');
-                detalle = 'Pagó <strong>' + esc(nombreDe(estado, m.pagadoPor)) + '</strong> · ' +
+                detalle = (Object.keys(m.pagadores).length > 1 ? 'Pagaron ' : 'Pagó ') +
+                    textoPagadores(estado, m, n => '<strong>' + esc(n) + '</strong>') + ' · ' +
                     estado.participantes.filter(p => m.cuotas[p.id] > 0).map(p =>
                         esc(p.nombre) + ' ' + esc(textoPorcentaje((m.reparto || {})[p.id] || 0)) + ' (' + esc(dinero(m.cuotas[p.id], estado)) + ')').join(' · ');
             } else {
@@ -1214,7 +1361,7 @@
             case 'participante': return `agregó a ${ev.participante && ev.participante.nombre}`;
             case 'renombrar_participante': return `cambió el nombre de un participante a «${ev.nombre}»`;
             case 'pin': return ev.pinHash ? 'puso o cambió su PIN' : 'quitó su PIN';
-            case 'gasto': return `registró el gasto «${ev.mov && ev.mov.concepto}» por ${dinero(ev.mov && ev.mov.monto, estado)}, pagado por ${nombreDe(estado, ev.mov && ev.mov.pagadoPor)}`;
+            case 'gasto': return `registró el gasto «${ev.mov && ev.mov.concepto}» por ${dinero(ev.mov && ev.mov.monto, estado)}, pagado por ${textoPagadores(estado, ev.mov || {})}`;
             case 'pago': return `registró que ${nombreDe(estado, ev.mov && ev.mov.de)} pagó ${dinero(ev.mov && ev.mov.monto, estado)} a ${nombreDe(estado, ev.mov && ev.mov.a)}`;
             case 'anular': return `anuló «${mov ? (mov.concepto || (mov.tipo === 'pago' ? 'pago' : 'gasto')) : 'un movimiento'}»` + (ev.motivo ? `: ${ev.motivo}` : '');
             case 'solicitar_archivo': return 'pidió archivar la cuenta' + (ev.motivo ? `: ${ev.motivo}` : '');
@@ -1248,11 +1395,16 @@
         }).join('');
     }
 
+    // En «¿Quién pagó?», la opción de que pagaron varios. Los ids de los
+    // participantes empiezan con "p", así que no choca con ninguno.
+    const PAGARON_VARIOS = '__varios';
+
     function vistaGasto(estado) {
         const b = ui.borrador || {};
         const yo = identidadEn(estado);
         const reparto = b.reparto || estado.reparto;
         const titulo = b.corrigeA ? 'Corregir gasto' : 'Registrar gasto';
+        const varios = Object.keys(aportesDe(b)).length > 1;
         return '<form class="cta-form" data-form="gasto" novalidate>' +
             '<h3>' + titulo + '</h3>' +
             (b.corrigeA ? '<p class="cta-nota">Al guardar, el gasto original queda anulado y este lo sustituye. Los dos quedan en el histórico.</p>' : '') +
@@ -1262,9 +1414,16 @@
             '</div>' +
             '<div class="cta-fila">' +
                 '<label class="cta-campo">Fecha del gasto<input type="date" name="fechaMov" required value="' + esc(b.fechaMov || hoyISO()) + '"></label>' +
-                '<label class="cta-campo">¿Quién pagó?<select name="pagadoPor">' + opcionesParticipantes(estado, b.pagadoPor || (yo && yo.id)) + '</select></label>' +
+                '<label class="cta-campo">¿Quién pagó?<select name="pagadoPor">' +
+                    opcionesParticipantes(estado, varios ? PAGARON_VARIOS : (b.pagadoPor || (yo && yo.id))) +
+                    '<option value="' + PAGARON_VARIOS + '"' + (varios ? ' selected' : '') + '>Pagaron varios</option>' +
+                '</select></label>' +
                 '<label class="cta-campo">Categoría<input name="categoria" list="cta-lista-categorias" maxlength="60" value="' + esc(b.categoria || '') + '" placeholder="Elige o escribe"></label>' +
             '</div>' +
+            '<fieldset class="cta-reparto cta-aportes" id="cta-aportes"' + (varios ? '' : ' hidden') + '><legend>¿Cuánto puso cada quien?</legend>' +
+                filasAportes(estado, varios ? b.aportes : null) +
+                '<div class="cta-reparto-suma" id="cta-aportes-suma"></div>' +
+            '</fieldset>' +
             '<datalist id="cta-lista-categorias">' + CATEGORIAS.map(c => '<option value="' + esc(c) + '">').join('') + '</datalist>' +
             '<fieldset class="cta-reparto"><legend>¿Cómo se reparte?</legend>' +
                 '<div class="cta-chips">' +
@@ -1274,6 +1433,7 @@
                 filasReparto(estado, reparto, true) +
                 '<div class="cta-reparto-suma" id="cta-suma"></div>' +
             '</fieldset>' +
+            '<p class="cta-pista cta-efecto" id="cta-efecto" aria-live="polite"></p>' +
             '<label class="cta-campo">Nota (opcional)<textarea name="nota" rows="2" maxlength="500" placeholder="Número de factura, para qué fue…">' + esc(b.nota || '') + '</textarea></label>' +
             '<div class="cta-error" id="cta-error" role="alert" hidden></div>' +
             '<div class="cta-form-btns">' +
@@ -1312,6 +1472,113 @@
         });
     }
 
+    // Lo que escribió el usuario lleva data-tocado; lo que la app puso sola
+    // (el resto del último que falta), data-auto.
+    function filasAportes(estado, aportes) {
+        return estado.participantes.map(p => {
+            const c = (aportes || {})[p.id];
+            return '<div class="cta-aporte-fila" data-pid="' + esc(p.id) + '">' +
+                '<span class="cta-reparto-nombre">' + esc(p.nombre) + '</span>' +
+                '<input type="text" inputmode="decimal" name="aporte-' + esc(p.id) + '" placeholder="0.00"' +
+                    (c > 0 ? ' value="' + (c / 100).toFixed(2) + '" data-tocado="1"' : '') +
+                    ' aria-label="Cuánto pagó ' + esc(p.nombre) + '">' +
+                '<button type="button" class="cta-chip" data-acc="aporte-resto" data-pid="' + esc(p.id) + '" title="Lo que falta para completar el monto">El resto</button>' +
+            '</div>';
+        }).join('');
+    }
+
+    function camposAportes(form) {
+        return Array.from(form.querySelectorAll('.cta-aporte-fila input'));
+    }
+
+    /** Lo que se escribió en «¿Cuánto puso cada quien?», en centavos (NaN si no es una cantidad). */
+    function leerAportesDelForm(form) {
+        const aportes = {};
+        for (const campo of camposAportes(form)) {
+            const t = campo.value.trim();
+            if (t) aportes[campo.closest('[data-pid]').dataset.pid] = aCentavos(t);
+        }
+        return aportes;
+    }
+
+    const sumaAportes = aportes => Object.values(aportes).reduce((s, c) => s + (Number.isInteger(c) && c > 0 ? c : 0), 0);
+    const sumaCampos = campos => sumaAportes(campos.map(c => aCentavos(c.value.trim())));
+
+    /**
+     * Cuando solo falta una persona por escribir lo suyo, se le pone lo que
+     * resta del monto: con dos que pagaron basta escribir lo de uno.
+     */
+    function completarAportes(form, monto) {
+        const campos = camposAportes(form);
+        const libres = campos.filter(c => !c.dataset.tocado);
+        const limpiar = c => { if (c.dataset.auto) { c.value = ''; delete c.dataset.auto; } };
+        if (libres.length !== 1) { libres.forEach(limpiar); return; }
+        const puesto = sumaCampos(campos.filter(c => c.dataset.tocado));
+        const resto = monto - puesto;
+        if (monto > 0 && puesto > 0 && resto >= 0) {
+            libres[0].value = (resto / 100).toFixed(2);
+            libres[0].dataset.auto = '1';
+        } else {
+            limpiar(libres[0]);
+        }
+    }
+
+    function pintarSumaAportes(form, estado, aportes, monto) {
+        const el = form.querySelector('#cta-aportes-suma');
+        if (!el) return;
+        const suma = sumaAportes(aportes);
+        let texto, ok = false;
+        if (!(monto > 0)) {
+            texto = `Suman ${dinero(suma, estado)}. Escribe arriba el monto del gasto.`;
+        } else if (suma === monto) {
+            texto = `Suman ${dinero(suma, estado)} ✓`;
+            ok = true;
+        } else {
+            texto = `Suman ${dinero(suma, estado)} de ${dinero(monto, estado)}: ` +
+                (suma < monto ? 'faltan ' : 'sobran ') + dinero(Math.abs(monto - suma), estado);
+        }
+        el.textContent = texto;
+        el.classList.toggle('cta-mal', !ok);
+    }
+
+    /** "Con este gasto, tú le debes $45.00 a Frida." Antes de guardarlo. */
+    function pintarEfecto(form, estado, mov) {
+        const el = form.querySelector('#cta-efecto');
+        if (!el) return;
+        const orden = estado.participantes.map(p => p.id);
+        if (!(mov.monto > 0) || validarGasto(estado, { ...mov, concepto: 'x', fechaMov: '2000-01-01' })) {
+            el.textContent = '';
+            return;
+        }
+        const yo = identidadEn(estado);
+        const esYo = id => !!yo && yo.id === id;
+        const frases = liquidacionSugerida(efectoDeGasto(mov, orden), orden).map(p => {
+            const cuanto = dinero(p.monto, estado);
+            if (esYo(p.de)) return `tú le debes ${cuanto} a ${nombreDe(estado, p.a)}`;
+            if (esYo(p.a)) return `${nombreDe(estado, p.de)} te debe ${cuanto}`;
+            return `${nombreDe(estado, p.de)} le debe ${cuanto} a ${nombreDe(estado, p.a)}`;
+        });
+        el.textContent = frases.length ? `Con este gasto, ${unirConY(frases)}.` : 'Con este gasto nadie le queda debiendo a nadie.';
+    }
+
+    /** El gasto como está en el formulario; con `aportes` tal cual se escribieron si pagaron varios. */
+    function gastoDelForm(form, estado) {
+        const mov = {
+            concepto: form.concepto.value.trim(),
+            monto: aCentavos(form.monto.value),
+            fechaMov: form.fechaMov.value,
+            pagadoPor: form.pagadoPor.value,
+            categoria: form.categoria.value.trim(),
+            reparto: leerRepartoDelForm(form, true),
+            nota: form.nota.value.trim()
+        };
+        if (mov.pagadoPor === PAGARON_VARIOS) {
+            mov.aportes = leerAportesDelForm(form);
+            mov.pagadoPor = pagadoresDe(mov.aportes, estado.participantes.map(p => p.id)).pagadoPor;
+        }
+        return mov;
+    }
+
     function actualizarFormGasto(estado) {
         const form = document.querySelector('#cta-cuerpo form[data-form="gasto"]');
         if (!form) return;
@@ -1320,7 +1587,15 @@
             const campo = fila.querySelector('input[type="text"]');
             if (casilla && campo) campo.disabled = !casilla.checked;
         });
-        pintarSumaReparto(form, estado, leerRepartoDelForm(form, true), aCentavos(form.monto.value));
+        const monto = aCentavos(form.monto.value);
+        const varios = form.pagadoPor.value === PAGARON_VARIOS;
+        const caja = form.querySelector('#cta-aportes');
+        if (caja) caja.hidden = !varios;
+        if (varios) completarAportes(form, monto);
+        const mov = gastoDelForm(form, estado);
+        if (varios) pintarSumaAportes(form, estado, mov.aportes, monto);
+        pintarSumaReparto(form, estado, mov.reparto, monto);
+        pintarEfecto(form, estado, mov);
     }
 
     function ponerReparto(form, reparto, estado, conCasilla) {
@@ -1618,7 +1893,7 @@
     function borradorDesde(mov, opciones) {
         const b = {
             concepto: mov.concepto, monto: mov.monto, categoria: mov.categoria, nota: mov.nota,
-            pagadoPor: mov.pagadoPor, reparto: mov.reparto, de: mov.de, a: mov.a,
+            pagadoPor: mov.pagadoPor, aportes: mov.aportes, reparto: mov.reparto, de: mov.de, a: mov.a,
             fechaMov: opciones.hoy ? hoyISO() : mov.fechaMov
         };
         if (opciones.corrige) b.corrigeA = mov.id;
@@ -1686,6 +1961,26 @@
             if (!form) return;
             const marcados = Array.from(form.querySelectorAll('input[name="incl"]:checked')).map(c => c.value);
             ponerReparto(form, repartoIgual(marcados.length ? marcados : e.participantes.map(p => p.id)), e, true);
+        },
+        'aporte-resto': async (d) => {
+            const e = await estadoActual();
+            const form = document.querySelector('#cta-cuerpo form[data-form="gasto"]');
+            if (!form) return;
+            const campos = camposAportes(form);
+            const campo = campos.find(c => c.closest('[data-pid]').dataset.pid === d.pid);
+            if (!campo) return;
+            const monto = aCentavos(form.monto.value);
+            if (!(monto > 0)) {
+                toast('Primero escribe el monto del gasto', 'info');
+                form.monto.focus();
+                return;
+            }
+            const resto = monto - sumaCampos(campos.filter(c => c !== campo));
+            if (resto < 0) return toast('Lo que pusieron los demás ya pasa del monto del gasto', 'warning');
+            campo.value = (resto / 100).toFixed(2);
+            campo.dataset.tocado = '1';
+            delete campo.dataset.auto;
+            actualizarFormGasto(e);
         },
         'ajuste-igual': async () => {
             const e = await estadoActual();
@@ -1914,8 +2209,18 @@
         if (!form) return;
         if (form.dataset.form === 'nueva') { actualizarFormNueva(); return; }
         if (!est) return;
-        if (form.dataset.form === 'gasto') actualizarFormGasto(est);
-        else if (form.dataset.form === 'pago') actualizarFormPago(est);
+        if (t.closest('.cta-aporte-fila')) {
+            // Lo que el usuario escribe ya no lo cambia la app al completar el resto.
+            if (t.value.trim()) t.dataset.tocado = '1'; else delete t.dataset.tocado;
+            delete t.dataset.auto;
+        }
+        if (form.dataset.form === 'gasto') {
+            actualizarFormGasto(est);
+            if (t.name === 'pagadoPor' && t.value === PAGARON_VARIOS && e.type === 'change') {
+                const vacio = camposAportes(form).find(c => !c.value.trim());
+                if (vacio) vacio.focus();
+            }
+        } else if (form.dataset.form === 'pago') actualizarFormPago(est);
         else if (form.dataset.form === 'reparto') pintarSumaReparto(form, est, leerRepartoDelForm(form, false), 0);
     }
 
@@ -1962,17 +2267,11 @@
         gasto: async (form) => {
             const e = await estadoActual();
             if (e.archivada) return mostrarError('La cuenta está archivada');
-            const mov = {
-                concepto: form.concepto.value.trim(),
-                monto: aCentavos(form.monto.value),
-                fechaMov: form.fechaMov.value,
-                pagadoPor: form.pagadoPor.value,
-                categoria: form.categoria.value.trim(),
-                reparto: leerRepartoDelForm(form, true),
-                nota: form.nota.value.trim()
-            };
-            const error = validarGasto(e, mov);
+            const { aportes, ...mov } = gastoDelForm(form, e);
+            const error = validarGasto(e, aportes ? { ...mov, aportes } : mov);
             if (error) return mostrarError(error);
+            // Si al final solo una persona puso dinero, se guarda como un gasto normal.
+            if (aportes) Object.assign(mov, pagadoresDe(aportes, e.participantes.map(p => p.id)));
             await guardarMovimiento(e, 'gasto', mov);
         },
         pago: async (form) => {
@@ -2071,18 +2370,21 @@
         };
         const num = c => (c / 100).toFixed(2);
         const encabezado = ['Fecha', 'Tipo', 'Concepto', 'Categoría', 'Pagó / Paga', 'Recibe', 'Monto']
+            .concat(e.participantes.map(p => 'Puso ' + p.nombre))
             .concat(e.participantes.map(p => 'Parte de ' + p.nombre))
             .concat(e.participantes.map(p => 'Saldo de ' + p.nombre + ' después'))
             .concat(['Estado', 'Motivo de anulación', 'Registró', 'Registrado el', 'Nota']);
         const filas = movimientos.map(m => [
             m.fechaMov, m.tipo === 'gasto' ? 'Gasto' : 'Pago', m.concepto, m.categoria || '',
-            nombreDe(e, m.tipo === 'gasto' ? m.pagadoPor : m.de), m.tipo === 'pago' ? nombreDe(e, m.a) : '',
+            m.tipo === 'gasto' ? textoPagadores(e, m) : nombreDe(e, m.de), m.tipo === 'pago' ? nombreDe(e, m.a) : '',
             num(m.monto)
-        ].concat(e.participantes.map(p => m.tipo === 'gasto' ? num(m.cuotas[p.id] || 0) : ''))
+        ].concat(e.participantes.map(p => m.tipo === 'gasto' ? num(m.pagadores[p.id] || 0) : ''))
+         .concat(e.participantes.map(p => m.tipo === 'gasto' ? num(m.cuotas[p.id] || 0) : ''))
          .concat(e.participantes.map(p => num(m.saldoTras[p.id] || 0)))
          .concat([m.anulado ? 'Anulado' : 'Vigente', m.anulado ? m.anulado.motivo : '',
                   m.registradoPor ? nombreDe(e, m.registradoPor) : '', m.registradoEn, m.nota || '']));
-        const pie = [[], ['Saldo final'].concat(Array(6).fill('')).concat(e.participantes.map(() => ''))
+        const pie = [[], ['Saldo final'].concat(Array(6).fill(''))
+            .concat(e.participantes.map(() => '')).concat(e.participantes.map(() => ''))
             .concat(e.participantes.map(p => num(e.saldos[p.id] || 0)))];
         return [encabezado].concat(filas).concat(pie).map(f => f.map(celda).join(',')).join('\r\n');
     }

@@ -1499,6 +1499,43 @@ async function probarCuentasCompartidas(navegador) {
         await page.click('[data-acc="volver"]');
         await pausa(300);
 
+        // ---- Pagaron varios: un café de 190 mitad y mitad, Jorge 50 y Frida 140 ----
+        await page.click('[data-acc="nuevo-gasto"]');
+        await pausa(250);
+        igual('cuentas: «¿Cuánto puso cada quien?» no aparece si pagó una sola persona', await page.isVisible('#cta-aportes'), false);
+        await page.fill('#cta-cuerpo input[name="concepto"]', 'Café');
+        await page.fill('#cta-cuerpo input[name="monto"]', '190');
+        await page.selectOption('#cta-cuerpo select[name="pagadoPor"]', { label: 'Pagaron varios' });
+        await pausa(150);
+        igual('cuentas: al elegir «varios» pide cuánto puso cada quien', await page.isVisible('#cta-aportes'), true);
+        const aporteDe = (nombre) => page.locator(`#cta-aportes .cta-aporte-fila:has-text("${nombre}") input`);
+        await aporteDe('Jorge').fill('50');
+        await pausa(150);
+        igual('cuentas: con dos que pagaron, lo del otro se completa solo', await aporteDe('Frida').inputValue(), '140.00');
+        verificar('cuentas: y dice que cuadra con el monto', /Suman \$190\.00 ✓/.test(await page.textContent('#cta-aportes-suma')));
+        igual('cuentas: antes de guardar dice cómo queda el gasto', (await page.textContent('#cta-efecto')).trim(), 'Con este gasto, Jorge te debe $45.00.');
+        await aporteDe('Frida').fill('130');
+        await pausa(150);
+        verificar('cuentas: si no cuadra dice cuánto falta', /faltan \$10\.00/.test(await page.textContent('#cta-aportes-suma')));
+        await page.click('#cta-cuerpo button[type="submit"]');
+        await pausa(300);
+        verificar('cuentas: y no lo guarda', /faltan \$10\.00/.test(await page.textContent('#cta-error')));
+        await page.locator('#cta-aportes .cta-aporte-fila:has-text("Frida") [data-acc="aporte-resto"]').click();
+        await pausa(150);
+        igual('cuentas: «El resto» pone lo que falta', await aporteDe('Frida').inputValue(), '140.00');
+        await page.click('#cta-cuerpo button[type="submit"]');
+        await pausa(600);
+        igual('cuentas: el café deja a Jorge debiendo 45 más', await saldos(), ['Jorge -$165.00', 'Frida +$165.00']);
+        verificar('cuentas: el histórico dice cuánto puso cada quien',
+            /Pagaron Jorge \(\$50\.00\) y Frida \(\$140\.00\)/.test(await page.textContent('.cta-mov:has-text("Café")')));
+        await page.locator('.cta-mov:has-text("Café")').locator('[data-acc="repetir"]').click();
+        await pausa(300);
+        igual('cuentas: repetir un gasto de varios conserva lo que puso cada quien',
+            [await page.inputValue('#cta-cuerpo select[name="pagadoPor"]'), await aporteDe('Jorge').inputValue(), await aporteDe('Frida').inputValue()],
+            ['__varios', '50.00', '140.00']);
+        await page.click('[data-acc="volver"]');
+        await pausa(300);
+
         await page.click('[data-acc="ajustes"]');
         await pausa(300);
         await page.fill('#cta-cuerpo form[data-form="agregar-participante"] input[name="nombre"]', 'Ana');

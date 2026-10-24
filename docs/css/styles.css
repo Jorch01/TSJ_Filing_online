@@ -5819,6 +5819,14 @@ body.cta-abierto #tour-menu, body.cta-abierto #tour-oferta, body.cta-abierto #re
 .cta-cuota { text-align: right; color: var(--text-secondary); }
 .cta-reparto-suma { font-size: 0.82rem; color: var(--success); font-weight: 600; }
 .cta-reparto-suma.cta-mal { color: var(--danger); }
+.cta-aportes[hidden] { display: none; }
+.cta-aporte-fila {
+    display: grid; grid-template-columns: minmax(0, 1fr) 7.5rem auto; align-items: center; gap: 0.6rem;
+    font-size: 0.88rem; font-variant-numeric: tabular-nums;
+}
+.cta-aporte-fila input { width: 100%; min-width: 0; text-align: right; }
+.cta-aporte-fila input[data-auto] { color: var(--text-secondary); font-style: italic; }
+.cta-efecto { margin: 0; color: var(--text-primary); font-weight: 600; }
 .cta-pista { font-size: 0.85rem; color: var(--text-secondary); display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
 .cta-pista:empty { display: none; }
 .cta-error {
@@ -5860,6 +5868,7 @@ body.cta-abierto #tour-menu, body.cta-abierto #tour-oferta, body.cta-abierto #re
     .cta-reparto-fila { grid-template-columns: minmax(0, 1fr) auto; }
     .cta-reparto-fila .cta-cuota { grid-column: 1 / -1; text-align: left; margin-top: -0.35rem; font-size: 0.78rem; }
     .cta-reparto-fila .cta-cuota:empty { display: none; }
+    .cta-aporte-fila { grid-template-columns: minmax(0, 1fr) 6.5rem auto; gap: 0.45rem; }
     .cta-saldos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .cta-acciones .btn { flex: 1 1 calc(50% - 0.5rem); justify-content: center; }
     .cta-filtro-fecha { flex: 1 1 calc(50% - 0.5rem); }
