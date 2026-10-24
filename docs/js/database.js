@@ -232,7 +232,10 @@ async function obtenerExpedientesArchivados() {
     });
 }
 
-async function archivarExpedienteDB(id, archivado, motivoArchivo, etiquetaArchivo) {
+// resultado: cómo terminó el asunto ('favorable', 'desfavorable'…). Solo se
+// toca si se pasa; quien archiva sin preguntarlo (asistente, carpetas) no lo
+// borra. Al desarchivar se quita: un asunto reabierto no tiene resultado final.
+async function archivarExpedienteDB(id, archivado, motivoArchivo, etiquetaArchivo, resultado) {
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(['expedientes'], 'readwrite');
         const store = transaction.objectStore('expedientes');
@@ -251,11 +254,16 @@ async function archivarExpedienteDB(id, archivado, motivoArchivo, etiquetaArchiv
                 expediente.motivoArchivo = motivoArchivo || 'concluido';
                 expediente.etiquetaArchivo = etiquetaArchivo || '';
                 expediente.fechaArchivo = ahora;
+                if (resultado !== undefined) {
+                    if (resultado) expediente.resultado = resultado;
+                    else delete expediente.resultado;
+                }
             } else {
                 expediente.archivado = false;
                 delete expediente.motivoArchivo;
                 delete expediente.etiquetaArchivo;
                 delete expediente.fechaArchivo;
+                delete expediente.resultado;
             }
             expediente.fechaActualizacion = ahora;
             // Timestamps por campo para que el merge resuelva el estado de archivo
@@ -265,6 +273,7 @@ async function archivarExpedienteDB(id, archivado, motivoArchivo, etiquetaArchiv
             expediente._fieldTimestamps.motivoArchivo = ahora;
             expediente._fieldTimestamps.etiquetaArchivo = ahora;
             expediente._fieldTimestamps.fechaArchivo = ahora;
+            if (!archivado || resultado !== undefined) expediente._fieldTimestamps.resultado = ahora;
 
             store.put(expediente);
         };

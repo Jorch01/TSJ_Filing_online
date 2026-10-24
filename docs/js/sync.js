@@ -1126,7 +1126,10 @@ function fusionarExpedientesInteligente(exp1, exp2) {
                     'comentario', 'categoria', 'color',
                     'institucion', 'pjfOrgId', 'pjfTipoAsunto', 'pjfTipoProcedimiento',
                     'archivado', 'motivoArchivo', 'etiquetaArchivo', 'fechaArchivo',
-                    'carpetaId', '_archivadoPorCarpeta'];
+                    'carpetaId', '_archivadoPorCarpeta',
+                    // Organización y estadísticas: cliente y resultado ('abogado',
+                    // el responsable, y 'tipo' ya estaban arriba).
+                    'cliente', 'resultado', 'fechaInicioAsunto'];
 
     camposPorCampo.forEach(campo => {
         const val1 = exp1[campo];
@@ -1683,6 +1686,9 @@ async function aplicarDatosLocalmente(datos) {
     // Refrescar listas dependientes de los nuevos stores sincronizados
     if (typeof cargarBusquedasGuardadas === 'function') {
         try { await cargarBusquedasGuardadas(); } catch (e) {}
+    }
+    if (typeof refrescarEstadisticasSiVisible === 'function') {
+        try { await refrescarEstadisticasSiVisible(); } catch (e) {}
     }
 }
 

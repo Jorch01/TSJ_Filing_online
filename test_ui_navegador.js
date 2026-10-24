@@ -1506,6 +1506,156 @@ async function probarCuentasCompartidas(navegador) {
     }
 }
 
+/**
+ * Estadísticas del despacho, en un navegador de verdad: el formulario guarda
+ * los datos nuevos (cliente, responsable, tipo, inicio, resultado), la página
+ * los cuenta, los filtros y las tablas responden, se exporta, y nada se sale
+ * de la pantalla en el teléfono.
+ */
+async function probarEstadisticas(navegador) {
+    const contexto = await navegador.newContext({ acceptDownloads: true, viewport: { width: 1280, height: 900 },
+        locale: 'es-MX', timezoneId: 'America/Cancun' });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    const pausa = (ms) => page.waitForTimeout(ms);
+    const kpi = (etiqueta) => page.evaluate((t) => {
+        const k = [...document.querySelectorAll('#est-raiz .est-kpi')].find(x => x.querySelector('.est-kpi-etiqueta').textContent === t);
+        return k ? k.querySelector('.est-kpi-valor').textContent : null;
+    }, etiqueta);
+
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => window.ESTADISTICAS && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+        await pausa(1000);
+
+        // ---- El formulario guarda lo nuevo ----
+        await page.evaluate(() => { navegarA('expedientes'); mostrarFormularioExpediente(); });
+        await pausa(400);
+        await page.fill('#expediente-valor', '501/2025');
+        await page.selectOption('#expediente-juzgado', 'JUZGADO PRIMERO FAMILIAR ORAL CANCUN');
+        await page.fill('#expediente-cliente', 'Grupo Hotelero Caribe');
+        await page.fill('#expediente-abogado', 'Frida');
+        await page.fill('#expediente-tipo', 'Divorcio');
+        await page.fill('#expediente-inicio', '2025-01-15');
+        await page.click('#expediente-form button[type="submit"]');
+        await pausa(700);
+        const guardado = await page.evaluate(async () => {
+            const e = (await obtenerExpedientes()).find(x => x.numero === '501/2025');
+            return e && { id: e.id, cliente: e.cliente, abogado: e.abogado, tipo: e.tipo, inicio: e.fechaInicioAsunto };
+        });
+        igual('estadísticas: el expediente guarda cliente, responsable, tipo e inicio',
+            guardado && [guardado.cliente, guardado.abogado, guardado.tipo, guardado.inicio], ['Grupo Hotelero Caribe', 'Frida', 'Divorcio', '2025-01-15']);
+        verificar('estadísticas: la tarjeta muestra cliente y responsable',
+            /Grupo Hotelero Caribe[\s\S]*Frida/.test(await page.textContent('#lista-expedientes')));
+        await page.evaluate((id) => editarExpediente(id), guardado.id);
+        await pausa(500);
+        igual('estadísticas: al editar, el formulario trae lo guardado',
+            [await page.inputValue('#expediente-cliente'), await page.inputValue('#expediente-inicio')], ['Grupo Hotelero Caribe', '2025-01-15']);
+        verificar('estadísticas: el formulario sugiere los clientes ya capturados',
+            await page.$$eval('#lista-clientes-expediente option', os => os.some(o => o.value === 'Grupo Hotelero Caribe')));
+        await page.evaluate(() => cerrarFormularioExpediente());
+
+        // Un despacho de prueba, con fechas fijas respecto a hoy.
+        await page.evaluate(async () => {
+            const dia = 864e5, ahora = Date.now();
+            const hace = (d) => new Date(ahora - d * dia).toISOString();
+            await enLoteCore(async () => {
+                const a = await crearExpedienteCore({ numero: '502/2025', institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN', cliente: 'María López', abogado: 'Jorge', tipo: 'Juicio ordinario civil' });
+                const b = await crearExpedienteCore({ numero: '503/2025', institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO MERCANTIL CANCUN', cliente: 'maria lopez', abogado: 'Jorge' });
+                await crearExpedienteCore({ numero: '50/2026', institucion: 'PJF', juzgado: 'Juzgado Segundo de Distrito en el Estado de Quintana Roo', pjfTipoAsunto: 'Amparo Indirecto' });
+                await crearPendienteCore({ titulo: 'Contestar vista', expedienteId: a, fechaLimite: hace(3) });
+                await crearPendienteCore({ titulo: 'Ofrecer pruebas', expedienteId: b, fechaLimite: hace(-3) });
+                await crearEventoCore({ titulo: 'Audiencia', tipo: 'audiencia', expedienteId: a, fechaInicio: hace(-6) });
+            });
+        });
+        // Se archiva con resultado desde el diálogo.
+        await page.evaluate((id) => mostrarDialogoArchivar(id), guardado.id);
+        await pausa(300);
+        await page.selectOption('#resultado-archivo', 'favorable');
+        await page.click('#modal-body .btn-warning');
+        await pausa(700);
+        igual('estadísticas: archivar guarda el resultado', await page.evaluate(async (id) => (await obtenerExpediente(id)).resultado, guardado.id), 'favorable');
+
+        // ---- La página ----
+        await page.click('.header-nav .nav-btn[data-page="estadisticas"]');
+        await pausa(900);
+        igual('estadísticas: el menú abre la página', await page.isVisible('#page-estadisticas'), true);
+        igual('estadísticas: activos', await kpi('Expedientes activos'), '3');
+        igual('estadísticas: cerrados en el periodo', await kpi('Cerrados en el periodo'), '1');
+        igual('estadísticas: pendientes abiertos', await kpi('Pendientes abiertos'), '2');
+        igual('estadísticas: audiencias próximas', await kpi('Audiencias próximas'), '1');
+        igual('estadísticas: resultados favorables', await kpi('Resultados favorables'), '100%');
+        verificar('estadísticas: la duración sale del inicio capturado (enero de 2025), no del alta de hoy',
+            /meses|años/.test(await kpi('Duración típica')), await kpi('Duración típica'));
+        verificar('estadísticas: "María López" y "maria lopez" son un cliente',
+            /María López[\s\S]{0,40}2/.test(await page.textContent('[data-tarjeta="clientes"]')) &&
+            !/maria lopez/.test(await page.textContent('[data-tarjeta="clientes"]')));
+        igual('estadísticas: la tendencia tiene una columna por mes', await page.locator('[data-tarjeta="tendencia"] .est-grupo').count(), 13);
+
+        // Descripción emergente al pasar el ratón.
+        await page.locator('[data-tarjeta="tendencia"] .est-grupo').last().hover();
+        await pausa(200);
+        const emergente = await page.evaluate(() => { const t = document.getElementById('est-tip'); return t && !t.hidden ? t.textContent : ''; });
+        verificar('estadísticas: al pasar sobre un mes se ven sus cifras', /Nuevos/.test(emergente) && /Cerrados/.test(emergente), emergente);
+
+        // Filtros.
+        await page.selectOption('[data-filtro="cliente"]', 'María López');
+        await pausa(700);
+        igual('estadísticas: filtrar por cliente', await kpi('Expedientes activos'), '2');
+        igual('estadísticas: y sus pendientes', await kpi('Pendientes abiertos'), '2');
+        await page.click('[data-acc="limpiar"]');
+        await pausa(700);
+        igual('estadísticas: quitar filtros', await kpi('Expedientes activos'), '3');
+        await page.selectOption('[data-filtro="periodo"]', 'rango');
+        await pausa(600);
+        igual('estadísticas: "otro rango" pide las fechas', await page.locator('[data-filtro="desde"]').count(), 1);
+        await page.selectOption('[data-filtro="periodo"]', '12m');
+        await pausa(600);
+
+        // Toda gráfica se puede ver como tabla, y las tablas se ordenan.
+        await page.click('[data-tarjeta="materia"] [data-acc="alternar"]');
+        await pausa(500);
+        verificar('estadísticas: la gráfica se puede ver como tabla',
+            await page.locator('[data-tarjeta="materia"] table').count() === 1);
+        await page.click('[data-tarjeta="materia"] th button:has-text("Total")');
+        await pausa(500);
+        igual('estadísticas: ordenar por una columna', await page.getAttribute('[data-tarjeta="materia"] th[aria-sort]', 'aria-sort'), 'descending');
+
+        // Exportar.
+        const espera = page.waitForEvent('download', { timeout: 8000 });
+        await page.click('[data-acc="csv-todo"]');
+        const descarga = await espera.catch(() => null);
+        verificar('estadísticas: exporta todo a CSV', !!descarga && /^estadisticas-\d{4}-\d{2}-\d{2}\.csv$/.test(descarga.suggestedFilename()), descarga && descarga.suggestedFilename());
+        if (descarga) {
+            const csv = fs.readFileSync(await descarga.path(), 'utf8');
+            verificar('estadísticas: el CSV trae las tablas con sus datos',
+                csv.includes('Expedientes y pendientes por cliente') && csv.includes('María López') && csv.includes('Carga por responsable'), csv.slice(0, 200));
+        }
+
+        // Un cambio en los datos se ve sin salir de la página.
+        await page.evaluate(async () => { await crearExpedienteCore({ numero: '504/2025', institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' }); });
+        await pausa(900);
+        igual('estadísticas: se actualiza sola al cambiar los datos', await kpi('Expedientes activos'), '4');
+
+        // El asistente sabe llevar aquí.
+        await page.evaluate(() => navegarA('inicio'));
+        await page.evaluate(() => VOZ.ejecutar('navegar', { pagina: 'estadisticas' }));
+        await pausa(600);
+        igual('estadísticas: el asistente lleva a la página', await page.isVisible('#page-estadisticas'), true);
+
+        // En el teléfono.
+        await page.setViewportSize({ width: 390, height: 844 });
+        await pausa(500);
+        igual('estadísticas: en el teléfono nada se sale a lo ancho',
+            await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), 0);
+
+        igual('estadísticas: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
 async function main() {
     const servidor = await servidorEstatico(PUERTO);
     const navegador = await abrirChromium();
@@ -3094,6 +3244,9 @@ async function main() {
 
         // ---- Cuentas compartidas (solo desde el asistente) ----
         await probarCuentasCompartidas(navegador);
+
+        // ---- Estadísticas del despacho ----
+        await probarEstadisticas(navegador);
 
         // ---- Recorrido guiado y páginas públicas ----
         await probarRecorridoGuiado(navegador);

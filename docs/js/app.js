@@ -345,6 +345,8 @@ function navegarA(pagina) {
     }
 
     const anterior = document.querySelector('.page.active');
+    const tipEstadisticas = document.getElementById('est-tip');
+    if (tipEstadisticas) tipEstadisticas.hidden = true;
 
     // Ocultar todas las páginas
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -378,6 +380,8 @@ function navegarA(pagina) {
         cargarCatalogosPJF();
     } else if (pagina === 'laboral') {
         if (typeof prepararCalculadoraLaboral === 'function') prepararCalculadoraLaboral();
+    } else if (pagina === 'estadisticas') {
+        if (typeof prepararEstadisticas === 'function') prepararEstadisticas();
     } else if (pagina === 'impi') {
         // IMPI page - no initialization needed
     }
@@ -1521,6 +1525,49 @@ function mostrarFormularioExpediente() {
     // Repoblar select de carpetas (form.reset() lo deja con sus options actuales,
     // pero queremos asegurar que estén al día por si se acabaron de crear nuevas).
     if (typeof cargarCarpetasUI === 'function') cargarCarpetasUI();
+    actualizarSugerenciasExpediente();
+}
+
+// Tipos de asunto frecuentes en un despacho de Quintana Roo. Se ofrecen junto
+// con los que ya se hayan capturado; el campo admite cualquier otro.
+const TIPOS_ASUNTO_SUGERIDOS = [
+    'Divorcio', 'Pensión alimenticia', 'Guarda y custodia', 'Convivencias', 'Sucesorio',
+    'Juicio ordinario civil', 'Arrendamiento', 'Usucapión', 'Juicio ejecutivo mercantil',
+    'Juicio oral mercantil', 'Despido injustificado', 'Prestaciones laborales',
+    'Amparo indirecto', 'Amparo directo', 'Penal', 'Administrativo'
+];
+
+/**
+ * Llena las sugerencias de cliente, responsable y tipo de asunto con lo que
+ * ya existe en los expedientes, archivados incluidos.
+ */
+async function actualizarSugerenciasExpediente() {
+    try {
+        const todos = [...await obtenerExpedientes(), ...await obtenerExpedientesArchivados()];
+        const unicos = (campo, extra) => {
+            const vistos = new Map();
+            for (const v of [...todos.map(e => e[campo]), ...(extra || [])]) {
+                const t = String(v || '').trim();
+                if (t && !vistos.has(t.toLowerCase())) vistos.set(t.toLowerCase(), t);
+            }
+            return Array.from(vistos.values()).sort((a, b) => a.localeCompare(b, 'es'));
+        };
+        const llenar = (id, valores) => {
+            const lista = document.getElementById(id);
+            if (!lista) return;
+            lista.innerHTML = '';
+            for (const v of valores) {
+                const op = document.createElement('option');
+                op.value = v;
+                lista.appendChild(op);
+            }
+        };
+        llenar('lista-clientes-expediente', unicos('cliente'));
+        llenar('lista-responsables-expediente', unicos('abogado'));
+        llenar('lista-tipos-expediente', unicos('tipo', TIPOS_ASUNTO_SUGERIDOS));
+    } catch (e) {
+        Logger.warn('No se pudieron preparar las sugerencias del expediente:', e);
+    }
 }
 
 function cerrarFormularioExpediente() {
@@ -1574,6 +1621,11 @@ async function editarExpediente(id, event) {
         document.getElementById('expediente-id').value = id;
         document.getElementById('expediente-valor').value = exp.numero || exp.nombre;
         document.getElementById('expediente-comentario').value = exp.comentario || '';
+        document.getElementById('expediente-cliente').value = exp.cliente || '';
+        document.getElementById('expediente-abogado').value = exp.abogado || '';
+        document.getElementById('expediente-tipo').value = exp.tipo || '';
+        document.getElementById('expediente-inicio').value = /^\d{4}-\d{2}-\d{2}$/.test(exp.fechaInicioAsunto || '') ? exp.fechaInicioAsunto : '';
+        actualizarSugerenciasExpediente();
         // Refrescar el select de carpetas y seleccionar la del expediente
         if (typeof cargarCarpetasUI === 'function') await cargarCarpetasUI();
         const selCarpeta = document.getElementById('expediente-carpeta');
@@ -1628,6 +1680,10 @@ async function guardarExpediente(event) {
         const tipoBusqueda = document.querySelector('input[name="tipo-busqueda"]:checked').value;
         const valor = document.getElementById('expediente-valor').value.trim();
         const comentario = document.getElementById('expediente-comentario').value.trim();
+        const cliente = document.getElementById('expediente-cliente')?.value.trim() || '';
+        const abogado = document.getElementById('expediente-abogado')?.value.trim() || '';
+        const tipoAsunto = document.getElementById('expediente-tipo')?.value.trim() || '';
+        const inicioAsunto = document.getElementById('expediente-inicio')?.value || '';
         const carpetaSel = document.getElementById('expediente-carpeta')?.value || '';
         const carpetaId = carpetaSel ? parseInt(carpetaSel, 10) : undefined;
         const institucion = document.querySelector('input[name="expediente-institucion"]:checked')?.value || 'TSJ';
@@ -1662,8 +1718,13 @@ async function guardarExpediente(event) {
             juzgado,
             institucion: institucion,
             comentario: comentario || undefined,
+            cliente: cliente || undefined,
+            abogado: abogado || undefined,
+            fechaInicioAsunto: /^\d{4}-\d{2}-\d{2}$/.test(inicioAsunto) ? inicioAsunto : undefined,
             carpetaId: carpetaId
         };
+        // En el PJF el tipo de asunto sale de su catálogo (pjfTipoAsunto).
+        if (institucion !== 'PJF') expediente.tipo = tipoAsunto || undefined;
 
         if (institucion === 'PJF') {
             const orgId = document.getElementById('expediente-organo-pjf')?.value;
@@ -1763,6 +1824,14 @@ function mostrarDialogoArchivar(id, event) {
                 <label for="etiqueta-archivo">Describe el motivo</label>
                 <input type="text" id="etiqueta-archivo" class="form-control" placeholder="Ej: Desistimiento, acumulado a otro expediente...">
             </div>
+            <div class="form-group">
+                <label for="resultado-archivo">Resultado (opcional)</label>
+                <select id="resultado-archivo" class="form-control">
+                    <option value="">Sin registrar</option>
+                    ${RESULTADOS_EXPEDIENTE.map(r => `<option value="${r.valor}">${r.etiqueta}</option>`).join('')}
+                </select>
+                <small style="color:#6c757d; font-size:0.8rem;">Sirve para medir resultados en 📊 Estadísticas.</small>
+            </div>
             <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
                 <button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>
                 <button class="btn btn-warning" onclick="ejecutarArchivar(${id})">📦 Archivar</button>
@@ -1771,6 +1840,21 @@ function mostrarDialogoArchivar(id, event) {
     `;
     document.getElementById('modal-footer').innerHTML = '';
     abrirModal();
+}
+
+// Cómo terminó un asunto. Se registra al archivarlo y alimenta las
+// estadísticas de resultados; "Sin registrar" es siempre válido.
+const RESULTADOS_EXPEDIENTE = [
+    { valor: 'favorable', etiqueta: 'Favorable' },
+    { valor: 'parcial', etiqueta: 'Parcialmente favorable' },
+    { valor: 'convenio', etiqueta: 'Convenio o acuerdo' },
+    { valor: 'desfavorable', etiqueta: 'Desfavorable' },
+    { valor: 'sin_fondo', etiqueta: 'Sin resolución de fondo (desistimiento, caducidad…)' }
+];
+
+function etiquetaResultado(valor) {
+    const r = RESULTADOS_EXPEDIENTE.find(x => x.valor === valor);
+    return r ? r.etiqueta : (valor || '');
 }
 
 function toggleEtiquetaArchivo() {
@@ -1784,9 +1868,10 @@ function toggleEtiquetaArchivo() {
 async function ejecutarArchivar(id) {
     const motivo = document.getElementById('motivo-archivo').value;
     const etiqueta = motivo === 'otro' ? (document.getElementById('etiqueta-archivo')?.value?.trim() || 'Sin especificar') : '';
+    const resultado = document.getElementById('resultado-archivo')?.value || '';
 
     try {
-        await archivarExpedienteDB(id, true, motivo, etiqueta);
+        await archivarExpedienteDB(id, true, motivo, etiqueta, resultado);
         cerrarModal();
         mostrarToast('Expediente archivado', 'success');
         await Promise.all([cargarExpedientes(), cargarExpedientesPJF(), cargarEstadisticas()]);
@@ -1904,8 +1989,9 @@ function renderCardArchivado(exp) {
         <div class="expediente-body">
             <h3 class="expediente-titulo">${escapeText(exp.numero || exp.nombre)}</h3>
             <p class="expediente-juzgado">${escapeText(exp.juzgado)}</p>
+            ${_lineaClienteHTML(exp)}
             ${exp.comentario ? `<p class="expediente-comentario">${escapeText(exp.comentario)}</p>` : ''}
-            <p class="expediente-fecha-archivo">Archivado: ${formatearFecha(exp.fechaArchivo)}</p>
+            <p class="expediente-fecha-archivo">Archivado: ${formatearFecha(exp.fechaArchivo)}${exp.resultado ? ' · Resultado: ' + escapeText(etiquetaResultado(exp.resultado)) : ''}</p>
         </div>
         <div class="expediente-footer">
             <span class="expediente-fecha">Creado: ${formatearFecha(exp.fechaCreacion)}</span>
@@ -1919,6 +2005,15 @@ function renderCardArchivado(exp) {
         </div>
     </div>
     `;
+}
+
+// Cliente y responsable en una línea discreta de la tarjeta, si los hay.
+function _lineaClienteHTML(exp) {
+    const partes = [];
+    if (exp.cliente) partes.push('👤 ' + escapeText(exp.cliente));
+    if (exp.abogado) partes.push('🧑‍💼 ' + escapeText(exp.abogado));
+    if (exp.tipo) partes.push('🏷️ ' + escapeText(exp.tipo));
+    return partes.length ? `<p class="expediente-cliente">${partes.join(' · ')}</p>` : '';
 }
 
 // ==================== RENDERERS COMPARTIDOS TSJ/PJF ====================
@@ -2078,6 +2173,7 @@ function renderTarjetaExpedienteHTML(exp, opciones = {}) {
             <div class="expediente-body">
                 <h3 class="expediente-titulo">${escapeText(exp.numero || exp.nombre)}</h3>
                 <p class="expediente-juzgado">${escapeText(exp.juzgado)}</p>
+                ${_lineaClienteHTML(exp)}
                 ${exp.comentario ? `<p class="expediente-comentario">${escapeText(exp.comentario)}</p>` : ''}
             </div>
             <div class="expediente-footer">
@@ -2631,7 +2727,8 @@ function textoBuscableExpediente(exp) {
         ? (carpetaDeCache(exp.carpetaId) || {}).nombre || '' : '';
     return [
         exp.numero, exp.nombre, exp.juzgado, exp.categoria, exp.comentario,
-        exp.actor, exp.demandado, exp.institucion, carpeta
+        exp.actor, exp.demandado, exp.institucion, carpeta,
+        exp.cliente, exp.abogado, exp.tipo, exp.pjfTipoAsunto
     ].filter(Boolean).join(' ');
 }
 
@@ -8939,9 +9036,14 @@ function _detalleDatosHTML(exp) {
     const filas = [
         ['Juzgado', exp.juzgado],
         ['Institución', exp.institucion === 'PJF' ? 'Federal (PJF)' : 'TSJ Quintana Roo'],
+        ['Cliente', exp.cliente],
+        ['Responsable', exp.abogado],
+        ['Tipo de asunto', exp.tipo || exp.pjfTipoAsunto],
+        ['Inicio del asunto', exp.fechaInicioAsunto ? formatearFecha(exp.fechaInicioAsunto + 'T12:00:00') : ''],
         ['Actor', exp.actor],
         ['Demandado', exp.demandado],
         ['Categoría', exp.categoria],
+        ['Resultado', exp.resultado ? etiquetaResultado(exp.resultado) : ''],
         ['Comentario', exp.comentario]
     ].filter(([, valor]) => valor);
 
@@ -9548,6 +9650,9 @@ function cambiarInstitucionExpediente() {
     if (tsjSelect) tsjSelect.removeAttribute('required');
     const tipoAsuntoRow = document.getElementById('tipo-asunto-pjf-row');
     if (tipoAsuntoRow) tipoAsuntoRow.style.display = 'none';
+    // En el PJF el tipo de asunto se elige de su catálogo; el campo libre sobra.
+    const tipoLibre = document.getElementById('tipo-asunto-libre-group');
+    if (tipoLibre) tipoLibre.style.display = institucion === 'PJF' ? 'none' : '';
 
     if (institucion === 'TSJ') {
         if (tsjGroup) tsjGroup.style.display = 'flex';

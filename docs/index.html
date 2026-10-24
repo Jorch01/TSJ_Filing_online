@@ -182,6 +182,7 @@
             <button class="nav-btn" data-page="tribunales">⚖️ Tribunales</button>
             <button class="nav-btn" data-page="laboral">🧮 Laboral</button>
             <button class="nav-btn" data-page="impi">🔰 IMPI Marcas</button>
+            <button class="nav-btn" data-page="estadisticas" title="Estadísticas">📊</button>
             <button class="nav-btn" data-page="config">⚙️</button>
         </nav>
         <button class="menu-toggle" id="menuToggle">☰</button>
@@ -197,6 +198,7 @@
         <button class="nav-btn" data-page="tribunales">⚖️ Tribunales</button>
         <button class="nav-btn" data-page="laboral">🧮 Calculadora Laboral</button>
         <button class="nav-btn" data-page="impi">🔰 IMPI Marcas</button>
+        <button class="nav-btn" data-page="estadisticas">📊 Estadísticas</button>
         <button class="nav-btn" data-page="config">⚙️ Configuración</button>
         <button class="nav-btn nav-instalar" type="button" onclick="instalarApp()">📲 Instalar en mi celular</button>
         <button class="nav-btn nav-recomendar" type="button" onclick="recomendarApp('menu')">🤝 Recomendar a un colega</button>
@@ -518,6 +520,37 @@
                                 <input type="text" id="expediente-comentario" placeholder="Notas adicionales...">
                             </div>
                         </div>
+
+                        <!-- Para organizar el trabajo y medirlo en 📊 Estadísticas.
+                             Todos opcionales; las listas sugieren lo ya capturado
+                             para que "Pérez" no acabe escrito de tres formas. -->
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="expediente-cliente">Cliente (opcional)</label>
+                                <input type="text" id="expediente-cliente" list="lista-clientes-expediente" maxlength="120"
+                                       placeholder="A quién representas" autocomplete="off">
+                            </div>
+                            <div class="form-group">
+                                <label for="expediente-abogado">Responsable (opcional)</label>
+                                <input type="text" id="expediente-abogado" list="lista-responsables-expediente" maxlength="80"
+                                       placeholder="Abogado a cargo" autocomplete="off">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group" id="tipo-asunto-libre-group">
+                                <label for="expediente-tipo">Tipo de asunto (opcional)</label>
+                                <input type="text" id="expediente-tipo" list="lista-tipos-expediente" maxlength="120"
+                                       placeholder="Ej: Divorcio, Ejecutivo mercantil, Despido injustificado" autocomplete="off">
+                            </div>
+                            <div class="form-group">
+                                <label for="expediente-inicio">Inicio del asunto (opcional)</label>
+                                <input type="date" id="expediente-inicio">
+                                <small style="color:#6c757d; font-size:0.8rem;">Para medir duraciones. Si lo dejas vacío se cuenta desde que lo diste de alta aquí.</small>
+                            </div>
+                        </div>
+                        <datalist id="lista-clientes-expediente"></datalist>
+                        <datalist id="lista-responsables-expediente"></datalist>
+                        <datalist id="lista-tipos-expediente"></datalist>
 
                         <div class="form-row">
                             <div class="form-group">
@@ -2324,6 +2357,16 @@
             </div>
         </section>
 
+        <!-- Página Estadísticas: tiempos, resultados, tipos de asunto, clientes,
+             responsables, pendientes y agenda. La pinta js/estadisticas.js. -->
+        <section class="page" id="page-estadisticas">
+            <div class="page-header">
+                <h2>📊 Estadísticas</h2>
+                <p class="subtitle">Tiempos, resultados, tipos de asunto, clientes y pendientes del despacho</p>
+            </div>
+            <div id="est-raiz" class="est-raiz"></div>
+        </section>
+
         <!-- Página Configuración -->
         <section class="page" id="page-config">
             <div class="page-header">
@@ -3048,6 +3091,7 @@
     <script src="js/command-palette.js"></script>
     <script src="js/voice-assistant.js"></script>
     <script src="js/calculadora-laboral.js"></script>
+    <script src="js/estadisticas.js"></script>
     <script src="js/tour.js"></script>
     <script src="js/recomendar.js"></script>
     <script src="js/analitica.js"></script>

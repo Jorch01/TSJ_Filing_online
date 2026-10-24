@@ -53,6 +53,8 @@ async function _coreRefrescarUI() {
         if (typeof cargarNotas === 'function') await cargarNotas();
         if (typeof cargarEstadisticas === 'function') await cargarEstadisticas();
         if (typeof renderizarCalendario === 'function') renderizarCalendario();
+        // La página 📊 Estadísticas, solo si está a la vista.
+        if (typeof refrescarEstadisticasSiVisible === 'function') await refrescarEstadisticasSiVisible();
     } catch (e) {
         console.error('[CORE] Error refrescando UI:', e);
     }
@@ -743,7 +745,8 @@ function _numeroComparable(numero) {
 function _blobExpediente(exp, nombreCarpeta) {
     return _normRef([
         exp.numero, exp.nombre, exp.juzgado, exp.categoria, exp.comentario,
-        exp.actor, exp.demandado, exp.institucion, nombreCarpeta
+        exp.actor, exp.demandado, exp.institucion, nombreCarpeta,
+        exp.cliente, exp.abogado, exp.tipo
     ].filter(Boolean).join(' '));
 }
 
