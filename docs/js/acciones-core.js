@@ -506,6 +506,9 @@ async function crearPendienteCore(datos) {
         fechaCompletado: null,
         eventoId: null
     };
+    // De dónde vino (p. ej. el seguimiento semanal): con eso la siguiente
+    // importación lo reconoce y lo actualiza en vez de duplicarlo.
+    if (datos.origen && typeof datos.origen === 'object') pendiente.origen = { ...datos.origen };
 
     const nuevoId = await _coreEnLoteEjecutar(async () => {
         const id = await agregarPendiente(pendiente);

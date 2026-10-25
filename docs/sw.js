@@ -37,6 +37,7 @@ const ARCHIVOS_APP = [
     'js/voice-assistant.js',
     'js/calculadora-laboral.js',
     'js/estadisticas.js',
+    'js/seguimiento.js',
     'js/instalar.js',
     'js/tour.js',
     'js/recomendar.js',

@@ -791,6 +791,16 @@
         // Las cuentas compartidas se atienden aquí mismo, sin pasar por la IA.
         if (await atenderCuentas(texto)) return;
 
+        // El seguimiento semanal tampoco tiene botón: "actualiza mis
+        // pendientes" lo abre sin pasar por la IA.
+        if (window.SEGUIMIENTO && window.SEGUIMIENTO.esPeticionAbrir(texto)) {
+            agregarMensaje('asistente', esc('Elige el archivo indice_asuntos.json de tu revisión semanal.'));
+            cerrarPanel();
+            if (typeof navegarA === 'function') navegarA('pendientes');
+            window.SEGUIMIENTO.abrir();
+            return;
+        }
+
         // Respondiendo a una confirmación pendiente. Nota: se detecta por
         // accionPendiente (no por `estado`) porque el estado del micrófono
         // puede cambiar (reintentos, errores) sin que la confirmación caduque.
