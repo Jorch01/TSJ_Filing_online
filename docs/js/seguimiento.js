@@ -263,6 +263,8 @@
      *   asignaciones,           { [clave del asunto]: id de expediente | null (sin expediente) | 'omitir' }
      *                           lo que eligió el usuario; manda sobre el emparejamiento automático
      *   revision                'YYYY-MM-DD' de la revisión, para el origen y la semana del reporte
+     *   descartados             lo que el usuario desmarcó en importaciones anteriores
+     *                           ([{ asunto, accion, fecha? }]): no se vuelve a proponer
      *   todos                   true: todos los pendientes del índice; si no, solo los
                                  que lleva el reporte de Word (ver semanaDelReporte)
      * }
@@ -282,6 +284,10 @@
         const hoy = ctx.hoy || diaDe(new Date().toISOString());
         const semana = semanaDelReporte(ctx.revision || hoy);
         totales.fueraDelReporte = 0;
+        totales.descartados = 0;
+        const descartados = ctx.descartados || [];
+        const descartado = (asunto, texto, fecha) => descartados.find(d => d.asunto === asunto &&
+            (d.fecha || null) === (fecha || null) && parecido(d.accion, texto) >= UMBRAL_MISMO);
 
         // Lo que ya se importó antes, por asunto: así se sabe a qué
         // expediente se asignó aunque el número no coincida.
@@ -330,6 +336,14 @@
                     if (usados.has(x.id)) continue;
                     const v = parecido(x.titulo, p.accion);
                     if (v > mejorP) { mejor = x; mejorP = v; }
+                }
+                // Lo que el usuario desmarcó otra semana no se vuelve a proponer.
+                const desc = descartado(asunto.clave, p.accion);
+                if (desc) {
+                    if (mejor && mejorP >= UMBRAL_MISMO) usados.add(mejor.id);
+                    plan.pendientes.push({ ...p, accionPlan: 'descartado', descartado: desc });
+                    totales.descartados++;
+                    continue;
                 }
                 const datos = {
                     titulo: p.accion,
@@ -384,6 +398,7 @@
             // no: la revisión ya las trae como pendiente ("registrar resultado").
             for (const au of asunto.audiencias) {
                 if (au.fecha < hoy) continue;
+                if (descartado(asunto.clave, au.descripcion, au.fecha)) { totales.descartados++; continue; }
                 const datos = {
                     titulo: au.descripcion,
                     tipo: 'audiencia',
@@ -430,10 +445,23 @@
         // asuntos que el usuario dejó fuera no se tocan.
         const omitidas = new Set(asuntos.filter(a => a.omitido).map(a => a.asunto.clave));
         const desaparecidos = todos.filter(x => !x.completado && !usados.has(x.id) &&
-            x.origen && x.origen.tipo === ORIGEN && !omitidas.has(x.origen.asunto));
+            x.origen && x.origen.tipo === ORIGEN && !omitidas.has(x.origen.asunto) &&
+            !descartado(x.origen.asunto, x.titulo));
         totales.desaparecidos = desaparecidos.length;
 
         return { asuntos, desaparecidos, totales, semana };
+    }
+
+    /** Lo que se recuerda de algo que el usuario desmarcó. */
+    function descarteDe(asunto, accion, fecha) {
+        return { id: asunto + '|' + normalizar(accion) + (fecha ? '|' + fecha : ''), asunto, accion, fecha: fecha || null, el: new Date().toISOString() };
+    }
+
+    /** Une los descartados de dos dispositivos: nunca se pierde uno. */
+    function fusionarDescartados(a, b) {
+        const mapa = new Map();
+        for (const d of [...(a || []), ...(b || [])]) if (d && d.id && !mapa.has(d.id)) mapa.set(d.id, d);
+        return Array.from(mapa.values()).sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
     }
 
     function sumarDias(f, n) {
@@ -485,7 +513,8 @@
 
     const Motor = {
         ORIGEN, normalizar, palabras, parecido, numerosEn, fechaValida, isoDeFecha, diaDe,
-        horaDe, isoDeFechaHora, semanaDelReporte, leerIndice, emparejar, planificar, esPeticionAbrir
+        horaDe, isoDeFechaHora, semanaDelReporte, leerIndice, emparejar, planificar, esPeticionAbrir,
+        descarteDe, fusionarDescartados
     };
 
     if (typeof module !== 'undefined' && module.exports) module.exports = Motor;
@@ -494,6 +523,25 @@
     // ==================== INTERFAZ ====================
 
     const CLAVE_ASIGNACIONES = 'seguimiento_asignaciones';
+    // Lo que el usuario desmarcó. Va en la base (config) y viaja en la
+    // sincronización: desmarcado en la computadora, no reaparece en el celular.
+    const CLAVE_DESCARTADOS = 'seguimiento_descartados';
+
+    async function leerDescartados() {
+        try {
+            const v = typeof obtenerConfig === 'function' ? await obtenerConfig(CLAVE_DESCARTADOS) : null;
+            return Array.isArray(v) ? v : [];
+        } catch (e) { return []; }
+    }
+    async function guardarDescartados(lista) {
+        if (typeof guardarConfig === 'function') await guardarConfig(CLAVE_DESCARTADOS, lista);
+    }
+    // Para la sincronización (sync.js).
+    global.obtenerSeguimientoDescartados = leerDescartados;
+    global.fusionarSeguimientoDescartados = fusionarDescartados;
+    global.aplicarSeguimientoDescartados = async (remotos) => {
+        await guardarDescartados(fusionarDescartados(await leerDescartados(), remotos));
+    };
     const OMITIR = 'omitir';
     const ui = { entrada: null, revision: null, nombreArchivo: '', expedientes: [], pendientes: [], asignaciones: {}, plan: null };
 
@@ -570,6 +618,8 @@
         ui.nombreCarpetaDe = (id) => (carpetas.find(c => c.id === id) || {}).nombre || '';
         ui.verAsignacion = false;
         ui.todos = false;
+        ui.descartados = await leerDescartados();
+        ui.recuperar = new Set();
         ui.asignaciones = leerAsignaciones();
         pintar();
     }
@@ -577,7 +627,8 @@
     function replanificar() {
         ui.plan = planificar(ui.entrada, {
             expedientes: ui.expedientes, pendientes: ui.pendientes, eventos: ui.eventos, nombreCarpetaDe: ui.nombreCarpetaDe,
-            asignaciones: ui.asignaciones, revision: ui.revision, todos: !!ui.todos
+            asignaciones: ui.asignaciones, revision: ui.revision, todos: !!ui.todos,
+            descartados: ui.descartados.filter(d => !ui.recuperar.has(d.id))
         });
     }
 
@@ -633,6 +684,7 @@
                 (totales.yaTerminados ? ` · ${totales.yaTerminados} que ya terminaste no se reabren` : '') +
                 (totales.fuera ? ` · ${totales.fuera} concluidos no se importan` : '') +
                 (totales.omitidos ? ` · ${totales.omitidos} que pediste no importar` : '') +
+                (totales.descartados ? ` · ${totales.descartados} que desmarcaste antes no se proponen` : '') +
                 (totales.audienciasNuevas + totales.audienciasActualizar ? ` · ${totales.audienciasNuevas + totales.audienciasActualizar} audiencias al calendario` : '') + '</p>' +
             '<p class="seg-nota">Como el reporte de Word: lo vencido y lo de la semana del ' + esc(fechaCorta(semana.lunes)) + ' al ' + esc(fechaCorta(semana.viernes)) +
                 ', más los escritos por preparar.' +
@@ -671,8 +723,21 @@
                         '<ul>' + g.ps.map(x => filaPendiente(g.a, x.p, x.i)).join('') + '</ul></div>';
                 }).join('') + '</details>';
         };
+        if (totales.nuevos || totales.actualizar) {
+            html += '<p class="seg-nota">Lo que desmarques no se volverá a proponer en las siguientes actualizaciones.</p>';
+        }
         html += seccion('Nuevos', 'nuevo', true);
         html += seccion('Se actualizan', 'actualizar', false);
+
+        // Lo desmarcado en otra semana: se puede volver a traer.
+        const previos = activos.flatMap(a => a.pendientes.filter(p => p.accionPlan === 'descartado'));
+        if (previos.length) {
+            html += '<details class="seg-bloque"><summary>Desmarcados en semanas anteriores (' + previos.length + ')</summary>' +
+                '<p class="seg-nota">No se proponen. Marca los que quieras volver a traer.</p><ul>' +
+                previos.map(p => '<li class="seg-p"><label><input type="checkbox" data-recuperar="' + esc(p.descartado.id) + '">' +
+                    '<span class="seg-cuerpo"><span class="seg-accion">' + esc(p.accion) + '</span></span></label></li>').join('') +
+            '</ul></details>';
+        }
 
         // Audiencias que aún no pasan y van (o cambian) en el calendario.
         const audiencias = activos.flatMap(a => a.audiencias.map((au, i) => ({ a, au, i })))
@@ -689,7 +754,7 @@
 
         if (desaparecidos.length) {
             html += '<details class="seg-bloque" open><summary>Ya no aparecen en la revisión (' + desaparecidos.length + ')</summary>' +
-                '<p class="seg-nota">Los importaste antes y esta revisión ya no los trae. Los marcados se darán por terminados.</p><ul>' +
+                '<p class="seg-nota">Los importaste antes y esta revisión ya no los trae. Los marcados se darán por terminados; los que desmarques se quedan como están y no se vuelven a proponer.</p><ul>' +
                 desaparecidos.map(x => '<li class="seg-p"><label><input type="checkbox" data-desap="' + esc(x.id) + '" checked>' +
                     '<span class="seg-cuerpo"><span class="seg-accion">' + esc(x.titulo) + '</span></span></label></li>').join('') + '</ul></details>';
         }
@@ -702,6 +767,10 @@
         $('modal-footer').innerHTML = '<button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>' +
             '<button class="btn btn-primary" id="seg-aplicar"' + (hayAlgo ? '' : ' disabled') + '>Importar</button>';
 
+        $('modal-body').querySelectorAll('[data-recuperar]').forEach(c => c.addEventListener('change', () => {
+            ui.recuperar.add(c.dataset.recuperar);
+            pintar();
+        }));
         const todos = $('seg-todos');
         if (todos) todos.addEventListener('change', () => { ui.todos = todos.checked; pintar(); });
         const asignacion = $('seg-asignacion');
@@ -719,7 +788,7 @@
         if (boton) boton.disabled = true;
         const marcado = (sel) => { const c = $('modal-body').querySelector(sel); return !c || c.checked; };
         const { asuntos, desaparecidos } = ui.plan;
-        let creados = 0, actualizados = 0, terminados = 0, agendadas = 0;
+        let creados = 0, actualizados = 0, terminados = 0, agendadas = 0, descartadosNuevos = 0;
         const fallos = [];
         try {
             await enLoteCore(async () => {
@@ -763,6 +832,30 @@
                     if (!marcado('[data-desap="' + CSS.escape(String(x.id)) + '"]')) continue;
                     try { await completarPendienteCore(x.id, true); terminados++; } catch (e) { fallos.push(x.titulo); }
                 }
+
+                // Lo desmarcado se recuerda para no volver a proponerlo. Se
+                // guarda dentro del lote para que viaje en la misma sincronización.
+                const nuevos = [];
+                for (const a of asuntos) {
+                    if (a.asunto.fuera || a.omitido) continue;
+                    a.pendientes.forEach((p, i) => {
+                        if ((p.accionPlan === 'nuevo' || p.accionPlan === 'actualizar') &&
+                            !marcado('[data-p="' + CSS.escape(a.asunto.clave + '|' + i) + '"]')) nuevos.push(descarteDe(a.asunto.clave, p.accion));
+                    });
+                    a.audiencias.forEach((au, i) => {
+                        if (au.accionPlan !== 'igual' && !marcado('[data-aud="' + CSS.escape(a.asunto.clave + '|' + i) + '"]')) {
+                            nuevos.push(descarteDe(a.asunto.clave, au.descripcion, au.fecha));
+                        }
+                    });
+                }
+                for (const x of desaparecidos) {
+                    if (!marcado('[data-desap="' + CSS.escape(String(x.id)) + '"]')) nuevos.push(descarteDe(x.origen.asunto, x.titulo));
+                }
+                const quedan = (await leerDescartados()).filter(d => !ui.recuperar.has(d.id));
+                if (nuevos.length || ui.recuperar.size) {
+                    descartadosNuevos = nuevos.length;
+                    await guardarDescartados(fusionarDescartados(quedan, nuevos));
+                }
             });
         } finally {
             // Lo que el usuario eligió a mano se recuerda para la próxima semana.
@@ -778,6 +871,7 @@
         if (actualizados) partes.push(`${actualizados} actualizados`);
         if (terminados) partes.push(`${terminados} terminados`);
         if (agendadas) partes.push(`${agendadas} audiencias al calendario`);
+        if (descartadosNuevos) partes.push(`${descartadosNuevos} desmarcados no volverán a aparecer`);
         toast('Seguimiento importado: ' + (partes.join(', ') || 'sin cambios') + (fallos.length ? ` · ${fallos.length} no se pudieron guardar` : ''),
             fallos.length ? 'warning' : 'success');
     }

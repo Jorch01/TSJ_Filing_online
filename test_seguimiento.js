@@ -19,6 +19,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 const S = require('./docs/js/seguimiento.js');
 
 let pasadas = 0;
@@ -315,6 +316,60 @@ console.log('\nAudiencias');
     const aMano = [{ id: 970, titulo: 'Audiencia de pruebas', tipo: 'audiencia', fechaInicio: S.isoDeFechaHora('2026-11-05', '10:00'), todoElDia: false, expedienteId: 2 }];
     const plan4 = S.planificar(entrada, { expedientes, pendientes: [], eventos: aMano, hoy: '2026-10-25' });
     igual('una capturada a mano el mismo día no se duplica ni se renombra', [plan4.asuntos[1].audiencias[0].accionPlan], ['igual']);
+}
+
+console.log('\nLo desmarcado no vuelve a aparecer');
+{
+    const entrada = S.leerIndice(indice());
+    const d1 = S.descarteDe('asunto laboral fiscalia perez', 'Revisar la lista de estrados del Tribunal para detectar la interlocutoria del incidente');
+    const d2 = S.descarteDe('asuntos lopez / vs arquitectos', 'Coordinar con el actuario la nueva diligencia de emplazamiento al demandado');
+    const plan = S.planificar(entrada, { expedientes, pendientes: [], revision: '2026-10-23', descartados: [d1, d2] });
+    igual('lo desmarcado otra semana no se propone', [plan.asuntos[0].pendientes[1].accionPlan, plan.asuntos[1].pendientes[1].accionPlan], ['descartado', 'descartado']);
+    igual('y se cuenta', [plan.totales.descartados, plan.totales.nuevos], [2, 5]);
+
+    // Aunque la revisión lo redacte un poco distinto.
+    const otra = indice();
+    otra[1].pendientes[1].accion = 'Coordinar con el actuario la nueva diligencia de emplazamiento al demandado en su domicilio';
+    igual('aunque lo redacten un poco distinto', S.planificar(S.leerIndice(otra), { expedientes, pendientes: [], revision: '2026-10-23', descartados: [d2] }).asuntos[1].pendientes[1].accionPlan, 'descartado');
+
+    // Uno que ya existía y se desmarcó: no se toca y no se da por desaparecido.
+    const existente = [{ id: 3, titulo: d1.accion, completado: false, expedienteId: 1, fechaLimite: S.isoDeFecha('2026-10-20'), origen: { tipo: 'seguimiento', asunto: d1.asunto } }];
+    const plan2 = S.planificar(entrada, { expedientes, pendientes: existente, revision: '2026-10-23', descartados: [d1] });
+    igual('si ya existía no se actualiza ni se da por desaparecido', [plan2.asuntos[0].pendientes[1].accionPlan, plan2.desaparecidos.length], ['descartado', 0]);
+
+    // Lo que no se quiso dar por terminado tampoco se vuelve a proponer.
+    const viejo = [{ id: 4, titulo: 'Algo que la revisión ya no trae', completado: false, expedienteId: 1, origen: { tipo: 'seguimiento', asunto: 'asunto laboral fiscalia perez' } }];
+    igual('sin descartar, se propone como terminado', S.planificar(entrada, { expedientes, pendientes: viejo, revision: '2026-10-23' }).desaparecidos.length, 1);
+    igual('desmarcado, ya no', S.planificar(entrada, { expedientes, pendientes: viejo, revision: '2026-10-23',
+        descartados: [S.descarteDe('asunto laboral fiscalia perez', 'Algo que la revisión ya no trae')] }).desaparecidos.length, 0);
+
+    // Una audiencia desmarcada no vuelve, pero la misma descripción en otra fecha sí.
+    const conAud = indice();
+    conAud[1].audiencias = [{ fecha: '2026-11-05', hora: '10:00', descripcion: 'Audiencia de juicio', lugar: '' }];
+    const dA = S.descarteDe('asuntos lopez / vs arquitectos', 'Audiencia de juicio', '2026-11-05');
+    igual('una audiencia desmarcada no vuelve', S.planificar(S.leerIndice(conAud), { expedientes, pendientes: [], eventos: [], hoy: '2026-10-25', descartados: [dA] }).asuntos[1].audiencias.length, 0);
+    conAud[1].audiencias[0].fecha = '2026-11-12';
+    igual('la misma audiencia con otra fecha sí se propone', S.planificar(S.leerIndice(conAud), { expedientes, pendientes: [], eventos: [], hoy: '2026-10-25', descartados: [dA] }).asuntos[1].audiencias.length, 1);
+
+    igual('lo desmarcado en dos dispositivos se junta sin repetir', S.fusionarDescartados([d1, d2], [d2, dA]).length, 3);
+
+    // Viaja en la sincronización, como las cuentas.
+    const SYNC = fs.readFileSync(path.join(__dirname, 'docs', 'js', 'sync.js'), 'utf8');
+    const extraer = (nombre) => {
+        const lineas = SYNC.split('\n');
+        const i = lineas.findIndex(l => new RegExp('^(?:async\\s+)?function\\s+' + nombre + '\\s*\\(|^const\\s+' + nombre + '\\s*=').test(l));
+        if (i === -1) throw new Error('No se encontró ' + nombre + ' en sync.js');
+        if (/;\s*$/.test(lineas[i])) return lineas[i];
+        for (let j = i + 1; j < lineas.length; j++) if (/^[}\])]/.test(lineas[j])) return lineas.slice(i, j + 1).join('\n');
+    };
+    const sb = { JSON, Math, Array, Object, String };
+    vm.createContext(sb);
+    vm.runInContext(extraer('MAX_HISTORIAL_SYNC') + '\n' + extraer('huellaContenido'), sb);
+    const base = { expedientes: [], notas: [], eventos: [], historial: [] };
+    verificar('desmarcar algo cambia la huella: se sube a la nube', sb.huellaContenido(base) !== sb.huellaContenido({ ...base, seguimientoDescartados: [d1] }));
+    verificar('fusionarDatos lo junta', /seguimientoDescartados:\s*typeof fusionarSeguimientoDescartados === 'function'/.test(extraer('fusionarDatos')));
+    verificar('obtenerTodosLosDatos lo sube', /obtenerSeguimientoDescartados/.test(extraer('obtenerTodosLosDatos')));
+    verificar('aplicarDatosLocalmente lo guarda al bajar', /aplicarSeguimientoDescartados\(datos\.seguimientoDescartados\)/.test(extraer('aplicarDatosLocalmente')));
 }
 
 console.log('\nLo que se le dice al asistente');
