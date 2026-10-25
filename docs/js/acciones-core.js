@@ -103,6 +103,8 @@ async function crearEventoCore(datos) {
         alerta: datos.alerta !== false,
         color: datos.color || CORE_COLORES_EVENTOS[tipo]
     };
+    // De dónde vino (p. ej. una audiencia del seguimiento semanal).
+    if (datos.origen && typeof datos.origen === 'object') evento.origen = { ...datos.origen };
     const nuevoId = await agregarEvento(evento);
     await _coreRefrescarUI();
     await _coreSincronizar();

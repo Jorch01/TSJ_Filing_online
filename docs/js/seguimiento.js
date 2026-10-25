@@ -117,6 +117,21 @@
         return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     }
 
+    /** "10:00", "9:30 hrs", "16:15-16:30" → "10:00", "09:30", "16:15"; si no trae hora, null. */
+    function horaDe(h) {
+        const m = String(h == null ? '' : h).match(/(\d{1,2}):(\d{2})/);
+        if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return null;
+        return m[1].padStart(2, '0') + ':' + m[2];
+    }
+
+    /** Fecha y hora (locales) → ISO. Sin hora, la medianoche. */
+    function isoDeFechaHora(f, hora) {
+        if (!fechaValida(f)) return null;
+        const [y, m, d] = f.split('-').map(Number);
+        const [hh, mm] = hora ? hora.split(':').map(Number) : [0, 0];
+        return new Date(y, m - 1, d, hh, mm).toISOString();
+    }
+
     /**
      * Lee el índice. Acepta la lista tal cual o un objeto { asuntos: [...] }.
      * Devuelve { asuntos, errores } con cada asunto ya limpio; lanza un error
@@ -162,12 +177,21 @@
                 prioridad: PRIORIDADES[String(a.prioridad || '').trim().toUpperCase()] || '',
                 expedientes: (Array.isArray(a.expedientes) ? a.expedientes : [a.expedientes]).filter(Boolean).map(String),
                 fuera: RE_ESTADO_FUERA.test(String(a.estado || '')),
-                pendientes
+                pendientes,
+                audiencias: (Array.isArray(a.audiencias) ? a.audiencias : [])
+                    .filter(x => x && fechaValida(x.fecha) && String(x.descripcion || '').trim())
+                    .map(x => ({
+                        fecha: x.fecha,
+                        hora: horaDe(x.hora),
+                        descripcion: String(x.descripcion).trim(),
+                        lugar: String(x.lugar || '').trim()
+                    }))
             };
             // La misma carpeta dos veces: se juntan sus pendientes.
             if (vistos.has(clave)) {
                 const previo = vistos.get(clave);
                 for (const p of pendientes) if (!previo.pendientes.some(x => parecido(x.accion, p.accion) >= 0.85)) previo.pendientes.push(p);
+                previo.audiencias.push(...asunto.audiencias);
                 return;
             }
             vistos.set(clave, asunto);
@@ -242,7 +266,12 @@
         const todos = ctx.pendientes || [];
         const asignaciones = ctx.asignaciones || {};
         const usados = new Set();
-        const totales = { asuntos: 0, nuevos: 0, actualizar: 0, iguales: 0, yaTerminados: 0, desaparecidos: 0, fuera: 0, omitidos: 0, sinExpediente: 0 };
+        const totales = { asuntos: 0, nuevos: 0, actualizar: 0, iguales: 0, yaTerminados: 0, desaparecidos: 0, fuera: 0, omitidos: 0, sinExpediente: 0,
+            audienciasNuevas: 0, audienciasActualizar: 0, audienciasIguales: 0 };
+        // Los eventos que reflejan un pendiente no son audiencias.
+        const eventos = (ctx.eventos || []).filter(e => e.pendienteId == null);
+        const eventosUsados = new Set();
+        const hoy = ctx.hoy || diaDe(new Date().toISOString());
 
         // Lo que ya se importó antes, por asunto: así se sabe a qué
         // expediente se asignó aunque el número no coincida.
@@ -273,7 +302,7 @@
             const omitido = expedienteId === 'omitir';
             const plan = {
                 asunto, expedienteId: omitido ? null : expedienteId, por, omitido,
-                candidatos: auto.candidatos, pendientes: []
+                candidatos: auto.candidatos, pendientes: [], audiencias: []
             };
             if (asunto.fuera) { totales.fuera++; return plan; }
             if (omitido) { totales.omitidos++; return plan; }
@@ -333,6 +362,50 @@
                     totales.iguales++;
                 }
             }
+
+            // Audiencias: las que aún no pasan van al calendario. Las pasadas
+            // no: la revisión ya las trae como pendiente ("registrar resultado").
+            for (const au of asunto.audiencias) {
+                if (au.fecha < hoy) continue;
+                const datos = {
+                    titulo: au.descripcion,
+                    tipo: 'audiencia',
+                    fechaInicio: isoDeFechaHora(au.fecha, au.hora),
+                    todoElDia: !au.hora,
+                    expedienteId: plan.expedienteId,
+                    expedienteTexto: plan.expedienteId == null ? asunto.titulo : null,
+                    descripcion: [au.lugar ? 'Lugar: ' + au.lugar : '', 'Asunto: ' + asunto.titulo].filter(Boolean).join('\n'),
+                    alerta: true,
+                    origen: { tipo: ORIGEN, asunto: asunto.clave, revision: ctx.revision || null }
+                };
+                // La misma audiencia ya en el calendario: mismo día y del mismo
+                // asunto (importada antes) o del mismo expediente con texto parecido.
+                const existente = eventos.find(e => !eventosUsados.has(e.id) && diaDe(e.fechaInicio) === au.fecha && (
+                    (e.origen && e.origen.tipo === ORIGEN && e.origen.asunto === asunto.clave && parecido(e.titulo, au.descripcion) >= 0.4) ||
+                    (plan.expedienteId != null && e.expedienteId === plan.expedienteId && (e.tipo === 'audiencia' || parecido(e.titulo, au.descripcion) >= 0.4))));
+                if (!existente) {
+                    plan.audiencias.push({ ...au, accionPlan: 'nuevo', datos });
+                    totales.audienciasNuevas++;
+                    continue;
+                }
+                eventosUsados.add(existente.id);
+                const cambios = {};
+                if (au.hora && (existente.todoElDia || existente.fechaInicio !== datos.fechaInicio)) {
+                    cambios.fechaInicio = datos.fechaInicio;
+                    cambios.todoElDia = false;
+                }
+                if (existente.origen && existente.origen.tipo === ORIGEN) {
+                    if (existente.titulo !== datos.titulo) cambios.titulo = datos.titulo;
+                    if ((existente.descripcion || '') !== datos.descripcion) cambios.descripcion = datos.descripcion;
+                }
+                if (Object.keys(cambios).length) {
+                    plan.audiencias.push({ ...au, accionPlan: 'actualizar', existente, cambios });
+                    totales.audienciasActualizar++;
+                } else {
+                    plan.audiencias.push({ ...au, accionPlan: 'igual', existente });
+                    totales.audienciasIguales++;
+                }
+            }
             return plan;
         });
 
@@ -366,7 +439,7 @@
 
     const Motor = {
         ORIGEN, normalizar, palabras, parecido, numerosEn, fechaValida, isoDeFecha, diaDe,
-        leerIndice, emparejar, planificar, esPeticionAbrir
+        horaDe, isoDeFechaHora, leerIndice, emparejar, planificar, esPeticionAbrir
     };
 
     if (typeof module !== 'undefined' && module.exports) module.exports = Motor;
@@ -446,13 +519,14 @@
         ui.revision = archivo.lastModified ? diaDe(new Date(archivo.lastModified).toISOString()) : null;
         ui.expedientes = await obtenerExpedientes().catch(() => []);
         ui.pendientes = await obtenerPendientes().catch(() => []);
+        ui.eventos = typeof obtenerEventos === 'function' ? await obtenerEventos().catch(() => []) : [];
         ui.asignaciones = leerAsignaciones();
         pintar();
     }
 
     function replanificar() {
         ui.plan = planificar(ui.entrada, {
-            expedientes: ui.expedientes, pendientes: ui.pendientes,
+            expedientes: ui.expedientes, pendientes: ui.pendientes, eventos: ui.eventos,
             asignaciones: ui.asignaciones, revision: ui.revision
         });
     }
@@ -508,7 +582,8 @@
             '<p class="seg-nota">' + totales.asuntos + ' asuntos con pendientes' +
                 (totales.yaTerminados ? ` · ${totales.yaTerminados} que ya terminaste no se reabren` : '') +
                 (totales.fuera ? ` · ${totales.fuera} concluidos no se importan` : '') +
-                (totales.omitidos ? ` · ${totales.omitidos} que pediste no importar` : '') + '</p>' +
+                (totales.omitidos ? ` · ${totales.omitidos} que pediste no importar` : '') +
+                (totales.audienciasNuevas + totales.audienciasActualizar ? ` · ${totales.audienciasNuevas + totales.audienciasActualizar} audiencias al calendario` : '') + '</p>' +
         '</div>';
 
         if (porConfirmar.length) {
@@ -537,19 +612,33 @@
         html += seccion('Nuevos', 'nuevo', true);
         html += seccion('Se actualizan', 'actualizar', false);
 
+        // Audiencias que aún no pasan y van (o cambian) en el calendario.
+        const audiencias = activos.flatMap(a => a.audiencias.map((au, i) => ({ a, au, i })))
+            .filter(x => x.au.accionPlan !== 'igual');
+        if (audiencias.length) {
+            html += '<details class="seg-bloque" open><summary>Audiencias al calendario (' + audiencias.length + ')</summary><ul>' +
+                audiencias.map(({ a, au, i }) => '<li class="seg-p"><label><input type="checkbox" data-aud="' + esc(a.asunto.clave + '|' + i) + '" checked>' +
+                    '<span class="seg-cuerpo"><span class="seg-meta"><span class="seg-fecha">' + esc(fechaCorta(au.fecha)) + (au.hora ? ' ' + esc(au.hora) : '') + '</span>' +
+                    (au.accionPlan === 'actualizar' ? '<span class="seg-tipo">CAMBIA</span>' : '') + '</span>' +
+                    '<span class="seg-accion">' + esc(au.descripcion) + '</span>' +
+                    '<span class="seg-cambio">' + esc(a.asunto.titulo + (au.lugar ? ' · ' + au.lugar : '')) + '</span></span></label></li>').join('') +
+            '</ul></details>';
+        }
+
         if (desaparecidos.length) {
             html += '<details class="seg-bloque" open><summary>Ya no aparecen en la revisión (' + desaparecidos.length + ')</summary>' +
                 '<p class="seg-nota">Los importaste antes y esta revisión ya no los trae. Los marcados se darán por terminados.</p><ul>' +
                 desaparecidos.map(x => '<li class="seg-p"><label><input type="checkbox" data-desap="' + esc(x.id) + '" checked>' +
                     '<span class="seg-cuerpo"><span class="seg-accion">' + esc(x.titulo) + '</span></span></label></li>').join('') + '</ul></details>';
         }
-        if (!totales.nuevos && !totales.actualizar && !desaparecidos.length) {
+        const hayAlgo = totales.nuevos || totales.actualizar || desaparecidos.length || audiencias.length;
+        if (!hayAlgo) {
             html += '<p class="seg-ok">✓ Tu lista ya está al día con esta revisión.</p>';
         }
 
         $('modal-body').innerHTML = '<div class="seg-vista">' + html + '</div>';
         $('modal-footer').innerHTML = '<button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>' +
-            '<button class="btn btn-primary" id="seg-aplicar"' + (totales.nuevos || totales.actualizar || desaparecidos.length ? '' : ' disabled') + '>Importar</button>';
+            '<button class="btn btn-primary" id="seg-aplicar"' + (hayAlgo ? '' : ' disabled') + '>Importar</button>';
 
         $('modal-body').querySelectorAll('.seg-exp').forEach(sel => sel.addEventListener('change', () => {
             const v = sel.value;
@@ -564,7 +653,7 @@
         if (boton) boton.disabled = true;
         const marcado = (sel) => { const c = $('modal-body').querySelector(sel); return !c || c.checked; };
         const { asuntos, desaparecidos } = ui.plan;
-        let creados = 0, actualizados = 0, terminados = 0;
+        let creados = 0, actualizados = 0, terminados = 0, agendadas = 0;
         const fallos = [];
         try {
             await enLoteCore(async () => {
@@ -590,6 +679,20 @@
                         }
                     }
                 }
+                for (const a of asuntos) {
+                    if (a.asunto.fuera || a.omitido) continue;
+                    for (let i = 0; i < a.audiencias.length; i++) {
+                        const au = a.audiencias[i];
+                        if (au.accionPlan === 'igual' || !marcado('[data-aud="' + CSS.escape(a.asunto.clave + '|' + i) + '"]')) continue;
+                        try {
+                            if (au.accionPlan === 'nuevo') await crearEventoCore(au.datos);
+                            else await actualizarEventoCore(au.existente.id, au.cambios);
+                            agendadas++;
+                        } catch (e) {
+                            fallos.push(au.descripcion);
+                        }
+                    }
+                }
                 for (const x of desaparecidos) {
                     if (!marcado('[data-desap="' + CSS.escape(String(x.id)) + '"]')) continue;
                     try { await completarPendienteCore(x.id, true); terminados++; } catch (e) { fallos.push(x.titulo); }
@@ -608,6 +711,7 @@
         if (creados) partes.push(`${creados} nuevos`);
         if (actualizados) partes.push(`${actualizados} actualizados`);
         if (terminados) partes.push(`${terminados} terminados`);
+        if (agendadas) partes.push(`${agendadas} audiencias al calendario`);
         toast('Seguimiento importado: ' + (partes.join(', ') || 'sin cambios') + (fallos.length ? ` · ${fallos.length} no se pudieron guardar` : ''),
             fallos.length ? 'warning' : 'success');
     }

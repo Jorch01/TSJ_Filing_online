@@ -1620,6 +1620,7 @@ async function probarSeguimientoSemanal(navegador) {
           ] },
         { carpeta: 'asuntos lopez / vs arquitectos', asunto: 'Ana López Mar vs Constructora Alfa', cliente: 'Ana López Mar',
           expedientes: ['Exp. 174/2026 (juicio ordinario civil)'], estado: 'ACTIVO', prioridad: 'ALTA',
+          audiencias: [{ fecha: '2027-03-15', hora: '10:00', descripcion: 'Audiencia de desahogo de pruebas', lugar: 'Juzgado Primero Civil, Cancún' }],
           pendientes: [
               { accion: 'Revisar acuerdo recaído al escrito de 29-sep en el exp. 174/2026', tipo: 'SEGUIMIENTO', fecha_limite: '2026-10-23', nota: 'No consta acuerdo' },
               { accion: 'Coordinar con el actuario la nueva diligencia de emplazamiento', tipo: 'AUDIENCIA/DILIGENCIA', fecha_limite: '2026-10-30', nota: '' }
@@ -1676,6 +1677,11 @@ async function probarSeguimientoSemanal(navegador) {
         verificar('seguimiento: y con fecha quedan en el calendario', !!revisar.eventoId);
         igual('seguimiento: el que no tiene expediente lleva el nombre del asunto',
             lista.find(p => /subarriendo/.test(p.titulo)).texto, 'Gimnasio Fit and More — subarriendo del local');
+        const audiencias = () => page.evaluate(async () => (await obtenerEventos())
+            .filter(e => e.titulo === 'Audiencia de desahogo de pruebas')
+            .map(e => ({ tipo: e.tipo, exp: e.expedienteId, hora: new Date(e.fechaInicio).getHours() })));
+        igual('seguimiento: la audiencia futura queda en el calendario, a su hora y en su expediente',
+            await audiencias(), [{ tipo: 'audiencia', exp: ids.lopez, hora: 10 }]);
         verificar('seguimiento: aparecen en la lista de pendientes', /Coordinar con el actuario/.test(await page.textContent('#lista-pendientes')));
 
         // ---- El viernes siguiente ----
@@ -1696,6 +1702,7 @@ async function probarSeguimientoSemanal(navegador) {
         igual('seguimiento: siguen siendo cinco', lista.length, 5);
         igual('seguimiento: la fecha nueva se aplicó', lista.find(p => /estrados/.test(p.titulo)).local, '2026-11-03');
         igual('seguimiento: el que ya no aparece quedó terminado', lista.find(p => /amparo/.test(p.titulo)).completado, true);
+        igual('seguimiento: la audiencia no se duplica', (await audiencias()).length, 1);
         igual('seguimiento: sin errores en la página', errores, []);
     } finally {
         await contexto.close();

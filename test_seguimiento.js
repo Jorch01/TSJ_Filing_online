@@ -239,6 +239,45 @@ console.log('\nLo que el usuario decide manda');
     igual('se usa el expediente al que se asignó la vez anterior', [plan3.asuntos[0].expedienteId, plan3.asuntos[0].por], [5, 'antes']);
 }
 
+console.log('\nAudiencias');
+{
+    const conAudiencias = indice();
+    conAudiencias[1].audiencias = [
+        { fecha: '2026-10-13', hora: null, descripcion: 'Diligencia de ratificación de querella (registrar resultado)', lugar: 'FGE Q. Roo, Cancún' },
+        { fecha: '2026-11-05', hora: '10:00', descripcion: 'Audiencia de juicio (desahogo de pruebas)', lugar: 'Juzgado Primero Familiar Oral, Cancún' },
+        { fecha: '2026-11-12', hora: '16:15-16:30', descripcion: 'Recorrido del perito por el inmueble', lugar: '' },
+        { fecha: 'pronto', descripcion: 'Sin fecha válida' }
+    ];
+    const entrada = S.leerIndice(conAudiencias);
+    igual('se leen las que tienen fecha válida', entrada.asuntos[1].audiencias.map(a => [a.fecha, a.hora]),
+        [['2026-10-13', null], ['2026-11-05', '10:00'], ['2026-11-12', '16:15']]);
+    const plan = S.planificar(entrada, { expedientes, pendientes: [], eventos: [], hoy: '2026-10-25', revision: '2026-10-23' });
+    const aus = plan.asuntos[1].audiencias;
+    igual('la que ya pasó no va al calendario (la revisión ya la trae como pendiente)', aus.map(a => a.fecha), ['2026-11-05', '2026-11-12']);
+    const d = aus[0].datos;
+    igual('es una audiencia del expediente, a su hora', [d.tipo, d.expedienteId, new Date(d.fechaInicio).getHours(), d.todoElDia], ['audiencia', 2, 10, false]);
+    verificar('con el lugar en la descripción', /Lugar: Juzgado Primero Familiar Oral/.test(d.descripcion));
+    igual('cuenta en el resumen', plan.totales.audienciasNuevas, 2);
+
+    // Otra vez, con las de antes ya en el calendario: no se duplican.
+    const eventos = aus.map((a, i) => ({ id: 900 + i, ...a.datos }));
+    eventos.push({ id: 950, titulo: 'Recordatorio de un pendiente', fechaInicio: d.fechaInicio, expedienteId: 2, tipo: 'recordatorio', pendienteId: 5 });
+    const plan2 = S.planificar(entrada, { expedientes, pendientes: [], eventos, hoy: '2026-10-25', revision: '2026-10-30' });
+    igual('importar otra vez no duplica las audiencias', plan2.asuntos[1].audiencias.map(a => a.accionPlan), ['igual', 'igual']);
+
+    // Cambió la hora: se actualiza.
+    const cambio = indice();
+    cambio[1].audiencias = [{ fecha: '2026-11-05', hora: '12:30', descripcion: 'Audiencia de juicio (desahogo de pruebas)', lugar: 'Juzgado Primero Familiar Oral, Cancún' }];
+    const plan3 = S.planificar(S.leerIndice(cambio), { expedientes, pendientes: [], eventos, hoy: '2026-10-25' });
+    const au = plan3.asuntos[1].audiencias[0];
+    igual('si cambió la hora se mueve la que ya estaba', [au.accionPlan, au.existente.id, new Date(au.cambios.fechaInicio).getHours()], ['actualizar', 900, 12]);
+
+    // Una audiencia capturada a mano el mismo día en ese expediente es la misma.
+    const aMano = [{ id: 970, titulo: 'Audiencia de pruebas', tipo: 'audiencia', fechaInicio: S.isoDeFechaHora('2026-11-05', '10:00'), todoElDia: false, expedienteId: 2 }];
+    const plan4 = S.planificar(entrada, { expedientes, pendientes: [], eventos: aMano, hoy: '2026-10-25' });
+    igual('una capturada a mano el mismo día no se duplica ni se renombra', [plan4.asuntos[1].audiencias[0].accionPlan], ['igual']);
+}
+
 console.log('\nLo que se le dice al asistente');
 {
     for (const t of ['actualiza mis pendientes', 'Actualiza pendientes', 'actualízame los pendientes', 'pon al día mis pendientes',
