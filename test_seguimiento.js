@@ -154,6 +154,13 @@ console.log('\nUnir cada asunto con su expediente');
     igual('174/2026 está en dos juzgados: decide el cliente', e(asuntos[1]), [2, 'numero']);
     igual('la querella se une por el número de la CI', e(asuntos[2]), [4, 'numero']);
     igual('sin número, se propone por el cliente (para confirmar)', e(asuntos[3]), [5, 'nombre']);
+    const porContraparte = S.emparejar({ ...asuntos[3], titulo: 'Marta Ríos vs Prolimpieza y Lavado Nacional — mercantil', cliente: 'Marta Ríos', expedientes: [] },
+        [...expedientes, { id: 6, numero: 'S/N', actor: 'M. Ríos', demandado: 'Prolimpieza y Lavado Nacional, S.A. de C.V.' }]);
+    igual('sin número ni cliente, se encuentra por la contraparte', [porContraparte.expediente && porContraparte.expediente.id, porContraparte.por], [6, 'nombre']);
+    const carpetasApp = { 9: 'Onda Café' };
+    const porCarpeta = S.emparejar({ ...asuntos[3], carpeta: 'Onda Café', titulo: 'Asesoría corporativa', cliente: 'Socios', expedientes: [] },
+        [...expedientes, { id: 7, numero: '12/2026', nombre: 'Contrato', carpetaId: 9 }], id => carpetasApp[id] || '');
+    igual('o por el nombre de su carpeta en la app', porCarpeta.expediente && porCarpeta.expediente.id, 7);
     igual('sin número ni cliente parecido, no se adivina', S.emparejar({ ...asuntos[3], cliente: 'Nadie Conocido', titulo: 'Algo' }, expedientes).expediente, null);
 }
 
@@ -237,6 +244,38 @@ console.log('\nLo que el usuario decide manda');
     const previo = [{ id: 60, titulo: 'Algo viejo de este asunto', completado: true, expedienteId: 5, origen: { tipo: 'seguimiento', asunto: 'asunto laboral fiscalia perez' } }];
     const plan3 = S.planificar(entrada, { expedientes: sinNumero, pendientes: previo });
     igual('se usa el expediente al que se asignó la vez anterior', [plan3.asuntos[0].expedienteId, plan3.asuntos[0].por], [5, 'antes']);
+}
+
+console.log('\nSolo lo que lleva el reporte de Word');
+{
+    const w = S.semanaDelReporte('2026-10-23');
+    igual('la revisión del viernes 23 es para la semana del lunes 26 al viernes 30', [w.lunes, w.viernes], ['2026-10-26', '2026-10-30']);
+    igual('una revisión en lunes es para la semana siguiente', S.semanaDelReporte('2026-10-26').lunes, '2026-11-02');
+    const idx = [{ carpeta: 'semana', asunto: 'Juan Pérez Ruiz vs FGE', cliente: 'Juan Pérez Ruiz', expedientes: ['DIT-21/2026'], estado: 'ACTIVO', pendientes: [
+        { accion: 'Algo que venció la semana pasada', tipo: 'SEGUIMIENTO', fecha_limite: '2026-10-20' },
+        { accion: 'Algo del miércoles de la semana', tipo: 'CLIENTE', fecha_limite: '2026-10-28' },
+        { accion: 'Algo para dentro de dos semanas', tipo: 'SEGUIMIENTO', fecha_limite: '2026-11-10' },
+        { accion: 'Seguimiento sin fecha alguna', tipo: 'SEGUIMIENTO', fecha_limite: null },
+        { accion: 'Escrito de alegatos sin fecha', tipo: 'ESCRITO', fecha_limite: null },
+        { accion: 'Escrito de pruebas para el viernes siguiente', tipo: 'ESCRITO', fecha_limite: '2026-11-06' },
+        { accion: 'Escrito de amparo para más adelante', tipo: 'ESCRITO', fecha_limite: '2026-11-07' }
+    ] }, { carpeta: 'latente', asunto: 'Asunto latente', cliente: 'Nadie', expedientes: [], estado: 'LATENTE', pendientes: [
+        { accion: 'Confirmar con el cliente si continúa', tipo: 'CLIENTE', fecha_limite: '2026-10-27' }
+    ] }];
+    const entrada = S.leerIndice(idx);
+    const plan = S.planificar(entrada, { expedientes, pendientes: [], revision: '2026-10-23' });
+    igual('entra lo vencido, lo de la semana y los escritos hasta el viernes siguiente; también de latentes',
+        plan.asuntos.flatMap(a => a.pendientes.filter(p => p.accionPlan === 'nuevo').map(p => p.accion)),
+        ['Algo que venció la semana pasada', 'Algo del miércoles de la semana', 'Escrito de alegatos sin fecha', 'Escrito de pruebas para el viernes siguiente', 'Confirmar con el cliente si continúa']);
+    igual('lo demás queda fuera y se cuenta', plan.totales.fueraDelReporte, 3);
+    igual('con «traer todos» entra todo', S.planificar(entrada, { expedientes, pendientes: [], revision: '2026-10-23', todos: true }).totales.nuevos, 8);
+
+    // Uno importado antes que esta semana se fue más adelante: no se da por desaparecido.
+    const antes = [{ id: 1, titulo: 'Algo para dentro de dos semanas', completado: false, expedienteId: 1, fechaLimite: S.isoDeFecha('2026-10-29'),
+        origen: { tipo: 'seguimiento', asunto: 'semana' } }];
+    const plan2 = S.planificar(entrada, { expedientes, pendientes: antes, revision: '2026-10-23' });
+    const p = plan2.asuntos[0].pendientes.find(x => /dos semanas/.test(x.accion));
+    igual('lo ya importado que salió de la semana se actualiza y no se da por terminado', [p.accionPlan, S.diaDe(p.cambios.fechaLimite), plan2.desaparecidos.length], ['actualizar', '2026-11-10', 0]);
 }
 
 console.log('\nAudiencias');

@@ -89,8 +89,8 @@
         return s;
     }
 
-    function textoExpediente(exp) {
-        return [exp.numero, exp.nombre, exp.cliente, exp.actor, exp.demandado, exp.comentario, exp.juzgado]
+    function textoExpediente(exp, nombreCarpeta) {
+        return [exp.numero, exp.nombre, exp.cliente, exp.actor, exp.demandado, exp.comentario, exp.juzgado, nombreCarpeta]
             .filter(Boolean).join(' ');
     }
 
@@ -203,16 +203,22 @@
     /**
      * El expediente de la app que corresponde a un asunto.
      * Devuelve { expediente, por: 'numero'|'nombre'|null, candidatos }.
-     * Por número es seguro; por nombre es una propuesta que el usuario confirma.
+     * Por número es seguro. Sin número se busca por el cliente o por la
+     * contraparte ("… vs Constructora Alfa"), en las partes, el nombre del
+     * expediente y el nombre de su carpeta en la app (`nombreCarpetaDe`).
      */
-    function emparejar(asunto, expedientes) {
-        const numeros = numerosEn(asunto.expedientes.join(' '));
+    function emparejar(asunto, expedientes, nombreCarpetaDe) {
+        const numeros = numerosEn(asunto.expedientes.join(' ') + ' ' + asunto.titulo);
         const lista = expedientes || [];
+        const contraparte = (asunto.titulo.split(/\s+vs\.?\s+/i)[1] || '').split(/\s+[—–-]\s+|\(/)[0];
+        const fraccion = (texto, ps) => ps.length ? ps.filter(p => texto.includes(' ' + p + ' ')).length / ps.length : 0;
         const puntajeNombre = (exp) => {
-            const ps = palabras(asunto.cliente || asunto.titulo);
-            if (!ps.length) return 0;
-            const texto = ' ' + palabras(textoExpediente(exp)).join(' ') + ' ';
-            return ps.filter(p => texto.includes(' ' + p + ' ')).length / ps.length;
+            const texto = ' ' + palabras(textoExpediente(exp, nombreCarpetaDe ? nombreCarpetaDe(exp.carpetaId) : '')).join(' ') + ' ';
+            return Math.max(
+                fraccion(texto, palabras(asunto.cliente || asunto.titulo)),
+                fraccion(texto, palabras(contraparte)),
+                fraccion(texto, palabras(asunto.carpeta.split('/')[0]))
+            );
         };
 
         if (numeros.size) {
@@ -256,7 +262,9 @@
      *   pendientes,             todos los de la app (abiertos y terminados)
      *   asignaciones,           { [clave del asunto]: id de expediente | null (sin expediente) | 'omitir' }
      *                           lo que eligió el usuario; manda sobre el emparejamiento automático
-     *   revision                'YYYY-MM-DD' de la revisión, para el origen
+     *   revision                'YYYY-MM-DD' de la revisión, para el origen y la semana del reporte
+     *   todos                   true: todos los pendientes del índice; si no, solo los
+                                 que lleva el reporte de Word (ver semanaDelReporte)
      * }
      *
      * Devuelve { asuntos: [...], desaparecidos: [...], totales }.
@@ -272,6 +280,8 @@
         const eventos = (ctx.eventos || []).filter(e => e.pendienteId == null);
         const eventosUsados = new Set();
         const hoy = ctx.hoy || diaDe(new Date().toISOString());
+        const semana = semanaDelReporte(ctx.revision || hoy);
+        totales.fueraDelReporte = 0;
 
         // Lo que ya se importó antes, por asunto: así se sabe a qué
         // expediente se asignó aunque el número no coincida.
@@ -284,7 +294,7 @@
         const porId = new Map(expedientes.map(e => [e.id, e]));
 
         const asuntos = entrada.asuntos.map(asunto => {
-            const auto = emparejar(asunto, expedientes);
+            const auto = emparejar(asunto, expedientes, ctx.nombreCarpetaDe);
             let expedienteId, por;
             if (Object.prototype.hasOwnProperty.call(asignaciones, asunto.clave)) {
                 expedienteId = asignaciones[asunto.clave];
@@ -331,6 +341,13 @@
                     origen: { tipo: ORIGEN, asunto: asunto.clave, revision: ctx.revision || null }
                 };
                 if (!mejor || mejorP < UMBRAL_MISMO) {
+                    // Lo que el reporte de Word no lleva no se agrega (si ya
+                    // existía sí se reconoce, para no darlo por desaparecido).
+                    if (!ctx.todos && !semana.incluye(p)) {
+                        plan.pendientes.push({ ...p, accionPlan: 'fuera' });
+                        totales.fueraDelReporte++;
+                        continue;
+                    }
                     plan.pendientes.push({ ...p, accionPlan: 'nuevo', datos });
                     totales.nuevos++;
                     continue;
@@ -416,7 +433,36 @@
             x.origen && x.origen.tipo === ORIGEN && !omitidas.has(x.origen.asunto));
         totales.desaparecidos = desaparecidos.length;
 
-        return { asuntos, desaparecidos, totales };
+        return { asuntos, desaparecidos, totales, semana };
+    }
+
+    function sumarDias(f, n) {
+        const [y, m, d] = f.split('-').map(Number);
+        return diaDe(new Date(y, m - 1, d + n).toISOString());
+    }
+
+    /**
+     * La semana que cubre el reporte de Word de una revisión y qué pendientes
+     * lleva, con la misma regla que generar_reporte.py:
+     *   - la semana es la siguiente a la revisión (revisión del viernes 23 →
+     *     lunes 26 a viernes 30);
+     *   - van los que vencen hasta ese viernes (los anteriores al lunes, para
+     *     revisar que se atendieron, y los de la semana) y los escritos sin
+     *     fecha o que vencen hasta el viernes siguiente.
+     * Los asuntos concluidos ya quedan fuera antes.
+     */
+    function semanaDelReporte(revision) {
+        const f = fechaValida(revision) || diaDe(new Date().toISOString());
+        const [y, m, d] = f.split('-').map(Number);
+        const diaSemana = new Date(y, m - 1, d).getDay(); // 0 domingo … 6 sábado
+        const lunes = sumarDias(f, ((8 - diaSemana) % 7) || 7);
+        const viernes = sumarDias(lunes, 4);
+        const limiteEscritos = sumarDias(viernes, 7);
+        return {
+            lunes, viernes,
+            incluye: (p) => (!!p.fecha && p.fecha <= viernes) ||
+                (p.tipo === 'ESCRITO' && (!p.fecha || p.fecha <= limiteEscritos))
+        };
     }
 
     // ---- Lo que se le dice al asistente ----
@@ -439,7 +485,7 @@
 
     const Motor = {
         ORIGEN, normalizar, palabras, parecido, numerosEn, fechaValida, isoDeFecha, diaDe,
-        horaDe, isoDeFechaHora, leerIndice, emparejar, planificar, esPeticionAbrir
+        horaDe, isoDeFechaHora, semanaDelReporte, leerIndice, emparejar, planificar, esPeticionAbrir
     };
 
     if (typeof module !== 'undefined' && module.exports) module.exports = Motor;
@@ -520,14 +566,18 @@
         ui.expedientes = await obtenerExpedientes().catch(() => []);
         ui.pendientes = await obtenerPendientes().catch(() => []);
         ui.eventos = typeof obtenerEventos === 'function' ? await obtenerEventos().catch(() => []) : [];
+        const carpetas = typeof obtenerCarpetas === 'function' ? await obtenerCarpetas().catch(() => []) : [];
+        ui.nombreCarpetaDe = (id) => (carpetas.find(c => c.id === id) || {}).nombre || '';
+        ui.verAsignacion = false;
+        ui.todos = false;
         ui.asignaciones = leerAsignaciones();
         pintar();
     }
 
     function replanificar() {
         ui.plan = planificar(ui.entrada, {
-            expedientes: ui.expedientes, pendientes: ui.pendientes, eventos: ui.eventos,
-            asignaciones: ui.asignaciones, revision: ui.revision
+            expedientes: ui.expedientes, pendientes: ui.pendientes, eventos: ui.eventos, nombreCarpetaDe: ui.nombreCarpetaDe,
+            asignaciones: ui.asignaciones, revision: ui.revision, todos: !!ui.todos
         });
     }
 
@@ -567,7 +617,7 @@
 
     function pintar() {
         replanificar();
-        const { asuntos, desaparecidos, totales } = ui.plan;
+        const { asuntos, desaparecidos, totales, semana } = ui.plan;
         const activos = asuntos.filter(a => !a.asunto.fuera && !a.omitido);
         const porConfirmar = asuntos.filter(a => !a.asunto.fuera && (a.por === 'nombre' || a.por === null || a.por === 'usuario' || a.omitido));
 
@@ -584,16 +634,28 @@
                 (totales.fuera ? ` · ${totales.fuera} concluidos no se importan` : '') +
                 (totales.omitidos ? ` · ${totales.omitidos} que pediste no importar` : '') +
                 (totales.audienciasNuevas + totales.audienciasActualizar ? ` · ${totales.audienciasNuevas + totales.audienciasActualizar} audiencias al calendario` : '') + '</p>' +
+            '<p class="seg-nota">Como el reporte de Word: lo vencido y lo de la semana del ' + esc(fechaCorta(semana.lunes)) + ' al ' + esc(fechaCorta(semana.viernes)) +
+                ', más los escritos por preparar.' +
+                (totales.fueraDelReporte || ui.todos
+                    ? ' <label class="seg-todos"><input type="checkbox" id="seg-todos"' + (ui.todos ? ' checked' : '') + '> Traer también los ' +
+                      (ui.todos ? 'demás' : totales.fueraDelReporte) + ' pendientes del índice que el reporte no lleva</label>'
+                    : '') + '</p>' +
         '</div>';
 
+        // No hay que catalogar nada: cada asunto ya va a su expediente (por
+        // número o por parecido) o, si no tiene, con el nombre del asunto. Aquí
+        // solo se puede corregir, y se abre si el usuario quiere.
         if (porConfirmar.length) {
-            html += '<section class="seg-bloque"><h4>¿De qué expediente es cada asunto?</h4>' +
-                '<p class="seg-nota">Estos no se unieron por número de expediente. ★ marca los que se parecen por el cliente. Tu elección se recuerda para la próxima semana.</p>' +
+            const sinExp = porConfirmar.filter(a => a.expedienteId == null && !a.omitido).length;
+            html += '<details class="seg-bloque" id="seg-asignacion"' + (ui.verAsignacion ? ' open' : '') + '>' +
+                '<summary>Expedientes asignados sin número (' + porConfirmar.length + ')</summary>' +
+                '<p class="seg-nota">Se asignaron solos: ' + (porConfirmar.length - sinExp) + ' por parecido con el cliente, la contraparte o la carpeta, y ' +
+                sinExp + ' sin expediente en la app, con el nombre del asunto. Corrige aquí solo si alguno está mal; se recuerda para la próxima semana.</p>' +
                 porConfirmar.map(a =>
                     '<div class="seg-asignar"><div><strong>' + esc(a.asunto.titulo) + '</strong>' +
                     (a.asunto.expedientes.length ? '<small>' + esc(a.asunto.expedientes.join(' · ')) + '</small>' : '') + '</div>' +
                     selectorExpediente(a) + '</div>').join('') +
-            '</section>';
+            '</details>';
         }
 
         const seccion = (titulo, tipo, abierta) => {
@@ -640,6 +702,10 @@
         $('modal-footer').innerHTML = '<button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>' +
             '<button class="btn btn-primary" id="seg-aplicar"' + (hayAlgo ? '' : ' disabled') + '>Importar</button>';
 
+        const todos = $('seg-todos');
+        if (todos) todos.addEventListener('change', () => { ui.todos = todos.checked; pintar(); });
+        const asignacion = $('seg-asignacion');
+        if (asignacion) asignacion.addEventListener('toggle', () => { ui.verAsignacion = asignacion.open; });
         $('modal-body').querySelectorAll('.seg-exp').forEach(sel => sel.addEventListener('change', () => {
             const v = sel.value;
             ui.asignaciones[sel.dataset.asunto] = v === '' ? null : v === OMITIR ? OMITIR : (isNaN(Number(v)) ? v : Number(v));

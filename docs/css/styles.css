@@ -5887,6 +5887,7 @@ body.cta-abierto #tour-menu, body.cta-abierto #tour-oferta, body.cta-abierto #re
 .seg-cifras strong { font-size: 1.15rem; }
 .seg-nota { font-size: 0.82rem; color: var(--text-secondary); margin: 0.2rem 0 0; }
 .seg-ok { color: var(--success); font-weight: 600; }
+.seg-todos { display: flex; align-items: center; gap: 0.35rem; margin-top: 0.3rem; color: var(--text-primary); cursor: pointer; }
 .seg-bloque { border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0.6rem 0.8rem; min-width: 0; }
 .seg-bloque h4 { margin: 0 0 0.3rem; font-size: 0.95rem; }
 .seg-bloque summary { cursor: pointer; font-weight: 600; }

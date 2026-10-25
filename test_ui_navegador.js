@@ -1611,25 +1611,32 @@ async function probarSeguimientoSemanal(navegador) {
     const errores = [];
     page.on('pageerror', e => errores.push(e.message));
     const pausa = (ms) => page.waitForTimeout(ms);
+    // Las fechas se escribieron para la revisión del viernes 23-oct-2026 (semana
+    // del 26 al 30). Se recorren a la semana que toca hoy, para que lo que entra
+    // en el reporte siga entrando corra cuando corra la prueba.
+    const SEG = require('./docs/js/seguimiento.js');
+    const ahora = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Cancun' });
+    const corrimiento = Math.round((Date.parse(SEG.semanaDelReporte(ahora).lunes) - Date.parse('2026-10-26')) / 864e5);
+    const F = (f) => { const d = new Date(Date.parse(f) + corrimiento * 864e5); return d.toISOString().slice(0, 10); };
     const indice = [
         { carpeta: 'asunto laboral perez', asunto: 'Juan Pérez Ruiz vs. Fiscalía General del Estado', cliente: 'Juan Pérez Ruiz',
           expedientes: ['DIT-021/2026 (también DIT-21/2026)'], estado: 'EN ESPERA', prioridad: 'MEDIA',
           pendientes: [
-              { accion: 'Revisar la lista de estrados para detectar la interlocutoria del incidente', tipo: 'SEGUIMIENTO', fecha_limite: '2026-10-27', nota: '' },
+              { accion: 'Revisar la lista de estrados para detectar la interlocutoria del incidente', tipo: 'SEGUIMIENTO', fecha_limite: F('2026-10-27'), nota: '' },
               { accion: 'Si declara la incompetencia, preparar amparo indirecto', tipo: 'ESCRITO', fecha_limite: null, nota: 'Inferido' }
           ] },
         { carpeta: 'asuntos lopez / vs arquitectos', asunto: 'Ana López Mar vs Constructora Alfa', cliente: 'Ana López Mar',
           expedientes: ['Exp. 174/2026 (juicio ordinario civil)'], estado: 'ACTIVO', prioridad: 'ALTA',
-          audiencias: [{ fecha: '2027-03-15', hora: '10:00', descripcion: 'Audiencia de desahogo de pruebas', lugar: 'Juzgado Primero Civil, Cancún' }],
+          audiencias: [{ fecha: F('2027-03-15'), hora: '10:00', descripcion: 'Audiencia de desahogo de pruebas', lugar: 'Juzgado Primero Civil, Cancún' }],
           pendientes: [
-              { accion: 'Revisar acuerdo recaído al escrito de 29-sep en el exp. 174/2026', tipo: 'SEGUIMIENTO', fecha_limite: '2026-10-23', nota: 'No consta acuerdo' },
-              { accion: 'Coordinar con el actuario la nueva diligencia de emplazamiento', tipo: 'AUDIENCIA/DILIGENCIA', fecha_limite: '2026-10-30', nota: '' }
+              { accion: 'Revisar acuerdo recaído al escrito de 29-sep en el exp. 174/2026', tipo: 'SEGUIMIENTO', fecha_limite: F('2026-10-23'), nota: 'No consta acuerdo' },
+              { accion: 'Coordinar con el actuario la nueva diligencia de emplazamiento', tipo: 'AUDIENCIA/DILIGENCIA', fecha_limite: F('2026-10-30'), nota: '' }
           ] },
         { carpeta: 'fit and more', asunto: 'Gimnasio Fit and More — subarriendo del local', cliente: 'Persona Sin Expediente',
           expedientes: [], estado: 'ACTIVO', prioridad: 'MEDIA',
-          pendientes: [{ accion: 'Enviar a la clienta el contrato de subarriendo revisado', tipo: 'ENTREGABLE', fecha_limite: '2026-10-26' }] },
+          pendientes: [{ accion: 'Enviar a la clienta el contrato de subarriendo revisado', tipo: 'ENTREGABLE', fecha_limite: F('2026-10-26') }] },
         { carpeta: 'asunto concluido', asunto: 'Algo que ya terminó', cliente: 'X', expedientes: [], estado: 'CONCLUIDO',
-          pendientes: [{ accion: 'Archivar', tipo: 'SEGUIMIENTO', fecha_limite: '2026-10-26' }] }
+          pendientes: [{ accion: 'Archivar', tipo: 'SEGUIMIENTO', fecha_limite: F('2026-10-26') }] }
     ];
     const elegirArchivo = async (datos) => {
         // Sin botón: se pide al asistente.
@@ -1673,7 +1680,7 @@ async function probarSeguimientoSemanal(navegador) {
         igual('seguimiento: se crean los cinco pendientes', lista.length, 5);
         const revisar = lista.find(p => /29-sep/.test(p.titulo));
         igual('seguimiento: cuelgan de su expediente, con fecha y prioridad',
-            [revisar.exp, revisar.local, revisar.prioridad], [ids.lopez, '2026-10-23', 'alta']);
+            [revisar.exp, revisar.local, revisar.prioridad], [ids.lopez, F('2026-10-23'), 'alta']);
         verificar('seguimiento: y con fecha quedan en el calendario', !!revisar.eventoId);
         igual('seguimiento: el que no tiene expediente lleva el nombre del asunto',
             lista.find(p => /subarriendo/.test(p.titulo)).texto, 'Gimnasio Fit and More — subarriendo del local');
@@ -1686,7 +1693,7 @@ async function probarSeguimientoSemanal(navegador) {
 
         // ---- El viernes siguiente ----
         const siguiente = JSON.parse(JSON.stringify(indice));
-        siguiente[0].pendientes[0].fecha_limite = '2026-11-03';
+        siguiente[0].pendientes[0].fecha_limite = F('2026-11-03');
         siguiente[0].pendientes.splice(1, 1);
         await page.setViewportSize({ width: 390, height: 844 });
         await elegirArchivo(siguiente);
@@ -1700,7 +1707,7 @@ async function probarSeguimientoSemanal(navegador) {
         await pausa(1500);
         lista = await importados();
         igual('seguimiento: siguen siendo cinco', lista.length, 5);
-        igual('seguimiento: la fecha nueva se aplicó', lista.find(p => /estrados/.test(p.titulo)).local, '2026-11-03');
+        igual('seguimiento: la fecha nueva se aplicó', lista.find(p => /estrados/.test(p.titulo)).local, F('2026-11-03'));
         igual('seguimiento: el que ya no aparece quedó terminado', lista.find(p => /amparo/.test(p.titulo)).completado, true);
         igual('seguimiento: la audiencia no se duplica', (await audiencias()).length, 1);
         igual('seguimiento: sin errores en la página', errores, []);
