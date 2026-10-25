@@ -436,7 +436,8 @@ function huellaContenido(datos) {
         eliminados: datos.eliminados || [],
         historial: histNorm,
         sigaGuardadas: datos.sigaGuardadas || [],
-        cuentas: datos.cuentas || []
+        cuentas: datos.cuentas || [],
+        seguimientoDescartados: datos.seguimientoDescartados || []
     };
     try {
         return JSON.stringify(copia);
@@ -792,6 +793,11 @@ function fusionarDatos(local, remoto) {
         cuentas: typeof fusionarCuentasCompartidas === 'function'
             ? fusionarCuentasCompartidas(local.cuentas || [], remoto.cuentas || [])
             : (local.cuentas || remoto.cuentas || []),
+        // Lo que se desmarcó al importar el seguimiento semanal (seguimiento.js):
+        // se unen los dos lados, para que no reaparezca en ningún dispositivo.
+        seguimientoDescartados: typeof fusionarSeguimientoDescartados === 'function'
+            ? fusionarSeguimientoDescartados(local.seguimientoDescartados || [], remoto.seguimientoDescartados || [])
+            : (local.seguimientoDescartados || remoto.seguimientoDescartados || []),
         eliminados: eliminadosFusionados,
         metadata: local.metadata
     };
@@ -1563,6 +1569,8 @@ async function obtenerTodosLosDatos() {
     // bloque para que las vean todos los dispositivos de la licencia.
     const cuentas = typeof obtenerCuentasCompartidas === 'function'
         ? await obtenerCuentasCompartidas().catch(() => []) : [];
+    const seguimientoDescartados = typeof obtenerSeguimientoDescartados === 'function'
+        ? await obtenerSeguimientoDescartados().catch(() => []) : [];
 
     return {
         expedientes: [...expedientes, ...archivados],
@@ -1573,7 +1581,8 @@ async function obtenerTodosLosDatos() {
         historial,
         sigaGuardadas,
         carpetas,
-        cuentas
+        cuentas,
+        seguimientoDescartados
     };
 }
 
@@ -1654,6 +1663,9 @@ async function aplicarDatosLocalmente(datos) {
     // mientras se descargaba no se pierde.
     if (typeof aplicarCuentasCompartidas === 'function' && Array.isArray(datos.cuentas)) {
         try { await aplicarCuentasCompartidas(datos.cuentas); } catch (e) { console.warn('No se pudieron aplicar las cuentas compartidas:', e); }
+    }
+    if (typeof aplicarSeguimientoDescartados === 'function' && Array.isArray(datos.seguimientoDescartados)) {
+        try { await aplicarSeguimientoDescartados(datos.seguimientoDescartados); } catch (e) { console.warn('No se pudo aplicar lo descartado del seguimiento:', e); }
     }
 
     // El blob remoto trae nuevas notas e historial: invalidar el caché de

@@ -1674,16 +1674,17 @@ async function probarSeguimientoSemanal(navegador) {
         verificar('seguimiento: avisa que el concluido no se importa', /1 concluidos no se importan/.test(await page.textContent('.seg-resumen')));
         const porAsignar = await page.$$eval('.seg-asignar strong', s => s.map(x => x.textContent));
         igual('seguimiento: solo pregunta por el asunto que no se pudo unir por número', porAsignar, ['Gimnasio Fit and More — subarriendo del local']);
+        // Uno se desmarca: no se crea y no debe volver la semana siguiente.
+        await page.locator('.seg-p:has-text("contrato de subarriendo") input[type="checkbox"]').uncheck();
         await page.click('#seg-aplicar');
         await pausa(1500);
         let lista = await importados();
-        igual('seguimiento: se crean los cinco pendientes', lista.length, 5);
+        igual('seguimiento: se crean los cuatro que quedaron marcados', lista.length, 4);
+        igual('seguimiento: el desmarcado no se creó', lista.some(p => /subarriendo/.test(p.titulo)), false);
         const revisar = lista.find(p => /29-sep/.test(p.titulo));
         igual('seguimiento: cuelgan de su expediente, con fecha y prioridad',
             [revisar.exp, revisar.local, revisar.prioridad], [ids.lopez, F('2026-10-23'), 'alta']);
         verificar('seguimiento: y con fecha quedan en el calendario', !!revisar.eventoId);
-        igual('seguimiento: el que no tiene expediente lleva el nombre del asunto',
-            lista.find(p => /subarriendo/.test(p.titulo)).texto, 'Gimnasio Fit and More — subarriendo del local');
         const audiencias = () => page.evaluate(async () => (await obtenerEventos())
             .filter(e => e.titulo === 'Audiencia de desahogo de pruebas')
             .map(e => ({ tipo: e.tipo, exp: e.expedienteId, hora: new Date(e.fechaInicio).getHours() })));
@@ -1697,7 +1698,8 @@ async function probarSeguimientoSemanal(navegador) {
         siguiente[0].pendientes.splice(1, 1);
         await page.setViewportSize({ width: 390, height: 844 });
         await elegirArchivo(siguiente);
-        igual('seguimiento: la segunda vez no duplica', await cifras(), ['0 nuevos', '1 se actualizan', '3 sin cambios', '1 ya no aparecen']);
+        igual('seguimiento: la segunda vez no duplica ni vuelve a proponer lo desmarcado', await cifras(), ['0 nuevos', '1 se actualizan', '2 sin cambios', '1 ya no aparecen']);
+        verificar('seguimiento: avisa cuántos desmarcados se saltaron', /1 que desmarcaste antes no se proponen/.test(await page.textContent('.seg-resumen')));
         const desborde = await page.evaluate(() => {
             const b = document.getElementById('modal-body');
             return b.scrollWidth - b.clientWidth;
@@ -1706,7 +1708,7 @@ async function probarSeguimientoSemanal(navegador) {
         await page.click('#seg-aplicar');
         await pausa(1500);
         lista = await importados();
-        igual('seguimiento: siguen siendo cinco', lista.length, 5);
+        igual('seguimiento: siguen siendo cuatro', lista.length, 4);
         igual('seguimiento: la fecha nueva se aplicó', lista.find(p => /estrados/.test(p.titulo)).local, F('2026-11-03'));
         igual('seguimiento: el que ya no aparece quedó terminado', lista.find(p => /amparo/.test(p.titulo)).completado, true);
         igual('seguimiento: la audiencia no se duplica', (await audiencias()).length, 1);
