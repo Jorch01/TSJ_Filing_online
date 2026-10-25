@@ -5876,6 +5876,41 @@ body.cta-abierto #tour-menu, body.cta-abierto #tour-oferta, body.cta-abierto #re
 }
 @media print { .cta-overlay { display: none !important; } }
 
+/* ==================== SEGUIMIENTO SEMANAL ==================== */
+.seg-intro p { margin: 0 0 0.6rem; color: var(--text-secondary); line-height: 1.5; }
+.seg-elegir { display: inline-flex; margin-top: 0.4rem; cursor: pointer; }
+.seg-error { color: var(--danger); margin-top: 0.6rem; }
+.seg-error[hidden] { display: none; }
+.seg-vista { display: grid; gap: 0.85rem; min-width: 0; }
+.seg-resumen p { margin: 0; }
+.seg-cifras { list-style: none; padding: 0; margin: 0.5rem 0; display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; }
+.seg-cifras strong { font-size: 1.15rem; }
+.seg-nota { font-size: 0.82rem; color: var(--text-secondary); margin: 0.2rem 0 0; }
+.seg-ok { color: var(--success); font-weight: 600; }
+.seg-bloque { border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0.6rem 0.8rem; min-width: 0; }
+.seg-bloque h4 { margin: 0 0 0.3rem; font-size: 0.95rem; }
+.seg-bloque summary { cursor: pointer; font-weight: 600; }
+.seg-bloque ul { list-style: none; padding: 0; margin: 0.3rem 0 0; display: grid; gap: 0.35rem; }
+.seg-asignar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.6rem; align-items: center; padding: 0.45rem 0; border-top: 1px solid var(--border-color); }
+.seg-asignar small, .seg-grupo-titulo small { display: block; color: var(--text-secondary); font-weight: 400; font-size: 0.78rem; overflow-wrap: anywhere; }
+.seg-asignar strong { overflow-wrap: anywhere; }
+.seg-exp { width: 100%; min-width: 0; }
+.seg-grupo { margin-top: 0.6rem; }
+.seg-grupo-titulo { font-weight: 600; font-size: 0.88rem; overflow-wrap: anywhere; }
+.seg-p label { display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.86rem; cursor: pointer; }
+.seg-p input { flex: none; margin-top: 0.2rem; }
+.seg-cuerpo { flex: 1; min-width: 0; display: grid; gap: 0.1rem; }
+.seg-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+.seg-meta:empty { display: none; }
+.seg-fecha { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.seg-alta { font-size: 0.68rem; font-weight: 700; color: var(--danger); border: 1px solid currentColor; border-radius: 4px; padding: 0 0.25rem; }
+.seg-tipo { font-size: 0.68rem; color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: 4px; padding: 0 0.25rem; }
+.seg-accion { min-width: 0; overflow-wrap: anywhere; }
+.seg-cambio { font-size: 0.78rem; color: var(--text-secondary); }
+@media (max-width: 640px) {
+    .seg-asignar { grid-template-columns: minmax(0, 1fr); gap: 0.3rem; }
+}
+
 /* ==================== ESTADÍSTICAS ==================== */
 /* Colores de las gráficas, validados contra las superficies de la app
    (blanco y #131a24) con la paleta de referencia: azul y naranja para dos

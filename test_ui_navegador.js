@@ -1603,6 +1603,112 @@ async function probarCuentasCompartidas(navegador) {
  * los cuenta, los filtros y las tablas responden, se exporta, y nada se sale
  * de la pantalla en el teléfono.
  */
+// Importar el seguimiento semanal (indice_asuntos.json) dos veces: la segunda
+// no duplica, actualiza lo que cambió y propone terminar lo que ya no aparece.
+async function probarSeguimientoSemanal(navegador) {
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, locale: 'es-MX', timezoneId: 'America/Cancun' });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    const pausa = (ms) => page.waitForTimeout(ms);
+    const indice = [
+        { carpeta: 'asunto laboral perez', asunto: 'Juan Pérez Ruiz vs. Fiscalía General del Estado', cliente: 'Juan Pérez Ruiz',
+          expedientes: ['DIT-021/2026 (también DIT-21/2026)'], estado: 'EN ESPERA', prioridad: 'MEDIA',
+          pendientes: [
+              { accion: 'Revisar la lista de estrados para detectar la interlocutoria del incidente', tipo: 'SEGUIMIENTO', fecha_limite: '2026-10-27', nota: '' },
+              { accion: 'Si declara la incompetencia, preparar amparo indirecto', tipo: 'ESCRITO', fecha_limite: null, nota: 'Inferido' }
+          ] },
+        { carpeta: 'asuntos lopez / vs arquitectos', asunto: 'Ana López Mar vs Constructora Alfa', cliente: 'Ana López Mar',
+          expedientes: ['Exp. 174/2026 (juicio ordinario civil)'], estado: 'ACTIVO', prioridad: 'ALTA',
+          audiencias: [{ fecha: '2027-03-15', hora: '10:00', descripcion: 'Audiencia de desahogo de pruebas', lugar: 'Juzgado Primero Civil, Cancún' }],
+          pendientes: [
+              { accion: 'Revisar acuerdo recaído al escrito de 29-sep en el exp. 174/2026', tipo: 'SEGUIMIENTO', fecha_limite: '2026-10-23', nota: 'No consta acuerdo' },
+              { accion: 'Coordinar con el actuario la nueva diligencia de emplazamiento', tipo: 'AUDIENCIA/DILIGENCIA', fecha_limite: '2026-10-30', nota: '' }
+          ] },
+        { carpeta: 'fit and more', asunto: 'Gimnasio Fit and More — subarriendo del local', cliente: 'Persona Sin Expediente',
+          expedientes: [], estado: 'ACTIVO', prioridad: 'MEDIA',
+          pendientes: [{ accion: 'Enviar a la clienta el contrato de subarriendo revisado', tipo: 'ENTREGABLE', fecha_limite: '2026-10-26' }] },
+        { carpeta: 'asunto concluido', asunto: 'Algo que ya terminó', cliente: 'X', expedientes: [], estado: 'CONCLUIDO',
+          pendientes: [{ accion: 'Archivar', tipo: 'SEGUIMIENTO', fecha_limite: '2026-10-26' }] }
+    ];
+    const elegirArchivo = async (datos) => {
+        // Sin botón: se pide al asistente.
+        await page.evaluate(() => VOZ.abrir());
+        await pausa(300);
+        await page.fill('#voz-input', 'actualiza mis pendientes');
+        await page.press('#voz-input', 'Enter');
+        await pausa(500);
+        await page.setInputFiles('#seg-archivo', { name: 'indice_asuntos.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(datos)) });
+        await pausa(500);
+    };
+    const cifras = () => page.$$eval('.seg-cifras li', ls => ls.map(l => l.textContent.trim()));
+    const importados = () => page.evaluate(async () => (await obtenerPendientes())
+        .filter(p => p.origen && p.origen.tipo === 'seguimiento')
+        .map(p => ({ titulo: p.titulo, exp: p.expedienteId, dia: p.fechaLimite ? p.fechaLimite.slice(0, 10) : null, local: p.fechaLimite ? new Date(p.fechaLimite).toLocaleDateString('en-CA') : null,
+            prioridad: p.prioridad, completado: !!p.completado, eventoId: p.eventoId, texto: p.expedienteTexto }))
+        .sort((a, b) => a.titulo.localeCompare(b.titulo)));
+
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => window.SEGUIMIENTO && typeof crearExpedienteCore === 'function' && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+        await pausa(1000);
+        const ids = await page.evaluate(async () => ({
+            perez: await crearExpedienteCore({ numero: 'DIT-21/2026', institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN', nombre: 'Pérez vs FGE', cliente: 'Juan Pérez Ruiz' }),
+            lopez: await crearExpedienteCore({ numero: '174/2026', institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN', nombre: 'López vs Alfa', cliente: 'Ana López Mar' })
+        }));
+        verificar('seguimiento: no hay botón a la vista', !(await page.evaluate(() => /seguimiento semanal/i.test(document.body.innerText))));
+
+        // ---- Primera importación ----
+        await elegirArchivo(indice);
+        igual('seguimiento: "actualiza mis pendientes" lleva a Pendientes y abre la importación',
+            [await page.evaluate(() => document.getElementById('page-pendientes').classList.contains('active')), (await page.textContent('#modal-titulo')).trim()],
+            [true, '📥 Seguimiento semanal']);
+        igual('seguimiento: la vista previa dice qué va a pasar', await cifras(), ['5 nuevos', '0 se actualizan', '0 sin cambios', '0 ya no aparecen']);
+        verificar('seguimiento: avisa que el concluido no se importa', /1 concluidos no se importan/.test(await page.textContent('.seg-resumen')));
+        const porAsignar = await page.$$eval('.seg-asignar strong', s => s.map(x => x.textContent));
+        igual('seguimiento: solo pregunta por el asunto que no se pudo unir por número', porAsignar, ['Gimnasio Fit and More — subarriendo del local']);
+        await page.click('#seg-aplicar');
+        await pausa(1500);
+        let lista = await importados();
+        igual('seguimiento: se crean los cinco pendientes', lista.length, 5);
+        const revisar = lista.find(p => /29-sep/.test(p.titulo));
+        igual('seguimiento: cuelgan de su expediente, con fecha y prioridad',
+            [revisar.exp, revisar.local, revisar.prioridad], [ids.lopez, '2026-10-23', 'alta']);
+        verificar('seguimiento: y con fecha quedan en el calendario', !!revisar.eventoId);
+        igual('seguimiento: el que no tiene expediente lleva el nombre del asunto',
+            lista.find(p => /subarriendo/.test(p.titulo)).texto, 'Gimnasio Fit and More — subarriendo del local');
+        const audiencias = () => page.evaluate(async () => (await obtenerEventos())
+            .filter(e => e.titulo === 'Audiencia de desahogo de pruebas')
+            .map(e => ({ tipo: e.tipo, exp: e.expedienteId, hora: new Date(e.fechaInicio).getHours() })));
+        igual('seguimiento: la audiencia futura queda en el calendario, a su hora y en su expediente',
+            await audiencias(), [{ tipo: 'audiencia', exp: ids.lopez, hora: 10 }]);
+        verificar('seguimiento: aparecen en la lista de pendientes', /Coordinar con el actuario/.test(await page.textContent('#lista-pendientes')));
+
+        // ---- El viernes siguiente ----
+        const siguiente = JSON.parse(JSON.stringify(indice));
+        siguiente[0].pendientes[0].fecha_limite = '2026-11-03';
+        siguiente[0].pendientes.splice(1, 1);
+        await page.setViewportSize({ width: 390, height: 844 });
+        await elegirArchivo(siguiente);
+        igual('seguimiento: la segunda vez no duplica', await cifras(), ['0 nuevos', '1 se actualizan', '3 sin cambios', '1 ya no aparecen']);
+        const desborde = await page.evaluate(() => {
+            const b = document.getElementById('modal-body');
+            return b.scrollWidth - b.clientWidth;
+        });
+        verificar('seguimiento: la vista previa cabe en un celular', desborde <= 1, 'desborde de ' + desborde + 'px');
+        await page.click('#seg-aplicar');
+        await pausa(1500);
+        lista = await importados();
+        igual('seguimiento: siguen siendo cinco', lista.length, 5);
+        igual('seguimiento: la fecha nueva se aplicó', lista.find(p => /estrados/.test(p.titulo)).local, '2026-11-03');
+        igual('seguimiento: el que ya no aparece quedó terminado', lista.find(p => /amparo/.test(p.titulo)).completado, true);
+        igual('seguimiento: la audiencia no se duplica', (await audiencias()).length, 1);
+        igual('seguimiento: sin errores en la página', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
 async function probarEstadisticas(navegador) {
     const contexto = await navegador.newContext({ acceptDownloads: true, viewport: { width: 1280, height: 900 },
         locale: 'es-MX', timezoneId: 'America/Cancun' });
@@ -3481,6 +3587,9 @@ async function main() {
 
         // ---- Estadísticas del despacho ----
         await probarEstadisticas(navegador);
+
+        // ---- Seguimiento semanal (indice_asuntos.json) ----
+        await probarSeguimientoSemanal(navegador);
 
         // ---- Estudio de viabilidad de marca (IMPI) ----
         await probarViabilidadMarca(navegador);
