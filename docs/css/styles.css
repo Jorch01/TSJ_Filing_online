@@ -5912,6 +5912,22 @@ body.cta-abierto #tour-menu, body.cta-abierto #tour-oferta, body.cta-abierto #re
     .seg-asignar { grid-template-columns: minmax(0, 1fr); gap: 0.3rem; }
 }
 
+/* ==================== ESTRADOS LABORALES ==================== */
+.estl { display: grid; gap: 0.75rem; min-width: 0; }
+.estl-nota { margin: 0; font-size: 0.86rem; color: var(--text-secondary); line-height: 1.5; }
+.estl-lista { color: var(--text-primary); font-weight: 500; }
+.estl-campos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem 0.8rem; }
+.estl-campos label { display: grid; gap: 0.25rem; font-size: 0.82rem; font-weight: 500; color: var(--text-secondary); min-width: 0; }
+.estl-campos input, .estl-campos select { width: 100%; min-width: 0; }
+.estl-navegadores { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.estl-nav { border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); border-radius: 999px; padding: 0.3rem 0.9rem; cursor: pointer; font: inherit; }
+.estl-nav.activa { background: var(--primary); border-color: var(--primary); color: #fff; }
+.estl-pasos { margin: 0; padding-left: 1.2rem; font-size: 0.86rem; line-height: 1.55; display: grid; gap: 0.3rem; }
+.estl-pasos kbd { font-size: 0.78rem; border: 1px solid var(--border-color); border-radius: 4px; padding: 0 0.3rem; background: var(--bg-secondary); }
+.estl-marcador { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.estl-marcador a { cursor: grab; }
+@media (max-width: 640px) { .estl-campos { grid-template-columns: minmax(0, 1fr); } }
+
 /* ==================== ESTADÍSTICAS ==================== */
 /* Colores de las gráficas, validados contra las superficies de la app
    (blanco y #131a24) con la paleta de referencia: azul y naranja para dos

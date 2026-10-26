@@ -66,7 +66,7 @@ function crearEntorno(expedientes, archivados) {
 
     const app = fs.readFileSync(path.join(JS, 'app.js'), 'utf8');
     for (const n of ['urlEstradosExpediente', 'juzgadoTSJDeExpediente', 'abrirEstradosExpediente',
-                     '_puedeBuscarEnPJF', '_menuMasAccionesHTML', '_lineaClienteHTML',
+                     '_puedeBuscarEnPJF', '_menuMasAccionesHTML', '_lineaClienteHTML', '_esLaboralQRoo', '_botonEstradosLaborales',
                      'RESULTADOS_EXPEDIENTE', 'etiquetaResultado', 'renderTarjetaExpedienteHTML',
                      'renderFilaExpedienteHTML', 'renderCardArchivado']) {
         vm.runInContext(extraerDeclaracion(app, n, 'app.js'), sandbox, { filename: `app.js:${n}` });

@@ -1718,6 +1718,106 @@ async function probarSeguimientoSemanal(navegador) {
     }
 }
 
+// Estrados laborales: desde un expediente del TCA se arma el marcador y, en una
+// copia simulada de la página de la Secretaría del Trabajo (mismos ids:
+// formulario, unidad, fechas con calendario y tabla de DataTables), el
+// marcador consulta periodo por periodo y deja en la tabla solo el expediente.
+async function probarEstradosLaborales(navegador) {
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, locale: 'es-MX', timezoneId: 'America/Cancun' });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    const pausa = (ms) => page.waitForTimeout(ms);
+    const EL = require('./docs/js/estrados-laborales.js');
+    const N = EL.nucleo();
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Cancun' });
+    const periodos = N.periodos(hoy, 'fin', 3, hoy, EL.MINIMO);
+    // Lo publicado: en cada periodo una del expediente y una de otro; una del
+    // mismo número en otra unidad; y una de antes del primer periodo.
+    const filas = [];
+    periodos.forEach(([a], i) => {
+        filas.push({ u: '20', FECHA_ESTRADO: a, TIPO_EXP_DESC: 'DIT', NUM_EXP: 'DIT-21/2026', ACTOR: 'JUAN PÉREZ RUIZ', DEMANDADO: 'FGE', TIPO_ACUERDO_DESC: 'Acuerdo ' + (i + 1), RESOLUCION: '' });
+        filas.push({ u: '20', FECHA_ESTRADO: a, TIPO_EXP_DESC: 'DIT', NUM_EXP: '55/2026', ACTOR: 'OTRA PERSONA', DEMANDADO: 'MUNICIPIO', TIPO_ACUERDO_DESC: 'Otro', RESOLUCION: '' });
+    });
+    filas.push({ u: '23', FECHA_ESTRADO: periodos[0][0], NUM_EXP: '21/2026', ACTOR: 'X', DEMANDADO: 'Y', TIPO_ACUERDO_DESC: 'De la Junta' });
+    filas.push({ u: '20', FECHA_ESTRADO: N.sumar(periodos[0][0], -20), NUM_EXP: 'DIT-21/2026', ACTOR: 'JUAN PÉREZ RUIZ', DEMANDADO: 'FGE', TIPO_ACUERDO_DESC: 'Antiguo' });
+    const simulada = `<!doctype html><meta charset="utf-8"><title>Estrados</title>
+        <form id="formBusquedaEstrados"><select id="IdUR"><option value="20">TCA</option><option value="23">JLCA</option></select>
+        <input id="FechaInicio"><input id="FechaFin"><button type="submit">Consultar</button></form><table id="tablaEstrados"></table>
+        <script>
+        const FILAS = ${JSON.stringify(filas)};
+        window.consultas = [];
+        for (const id of ['FechaInicio', 'FechaFin']) { const el = document.getElementById(id); el._flatpickr = { setDate(v) { el.value = v; }, clear() { el.value = ''; } }; }
+        let datos = [], json, iniciada = false;
+        const api = { ajax: { json: () => json }, clear() { datos = []; return api; }, draw() { return api; },
+            rows: Object.assign(() => ({ data: () => ({ toArray: () => datos.slice() }) }), { add(r) { datos = datos.concat(r); return api; } }) };
+        window.jQuery = () => ({ DataTable: () => api }); jQuery.fn = { DataTable: { isDataTable: () => iniciada } };
+        window.tabla = () => datos;
+        document.getElementById('formBusquedaEstrados').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const q = { u: IdUR.value, i: FechaInicio.value, f: FechaFin.value };
+            consultas.push(q);
+            setTimeout(() => { iniciada = true; datos = FILAS.filter(r => r.u === q.u && r.FECHA_ESTRADO >= q.i && r.FECHA_ESTRADO <= q.f); json = { data: datos.slice() }; }, 120);
+        });
+        </script>`;
+    await contexto.route(EL.URL_ESTRADOS + '**', r => r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: simulada }));
+
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => window.ESTRADOS_LABORALES && typeof crearExpedienteCore === 'function' && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+        await pausa(1000);
+        const id = await page.evaluate(() => crearExpedienteCore({ numero: 'DIT-021/2026', institucion: 'OTRO', juzgado: 'Tribunal de Conciliación y Arbitraje', nombre: 'Pérez vs FGE' }));
+        await page.evaluate(() => navegarA('expedientes'));
+        await pausa(600);
+        verificar('estrados laborales: el expediente del TCA tiene su botón', await page.locator(`button[onclick^="ESTRADOS_LABORALES.abrirDeExpediente(${id}"]`).count() > 0);
+        await page.evaluate((i) => ESTRADOS_LABORALES.abrirDeExpediente(i), id);
+        await pausa(400);
+        verificar('estrados laborales: explica que el sitio solo deja periodos de 15 días', /periodo de 15 días como máximo/.test(await page.textContent('#modal-body')));
+        igual('estrados laborales: propone el TCA y el número del expediente',
+            [await page.inputValue('#estl-unidad'), await page.inputValue('#estl-buscar')], ['20', '21/2026']);
+        await page.fill('#estl-cuantos', '3');
+        await pausa(150);
+        verificar('estrados laborales: enseña los tres periodos que se revisarán', /Se revisarán 3 periodos/.test(await page.textContent('#estl-lista')));
+        await page.click('.estl-nav[data-nav="safari"]');
+        verificar('estrados laborales: las instrucciones cambian por navegador', /Editar dirección/.test(await page.textContent('#estl-pasos')));
+        const href = await page.getAttribute('#estl-enlace', 'href');
+        verificar('estrados laborales: el marcador es un javascript:', /^javascript:/.test(href || ''));
+        await page.click('#estl-enlace');
+        await pausa(200);
+        verificar('estrados laborales: pulsarlo en la app no lo corre ahí', !(await page.evaluate(() => !!document.getElementById('tsjf-estrados'))));
+
+        // En la página de estrados: se pulsa el marcador.
+        const sitio = await contexto.newPage();
+        sitio.on('pageerror', e => errores.push('sitio: ' + e.message));
+        await sitio.goto(EL.URL_ESTRADOS, { waitUntil: 'domcontentloaded' });
+        await sitio.evaluate((codigo) => { (0, eval)(codigo); }, decodeURIComponent(href.slice('javascript:'.length)));
+        await sitio.waitForSelector('#tsjf-estrados');
+        verificar('estrados laborales: el panel también explica los 15 días y los periodos', /periodos de 15 días/.test(await sitio.textContent('#tsjf-estrados')) &&
+            /Se revisarán 3 periodos/.test(await sitio.textContent('#tsjf-estrados [data-lista]')));
+        await sitio.click('#tsjf-estrados [data-ir]');
+        await sitio.waitForFunction(() => /publicaciones de tus expedientes/.test(document.querySelector('#tsjf-estrados [data-estado]').textContent), null, { timeout: 30000 });
+        const consultas = await sitio.evaluate(() => window.consultas);
+        igual('estrados laborales: consulta los tres periodos en el TCA, con las fechas armadas',
+            consultas, periodos.map(([i, f]) => ({ u: '20', i, f })));
+        const enTabla = await sitio.evaluate(() => window.tabla().map(f => f.TIPO_ACUERDO_DESC));
+        igual('estrados laborales: la tabla queda solo con lo del expediente, de todos los periodos', enTabla, ['Acuerdo 1', 'Acuerdo 2', 'Acuerdo 3']);
+        verificar('estrados laborales: el panel lo resume', /3 publicaciones de tus expedientes/.test(await sitio.textContent('#tsjf-estrados')));
+
+        // Pulsado fuera de la página de estrados, ofrece ir a ella.
+        const otra = await contexto.newPage();
+        await otra.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        otra.once('dialog', d => d.accept());
+        await Promise.all([
+            otra.waitForURL(EL.URL_ESTRADOS + '**', { timeout: 10000 }).catch(() => {}),
+            otra.evaluate((codigo) => { (0, eval)(codigo); }, decodeURIComponent(href.slice('javascript:'.length)))
+        ]);
+        verificar('estrados laborales: fuera de la página de estrados, lleva a ella', otra.url().startsWith(EL.URL_ESTRADOS), otra.url());
+        igual('estrados laborales: sin errores', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
 async function probarEstadisticas(navegador) {
     const contexto = await navegador.newContext({ acceptDownloads: true, viewport: { width: 1280, height: 900 },
         locale: 'es-MX', timezoneId: 'America/Cancun' });
@@ -3599,6 +3699,9 @@ async function main() {
 
         // ---- Seguimiento semanal (indice_asuntos.json) ----
         await probarSeguimientoSemanal(navegador);
+
+        // ---- Estrados laborales (TCA y Juntas) ----
+        await probarEstradosLaborales(navegador);
 
         // ---- Estudio de viabilidad de marca (IMPI) ----
         await probarViabilidadMarca(navegador);

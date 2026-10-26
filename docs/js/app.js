@@ -1997,6 +1997,7 @@ function renderCardArchivado(exp) {
             <span class="expediente-fecha">Creado: ${formatearFecha(exp.fechaCreacion)}</span>
             <div class="expediente-actions">
                 ${urlEstradosExpediente(exp) ? `<button class="btn btn-sm btn-primary" onclick="abrirEstradosExpediente(${exp.id}, event)" title="Estrados electrónicos del TSJ">🌐</button>` : ''}
+                ${_botonEstradosLaborales(exp, true)}
                 ${_puedeBuscarEnPJF(exp, exp.institucion || 'TSJ') ? `<button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Publicaciones en el portal del PJF">🔍</button>` : ''}
                 <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
                 <button class="btn btn-sm btn-success" onclick="desarchivarExpediente(${exp.id}, event)" title="Restaurar">♻️</button>
@@ -2154,6 +2155,7 @@ function renderTarjetaExpedienteHTML(exp, opciones = {}) {
         if (institucion === 'TSJ' && urlEstradosExpediente(exp)) {
             actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirEstradosExpediente(${exp.id}, event)" title="Abrir los estrados electrónicos del TSJ para este expediente">🌐 Estrados</button>`;
         }
+        actionsHTML += _botonEstradosLaborales(exp, false);
         actionsHTML += `<button class="btn btn-sm btn-info" onclick="verPendientesDeExpediente(${exp.id}, event)" title="Ver pendientes">✅</button>`;
         actionsHTML += `<button class="btn btn-sm btn-secondary" onclick="${editarFn}(${exp.id}, event)" title="Editar">✏️</button>`;
         actionsHTML += _menuMasAccionesHTML(exp.id, eliminarFn);
@@ -2205,6 +2207,7 @@ function renderFilaExpedienteHTML(exp, opciones = {}) {
     if (institucion === 'TSJ' && urlEstradosExpediente(exp)) {
         actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirEstradosExpediente(${exp.id}, event)" title="Estrados electrónicos del TSJ">🌐</button>`;
     }
+    actionsHTML += _botonEstradosLaborales(exp, true);
     actionsHTML += `<button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>`;
     actionsHTML += `<button class="btn btn-sm btn-info" onclick="verTimelineExpediente(${exp.id}, event)" title="Timeline">📅</button>`;
     actionsHTML += `<button class="btn btn-sm btn-secondary" onclick="${editarFn}(${exp.id}, event)">✏️</button>`;
@@ -4926,6 +4929,19 @@ function juzgadoTSJDeExpediente(exp) {
     const juzgado = exp && exp.juzgado;
     if (!juzgado || typeof obtenerIdJuzgado !== 'function' || obtenerIdJuzgado(juzgado)) return juzgado;
     return (typeof reconocerJuzgadoTSJ === 'function' && reconocerJuzgadoTSJ(juzgado)) || juzgado;
+}
+
+// Los laborales de Quintana Roo (Tribunal de Conciliación y Arbitraje y
+// Juntas) publican en el sitio de la Secretaría del Trabajo, que no tiene
+// enlace por expediente: el botón abre la ventana del marcador que consulta
+// sus estrados (estrados-laborales.js).
+function _esLaboralQRoo(exp) {
+    return typeof ESTRADOS_LABORALES !== 'undefined' && !!ESTRADOS_LABORALES.unidadDeExpediente(exp);
+}
+
+function _botonEstradosLaborales(exp, corto) {
+    if (!_esLaboralQRoo(exp)) return '';
+    return `<button class="btn btn-sm btn-primary" onclick="ESTRADOS_LABORALES.abrirDeExpediente(${exp.id}, event)" title="Estrados del Tribunal de Conciliación y Arbitraje o de las Juntas">${corto ? '👷' : '👷 Estrados'}</button>`;
 }
 
 async function abrirEstradosExpediente(id, event) {
@@ -9021,7 +9037,9 @@ async function verDetalleExpediente(expedienteId) {
         ? 'editarExpedientePJF' : 'editarExpediente';
     const botonEstrados = urlEstradosExpediente(exp)
         ? `<button class="btn btn-primary" onclick="abrirEstradosExpediente(${exp.id});" title="Abrir los estrados electrónicos del TSJ">🌐 Estrados</button>`
-        : '';
+        : (_esLaboralQRoo(exp)
+            ? `<button class="btn btn-primary" onclick="ESTRADOS_LABORALES.abrirDeExpediente(${exp.id});" title="Estrados del Tribunal de Conciliación y Arbitraje o de las Juntas">👷 Estrados</button>`
+            : '');
     document.getElementById('modal-footer').innerHTML = `
         <button class="btn btn-secondary" onclick="cerrarModal()">Cerrar</button>
         ${botonEstrados}
