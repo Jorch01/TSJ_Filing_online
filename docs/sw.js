@@ -38,6 +38,7 @@ const ARCHIVOS_APP = [
     'js/calculadora-laboral.js',
     'js/estadisticas.js',
     'js/seguimiento.js',
+    'js/estrados-laborales.js',
     'js/instalar.js',
     'js/tour.js',
     'js/recomendar.js',
