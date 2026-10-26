@@ -311,13 +311,21 @@
     const $ = (id) => document.getElementById(id);
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+    // El dispositivo y navegador de quien abre la ventana. En el teléfono manda
+    // el dispositivo (un iPad se presenta como Mac, pero tiene pantalla táctil).
     function navegadorProbable() {
-        try { const g = localStorage.getItem(CLAVE_NAVEGADOR); if (g) return g; } catch (e) { /* sin almacenamiento */ }
         const ua = navigator.userAgent || '';
+        const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+        if (ios) return 'iphone';
+        if (/Android/.test(ua)) return 'android';
+        try { const g = localStorage.getItem(CLAVE_NAVEGADOR); if (g && INSTRUCCIONES[g]) return g; } catch (e) { /* sin almacenamiento */ }
         if (/Firefox\//.test(ua)) return 'firefox';
         if (/Safari\//.test(ua) && !/Chrome\/|Chromium\/|Edg\//.test(ua)) return 'safari';
         return 'chrome';
     }
+
+    const MOVILES = ['iphone', 'android'];
+    const NOMBRES = { chrome: 'Chrome', safari: 'Safari', firefox: 'Firefox', iphone: 'iPhone / iPad', android: 'Android' };
 
     const INSTRUCCIONES = {
         chrome: [
@@ -334,6 +342,25 @@
             'Muestra la barra de favoritos: <kbd>⌘</kbd> + <kbd>⇧</kbd> + <kbd>B</kbd>.',
             'Arrastra el botón azul <strong>📌 Estrados laborales</strong> a esa barra. Si Safari no lo deja: pulsa <strong>Copiar código</strong>, añade cualquier página a Favoritos (<kbd>⌘</kbd> + <kbd>D</kbd>), y en <em>Marcadores → Editar marcadores</em> haz clic derecho sobre él → <em>Editar dirección</em> y pega el código.',
             'Pulsa <strong>Abrir estrados</strong>; cuando cargue la página, pulsa el marcador.'
+        ],
+        // En el iPhone el marcador se crea a mano y se abre desde la lista de
+        // Marcadores: Safari no ejecuta el código si se escribe en la barra.
+        iphone: [
+            'Usa <strong>Safari</strong> (Chrome y Firefox para iPhone no ejecutan marcadores de este tipo).',
+            'Toca <strong>Copiar código</strong> aquí abajo.',
+            'En Safari abre cualquier página, toca <strong>Compartir</strong> (el cuadro con la flecha) → <strong>Agregar marcador</strong>, nómbralo «Estrados laborales» y guárdalo en <strong>Favoritos</strong>.',
+            'Toca el ícono de <strong>Marcadores</strong> (el libro) → <strong>Favoritos</strong> → <strong>Editar</strong> → toca «Estrados laborales», borra la dirección, <strong>pega el código</strong> y toca <strong>OK</strong>. La dirección debe empezar con <code>javascript:</code>.',
+            'Toca <strong>Abrir estrados</strong>. Ya en esa página, ábrelo desde el <strong>libro de Marcadores → Favoritos → Estrados laborales</strong>. <em>No lo escribas en la barra de direcciones</em>: ahí Safari dice que JavaScript no se admite en ese modo.',
+            'Si aun así no corre: revisa que esté activado <em>Ajustes → Apps → Safari → Avanzado → JavaScript</em>, que no estés en navegación privada y que el Modo de aislamiento no bloquee Safari.'
+        ],
+        // En Android es al revés: Chrome solo lo ejecuta si se elige desde la
+        // barra de direcciones.
+        android: [
+            'Usa <strong>Chrome</strong>.',
+            'Toca <strong>Copiar código</strong> aquí abajo.',
+            'En Chrome abre cualquier página, toca <strong>⋮</strong> → la <strong>estrella ☆</strong> para guardarla como marcador, y luego <strong>Editar</strong>: nómbralo «Estrados laborales», borra la URL, <strong>pega el código</strong> y guarda. La URL debe empezar con <code>javascript:</code>.',
+            'Toca <strong>Abrir estrados</strong>. Ya en esa página, toca la <strong>barra de direcciones</strong>, escribe <strong>Estrados laborales</strong> y elige el marcador de las sugerencias (el de la estrella). <em>Abrirlo desde la lista de marcadores no lo ejecuta</em>: tiene que ser desde la barra.',
+            'Si no aparece en las sugerencias, escribe el nombre completo tal como lo guardaste.'
         ]
     };
 
@@ -370,13 +397,19 @@
                 '</div>' +
                 '<p class="estl-nota estl-lista" id="estl-lista"></p>' +
                 '<p class="estl-nota">El marcador recuerda lo que elijas aquí y, al pulsarlo, todavía puedes cambiarlo. Cada periodo es una consulta al sitio (unos 3 segundos).</p>' +
+                '<p class="estl-nota"><strong>¿Dónde lo vas a usar?</strong> Elige tu equipo para ver cómo instalar el marcador.</p>' +
                 '<div class="estl-navegadores" role="tablist">' +
-                    ['chrome', 'safari', 'firefox'].map(n => '<button type="button" class="estl-nav' + (n === ui.navegador ? ' activa' : '') + '" data-nav="' + n + '">' +
-                        { chrome: 'Chrome', safari: 'Safari', firefox: 'Firefox' }[n] + '</button>').join('') +
+                    '<span class="estl-grupo">En computadora</span>' +
+                    ['chrome', 'safari', 'firefox'].map(n => '<button type="button" class="estl-nav" data-nav="' + n + '">' + NOMBRES[n] + '</button>').join('') +
+                    '<span class="estl-grupo">En el teléfono</span>' +
+                    MOVILES.map(n => '<button type="button" class="estl-nav" data-nav="' + n + '">' + NOMBRES[n] + '</button>').join('') +
                 '</div>' +
                 '<ol class="estl-pasos" id="estl-pasos"></ol>' +
                 '<div class="estl-marcador"><a id="estl-enlace" class="btn btn-primary" draggable="true" title="Arrástralo a tu barra de marcadores">📌 Estrados laborales</a>' +
                     '<button type="button" class="btn btn-secondary" id="estl-copiar">Copiar código</button></div>' +
+                '<details class="estl-codigo" id="estl-ver-codigo"><summary>Ver el código para copiarlo a mano</summary>' +
+                    '<textarea id="estl-codigo" readonly rows="4" aria-label="Código del marcador"></textarea>' +
+                    '<p class="estl-nota">Mantén presionado dentro del cuadro → <em>Seleccionar todo</em> → <em>Copiar</em>.</p></details>' +
             '</div>';
         $('modal-footer').innerHTML = '<button class="btn btn-secondary" onclick="cerrarModal()">Cerrar</button>' +
             '<button class="btn btn-primary" id="estl-abrir">🌐 Abrir estrados</button>';
@@ -389,6 +422,12 @@
                 fecha: $('estl-fecha').value || hoy, tipo: $('estl-tipo').value, cuantos: $('estl-cuantos').value
             };
             enlace.href = generarMarcador(cfg);
+            $('estl-codigo').value = enlace.href;
+            // En el teléfono no se arrastra: se copia.
+            const movil = MOVILES.includes(ui.navegador);
+            enlace.style.display = movil ? 'none' : '';
+            $('estl-copiar').classList.toggle('btn-primary', movil);
+            $('estl-copiar').classList.toggle('btn-secondary', !movil);
             const ps = nucleo().periodos(cfg.fecha, cfg.tipo, cfg.cuantos, hoy, MINIMO);
             const corta = (f) => new Date(f + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
             $('estl-lista').textContent = ps.length
@@ -416,7 +455,12 @@
                 await navigator.clipboard.writeText($('estl-enlace').href);
                 if (typeof mostrarToast === 'function') mostrarToast('Código del marcador copiado', 'success');
             } catch (e) {
-                if (typeof mostrarToast === 'function') mostrarToast('No se pudo copiar: arrastra el botón azul a tu barra de marcadores', 'warning');
+                // Sin permiso para el portapapeles (pasa en algunos teléfonos):
+                // se deja el código a la vista y seleccionado.
+                $('estl-ver-codigo').open = true;
+                $('estl-codigo').focus();
+                $('estl-codigo').select();
+                if (typeof mostrarToast === 'function') mostrarToast('No se pudo copiar solo: el código quedó seleccionado abajo, cópialo a mano', 'warning');
             }
         });
         $('estl-abrir').addEventListener('click', () => window.open(URL_ESTRADOS, '_blank', 'noopener'));

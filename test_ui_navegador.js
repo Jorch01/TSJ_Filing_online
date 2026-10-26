@@ -1780,6 +1780,14 @@ async function probarEstradosLaborales(navegador) {
         verificar('estrados laborales: enseña los tres periodos que se revisarán', /Se revisarán 3 periodos/.test(await page.textContent('#estl-lista')));
         await page.click('.estl-nav[data-nav="safari"]');
         verificar('estrados laborales: las instrucciones cambian por navegador', /Editar dirección/.test(await page.textContent('#estl-pasos')));
+        await page.click('.estl-nav[data-nav="iphone"]');
+        verificar('estrados laborales: en iPhone se abre desde el libro de Marcadores, no desde la barra',
+            /libro de Marcadores/.test(await page.textContent('#estl-pasos')) && /No lo escribas en la barra/.test(await page.textContent('#estl-pasos')));
+        igual('estrados laborales: en el teléfono no se ofrece arrastrar, sino copiar', await page.isVisible('#estl-enlace'), false);
+        await page.click('.estl-nav[data-nav="android"]');
+        verificar('estrados laborales: en Android se elige desde la barra de direcciones', /barra de direcciones/.test(await page.textContent('#estl-pasos')));
+        verificar('estrados laborales: el código está a la vista para copiarlo a mano', /^javascript:/.test(await page.inputValue('#estl-codigo')));
+        await page.click('.estl-nav[data-nav="safari"]');
         const href = await page.getAttribute('#estl-enlace', 'href');
         verificar('estrados laborales: el marcador es un javascript:', /^javascript:/.test(href || ''));
         await page.click('#estl-enlace');
@@ -1812,6 +1820,23 @@ async function probarEstradosLaborales(navegador) {
             otra.evaluate((codigo) => { (0, eval)(codigo); }, decodeURIComponent(href.slice('javascript:'.length)))
         ]);
         verificar('estrados laborales: fuera de la página de estrados, lleva a ella', otra.url().startsWith(EL.URL_ESTRADOS), otra.url());
+
+        // Desde un teléfono, la ventana elige sola sus pasos.
+        for (const [nombre, ua, esperado] of [
+            ['iPhone', 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1', 'iphone'],
+            ['Android', 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36', 'android']
+        ]) {
+            const movil = await navegador.newContext({ viewport: { width: 390, height: 844 }, userAgent: ua, isMobile: true, hasTouch: true });
+            const pm = await movil.newPage();
+            await pm.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+            await pm.waitForFunction(() => window.ESTRADOS_LABORALES && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+            await pm.evaluate(() => ESTRADOS_LABORALES.abrir());
+            await pm.waitForSelector('.estl-nav.activa');
+            igual(`estrados laborales: en ${nombre} se eligen solos sus pasos`, await pm.getAttribute('.estl-nav.activa', 'data-nav'), esperado);
+            const desborde = await pm.evaluate(() => { const b = document.getElementById('modal-body'); return b.scrollWidth - b.clientWidth; });
+            verificar(`estrados laborales: la ventana cabe en la pantalla de ${nombre}`, desborde <= 1, 'desborde de ' + desborde + 'px');
+            await movil.close();
+        }
         igual('estrados laborales: sin errores', errores, []);
     } finally {
         await contexto.close();
