@@ -6,10 +6,15 @@
  *   /estrados-tsj-quintana-roo/         los 52 juzgados y salas del TSJ
  *   /expedientes-pjf-quintana-roo/      los órganos federales del 27º circuito
  *   /calculadora-finiquito-liquidacion/ la calculadora laboral, funcionando
+ *   /estrados-laborales-quintana-roo/   el TCA y las Juntas de Conciliación
+ *   /estudio-viabilidad-marca-impi/     el estudio de viabilidad de marca
  *
- * Las listas salen de los catálogos de la app (docs/js/juzgados.js y
- * docs/data/organismos.json) y la calculadora usa el mismo formulario que la
- * app (se copia de docs/index.html), así que nada se captura dos veces.
+ * Las listas salen de los catálogos de la app (docs/js/juzgados.js,
+ * docs/data/organismos.json, las unidades de docs/js/estrados-laborales.js),
+ * los límites del plan gratuito de docs/js/cuotas-impi.js y los planes
+ * Premium de PREMIUM_CONFIG en docs/js/app.js. La calculadora usa el mismo
+ * formulario que la app (se copia de docs/index.html), así que nada se
+ * captura dos veces.
  *
  * Uso:   node herramientas/generar-sitio.js
  * test_sitio.js comprueba que lo publicado es lo que genera este script: si
@@ -24,9 +29,9 @@ const SITIO = 'https://tsjia.empirica.mx';
 const APP = '/docs/';
 // Sin JavaScript, el botón de recomendar abre WhatsApp con este mensaje.
 const WHATSAPP_RECOMENDAR = 'https://wa.me/?text=' + encodeURIComponent(
-    'Te recomiendo TSJ Filing Online: estrados del TSJ de Quintana Roo y del PJF, agenda de audiencias, IA que lee los acuerdos y calculadora de finiquito. Gratis y sin registro. ' +
+    'Te recomiendo TSJ Filing Online: estrados del TSJ de Quintana Roo, del PJF y del TCA, agenda de audiencias, IA que lee los acuerdos, calculadora de finiquito y estudio de viabilidad de marca en el IMPI. Gratis y sin registro. ' +
     'https://tsjia.empirica.mx/?utm_source=recomendacion&utm_medium=whatsapp&utm_campaign=colega');
-const ACTUALIZADO = '2026-09-27';
+const ACTUALIZADO = '2026-10-27';
 
 // ==================== DATOS DE LOS CATÁLOGOS ====================
 
@@ -53,6 +58,25 @@ function organosPJFQuintanaRoo() {
         ...(otros.length ? [{ nombre: 'Otros órganos', icono: '📍', organos: otros }] : [])
     ].filter(g => g.organos.length);
 }
+
+function unidadesLaborales() {
+    return require(path.join(RAIZ, 'docs/js/estrados-laborales.js')).UNIDADES;
+}
+
+// Los límites del plan gratuito en el IMPI, los mismos que aplica la app.
+function limitesIMPI() {
+    return require(path.join(RAIZ, 'docs/js/cuotas-impi.js')).LIMITES;
+}
+
+// Los planes Premium, tal como los ofrece la app (PREMIUM_CONFIG.planes).
+function planesPremium() {
+    const js = fs.readFileSync(path.join(RAIZ, 'docs/js/app.js'), 'utf8');
+    const m = /PREMIUM_CONFIG = \{[\s\S]*?planes: (\[[\s\S]*?\n    \])/.exec(js);
+    if (!m) throw new Error('No se encontraron los planes Premium en docs/js/app.js');
+    return vm.runInNewContext('(' + m[1] + ')').map(p => ({ meses: p.meses, precio: p.precio, nombre: p.nombre }));
+}
+
+const pesos = (n) => '$' + n.toLocaleString('en-US') + ' MXN';
 
 function formularioCalculadora() {
     const html = fs.readFileSync(path.join(RAIZ, 'docs/index.html'), 'utf8');
@@ -125,7 +149,9 @@ ${extraHead}</head>
                 <a href="/#funciones">Funciones</a>
                 <a href="/estrados-tsj-quintana-roo/">Estrados TSJ</a>
                 <a href="/expedientes-pjf-quintana-roo/">PJF</a>
+                <a href="/estrados-laborales-quintana-roo/">TCA y Juntas</a>
                 <a href="/calculadora-finiquito-liquidacion/">Calculadora laboral</a>
+                <a href="/estudio-viabilidad-marca-impi/">Marcas IMPI</a>
                 <a href="/#preguntas">Preguntas</a>
             </nav>
             <a class="btn btn-primary sitio-cta-header" href="${APP}?tour=1">Probar gratis</a>
@@ -154,7 +180,7 @@ function pie() {
         <div class="sitio-ancho sitio-footer-grid">
             <div>
                 <strong>⚖️ TSJ Filing Online</strong>
-                <p>Herramienta para abogados y despachos de Quintana Roo: expedientes del TSJ y del PJF, estrados, agenda, IA y calculadora laboral.</p>
+                <p>Herramienta para abogados y despachos de Quintana Roo: expedientes del TSJ y del PJF, estrados del TCA y las Juntas, agenda, IA, calculadora laboral y estudio de viabilidad de marca.</p>
                 <p>Desarrollado por <a href="https://www.empirica.mx" rel="noopener">Empírica Legal Lab</a>.</p>
             </div>
             <div>
@@ -163,13 +189,16 @@ function pie() {
                     <li><a href="${APP}">Abrir la app</a></li>
                     <li><a href="/estrados-tsj-quintana-roo/">Estrados del TSJ de Quintana Roo</a></li>
                     <li><a href="/expedientes-pjf-quintana-roo/">Expedientes federales en Quintana Roo</a></li>
+                    <li><a href="/estrados-laborales-quintana-roo/">Estrados del TCA y las Juntas de Quintana Roo</a></li>
                     <li><a href="/calculadora-finiquito-liquidacion/">Calculadora de finiquito y liquidación</a></li>
+                    <li><a href="/estudio-viabilidad-marca-impi/">Estudio de viabilidad de marca (IMPI)</a></li>
+                    <li><a href="/#planes">Planes y precios</a></li>
                 </ul>
             </div>
             <div>
                 <strong>Contacto</strong>
                 <p><a href="mailto:jorge_clemente@empirica.mx">jorge_clemente@empirica.mx</a></p>
-                <p class="sitio-legal">Herramienta independiente: no está afiliada al Tribunal Superior de Justicia de Quintana Roo, al Poder Judicial de la Federación ni al IMPI. Las consultas se hacen en sus portales oficiales.</p>
+                <p class="sitio-legal">Herramienta independiente: no está afiliada al Tribunal Superior de Justicia de Quintana Roo, al Poder Judicial de la Federación, a la Secretaría del Trabajo de Quintana Roo ni al IMPI. Las consultas se hacen en sus portales oficiales.</p>
                 <p class="sitio-legal">Usamos estadísticas de uso anónimas para mejorar el sitio; nunca datos de tus expedientes.</p>
             </div>
         </div>
@@ -221,9 +250,14 @@ function faqHTML(preguntas) {
 
 // ==================== PÁGINA DE INICIO ====================
 
-const PREGUNTAS_INICIO = [
+function textoPlanes(planes) {
+    const t = planes.map(p => `${p.nombre} por ${pesos(p.precio)}`);
+    return t.slice(0, -1).join(', ') + ' o ' + t[t.length - 1];
+}
+
+const PREGUNTAS_INICIO = (lim, planes) => [
     ['¿Cuánto cuesta TSJ Filing Online?',
-        'Es gratis para empezar: puedes llevar hasta 10 expedientes con todas las funciones básicas. Para expedientes ilimitados y sincronizar entre computadora y celular existe el plan Premium.'],
+        `Es gratis para empezar: hasta 10 expedientes con todas las funciones básicas, ${lim.busqueda.limite} búsquedas al mes en el IMPI y ${lim.viabilidad.limite} estudios de viabilidad de marca. Premium quita esos límites y sincroniza entre computadora y celular: ${textoPlanes(planes)}.`],
     ['¿Necesito crear una cuenta?',
         'No. Abres la app en el navegador y empiezas a trabajar. Tus expedientes, notas y agenda se guardan en tu propio dispositivo.'],
     ['¿Qué juzgados de Quintana Roo incluye?',
@@ -237,20 +271,30 @@ const PREGUNTAS_INICIO = [
     ['¿Mis datos están seguros?',
         'Tus datos viven en tu navegador, no en un servidor nuestro. Puedes exportar respaldos cuando quieras y, si activas la sincronización, viajan cifrados.'],
     ['¿Sirve para asuntos federales?',
-        'Sí. Consultas expedientes del Poder Judicial de la Federación de todo el país, con acceso directo a los órganos de Quintana Roo, y los llevas en la misma agenda que los del TSJ.']
+        'Sí. Consultas expedientes del Poder Judicial de la Federación de todo el país, con acceso directo a los órganos de Quintana Roo, y los llevas en la misma agenda que los del TSJ.'],
+    ['¿Puedo revisar los estrados del Tribunal de Conciliación y Arbitraje y de las Juntas?',
+        'Sí. La app arma un marcador para tu navegador que, en la página oficial de estrados de la Secretaría del Trabajo, revisa el periodo que elijas en tramos de 15 días (el máximo que permite el sitio) y deja solo lo publicado de tus expedientes. Funciona en computadora, iPhone y Android.'],
+    ['¿Qué es el estudio de viabilidad de marca?',
+        `Escribes la marca y sus clases de Niza y la app busca a la vez en MARCia, en la búsqueda fonética de Marcanet y en las gacetas de SIGA del IMPI. Junta los antecedentes, los compara por escritura y por sonido y entrega un dictamen de riesgo con recomendaciones. El plan gratuito incluye ${lim.viabilidad.limite}.`]
 ];
 
-function paginaInicio(cat, pjf) {
+function paginaInicio(cat, pjf, lim, planes) {
     const totalJuzgados = cat.reduce((s, c) => s + c.juzgados.length, 0);
     const totalPJF = pjf.reduce((s, g) => s + g.organos.length, 0);
+    const preguntas = PREGUNTAS_INICIO(lim, planes);
+    const mensual = (p) => Math.round(p.precio / p.meses);
+    const ahorro = (p) => Math.round((1 - mensual(p) / mensual(planes[0])) * 100);
     const funciones = [
         ['🏢', 'Estrados del TSJ en un clic', `Los ${totalJuzgados} juzgados y salas del TSJ de Quintana Roo. Busca por número o por nombre y revisa varios expedientes a la vez.`, '/estrados-tsj-quintana-roo/'],
         ['🤖', 'La IA lee los acuerdos por ti', 'Pega o fotografía un acuerdo: detecta expediente, juzgado, audiencias y plazos, y los guarda en tu agenda.'],
         ['🏛️', 'Expedientes federales (PJF)', `Consulta en el portal del PJF, con los ${totalPJF} órganos federales de Quintana Roo a la mano.`, '/expedientes-pjf-quintana-roo/'],
+        ['👷', 'Estrados del TCA y las Juntas', 'Revisa los estrados del Tribunal de Conciliación y Arbitraje y de las Juntas de Quintana Roo por periodos de 15 días, solo con lo de tus expedientes.', '/estrados-laborales-quintana-roo/'],
         ['📅', 'Agenda de audiencias y pendientes', 'Calendario con los días inhábiles del TSJ, pendientes con fecha límite y vista rápida de tu día.'],
         ['🧮', 'Calculadora de finiquito y liquidación', 'Finiquito, liquidación, 20 días, prima de antigüedad, salarios vencidos e ISR, con su artículo de la LFT.', '/calculadora-finiquito-liquidacion/'],
         ['🎤', 'Asistente de voz', '"Agenda audiencia del 120/2026 el martes a las 10." Díctale y listo.'],
-        ['🔰', 'Marcas y gacetas del IMPI', 'Busca marcas registradas (MARCia) y vigila las gacetas (SIGA) con avisos de publicaciones nuevas.'],
+        ['🧭', 'Estudio de viabilidad de marca', 'MARCia, Marcanet y SIGA del IMPI en una sola búsqueda: antecedentes parecidos por clase de Niza y un dictamen de riesgo.', '/estudio-viabilidad-marca-impi/'],
+        ['🔰', 'Marcas y gacetas del IMPI', 'Busca marcas por similitud, fonética, expediente o titular y vigila las gacetas con avisos de publicaciones nuevas.'],
+        ['📊', 'Estadísticas del despacho', 'Asuntos activos y cerrados, tiempos, resultados, clientes y responsables, con gráficas por periodo.'],
         ['📴', 'Funciona sin internet', 'Abre en el juzgado aunque no haya señal. Tus datos son tuyos y viven en tu dispositivo.']
     ];
     const ciudades = ['Cancún', 'Playa del Carmen', 'Chetumal', 'Cozumel', 'Tulum', 'Felipe Carrillo Puerto', 'Isla Mujeres', 'Bacalar'];
@@ -267,20 +311,25 @@ function paginaInicio(cat, pjf) {
             inLanguage: 'es-MX',
             description: 'Gestión de expedientes del TSJ de Quintana Roo y del PJF: estrados, agenda de audiencias, análisis de acuerdos con IA, calculadora laboral y búsqueda de marcas del IMPI.',
             image: SITIO + '/og-image.png',
-            offers: { '@type': 'Offer', price: '0', priceCurrency: 'MXN', description: 'Gratis hasta 10 expedientes' },
+            offers: [
+                { '@type': 'Offer', name: 'Plan gratuito', price: '0', priceCurrency: 'MXN',
+                    description: `Hasta 10 expedientes, ${lim.busqueda.limite} búsquedas al mes en el IMPI y ${lim.viabilidad.limite} estudios de viabilidad de marca` },
+                ...planes.map(p => ({ '@type': 'Offer', name: `Premium ${p.nombre}`, price: String(p.precio), priceCurrency: 'MXN',
+                    description: `Premium por ${p.nombre}: expedientes, búsquedas en el IMPI y estudios de viabilidad sin límite, y sincronización entre dispositivos` }))
+            ],
             areaServed: quintanaRoo,
             audience: { '@type': 'Audience', audienceType: 'Abogados y despachos jurídicos' },
             publisher: organizacion,
             featureList: funciones.map(f => f[1])
         },
         { '@context': 'https://schema.org', ...organizacion },
-        faq(PREGUNTAS_INICIO)
+        faq(preguntas)
     ];
 
     return cabeza({
         ruta: '/',
         tituloPagina: 'TSJ Filing Online | Expedientes y estrados del TSJ Quintana Roo',
-        descripcion: `Expedientes del TSJ de Quintana Roo y del PJF en un solo lugar: estrados de ${totalJuzgados} juzgados, agenda de audiencias, IA que lee acuerdos y calculadora laboral. Gratis.`,
+        descripcion: 'Expedientes del TSJ de Quintana Roo y del PJF, estrados del TCA y las Juntas, agenda de audiencias, IA que lee acuerdos y viabilidad de marca en el IMPI. Gratis.',
         jsonld
     }) + `
         <section class="sitio-hero">
@@ -288,7 +337,7 @@ function paginaInicio(cat, pjf) {
                 <div>
                     <p class="sitio-etiqueta">Para abogados y despachos de Quintana Roo</p>
                     <h1>Tus expedientes del TSJ de Quintana Roo y del PJF, al día y en un solo lugar</h1>
-                    <p class="sitio-lead">Consulta estrados, lleva tu agenda de audiencias y plazos, y deja que la inteligencia artificial lea los acuerdos por ti. Desde la computadora o el celular.</p>
+                    <p class="sitio-lead">Consulta los estrados del TSJ, del PJF y del Tribunal de Conciliación y Arbitraje, lleva tu agenda de audiencias y plazos, y deja que la inteligencia artificial lea los acuerdos por ti. Desde la computadora o el celular.</p>
                     <div class="sitio-hero-botones">
                         <a class="btn btn-primary btn-lg" href="${APP}?tour=1">Probar gratis ahora →</a>
                         <a class="btn btn-secondary btn-lg" href="/calculadora-finiquito-liquidacion/">🧮 Calcular un finiquito</a>
@@ -350,7 +399,39 @@ ${funciones.map(([ico, t, d, enlace]) => `                    <article class="si
             </div>
         </section>
 
-        <section class="sitio-seccion" id="instalar">
+        <section class="sitio-seccion" id="planes">
+            <div class="sitio-ancho">
+                <h2>Planes y precios</h2>
+                <p class="sitio-sub">Empieza gratis. Si necesitas más, Premium quita los límites y sincroniza tus datos entre computadora y celular.</p>
+                <div class="sitio-funciones">
+                    <article class="sitio-funcion">
+                        <span class="sitio-funcion-icono">🆓</span>
+                        <h3>Gratis</h3>
+                        <p><strong>$0</strong>, sin registro.</p>
+                        <ul class="sitio-lista">
+                            <li>Hasta 10 expedientes</li>
+                            <li>${lim.busqueda.limite} búsquedas al mes en el IMPI</li>
+                            <li>${lim.viabilidad.limite} estudios de viabilidad de marca</li>
+                            <li>Estrados, agenda, IA y calculadora laboral</li>
+                        </ul>
+                        <a href="${APP}?tour=1">Empezar →</a>
+                    </article>
+${planes.map(p => `                    <article class="sitio-funcion">
+                        <span class="sitio-funcion-icono">⭐</span>
+                        <h3>Premium ${esc(p.nombre)}</h3>
+                        <p><strong>${pesos(p.precio)}</strong> · ${pesos(mensual(p))} al mes${ahorro(p) > 0 ? ` · ahorras ${ahorro(p)}%` : ''}</p>
+                        <ul class="sitio-lista">
+                            <li>Expedientes ilimitados</li>
+                            <li>Búsquedas en el IMPI y estudios de viabilidad sin límite</li>
+                            <li>Sincronización entre dispositivos</li>
+                        </ul>
+                        <a href="${APP}#config">Contratar desde la app →</a>
+                    </article>`).join('\n')}
+                </div>
+            </div>
+        </section>
+
+        <section class="sitio-seccion sitio-alterna" id="instalar">
             <div class="sitio-ancho">
                 <h2>📲 Llévala en tu celular como una app</h2>
                 <p class="sitio-sub">Sin tiendas de apps ni descargas pesadas: queda un ícono en tu pantalla de inicio que la abre con un toque, a pantalla completa y aunque no haya señal en el juzgado.</p>
@@ -380,10 +461,10 @@ ${funciones.map(([ico, t, d, enlace]) => `                    <article class="si
             </div>
         </section>
 
-        <section class="sitio-seccion sitio-alterna" id="preguntas">
+        <section class="sitio-seccion" id="preguntas">
             <div class="sitio-ancho sitio-angosto">
                 <h2>Preguntas frecuentes</h2>
-${faqHTML(PREGUNTAS_INICIO)}
+${faqHTML(preguntas)}
             </div>
         </section>
 ` + pie();
@@ -588,6 +669,162 @@ ${faqHTML(PREGUNTAS_LABORAL)}
 </body>`);
 }
 
+// ==================== ESTRADOS LABORALES (TCA Y JUNTAS) ====================
+
+const PREGUNTAS_LABORALES = [
+    ['¿Dónde se publican los estrados del Tribunal de Conciliación y Arbitraje de Quintana Roo?',
+        'En la página de estrados de la Secretaría del Trabajo y Previsión Social de Quintana Roo (sag-styps.qroo.gob.mx), junto con los de la Junta Local y las Juntas Especiales de Conciliación y Arbitraje.'],
+    ['¿Por qué solo se puede revisar de 15 en 15 días?',
+        'Es el límite del sitio oficial: cada consulta acepta un rango de 15 días como máximo y pasa por reCAPTCHA. La herramienta parte el periodo que elijas en tramos de 15 días y los consulta uno tras otro, así que revisar un mes o un trimestre es un solo clic.'],
+    ['¿Se puede buscar por número de expediente?',
+        'El sitio oficial no busca por expediente, solo por unidad y fechas. El marcador junta todo lo publicado en el periodo y deja en la tabla únicamente las publicaciones de los expedientes que le indicas.'],
+    ['¿Funciona en el celular?',
+        'Sí. En computadora se arrastra el botón a la barra de marcadores; en iPhone y Android se guarda un marcador con el código que da la app y se abre desde la barra de direcciones estando en la página de estrados. La app explica los pasos para cada navegador.'],
+    ['¿Es seguro?',
+        'El marcador solo llena el formulario oficial como si lo hicieras a mano: la página ejecuta su propio reCAPTCHA en cada consulta. No se salta ninguna protección ni manda tus datos a ningún lado.']
+];
+
+function paginaLaborales(unidades) {
+    return cabeza({
+        ruta: '/estrados-laborales-quintana-roo/',
+        tituloPagina: 'Estrados del TCA y las Juntas de Conciliación de Quintana Roo',
+        descripcion: 'Revisa los estrados del Tribunal de Conciliación y Arbitraje y de las Juntas de Quintana Roo por periodos de 15 días, solo con lo publicado de tus expedientes.',
+        jsonld: [
+            migas({ nombre: 'Estrados del TCA y las Juntas', ruta: '/estrados-laborales-quintana-roo/' }),
+            faq(PREGUNTAS_LABORALES)
+        ]
+    }) + `
+        <section class="sitio-hero sitio-hero-chico">
+            <div class="sitio-ancho">
+                <nav class="sitio-migas" aria-label="Ruta"><a href="/">Inicio</a> › Estrados del TCA y las Juntas</nav>
+                <h1>Estrados del Tribunal de Conciliación y Arbitraje y de las Juntas de Quintana Roo</h1>
+                <p class="sitio-lead">Revisa de una sola vez lo publicado para tus expedientes laborales en el periodo que elijas. La herramienta consulta el sitio oficial de 15 en 15 días y te deja solo lo tuyo.</p>
+                <div class="sitio-hero-botones">
+                    <a class="btn btn-primary btn-lg" href="${APP}?tour=1#estrados-laborales">Revisar estrados laborales →</a>
+                </div>
+            </div>
+        </section>
+
+        <section class="sitio-seccion">
+            <div class="sitio-ancho">
+                <h2>Cómo funciona</h2>
+                <ol class="sitio-pasos">
+                    <li><strong>Elige la unidad, los expedientes y el periodo.</strong> Una fecha de inicio o de fin y cuántos periodos de 15 días quieres revisar.</li>
+                    <li><strong>Guarda el marcador en tu navegador.</strong> En computadora se arrastra a la barra de marcadores; en iPhone y Android se guarda con el código que da la app. Se hace una sola vez.</li>
+                    <li><strong>Ábrelo en la página oficial de estrados.</strong> Llena el formulario tramo por tramo, junta lo publicado y deja en la tabla solo tus expedientes.</li>
+                </ol>
+            </div>
+        </section>
+
+        <section class="sitio-seccion sitio-alterna">
+            <div class="sitio-ancho">
+                <h2>Unidades incluidas</h2>
+                <p class="sitio-sub">Las que publican estrados en el sitio de la Secretaría del Trabajo de Quintana Roo.</p>
+                <div class="sitio-directorio">
+                    <section>
+                        <h3>👷 Tribunal y Juntas de Conciliación y Arbitraje</h3>
+                        <ul>
+${unidades.map(u => `                            <li>${esc(u.nombre)} (${esc(u.clave)})</li>`).join('\n')}
+                        </ul>
+                    </section>
+                </div>
+                <p>¿Calculas una liquidación para el mismo juicio? Usa la <a href="/calculadora-finiquito-liquidacion/">calculadora de finiquito y liquidación</a>.</p>
+            </div>
+        </section>
+
+        <section class="sitio-seccion">
+            <div class="sitio-ancho sitio-angosto">
+                <h2>Preguntas frecuentes</h2>
+${faqHTML(PREGUNTAS_LABORALES)}
+            </div>
+        </section>
+` + pie();
+}
+
+// ==================== ESTUDIO DE VIABILIDAD DE MARCA ====================
+
+const PREGUNTAS_VIABILIDAD = (lim, planes) => [
+    ['¿Qué es un estudio de viabilidad de marca?',
+        'Es la búsqueda de antecedentes que se hace antes de solicitar el registro de una marca en el IMPI: marcas idénticas o parecidas, por escritura o por sonido, en la misma clase de Niza o en clases relacionadas, que podrían impedir el registro.'],
+    ['¿En qué bases del IMPI busca?',
+        'En MARCia (el buscador de similitud del IMPI), en la búsqueda fonética oficial de Marcanet, clase por clase, y en las gacetas de SIGA, donde aparecen solicitudes recién publicadas, renovaciones y caducidades.'],
+    ['¿Qué entrega el estudio?',
+        'Una sola lista de antecedentes sin repetidos, cada uno con su parecido por escritura y fonético, su clase, su vigencia y su titular; una clasificación del riesgo y un dictamen con observaciones y recomendaciones que puedes copiar o imprimir.'],
+    ['¿Cuántos estudios puedo hacer gratis?',
+        `El plan gratuito incluye ${lim.viabilidad.limite} estudios de viabilidad y ${lim.busqueda.limite} búsquedas al mes en MARCia, SIGA y Marcanet. Con Premium no hay límite: ${textoPlanes(planes)}.`],
+    ['¿Sustituye la opinión de un abogado?',
+        'No. Es una herramienta de apoyo: los umbrales son orientativos y la decisión final es del IMPI y del criterio profesional de quien asesora el registro.']
+];
+
+function paginaViabilidad(lim, planes) {
+    const preguntas = PREGUNTAS_VIABILIDAD(lim, planes);
+    return cabeza({
+        ruta: '/estudio-viabilidad-marca-impi/',
+        tituloPagina: 'Estudio de viabilidad de marca en el IMPI | Quintana Roo',
+        descripcion: 'Antes de registrar una marca, busca a la vez en MARCia, Marcanet y SIGA del IMPI: antecedentes parecidos por clase de Niza y un dictamen de riesgo en minutos.',
+        jsonld: [
+            {
+                '@context': 'https://schema.org',
+                '@type': 'WebApplication',
+                name: 'Estudio de viabilidad de marca',
+                url: SITIO + '/estudio-viabilidad-marca-impi/',
+                applicationCategory: 'BusinessApplication',
+                operatingSystem: 'Web',
+                inLanguage: 'es-MX',
+                offers: [
+                    { '@type': 'Offer', name: 'Plan gratuito', price: '0', priceCurrency: 'MXN', description: `${lim.viabilidad.limite} estudios de viabilidad` },
+                    ...planes.map(p => ({ '@type': 'Offer', name: `Premium ${p.nombre}`, price: String(p.precio), priceCurrency: 'MXN', description: 'Estudios de viabilidad sin límite' }))
+                ],
+                publisher: organizacion,
+                description: 'Búsqueda de antecedentes en MARCia, Marcanet y SIGA del IMPI, comparación por escritura y fonética por clase de Niza y dictamen de riesgo para registrar una marca.'
+            },
+            migas({ nombre: 'Estudio de viabilidad de marca', ruta: '/estudio-viabilidad-marca-impi/' }),
+            faq(preguntas)
+        ]
+    }) + `
+        <section class="sitio-hero sitio-hero-chico">
+            <div class="sitio-ancho">
+                <nav class="sitio-migas" aria-label="Ruta"><a href="/">Inicio</a> › Estudio de viabilidad de marca</nav>
+                <h1>Estudio de viabilidad de marca en el IMPI</h1>
+                <p class="sitio-lead">Escribe la marca y sus clases: la app busca a la vez en MARCia, Marcanet y SIGA, junta los antecedentes parecidos y te da un dictamen de riesgo antes de presentar la solicitud.</p>
+                <div class="sitio-hero-botones">
+                    <a class="btn btn-primary btn-lg" href="${APP}?tour=1#impi">Hacer un estudio gratis →</a>
+                </div>
+            </div>
+        </section>
+
+        <section class="sitio-seccion">
+            <div class="sitio-ancho">
+                <h2>Tres fuentes del IMPI, un solo dictamen</h2>
+                <ul class="sitio-lista">
+                    <li><strong>MARCia:</strong> marcas idénticas y parecidas en todas las clases, con el motor de similitud del IMPI, contadas clase por clase.</li>
+                    <li><strong>Marcanet:</strong> la búsqueda fonética oficial, clase por clase.</li>
+                    <li><strong>SIGA:</strong> lo publicado en las gacetas, incluidas solicitudes recientes que todavía pueden no verse en las otras.</li>
+                </ul>
+                <p>Cada antecedente se compara con tu propuesta por escritura y por cómo suena en español, por clase de Niza (la misma o una relacionada), por vigencia y por titular. Con eso se clasifica el riesgo y se arma el dictamen con observaciones y recomendaciones.</p>
+            </div>
+        </section>
+
+        <section class="sitio-seccion sitio-alterna">
+            <div class="sitio-ancho">
+                <h2>Más herramientas del IMPI en la app</h2>
+                <ul class="sitio-lista">
+                    <li><strong>Búsqueda en MARCia, SIGA y Marcanet</strong> por denominación, fonética, expediente, registro o titular, o en las tres a la vez.</li>
+                    <li><strong>Vigilancia de marcas:</strong> guarda búsquedas y recibe avisos cuando aparezcan publicaciones nuevas en las gacetas.</li>
+                    <li><strong>Gratis:</strong> ${lim.viabilidad.limite} estudios de viabilidad y ${lim.busqueda.limite} búsquedas al mes. <a href="/#planes">Ver planes Premium</a>.</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="sitio-seccion">
+            <div class="sitio-ancho sitio-angosto">
+                <h2>Preguntas frecuentes</h2>
+${faqHTML(preguntas)}
+            </div>
+        </section>
+` + pie();
+}
+
 // ==================== SITEMAP ====================
 
 function sitemap() {
@@ -595,6 +832,8 @@ function sitemap() {
         ['/', '1.0'],
         ['/calculadora-finiquito-liquidacion/', '0.9'],
         ['/estrados-tsj-quintana-roo/', '0.9'],
+        ['/estrados-laborales-quintana-roo/', '0.8'],
+        ['/estudio-viabilidad-marca-impi/', '0.8'],
         ['/expedientes-pjf-quintana-roo/', '0.8'],
         ['/docs/', '0.7']
     ];
@@ -615,11 +854,15 @@ ${urls.map(([u, p]) => `    <url>
 function generar() {
     const cat = juzgadosTSJ();
     const pjf = organosPJFQuintanaRoo();
+    const lim = limitesIMPI();
+    const planes = planesPremium();
     return {
-        'index.html': paginaInicio(cat, pjf),
+        'index.html': paginaInicio(cat, pjf, lim, planes),
         'estrados-tsj-quintana-roo/index.html': paginaEstrados(cat),
         'expedientes-pjf-quintana-roo/index.html': paginaPJF(pjf),
         'calculadora-finiquito-liquidacion/index.html': paginaCalculadora(),
+        'estrados-laborales-quintana-roo/index.html': paginaLaborales(unidadesLaborales()),
+        'estudio-viabilidad-marca-impi/index.html': paginaViabilidad(lim, planes),
         'sitemap.xml': sitemap()
     };
 }
