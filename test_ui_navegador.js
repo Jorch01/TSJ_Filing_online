@@ -1906,6 +1906,17 @@ async function probarCuotasIMPI(navegador) {
         await page.waitForTimeout(500);
         igual('cuotas: Configuración muestra lo usado', [await page.textContent('#limit-impi'), await page.textContent('#limit-viabilidad')], ['5 / 5', '2 / 2']);
         verificar('cuotas: y los planes nuevos', /3 meses[\s\S]*\$300 MXN[\s\S]*6 meses[\s\S]*\$530 MXN[\s\S]*1 año[\s\S]*\$1,000 MXN/.test(await page.textContent('#pricing-planes')));
+        // Se contrata por WhatsApp: el mensaje pide los datos de pago del plan
+        // elegido y lleva el ID de dispositivo para dar de alta la licencia.
+        const pedido = await page.evaluate(() => {
+            const a = document.querySelectorAll('#pricing-planes a')[1];
+            const u = new URL(a.href);
+            return { destino: u.origin + u.pathname, texto: u.searchParams.get('text'), dispositivo: obtenerDeviceId(), nueva: a.target };
+        });
+        igual('planes: el botón abre WhatsApp de ventas', [pedido.destino, pedido.nueva], ['https://wa.me/529981399930', '_blank']);
+        verificar('planes: con el plan elegido y la petición de datos de pago',
+            /plan Premium de 6 meses \(\$530 MXN\)/.test(pedido.texto) && /datos para el pago/.test(pedido.texto) && /comprobante/.test(pedido.texto), pedido.texto);
+        verificar('planes: y el ID de dispositivo', pedido.texto.includes('ID de dispositivo: ' + pedido.dispositivo), pedido.texto);
 
         // Con Premium no hay límite.
         igual('cuotas: con Premium no hay límite', await page.evaluate(async () => {
