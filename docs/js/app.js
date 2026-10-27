@@ -8222,13 +8222,16 @@ const PREMIUM_CONFIG = {
     // =========================================
 
     // Planes de licencia. Todo lo que muestra precios sale de aquí.
-    // enlacePago: el enlace de pago de Stripe de cada plan; vacío, el botón
-    // abre un correo para solicitarlo.
     planes: [
-        { id: '3m', meses: 3, precio: 300, nombre: '3 meses', enlacePago: '' },
-        { id: '6m', meses: 6, precio: 530, nombre: '6 meses', enlacePago: '' },
-        { id: '12m', meses: 12, precio: 1000, nombre: '1 año', enlacePago: '' }
+        { id: '3m', meses: 3, precio: 300, nombre: '3 meses' },
+        { id: '6m', meses: 6, precio: 530, nombre: '6 meses' },
+        { id: '12m', meses: 12, precio: 1000, nombre: '1 año' }
     ],
+    // Se contrata por WhatsApp: el plan elegido abre un chat con este número
+    // y un mensaje que pide los datos para el pago. El administrador los da,
+    // recibe el comprobante, da de alta la licencia en la hoja y manda el
+    // código de activación.
+    whatsappVentas: '529981399930',
     correoVentas: 'frida@empirica.mx',
     verificacionIntervalo: 7 // Días entre verificaciones periódicas
 };
@@ -8243,6 +8246,20 @@ function textoPrecioDesde() {
     return `desde ${_pesos(p.precio)} por ${p.nombre}`;
 }
 
+// El mensaje de WhatsApp para pedir los datos de pago de un plan (sin plan:
+// varias licencias). Lleva el ID de dispositivo para dar de alta la licencia.
+function enlaceSolicitudPremium(plan) {
+    const pedido = plan
+        ? `el plan Premium de ${plan.nombre} (${_pesos(plan.precio)})`
+        : 'varias licencias Premium para mi despacho';
+    let dispositivo = '';
+    try { dispositivo = obtenerDeviceId(); } catch (e) { /* sin almacenamiento */ }
+    const texto = `Hola, quiero contratar ${pedido} de TSJ Filing Online. ` +
+        '¿Me pueden enviar los datos para el pago? En cuanto pague les mando el comprobante por aquí.' +
+        (dispositivo ? `\n\nMi ID de dispositivo: ${dispositivo}` : '');
+    return `https://wa.me/${PREMIUM_CONFIG.whatsappVentas}?text=${encodeURIComponent(texto)}`;
+}
+
 // La tabla de planes de la sección Premium.
 function renderizarPlanesPremium() {
     const cont = document.getElementById('pricing-planes');
@@ -8253,19 +8270,17 @@ function renderizarPlanesPremium() {
         ${PREMIUM_CONFIG.planes.map((p, i) => {
             const mes = p.precio / p.meses;
             const ahorro = Math.round((1 - mes / base) * 100);
-            const enlace = p.enlacePago ||
-                `mailto:${PREMIUM_CONFIG.correoVentas}?subject=${encodeURIComponent('Plan Premium ' + p.nombre + ' (' + _pesos(p.precio) + ')')}`;
             const clase = i === PREMIUM_CONFIG.planes.length - 1 ? ' best' : (i === 1 ? ' popular' : '');
             return `<div class="pricing-row${clase}">
                 <span>${p.nombre}${ahorro > 0 ? `<small class="pricing-ahorro">ahorras ${ahorro}%</small>` : ''}</span>
                 <span>${_pesos(p.precio)}</span>
                 <span>${_pesos(Math.round(mes))}</span>
-                <span><a href="${enlace}" target="_blank" rel="noopener" class="btn btn-primary btn-xs">${p.enlacePago ? 'Comprar' : 'Solicitar'}</a></span>
+                <span><a href="${enlaceSolicitudPremium(p)}" target="_blank" rel="noopener" class="btn btn-primary btn-xs" title="Abre WhatsApp para pedir los datos de pago">💬 Elegir</a></span>
             </div>`;
         }).join('')}
         <div class="pricing-row">
             <span>Varias licencias</span><span>Precio especial</span><span>—</span>
-            <span><a href="mailto:${PREMIUM_CONFIG.correoVentas}?subject=${encodeURIComponent('Licencias Premium para un despacho')}" class="btn btn-secondary btn-xs">Contactar</a></span>
+            <span><a href="${enlaceSolicitudPremium(null)}" target="_blank" rel="noopener" class="btn btn-secondary btn-xs">💬 Contactar</a></span>
         </div>`;
 }
 

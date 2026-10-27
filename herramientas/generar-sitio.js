@@ -73,7 +73,13 @@ function planesPremium() {
     const js = fs.readFileSync(path.join(RAIZ, 'docs/js/app.js'), 'utf8');
     const m = /PREMIUM_CONFIG = \{[\s\S]*?planes: (\[[\s\S]*?\n    \])/.exec(js);
     if (!m) throw new Error('No se encontraron los planes Premium en docs/js/app.js');
-    return vm.runInNewContext('(' + m[1] + ')').map(p => ({ meses: p.meses, precio: p.precio, nombre: p.nombre }));
+    const wa = /whatsappVentas: '(\d+)'/.exec(js);
+    if (!wa) throw new Error('No se encontró el WhatsApp de ventas en docs/js/app.js');
+    return vm.runInNewContext('(' + m[1] + ')').map(p => ({ meses: p.meses, precio: p.precio, nombre: p.nombre,
+        // Igual que en la app: el plan se pide por WhatsApp.
+        whatsapp: `https://wa.me/${wa[1]}?text=` + encodeURIComponent(
+            `Hola, quiero contratar el plan Premium de ${p.nombre} (${pesos(p.precio)}) de TSJ Filing Online. ` +
+            '¿Me pueden enviar los datos para el pago? En cuanto pague les mando el comprobante por aquí.') }));
 }
 
 const pesos = (n) => '$' + n.toLocaleString('en-US') + ' MXN';
@@ -258,6 +264,8 @@ function textoPlanes(planes) {
 const PREGUNTAS_INICIO = (lim, planes) => [
     ['¿Cuánto cuesta TSJ Filing Online?',
         `Es gratis para empezar: hasta 10 expedientes con todas las funciones básicas, ${lim.busqueda.limite} búsquedas al mes en el IMPI y ${lim.viabilidad.limite} estudios de viabilidad de marca. Premium quita esos límites y sincroniza entre computadora y celular: ${textoPlanes(planes)}.`],
+    ['¿Cómo contrato Premium?',
+        'Eliges tu plan en la app o en esta página y se abre WhatsApp con el mensaje listo. Te enviamos los datos para el pago, nos mandas el comprobante por el mismo chat y te damos tu código de activación, que ingresas en Configuración.'],
     ['¿Necesito crear una cuenta?',
         'No. Abres la app en el navegador y empiezas a trabajar. Tus expedientes, notas y agenda se guardan en tu propio dispositivo.'],
     ['¿Qué juzgados de Quintana Roo incluye?',
@@ -402,7 +410,7 @@ ${funciones.map(([ico, t, d, enlace]) => `                    <article class="si
         <section class="sitio-seccion" id="planes">
             <div class="sitio-ancho">
                 <h2>Planes y precios</h2>
-                <p class="sitio-sub">Empieza gratis. Si necesitas más, Premium quita los límites y sincroniza tus datos entre computadora y celular.</p>
+                <p class="sitio-sub">Empieza gratis. Si necesitas más, Premium quita los límites y sincroniza tus datos entre computadora y celular. Eliges tu plan, te enviamos por WhatsApp los datos para el pago y, con tu comprobante, tu código de activación.</p>
                 <div class="sitio-funciones">
                     <article class="sitio-funcion">
                         <span class="sitio-funcion-icono">🆓</span>
@@ -425,7 +433,7 @@ ${planes.map(p => `                    <article class="sitio-funcion">
                             <li>Búsquedas en el IMPI y estudios de viabilidad sin límite</li>
                             <li>Sincronización entre dispositivos</li>
                         </ul>
-                        <a href="${APP}#config">Contratar desde la app →</a>
+                        <a href="${esc(p.whatsapp)}" target="_blank" rel="noopener">💬 Contratar por WhatsApp →</a>
                     </article>`).join('\n')}
                 </div>
             </div>
