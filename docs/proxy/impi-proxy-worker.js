@@ -21,13 +21,14 @@
 // entienden por las cabeceras X-IMPI-Client y X-IMPI-Session; un cliente viejo
 // contra este worker sigue funcionando (cae al Map en memoria, como antes),
 // pero no gana la recuperación de sesión hasta que se publique el sitio.
-// No hace falta ningún recurso extra de Cloudflare: no se usa KV ni Durable
-// Objects, así que el plan gratuito basta.
+// Las sesiones no necesitan recursos extra. Los límites del plan gratuito sí:
+// un KV namespace enlazado como CUOTAS y el secreto CUOTA_SECRETO (ver la
+// sección CUOTAS). Ambos caben en el plan gratuito de Cloudflare.
 // ============================================================
 
 // Sirve para confirmar, desde /health, que el worker publicado es el esperado.
 // Actualízala cuando el cambio valga la pena verificar tras desplegar.
-const WORKER_VERSION = '2026-07-30-sesion-cliente';
+const WORKER_VERSION = '2026-10-27-cuotas';
 
 const ALLOWED_ORIGINS = [
     'https://jorch01.github.io',
@@ -62,6 +63,149 @@ const sessions = new Map();
 
 const SESSION_HEADER = 'X-IMPI-Session';
 const CLIENT_HEADER = 'X-IMPI-Client';
+const CUOTA_HEADER = 'X-TSJ-Cuota';
+
+// ==================== CUOTAS (INICIO) ====================
+// Sin Premium, el IMPI se usa con límite: 2 estudios de viabilidad en total y
+// 5 búsquedas al mes. La cuenta se lleva AQUÍ, no en el navegador: borrar los
+// datos o abrir otro navegador no la reinicia.
+//
+// Cómo se reconoce a quien busca, sin cuentas ni registro:
+//   - la IP junto con una "huella amplia" del equipo (pantalla, zona horaria,
+//     núcleos, idioma, plataforma, pantalla táctil): es la misma en Chrome,
+//     Safari o Firefox de la misma computadora;
+//   - una "huella fina" (lo anterior más el navegador, la tarjeta gráfica y un
+//     dibujo de prueba) y el id de dispositivo de la app.
+// Se cuenta con cada una y manda la que más lleve. Nada de esto identifica a
+// la persona: se guardan solo resúmenes SHA-256.
+//
+// Antes de cada búsqueda la app pide permiso a /cuota; si queda cupo, el
+// proxy responde con un pase firmado y de vida corta (cabecera X-TSJ-Cuota)
+// sin el cual las rutas de búsqueda no responden. Así no basta con llamar al
+// proxy directamente para saltarse el límite.
+//
+// Necesita en Cloudflare (Settings → Variables / Bindings del worker):
+//   - un KV namespace con el nombre de enlace CUOTAS;
+//   - un secreto CUOTA_SECRETO (cualquier texto largo y aleatorio).
+// Sin ellos el worker funciona como antes, sin límites del lado del servidor
+// (la app sigue contando en el navegador).
+const CUOTAS = {
+    viabilidad: { limite: 2, periodo: 'siempre', vidaPase: 30 * 60 * 1000 },
+    busqueda: { limite: 5, periodo: 'mes', vidaPase: 10 * 60 * 1000 },
+    // Revisar las marcas vigiladas y las búsquedas guardadas en segundo plano:
+    // no gasta búsquedas, pero tiene un tope diario por si alguien lo usa
+    // para buscar sin límite.
+    vigilancia: { limite: 60, periodo: 'dia', vidaPase: 10 * 60 * 1000 }
+};
+// Las rutas que hacen una búsqueda nueva necesitan pase; paginar, ver un
+// detalle o pedir la sesión, no.
+const RUTAS_CON_PASE = ['/marcia/search', '/siga/search', '/marcanet/fonetica', '/marcanet/expediente', '/marcanet/registro', '/marcanet/titular'];
+const LICENCIAS_API = 'https://script.google.com/macros/s/AKfycbyK8kudH83BoBEN-NHLo7sPpdsIuqTdnusZcr08aRO_oXtv0frwzo8bpG9JWn9EoHbrLQ/exec';
+
+function cuotasActivas(env) {
+    return !!(env && env.CUOTAS && env.CUOTA_SECRETO);
+}
+
+async function sha256Hex(texto) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(texto)));
+    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function b64url(bytes) {
+    let s = '';
+    for (const b of bytes) s += String.fromCharCode(b);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function firmar(secreto, texto) {
+    const clave = await crypto.subtle.importKey('raw', new TextEncoder().encode(secreto), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    return b64url(new Uint8Array(await crypto.subtle.sign('HMAC', clave, new TextEncoder().encode(texto))));
+}
+
+async function crearPase(secreto, tipo, premium, ahora) {
+    const datos = b64url(new TextEncoder().encode(JSON.stringify({ t: tipo, p: !!premium, e: ahora + CUOTAS[tipo].vidaPase })));
+    return datos + '.' + await firmar(secreto, datos);
+}
+
+/** El pase si es auténtico y no ha vencido; si no, null. */
+async function leerPase(secreto, pase, ahora) {
+    if (!pase || typeof pase !== 'string' || pase.indexOf('.') < 0) return null;
+    const [datos, firma] = pase.split('.');
+    if (await firmar(secreto, datos) !== firma) return null;
+    try {
+        const s = atob(datos.replace(/-/g, '+').replace(/_/g, '/'));
+        const json = JSON.parse(decodeURIComponent(escape(s)));
+        return json.e > ahora && CUOTAS[json.t] ? json : null;
+    } catch (e) { return null; }
+}
+
+function periodoDe(tipo, ahora) {
+    const d = new Date(ahora);
+    if (CUOTAS[tipo].periodo === 'mes') return d.toISOString().slice(0, 7);
+    if (CUOTAS[tipo].periodo === 'dia') return d.toISOString().slice(0, 10);
+    return 'siempre';
+}
+
+/** Los resúmenes con los que se cuenta a quien busca. */
+async function identidades(ip, cuerpo) {
+    const h = (cuerpo && cuerpo.huella) || {};
+    const ids = [];
+    if (ip && h.amplia) ids.push('a:' + await sha256Hex('ip+amplia|' + ip + '|' + h.amplia));
+    if (h.fina) ids.push('f:' + await sha256Hex('fina|' + h.fina));
+    if (cuerpo && cuerpo.dispositivo) ids.push('d:' + await sha256Hex('disp|' + cuerpo.dispositivo));
+    // Sin ningún dato del equipo, al menos la IP.
+    if (!ids.length && ip) ids.push('i:' + await sha256Hex('ip|' + ip));
+    return ids;
+}
+
+/** ¿La licencia es Premium vigente? Se pregunta a la API de licencias y se recuerda unas horas. */
+async function esPremium(env, licencia, consultar) {
+    if (!licencia || !licencia.codigo || !licencia.dispositivoId) return false;
+    const clave = 'lic:' + await sha256Hex(licencia.codigo + '|' + licencia.dispositivoId);
+    const guardada = await env.CUOTAS.get(clave);
+    if (guardada) return guardada === '1';
+    let valido = false;
+    try {
+        const r = await consultar(LICENCIAS_API + '?action=verificar&codigo=' + encodeURIComponent(licencia.codigo) +
+            '&dispositivo_id=' + encodeURIComponent(licencia.dispositivoId));
+        const d = await r.json();
+        valido = !!(d && d.valido);
+    } catch (e) { valido = false; }
+    await env.CUOTAS.put(clave, valido ? '1' : '0', { expirationTtl: valido ? 6 * 3600 : 600 });
+    return valido;
+}
+
+/**
+ * POST /cuota { tipo, huella: { amplia, fina }, dispositivo, licencia? }
+ * → { servidor, permitido, premium, usados, limite, pase }
+ */
+async function atenderCuota(env, ip, cuerpo, ahora, consultar) {
+    const tipo = cuerpo && cuerpo.tipo;
+    if (!CUOTAS[tipo]) return { status: 400, datos: { error: 'Tipo de cuota desconocido' } };
+    if (!cuotasActivas(env)) return { status: 200, datos: { servidor: false, permitido: true } };
+    const { limite } = CUOTAS[tipo];
+    if (await esPremium(env, cuerpo.licencia, consultar)) {
+        return { status: 200, datos: { servidor: true, permitido: true, premium: true, limite: null, usados: null, pase: await crearPase(env.CUOTA_SECRETO, tipo, true, ahora) } };
+    }
+    const periodo = periodoDe(tipo, ahora);
+    const claves = (await identidades(ip, cuerpo)).map(id => 'c:' + tipo + ':' + periodo + ':' + id);
+    if (!claves.length) return { status: 400, datos: { error: 'Sin datos para contar' } };
+    const valores = await Promise.all(claves.map(k => env.CUOTAS.get(k)));
+    const usados = Math.max(0, ...valores.map(v => parseInt(v, 10) || 0));
+    if (usados >= limite) return { status: 200, datos: { servidor: true, permitido: false, usados, limite } };
+    const nuevo = usados + 1;
+    const ttl = CUOTAS[tipo].periodo === 'mes' ? 40 * 86400 : CUOTAS[tipo].periodo === 'dia' ? 2 * 86400 : undefined;
+    await Promise.all(claves.map(k => env.CUOTAS.put(k, String(nuevo), ttl ? { expirationTtl: ttl } : undefined)));
+    return { status: 200, datos: { servidor: true, permitido: true, usados: nuevo, limite, pase: await crearPase(env.CUOTA_SECRETO, tipo, false, ahora) } };
+}
+
+/** null si la ruta puede seguir; si no, el motivo para responder 402. */
+async function revisarPase(env, path, request, ahora) {
+    if (!cuotasActivas(env) || !RUTAS_CON_PASE.includes(path)) return null;
+    const pase = await leerPase(env.CUOTA_SECRETO, request.headers.get(CUOTA_HEADER), ahora);
+    return pase ? null : 'Se alcanzó el límite de búsquedas gratuitas o el permiso venció. Activa Premium para seguir buscando.';
+}
+// ==================== CUOTAS (FIN) ====================
 const SESSION_TTL_MS = 30 * 60 * 1000;
 
 // El token vuelve del cliente, así que se valida antes de reenviarlo al IMPI:
@@ -171,6 +315,18 @@ export default {
         try {
             let response;
 
+            // ===== Cuotas =====
+            if (path === '/cuota' && request.method === 'POST') {
+                let cuerpo = {};
+                try { cuerpo = await request.json(); } catch (e) { /* cuerpo vacío */ }
+                const r = await atenderCuota(env, request.headers.get('CF-Connecting-IP') || '', cuerpo, Date.now(), (u) => fetch(u, { redirect: 'follow' }));
+                return addCORSHeaders(new Response(JSON.stringify(r.datos), { status: r.status, headers: { 'Content-Type': 'application/json' } }), origin);
+            }
+            const sinPase = await revisarPase(env, path, request, Date.now());
+            if (sinPase) {
+                return addCORSHeaders(new Response(JSON.stringify({ error: sinPase, cuota: true }), { status: 402, headers: { 'Content-Type': 'application/json' } }), origin);
+            }
+
             // ===== Rutas MARCia =====
             if (path === '/marcia/csrf') {
                 response = await handleMarciaCsrf(request);
@@ -214,6 +370,7 @@ export default {
                     status: 'ok',
                     version: WORKER_VERSION,
                     services: ['marcia', 'siga', 'marcanet'],
+                    cuotas: cuotasActivas(env),
                     timestamp: new Date().toISOString()
                 }), { headers: { 'Content-Type': 'application/json' } });
             }
@@ -1771,7 +1928,7 @@ function handleCORS(request) {
         headers: {
             'Access-Control-Allow-Origin': isOriginAllowed(origin) ? origin : '',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Accept, ' + SESSION_HEADER + ', ' + CLIENT_HEADER,
+            'Access-Control-Allow-Headers': 'Content-Type, Accept, ' + SESSION_HEADER + ', ' + CLIENT_HEADER + ', ' + CUOTA_HEADER,
             'Access-Control-Max-Age': '86400'
         }
     });
@@ -1781,7 +1938,7 @@ function addCORSHeaders(response, origin) {
     const newHeaders = new Headers(response.headers);
     newHeaders.set('Access-Control-Allow-Origin', origin || '*');
     newHeaders.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    newHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Accept, ' + SESSION_HEADER + ', ' + CLIENT_HEADER);
+    newHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Accept, ' + SESSION_HEADER + ', ' + CLIENT_HEADER + ', ' + CUOTA_HEADER);
     // Sin esto el navegador no deja al cliente leer la sesión actualizada.
     newHeaders.set('Access-Control-Expose-Headers', SESSION_HEADER);
 

@@ -1843,6 +1843,104 @@ async function probarEstradosLaborales(navegador) {
     }
 }
 
+// Límites del plan gratuito en el IMPI (cuotas-impi.js): 5 búsquedas al mes y
+// 2 estudios de viabilidad. Primero sin cuotas en el proxy (cuenta local que
+// no se borra), luego con un proxy que lleva la cuenta (otro navegador del
+// mismo equipo) y que exige el pase.
+async function probarCuotasIMPI(navegador) {
+    let servidor = { servidor: false, permitido: true };
+    const recibidos = [];
+    const preparar = async (contexto) => {
+        await contexto.route('**/cuota', async (r) => {
+            recibidos.push(JSON.parse(r.request().postData() || '{}'));
+            r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(servidor) });
+        });
+    };
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, locale: 'es-MX' });
+    await preparar(contexto);
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    const listo = (p) => p.waitForFunction(() => window.CUOTAS_IMPI && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+    const autorizar = (p, tipo) => p.evaluate((t) => CUOTAS_IMPI.autorizar(t), tipo);
+    const modal = (p) => p.evaluate(() => document.getElementById('modal-overlay').classList.contains('active') ? document.getElementById('modal-body').textContent : '');
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await listo(page);
+        await page.waitForTimeout(800);
+        const cinco = [];
+        for (let i = 0; i < 5; i++) cinco.push(await autorizar(page, 'busqueda'));
+        igual('cuotas: las 5 búsquedas del mes se permiten', cinco, [true, true, true, true, true]);
+        igual('cuotas: la sexta no', await autorizar(page, 'busqueda'), false);
+        verificar('cuotas: y avisa con la ventana de Premium', /5 búsquedas del IMPI de este mes/.test(await modal(page)) && /desde \$300 MXN por 3 meses/.test(await modal(page)));
+        verificar('cuotas: la huella del equipo viaja al proxy', recibidos.length === 5 && recibidos.every(c => /^[0-9a-f]{64}$/.test(c.huella.amplia) && /^[0-9a-f]{64}$/.test(c.huella.fina) && c.tipo === 'busqueda'));
+        await page.evaluate(() => cerrarModal());
+
+        // Borrar el almacén del navegador no reinicia la cuenta.
+        await page.evaluate(() => localStorage.clear());
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await listo(page);
+        igual('cuotas: borrar el almacén del navegador no reinicia la cuenta', await autorizar(page, 'busqueda'), false);
+        await page.evaluate(() => cerrarModal());
+
+        // La búsqueda bloqueada no llega al proxy.
+        const llamadas = await page.evaluate(async () => {
+            window.__llamadas = [];
+            window.proxyFetch = async (ruta) => { window.__llamadas.push(ruta); return { results: [], items: [] }; };
+            navegarA('impi');
+            document.getElementById('siga-query').value = 'nike';
+            await buscarSIGA();
+            cerrarModal();
+            return window.__llamadas;
+        });
+        igual('cuotas: sin cupo, la búsqueda no sale', llamadas, []);
+
+        // Viabilidad: 2 para siempre.
+        igual('cuotas: dos estudios de viabilidad', [await autorizar(page, 'viabilidad'), await autorizar(page, 'viabilidad')], [true, true]);
+        igual('cuotas: el tercero no', await autorizar(page, 'viabilidad'), false);
+        verificar('cuotas: y lo explica', /2 estudios de viabilidad gratuitos/.test(await modal(page)));
+        await page.evaluate(() => cerrarModal());
+
+        // En Configuración se ve lo usado.
+        await page.evaluate(() => { navegarA('config'); actualizarUIPremium(); });
+        await page.waitForTimeout(500);
+        igual('cuotas: Configuración muestra lo usado', [await page.textContent('#limit-impi'), await page.textContent('#limit-viabilidad')], ['5 / 5', '2 / 2']);
+        verificar('cuotas: y los planes nuevos', /3 meses[\s\S]*\$300 MXN[\s\S]*6 meses[\s\S]*\$530 MXN[\s\S]*1 año[\s\S]*\$1,000 MXN/.test(await page.textContent('#pricing-planes')));
+
+        // Con Premium no hay límite.
+        igual('cuotas: con Premium no hay límite', await page.evaluate(async () => {
+            estadoPremium.activo = true; estadoPremium.codigo = 'LIC'; estadoPremium.dispositivoId = 'D';
+            const r = await CUOTAS_IMPI.autorizar('busqueda');
+            estadoPremium.activo = false;
+            return r;
+        }), true);
+        verificar('cuotas: y el proxy recibe la licencia para verificarla', recibidos[recibidos.length - 1].licencia && recibidos[recibidos.length - 1].licencia.codigo === 'LIC');
+
+        // Otro navegador del mismo equipo: el proxy ya lleva 5.
+        const otro = await navegador.newContext({ viewport: { width: 1280, height: 900 }, locale: 'es-MX' });
+        await preparar(otro);
+        const p2 = await otro.newPage();
+        await p2.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await listo(p2);
+        servidor = { servidor: true, permitido: false, usados: 5, limite: 5 };
+        igual('cuotas: en otro navegador, si el proxy ya lleva 5, no se permite', await autorizar(p2, 'busqueda'), false);
+        await p2.evaluate(() => cerrarModal());
+        igual('cuotas: y la cuenta local se pone al día', await p2.evaluate(async () => (await CUOTAS_IMPI.resumen()).busqueda.usados), 5);
+
+        // Con cupo, el pase viaja en las búsquedas; un 402 del proxy avisa.
+        servidor = { servidor: true, permitido: true, usados: 1, limite: 5, pase: 'PASE.FIRMA' };
+        const cabeceras = [];
+        await otro.route('**/siga/search', (r) => { cabeceras.push(r.request().headers()['x-tsj-cuota']); r.fulfill({ status: 402, contentType: 'application/json', body: '{"error":"sin pase","cuota":true}' }); });
+        await p2.evaluate(async () => { await CUOTAS_IMPI.autorizar('viabilidad'); try { await proxyFetch('/siga/search', { method: 'POST', body: '{}' }); } catch (e) { /* 402 */ } });
+        igual('cuotas: el pase del proxy viaja en la búsqueda', cabeceras, ['PASE.FIRMA']);
+        verificar('cuotas: si el proxy dice que no hay cupo (402), se avisa', /Límite gratuito|búsquedas del IMPI/.test(await p2.textContent('#modal-titulo') + await modal(p2)));
+        await otro.close();
+        igual('cuotas: sin errores', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
 async function probarEstadisticas(navegador) {
     const contexto = await navegador.newContext({ acceptDownloads: true, viewport: { width: 1280, height: 900 },
         locale: 'es-MX', timezoneId: 'America/Cancun' });
@@ -1996,6 +2094,8 @@ async function probarEstadisticas(navegador) {
  */
 async function probarViabilidadMarca(navegador) {
     const contexto = await navegador.newContext({ acceptDownloads: true, viewport: { width: 1280, height: 900 }, locale: 'es-MX' });
+    // Las cuotas se piden al proxy real: aquí se simula uno sin límites activados.
+    await contexto.route('**/cuota', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ servidor: false, permitido: true }) }));
     const page = await contexto.newPage();
     const errores = [];
     page.on('pageerror', e => errores.push(e.message));
@@ -3730,6 +3830,9 @@ async function main() {
 
         // ---- Estudio de viabilidad de marca (IMPI) ----
         await probarViabilidadMarca(navegador);
+
+        // ---- Límites del plan gratuito en el IMPI ----
+        await probarCuotasIMPI(navegador);
 
         // ---- Recorrido guiado y páginas públicas ----
         await probarRecorridoGuiado(navegador);

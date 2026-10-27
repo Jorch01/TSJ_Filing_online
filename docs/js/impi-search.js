@@ -127,6 +127,9 @@ async function proxyFetch(path, options) {
         'X-IMPI-Client': obtenerClientId()
     };
     if (impiSessionToken) headers['X-IMPI-Session'] = impiSessionToken;
+    // El pase del plan gratuito (cuotas-impi.js): sin él, el proxy no busca.
+    var paseCuota = typeof CUOTAS_IMPI !== 'undefined' ? CUOTAS_IMPI.pase() : null;
+    if (paseCuota) headers['X-TSJ-Cuota'] = paseCuota;
 
     var init = Object.assign({}, options);
     init.headers = Object.assign(headers, (options && options.headers) || {});
@@ -137,12 +140,24 @@ async function proxyFetch(path, options) {
     var sesionActualizada = resp.headers.get('X-IMPI-Session');
     if (sesionActualizada) impiSessionToken = sesionActualizada;
 
+    if (resp.status === 402 && typeof CUOTAS_IMPI !== 'undefined') {
+        CUOTAS_IMPI.agotado();
+        throw new Error('Límite del plan gratuito alcanzado');
+    }
     if (!resp.ok) {
         var errData;
         try { errData = await resp.json(); } catch (e) { errData = { error: 'HTTP ' + resp.status }; }
         throw new Error(errData.error || 'HTTP ' + resp.status);
     }
     return resp.json();
+}
+
+// Antes de una búsqueda nueva: ¿queda cupo en el plan gratuito? (cuotas-impi.js)
+// opts.cuotaAutorizada: ya se pidió (buscar en las 3 cuenta una sola vez).
+async function autorizarBusquedaIMPI(opts, tipo) {
+    if (opts && opts.cuotaAutorizada) return true;
+    if (typeof CUOTAS_IMPI === 'undefined') return true;
+    return CUOTAS_IMPI.autorizar(tipo || 'busqueda', { silencioso: tipo === 'vigilancia' });
 }
 
 function mostrarErrorProxy() {
@@ -219,6 +234,8 @@ async function buscarMARCia(opts) {
             if (!payload) return false;
         }
     }
+
+    if (!(await autorizarBusquedaIMPI(opts))) return false;
 
     marciaState.searching = true;
     marciaState.lastError = null;
@@ -858,6 +875,8 @@ async function buscarSIGA(opts) {
         if (!opts.silencioso) mostrarToast('Ingresa un término de búsqueda', 'warning');
         return false;
     }
+
+    if (!(await autorizarBusquedaIMPI(opts))) return false;
 
     var area = document.getElementById('siga-area').value;
     var fechaDesde = document.getElementById('siga-fecha-desde').value || '';
@@ -1649,6 +1668,8 @@ async function verificarBusquedaGuardada(id) {
     if (!saved) return null;
 
     var tool = saved.tool || 'siga';
+    // Revisar lo guardado no gasta búsquedas, pero necesita el pase del proxy.
+    await autorizarBusquedaIMPI({}, 'vigilancia');
     try {
         var resultado;
         if (tool === 'siga') {
@@ -1808,6 +1829,9 @@ async function buscarEnLas3() {
     var query = queryInput ? queryInput.value.trim() : '';
     if (!query) { mostrarToast('Ingresa un término de búsqueda', 'warning'); return; }
 
+    // Las 3 juntas cuentan como una sola búsqueda del plan gratuito.
+    if (!(await autorizarBusquedaIMPI({}))) return;
+
     // El spinner se mantiene tomado durante toda la operación: cada búsqueda
     // lo suelta al terminar, pero este contador evita que se apague antes.
     mostrarCargandoIMPI();
@@ -1829,9 +1853,9 @@ async function buscarEnLas3() {
     var acuerdos;
     try {
         acuerdos = await Promise.allSettled([
-            buscarMARCia({ silencioso: true }),
-            buscarMarcanet({ silencioso: true }),
-            buscarSIGA({ silencioso: true })
+            buscarMARCia({ silencioso: true, cuotaAutorizada: true }),
+            buscarMarcanet({ silencioso: true, cuotaAutorizada: true }),
+            buscarSIGA({ silencioso: true, cuotaAutorizada: true })
         ]);
     } finally {
         ocultarCargandoIMPI();
@@ -1928,6 +1952,10 @@ function toggleMarcanetMode(mode) {
 async function buscarMarcanet(opts) {
     opts = opts || {};
     if (marcanetState.searching) return false;
+    // Solo cuenta si hay algo que buscar: un campo vacío se avisa abajo sin gastar.
+    var campoModo = { fonetica: 'mcn-denominacion', expediente: 'mcn-num-expediente', registro: 'mcn-num-registro', titular: 'mcn-titular' }[marcanetState.searchMode];
+    var valorModo = campoModo ? ((document.getElementById(campoModo) || {}).value || '').trim() : '';
+    if (valorModo && !(await autorizarBusquedaIMPI(opts))) return false;
     marcanetState.searching = true;
     marcanetState.lastError = null;
 
