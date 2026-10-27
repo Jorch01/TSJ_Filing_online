@@ -2101,6 +2101,7 @@ textarea:focus {
 .pricing-row:last-child {
     border-bottom: none;
 }
+.pricing-ahorro { display: block; font-size: 0.7rem; color: var(--success); font-weight: 600; }
 .pricing-row.header {
     background: var(--bg-tertiary);
     font-weight: 600;

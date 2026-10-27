@@ -125,7 +125,7 @@ function extraerDeclaracion(fuente, nombre, archivo) {
 }
 
 const NECESARIO_DE_APP = [
-    'PREMIUM_CONFIG',
+    'PREMIUM_CONFIG', '_pesos', 'textoPrecioDesde',
     // Template
     'TEMPLATE_EJEMPLOS', 'TEMPLATE_COLUMNAS', '_csvCampo',
     '_catalogoTSJParaTemplate', '_catalogoTiposAsuntoParaTemplate',

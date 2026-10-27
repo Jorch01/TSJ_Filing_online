@@ -466,6 +466,14 @@ const SECCIONES_ENLAZABLES = ['inicio', 'expedientes', 'calendario', 'pendientes
 window.addEventListener('load', () => {
     const seccion = (location.hash || '').slice(1);
     if (SECCIONES_ENLAZABLES.includes(seccion)) setTimeout(() => navegarA(seccion), 300);
+    // La ventana de los estrados laborales (TCA y Juntas) no es una página:
+    // se abre sobre Tribunales.
+    if (seccion === 'estrados-laborales') {
+        setTimeout(() => {
+            navegarA('busqueda');
+            if (typeof ESTRADOS_LABORALES !== 'undefined') ESTRADOS_LABORALES.abrir();
+        }, 300);
+    }
 });
 
 // ==================== BÚSQUEDA RÁPIDA DE EXPEDIENTES (INICIO, SOLO MÓVIL) ====================
@@ -5495,7 +5503,7 @@ async function importarDatos(event) {
                 .sort((a, b) => new Date(b.fechaModificacion || b.fechaCreacion || 0) - new Date(a.fechaModificacion || a.fechaCreacion || 0))
                 .slice(0, PREMIUM_CONFIG.limiteExpedientes);
 
-            advertenciaPremium = `\n\n⚠️ CUENTA GRATUITA: Solo se importarán los ${PREMIUM_CONFIG.limiteExpedientes} expedientes más recientes de ${totalExpedientes} totales.\n\nActiva Premium ($${PREMIUM_CONFIG.precioMensual} MXN/mes) para importar todos tus expedientes.`;
+            advertenciaPremium = `\n\n⚠️ CUENTA GRATUITA: Solo se importarán los ${PREMIUM_CONFIG.limiteExpedientes} expedientes más recientes de ${totalExpedientes} totales.\n\nActiva Premium (${textoPrecioDesde()}) para importar todos tus expedientes.`;
         }
 
         const mensajeConfirm = esPremium
@@ -5550,7 +5558,7 @@ function mostrarModalAdvertenciaPremium(totalOriginal, totalImportado) {
             <p>Se importaron los <strong>${totalImportado} expedientes más recientes</strong>.</p>
             <div class="premium-cta" style="margin-top: 15px; padding: 15px; background: linear-gradient(135deg, #ffd700, #ffaa00); border-radius: 8px;">
                 <p style="margin: 0; color: #333;"><strong>¿Necesitas todos tus expedientes?</strong></p>
-                <p style="margin: 5px 0 0; color: #333;">Activa Premium por solo <strong>$${PREMIUM_CONFIG.precioMensual} MXN/mes</strong></p>
+                <p style="margin: 5px 0 0; color: #333;">Activa Premium <strong>${textoPrecioDesde()}</strong></p>
             </div>
             <p style="margin-top: 15px; font-size: 12px; color: #888;">
                 Cada licencia es válida para <strong>un dispositivo</strong>.<br>
@@ -6308,7 +6316,7 @@ async function _aplicarLimitePlanAImportacion(lista) {
         lista: lista.slice(0, cupo),
         aviso: `\n\n⚠️ CUENTA GRATUITA: solo se importarán ${cupo} de ${lista.length} expedientes ` +
                `(límite de ${PREMIUM_CONFIG.limiteExpedientes} y ya tienes ${yaRegistrados}).\n\n` +
-               `Activa Premium ($${PREMIUM_CONFIG.precioMensual} MXN/mes) para importar todos.`
+               `Activa Premium (${textoPrecioDesde()}) para importar todos.`
     };
 }
 
@@ -8213,9 +8221,53 @@ const PREMIUM_CONFIG = {
     apiUrl: 'https://script.google.com/macros/s/AKfycbyK8kudH83BoBEN-NHLo7sPpdsIuqTdnusZcr08aRO_oXtv0frwzo8bpG9JWn9EoHbrLQ/exec',
     // =========================================
 
-    precioMensual: 35,
+    // Planes de licencia. Todo lo que muestra precios sale de aquí.
+    // enlacePago: el enlace de pago de Stripe de cada plan; vacío, el botón
+    // abre un correo para solicitarlo.
+    planes: [
+        { id: '3m', meses: 3, precio: 300, nombre: '3 meses', enlacePago: '' },
+        { id: '6m', meses: 6, precio: 530, nombre: '6 meses', enlacePago: '' },
+        { id: '12m', meses: 12, precio: 1000, nombre: '1 año', enlacePago: '' }
+    ],
+    correoVentas: 'frida@empirica.mx',
     verificacionIntervalo: 7 // Días entre verificaciones periódicas
 };
+
+function _pesos(n) {
+    return '$' + Number(n).toLocaleString('es-MX', { maximumFractionDigits: 0 }) + ' MXN';
+}
+
+// "desde $300 MXN por 3 meses": para los avisos de límite.
+function textoPrecioDesde() {
+    const p = PREMIUM_CONFIG.planes[0];
+    return `desde ${_pesos(p.precio)} por ${p.nombre}`;
+}
+
+// La tabla de planes de la sección Premium.
+function renderizarPlanesPremium() {
+    const cont = document.getElementById('pricing-planes');
+    if (!cont) return;
+    const base = PREMIUM_CONFIG.planes[0].precio / PREMIUM_CONFIG.planes[0].meses;
+    cont.innerHTML = `
+        <div class="pricing-row header"><span>Plan</span><span>Precio</span><span>Al mes</span><span>Acción</span></div>
+        ${PREMIUM_CONFIG.planes.map((p, i) => {
+            const mes = p.precio / p.meses;
+            const ahorro = Math.round((1 - mes / base) * 100);
+            const enlace = p.enlacePago ||
+                `mailto:${PREMIUM_CONFIG.correoVentas}?subject=${encodeURIComponent('Plan Premium ' + p.nombre + ' (' + _pesos(p.precio) + ')')}`;
+            const clase = i === PREMIUM_CONFIG.planes.length - 1 ? ' best' : (i === 1 ? ' popular' : '');
+            return `<div class="pricing-row${clase}">
+                <span>${p.nombre}${ahorro > 0 ? `<small class="pricing-ahorro">ahorras ${ahorro}%</small>` : ''}</span>
+                <span>${_pesos(p.precio)}</span>
+                <span>${_pesos(Math.round(mes))}</span>
+                <span><a href="${enlace}" target="_blank" rel="noopener" class="btn btn-primary btn-xs">${p.enlacePago ? 'Comprar' : 'Solicitar'}</a></span>
+            </div>`;
+        }).join('')}
+        <div class="pricing-row">
+            <span>Varias licencias</span><span>Precio especial</span><span>—</span>
+            <span><a href="mailto:${PREMIUM_CONFIG.correoVentas}?subject=${encodeURIComponent('Licencias Premium para un despacho')}" class="btn btn-secondary btn-xs">Contactar</a></span>
+        </div>`;
+}
 
 // Estado Premium
 let estadoPremium = {
@@ -8419,7 +8471,30 @@ async function actualizarUIPremium() {
 
         // Actualizar barras de límite
         actualizarBarrasLimite(numExpedientes, numBusquedas);
+        actualizarLimitesIMPIEnPantalla();
     }
+    renderizarPlanesPremium();
+}
+
+// Las búsquedas del IMPI y los estudios de viabilidad que van (cuotas-impi.js).
+async function actualizarLimitesIMPIEnPantalla() {
+    if (typeof CUOTAS_IMPI === 'undefined') return;
+    const r = await CUOTAS_IMPI.resumen();
+    const pintar = (idTexto, idBarra, d) => {
+        const t = document.getElementById(idTexto);
+        const b = document.getElementById(idBarra);
+        if (t) {
+            t.textContent = `${d.usados} / ${d.limite}`;
+            t.classList.toggle('limit-reached', d.usados >= d.limite);
+        }
+        if (b) {
+            const pct = Math.min((d.usados / d.limite) * 100, 100);
+            b.style.width = `${pct}%`;
+            b.className = 'limit-fill' + (pct >= 100 ? ' danger' : pct >= 70 ? ' warning' : '');
+        }
+    };
+    pintar('limit-impi', 'limit-fill-impi', r.busqueda);
+    pintar('limit-viabilidad', 'limit-fill-viabilidad', r.viabilidad);
 }
 
 // Actualizar barras de límite
@@ -8507,7 +8582,7 @@ function mostrarModalLimite(tipo) {
             <div class="limit-warning-icon">🔒</div>
             <h3>Has alcanzado el límite gratuito</h3>
             <p>El plan gratuito permite hasta ${limite} ${tipo === 'expedientes' ? 'expedientes' : 'búsquedas globales'}.</p>
-            <p>Actualiza a Premium por solo <strong>$${PREMIUM_CONFIG.precioMensual} MXN/mes</strong> para disfrutar de acceso ilimitado.</p>
+            <p>Actualiza a Premium <strong>${textoPrecioDesde()}</strong> para disfrutar de acceso ilimitado.</p>
         </div>
     `;
     document.getElementById('modal-footer').innerHTML = `

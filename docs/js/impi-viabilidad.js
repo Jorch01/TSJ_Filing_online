@@ -972,8 +972,11 @@
             toast('El servicio de búsqueda IMPI no está disponible en este momento.', 'warning');
             return;
         }
-
+        // Sin Premium hay 2 estudios en total (cuotas-impi.js). Se marca antes
+        // de preguntar para que un doble clic no gaste dos.
         ui.ejecutando = true;
+        if (global.CUOTAS_IMPI && !(await global.CUOTAS_IMPI.autorizar('viabilidad'))) { ui.ejecutando = false; return; }
+
         const boton = $('vb-ejecutar');
         boton.disabled = true;
         boton.textContent = '⏳ Consultando al IMPI…';
