@@ -348,6 +348,23 @@ console.log('\nUn caso real: lunafardo');
 
     igual('los titulares de MARCia llegan sin espacios de más', V.desdeMARCia(marcia('RM200700879084', 'L LUNFARDO', 'REGISTRADO',
         { owners: ['RAFAEL TABLADO RASCON  ', '  '] })).titulares, ['RAFAEL TABLADO RASCON']);
+
+    // Con 60 resultados de Marcanet (paginados) aparecieron casos nuevos.
+    const amp = V.desdeMarcanet({ 'Denominación': 'LUNA &amp; FRIDA', 'Expediente': '2650560', 'Clase': '43', 'Titular': 'RUIZ &amp; TORRES' });
+    igual('Marcanet manda el texto de su HTML: se lee «LUNA & FRIDA»', [amp.titulo, amp.titulares], ['LUNA & FRIDA', ['RUIZ & TORRES']]);
+    verificar('empezar con LUN- no basta: «LUNA & FRIDA» no llega a riesgo medio en la misma clase',
+        V.compararMarcas('lunafardo', 'LUNA & FRIDA', [43]).puntaje < 65, JSON.stringify(V.compararMarcas('lunafardo', 'LUNA & FRIDA', [43])));
+    verificar('pero «LUNA PHARMA» suena parecido de verdad (LUNA-FAR-MA): riesgo alto en la misma clase',
+        V.compararMarcas('lunafardo', 'LUNA PHARMA', [43]).puntaje >= 80, JSON.stringify(V.compararMarcas('lunafardo', 'LUNA PHARMA', [43])));
+    const pharma = (exp, clase, ficha) => ({ fila: fila(9, 'LUNA PHARMA', exp, '', clase, 'PHARMA GBC SAPI DE CV'),
+        ficha: { 'Fecha de presentación': '07/01/2025', 'Denominación': 'LUNA PHARMA', ...ficha } });
+    const p43 = pharma('3295484', '35 36 43', { '35Edición 12 del Clasificador de Niza': 'PUBLICIDAD; GESTIÓN DE NEGOCIOS COMERCIALES.' });
+    const p39 = pharma('3295486', '39', { '39Edición 12 del Clasificador de Niza': 'TRANSPORTE; ORGANIZACIÓN DE VIAJES.' });
+    const conPharma = V.analizar(entrada, { marcia: [], marcanet: [{ clase: null, resultados: [p43.fila, p39.fila] }], siga: [], fuentes,
+        detalles: { 3295484: p43.ficha, 3295486: p39.ficha } }, AHORA);
+    const a43 = conPharma.antecedentes.find(a => a.expediente === '3295484'), a39 = conPharma.antecedentes.find(a => a.expediente === '3295486');
+    igual('lo que ampara: si la ficha solo trae otra clase (35), no se muestra en lugar de la 43', a43.ampara, '');
+    igual('y el de una clase relacionada (39) sí', a39.ampara, '39: TRANSPORTE; ORGANIZACIÓN DE VIAJES.');
 }
 
 console.log(`\n${pasadas} pasadas, ${fallos.length} fallidas`);
