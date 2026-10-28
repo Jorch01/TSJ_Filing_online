@@ -2139,6 +2139,12 @@ async function probarViabilidadMarca(navegador) {
             if (ruta === '/marcanet/fonetica') {
                 return { results: body.clase === '30' ? [{ 'Denominación': 'LUNA AZUL', 'Expediente': '111111', 'Clase': '30', 'Titular': 'CAFES DEL SURESTE', 'Situación': 'REGISTRADA' }] : [] };
             }
+            // La ficha de cada expediente: LUNA ROJA resulta abandonada.
+            if (ruta === '/marcanet/full-detail') {
+                if (body.expediente === '333333') return { detail: { 'Fecha de presentación': '01/03/2015', 'Denominación': 'LUNA ROJA', '1': 'Publicado en la Gaceta, Solicitudes Abandonadas' } };
+                if (body.expediente === '111111') return { detail: { 'Fecha de presentación': '10/02/2019', 'Número de registro': '911111', 'Fecha de vigencia': '10/02/2029', 'Denominación': 'LUNA AZUL' } };
+                return { detail: {} };
+            }
             if (ruta === '/siga/search') {
                 if (fallaSIGA) throw new Error('HTTP 502');
                 return { successed: true, data: [{ fichaId: 7, gaceta: 'Solicitudes', seccion: 'Solicitudes publicadas', ejemplar: 'Octubre de 2026',
@@ -2179,6 +2185,11 @@ async function probarViabilidadMarca(navegador) {
         verificar('viabilidad: MARCia busca parecidas y también idénticas', llamadas.includes('/marcia/search "similar"') && llamadas.includes('/marcia/search ""'), llamadas.join(' | '));
         verificar('viabilidad: pide a MARCia cada clase que tiene resultados', llamadas.includes('/marcia/results ["30"]') && llamadas.includes('/marcia/results ["43"]'));
         verificar('viabilidad: la fonética de Marcanet clase por clase', llamadas.includes('/marcanet/fonetica "30"') && llamadas.includes('/marcanet/fonetica "43"'));
+        igual('viabilidad: si Marcanet llega vacía, se repite una vez (sesión recién abierta)',
+            [llamadas.filter(l => l === '/marcanet/fonetica "43"').length, llamadas.filter(l => l === '/marcanet/fonetica "30"').length], [2, 1]);
+        const fichas = await page.evaluate(() => window.__llamadas.filter(l => l.ruta === '/marcanet/full-detail').map(l => l.body.expediente));
+        verificar('viabilidad: confirma en Marcanet el estatus de los de riesgo alto y medio', fichas.includes('111111') && fichas.includes('333333'), fichas.join(', '));
+        verificar('viabilidad: y lo dice en los pasos', /estatus y vigencia/.test(await page.textContent('#vb-progreso')));
         verificar('viabilidad: busca también cada palabra distintiva', llamadas.includes('/marcia/search "similar"') && await page.evaluate(() =>
             window.__llamadas.some(l => l.ruta === '/marcia/search' && l.body.query.title === 'LUNA') && window.__llamadas.some(l => l.ruta === '/marcia/search' && l.body.query.title === 'AZUL')));
 
@@ -2213,6 +2224,8 @@ async function probarViabilidadMarca(navegador) {
         await page.click('[data-vb="ver-bajos"]');
         await pausa(200);
         verificar('viabilidad: se pueden ver también los de riesgo bajo', /Ocultar/.test(await page.textContent('[data-vb="ver-bajos"]')));
+        const conBajos = await page.$$eval('.vb-tabla tbody tr', trs => trs.map(tr => tr.innerText.replace(/\s+/g, ' ')));
+        verificar('viabilidad: la abandonada, según su ficha, ya no estorba', conBajos.some(f => /Bajo LUNA ROJA.*ABANDONADA.*ficha en Marcanet/.test(f)), conBajos.join('\n'));
 
         // Estudios recientes.
         verificar('viabilidad: queda en los estudios recientes', /Luna Azul/.test(await page.textContent('#vb-recientes')));

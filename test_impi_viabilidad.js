@@ -227,9 +227,79 @@ console.log('\nConectado con la app');
         html.indexOf('<script src="js/impi-viabilidad.js"></script>') > html.indexOf('<script src="js/impi-search.js"></script>'));
     verificar('y se guarda para usarse sin internet', /'js\/impi-viabilidad\.js'/.test(fs.readFileSync(path.join(__dirname, 'docs', 'sw.js'), 'utf8')));
     const proxy = fs.readFileSync(path.join(__dirname, 'docs', 'proxy', 'impi-proxy-worker.js'), 'utf8');
-    for (const ruta of ['/marcia/csrf', '/marcia/search', '/marcia/results', '/marcanet/fonetica', '/siga/search']) {
+    for (const ruta of ['/marcia/csrf', '/marcia/search', '/marcia/results', '/marcanet/fonetica', '/siga/search', '/marcanet/full-detail']) {
         verificar(`el proxy atiende ${ruta}, que usa el estudio`, proxy.includes(`path === '${ruta}'`));
     }
+}
+
+// Un caso real (lunafardo, clase 43, octubre de 2026): lo que respondió el
+// IMPI, recortado. El primer estudio marcaba cuatro antecedentes de riesgo
+// medio que no lo eran: Marcanet no filtra por clase y se les ponía la 43, y
+// sin estatus todos parecían vigentes.
+console.log('\nUn caso real: lunafardo');
+{
+    const fila = (n, tit, exp, reg, clase, titular) => ({ '#': String(n), TS: 'M', TM: '', Titular: titular, Expediente: exp,
+        _link_4: '/marcanet/vistas/common/busquedas/detalleExpedienteParcial.pgi?tipo=1&anio=1985&expediente=' + exp,
+        Registro: reg, 'Denominación': tit, Clase: clase, Logotipo: '' });
+    const marcanet = [
+        fila(1, 'LUNFARDO', '1204050', '1261657', '43', 'FERNANDO NESTOR POCH Y CLAUDIA MARIA VILLALOBOS MAYA'),
+        fila(2, 'L LUNFARDO', '879084', '1012592', '41', 'RAFAEL TABLADO RASCON'),
+        fila(3, 'L LUNFARDO', '772119', '', '41', 'RAFAEL TABLADO RASCON'),
+        fila(4, 'LUNAFURY', '3417716', '', '12 26 27 28', 'SHENZHEN NULING ELECTRONIC TECHNOLOGY CO., LTD'),
+        fila(5, 'LUNAFURY', '3417715', '', '9 10 12', 'SHENZHEN NULING ELECTRONIC TECHNOLOGY CO., LTD'),
+        fila(6, 'GA.MA', '1614721', '1571838', '3 5', 'DUNA ENTERPRISES, SDAD. LTDA.')
+    ];
+    const nav = { impi: 'Herramientas¿Cómo clasificar tus productos o servicios?', 'Expediente a buscar': '*' };
+    const detalles = {
+        1204050: { '2011': 'SOLICITUD DE REGISTRO', '2021': 'RENOVACION(registro)', ...nav, 'Número de registro': '1261657',
+            'Fecha de presentación': '18/08/2011 11:47:18 AM', 'Fecha de vigencia': '18/08/2031', 'Denominación': 'LUNFARDO',
+            '43Edición 9 del Clasificador de Niza': 'RESTAURACION [COMIDAS], RESTAURANTES (SERVICIOS DE).' },
+        879084: { '2007': 'SOLICITUD DE REGISTRO', ...nav, 'Número de registro': '1012592', 'Fecha de presentación': '09/08/2007 09:00:00 AM',
+            'Fecha de concesión': '21/11/2007', 'Fecha de vigencia': '09/08/2017', 'Denominación': 'L LUNFARDO',
+            '41Edición 9 del Clasificador de Niza': 'EDICION DE TEXTOS.' },
+        772119: { '1': 'Este expediente fue publicado el 07/12/2007, en la Gaceta de la Propiedad Industrial, Ejemplar Extraordinario 60, Solicitudes Abandonadas',
+            '2006': 'SOLICITUD DE REGISTRO', ...nav, 'Fecha de presentación': '20/02/2006 09:00:00 AM', 'Denominación': 'L LUNFARDO' },
+        3417716: { '1': '1861424', '2025': 'OPOSICION', ...nav, 'Fecha de presentación': '07/05/2025 12:00:00 AM', 'Denominación': 'LUNAFURY' }
+    };
+    const entrada = { denominacion: 'lunafardo', clases: [43], solicitante: '', productos: '', tipo: 'nominativa' };
+    const fuentes = { MARCia: { ok: true, total: 0 }, Marcanet: { ok: true, total: 10 }, SIGA: { ok: true, total: 0 } };
+
+    const lunafury = V.desdeMarcanet(marcanet[3]);
+    igual('Marcanet: la clase es la de la fila, no la que se consultó', lunafury.clases, [12, 26, 27, 28]);
+    verificar('y guarda el enlace a su ficha', /expediente=3417716$/.test(lunafury.enlace));
+
+    const l = V.compararMarcas('lunafardo', 'L LUNFARDO', [43]);
+    verificar('«L LUNFARDO» contiene una palabra casi igual a «lunafardo»', l.puntaje >= 80 && /LUNFARDO/.test(l.detalle), JSON.stringify(l));
+    igual('las genéricas no se cuelan por ahí', V.compararMarcas('Café Lunafardo', 'CAFE DEL MAR', [43]).puntaje < 65, true);
+
+    igual('MARCia no ve variantes de una letra: se le pide cada mitad con comodín', V.variantesComodin('lunafardo'), ['LUNAF*', '*FARDO']);
+    igual('las palabras cortas no llevan comodín', V.variantesComodin('luna'), []);
+
+    const sinFicha = V.analizar(entrada, { marcia: [], marcanet: [{ clase: 43, resultados: marcanet }], siga: [], fuentes }, AHORA);
+    igual('sin fichas: LUNFARDO alto y nada más en la misma clase',
+        sinFicha.antecedentes.filter(a => a.riesgo !== 'bajo').map(a => a.titulo + ':' + a.riesgo + ':' + a.relacion),
+        ['LUNFARDO:alto:misma', 'L LUNFARDO:medio:relacionada', 'L LUNFARDO:medio:relacionada']);
+    igual('LUNAFURY está en otra clase: bajo', sinFicha.antecedentes.filter(a => a.titulo === 'LUNAFURY').map(a => a.riesgo), ['bajo', 'bajo']);
+    igual('se pide la ficha de los de riesgo alto y medio', V.aConsultarDetalle(sinFicha).map(o => o.expediente), ['1204050', '879084', '772119']);
+
+    igual('ficha: renovada, vigente', V.leerDetalleMarcanet(detalles[1204050], AHORA).estado, 'REGISTRADA, vigente hasta 18/08/2031');
+    igual('ficha: lo que ampara', V.leerDetalleMarcanet(detalles[1204050], AHORA).ampara, '43: RESTAURACION [COMIDAS], RESTAURANTES (SERVICIOS DE).');
+    igual('ficha: vencida', V.leerDetalleMarcanet(detalles[879084], AHORA).estado, 'REGISTRADA, vigencia terminada el 09/08/2017');
+    igual('ficha: abandonada', V.leerDetalleMarcanet(detalles[772119], AHORA).estado, 'ABANDONADA');
+    igual('ficha: en oposición', V.leerDetalleMarcanet(detalles[3417716], AHORA).estado, 'EN TRÁMITE, con oposición');
+    igual('una página sin datos del expediente no es ficha', V.leerDetalleMarcanet(nav, AHORA), null);
+
+    const conFicha = V.analizar(entrada, { marcia: [], marcanet: [{ clase: 43, resultados: marcanet }], siga: [], fuentes, detalles }, AHORA);
+    igual('con fichas: solo LUNFARDO, que sí está vigente, impide el registro',
+        conFicha.antecedentes.filter(a => a.riesgo !== 'bajo').map(a => a.titulo + ':' + a.riesgo), ['LUNFARDO:alto']);
+    const vencida = conFicha.antecedentes.find(a => a.registro === '1012592');
+    verificar('la vencida sin renovar dice por qué no estorba', vencida.riesgo === 'bajo' && /09\/08\/2017 y no aparece renovada/.test(vencida.motivos.join(' ')), vencida.motivos.join(' '));
+    verificar('la abandonada también', /ABANDONADA/.test(conFicha.antecedentes.find(a => a.expediente === '772119').motivos.join(' ')));
+    igual('el dictamen sigue siendo baja, por la razón correcta', [conFicha.dictamen.nivel, conFicha.conteo.alto, conFicha.conteo.medio], ['baja', 1, 0]);
+    igual('ya no se vuelve a pedir la ficha de lo que ya la tiene', V.aConsultarDetalle(conFicha), []);
+    const marciaVieja = V.analizar(entrada, { marcia: [{ clase: 41, resultados: [marcia('RM200600772119', 'L LUNFARDO', 'EN TRÁMITE', { applicationNumber: '772119' })] }],
+        marcanet: [], siga: [], fuentes, detalles }, AHORA);
+    igual('la ficha manda sobre el estatus viejo de MARCia', marciaVieja.antecedentes[0].estado, 'ABANDONADA');
 }
 
 console.log(`\n${pasadas} pasadas, ${fallos.length} fallidas`);

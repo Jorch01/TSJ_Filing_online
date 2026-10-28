@@ -115,6 +115,17 @@ function obtenerClientId() {
     return impiClientId;
 }
 
+// Con la sesión recién abierta, la fonética de Marcanet responde la primera
+// búsqueda vacía: se repite una vez antes de creerle.
+async function marcanetFonetica(denominacion, clase) {
+    var pedir = function () {
+        return proxyFetch('/marcanet/fonetica', { method: 'POST', body: JSON.stringify({ denominacion: denominacion, clase: clase }) });
+    };
+    var data = await pedir();
+    if (!data || data.isFormPage || !(data.results || []).length) data = await pedir();
+    return data;
+}
+
 async function proxyFetch(path, options) {
     var proxy = getProxyUrl();
     if (!proxy) {
@@ -1642,10 +1653,7 @@ async function verificarGuardadaMarcanet(saved) {
             method: 'POST', body: JSON.stringify({ titular: saved.query })
         });
     } else {
-        data = await proxyFetch('/marcanet/fonetica', {
-            method: 'POST',
-            body: JSON.stringify({ denominacion: saved.query, clase: saved.clase || '' })
-        });
+        data = await marcanetFonetica(saved.query, saved.clase || '');
     }
     if (data.isFormPage) return null;
 
@@ -1972,10 +1980,7 @@ async function buscarMarcanet(opts) {
                 if (!opts.silencioso) mostrarToast('Ingresa una denominación para buscar.', 'warning');
                 return false;
             }
-            data = await proxyFetch('/marcanet/fonetica', {
-                method: 'POST',
-                body: JSON.stringify({ denominacion: denominacion.trim(), clase: clase })
-            });
+            data = await marcanetFonetica(denominacion.trim(), clase);
             if (data.isFormPage) {
                 marcanetState.lastError = 'Marcanet devolvió la página del formulario';
                 if (!opts.silencioso) mostrarToast('Marcanet devolvió la página del formulario. Es posible que el servidor no esté procesando búsquedas. Intenta directamente en Marcanet.', 'warning');
