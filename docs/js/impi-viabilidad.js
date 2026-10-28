@@ -418,7 +418,7 @@
             expediente: campoMarcanet(r, ['Expediente', 'No. Expediente', 'expediente', 'No. de Expediente']),
             registro: campoMarcanet(r, ['Registro', 'No. Registro', 'registro', 'No. de Registro']),
             estado: campoMarcanet(r, ['Situación', 'Situacion', 'Status', 'Estado', 'situacion', 'Estatus']),
-            titulares: lista(campoMarcanet(r, ['Titular', 'titular', 'Nombre'])).filter(Boolean),
+            titulares: lista(campoMarcanet(r, ['Titular', 'titular', 'Nombre'])).map(t => String(t).replace(/\s+/g, ' ').trim()).filter(Boolean),
             clases,
             tipoSolicitud: campoMarcanet(r, ['Tipo', 'Tipo de Marca', 'TM']),
             solicitud: campoMarcanet(r, ['Fecha de presentación', 'Fecha Presentación', 'Fecha']),
@@ -772,37 +772,81 @@
     }
 
     /**
-     * Los expedientes de riesgo alto o medio cuya ficha de MARCia falta. El id
-     * es "RM" + año de presentación + expediente a 8 cifras; si no viene de
-     * MARCia, se arma con la fecha de la ficha de Marcanet.
+     * Los años con que MARCia arma el id de un expediente ("RM" + año de
+     * presentación + expediente a 8 cifras): el de su id si viene de MARCia, o
+     * el de su fecha de presentación. MARCia y Marcanet registran la fecha con
+     * horas de diferencia: junto al año nuevo, también el año de al lado.
      */
-    function aConsultarMARCia(rep, max, ya) {
-        ya = ya || {};
-        const res = [];
+    function aniosDeId(a) {
+        const m = /^RM(\d{4})\d{8}$/.exec(a.id || '');
+        if (m) return [Number(m[1])];
+        const fecha = fechaIMPI(a.solicitud);
+        if (fecha == null) return [];
+        const d = new Date(fecha), anio = d.getFullYear();
+        const anios = [anio];
+        if (d.getMonth() === 0 && d.getDate() <= 2) anios.push(anio - 1);
+        if (d.getMonth() === 11 && d.getDate() >= 30) anios.push(anio + 1);
+        return anios;
+    }
+
+    /**
+     * Para cada antecedente que no se descartó (con `todos`; si no, solo los de
+     * riesgo alto y medio, que van primero), los ids posibles de su ficha de
+     * MARCia. Sin fecha propia, sirve la de otro expediente de la misma marca y
+     * titular con número casi seguido: se presentaron juntos (LUNA PHARMA,
+     * 3295484 a 3295488).
+     */
+    function planMARCia(rep, todos) {
+        const graves = a => a.riesgo === 'alto' || a.riesgo === 'medio';
+        const digitos = v => String(v || '').replace(/\D/g, '');
+        const familias = todos ? agruparMarcas(rep.antecedentes) : [];
+        const plan = [];
         const vistos = new Set();
-        for (const a of rep.antecedentes) {
-            if (a.riesgo !== 'alto' && a.riesgo !== 'medio') continue;
-            const expediente = String(a.expediente || '').replace(/\D/g, '');
-            if (!expediente || vistos.has(expediente) || ya[expediente]) continue;
+        for (const a of rep.antecedentes.filter(x => !x.descartado && (todos || graves(x))).sort((x, y) => graves(y) - graves(x))) {
+            const expediente = digitos(a.expediente);
+            if (!expediente || vistos.has(expediente)) continue;
             vistos.add(expediente);
-            const ids = /^RM\d{12}$/.test(a.id || '') ? [a.id] : [];
-            const fecha = fechaIMPI(a.solicitud);
-            if (fecha != null) {
-                // MARCia y Marcanet registran la fecha con horas de diferencia:
-                // junto al año nuevo, el id puede llevar el año de al lado.
-                const d = new Date(fecha), anio = d.getFullYear();
-                const anios = [anio];
-                if (d.getMonth() === 0 && d.getDate() <= 2) anios.push(anio - 1);
-                if (d.getMonth() === 11 && d.getDate() >= 30) anios.push(anio + 1);
-                for (const y of anios) {
-                    const id = 'RM' + y + expediente.padStart(8, '0');
-                    if (!ids.includes(id)) ids.push(id);
-                }
+            const familia = familias.find(f => f.miembros.includes(a)) || null;
+            let anios = aniosDeId(a);
+            if (!anios.length) {
+                const hermano = familia && familia.miembros.find(m => m !== a && aniosDeId(m).length &&
+                    Math.abs(Number(digitos(m.expediente)) - Number(expediente)) <= 50);
+                if (hermano) anios = aniosDeId(hermano);
             }
-            if (ids.length) res.push({ expediente, ids });
-            if (res.length >= (max || 8)) break;
+            const ids = /^RM\d{12}$/.test(a.id || '') ? [a.id] : [];
+            for (const y of anios) {
+                const id = 'RM' + y + expediente.padStart(8, '0');
+                if (!ids.includes(id)) ids.push(id);
+            }
+            plan.push({ a, expediente, ids, familia });
         }
-        return res;
+        return plan;
+    }
+
+    /** Las fichas de MARCia que faltan: de los de riesgo alto y medio o, con `todos`, de todos. */
+    function aConsultarMARCia(rep, max, ya, todos) {
+        ya = ya || {};
+        return planMARCia(rep, todos).filter(p => p.ids.length && !ya[p.expediente])
+            .slice(0, max || 8).map(p => ({ expediente: p.expediente, ids: p.ids }));
+    }
+
+    /**
+     * Los que se quedarían sin ficha de MARCia por no saber su año: su ficha de
+     * Marcanet trae la fecha de presentación (y, de paso, su estatus).
+     */
+    function aConsultarFechas(rep, max, ya) {
+        const pedidas = new Set(ya || []);
+        const elegidos = [];
+        for (const p of planMARCia(rep, true)) {
+            if (p.ids.length || p.a.conDetalle || pedidas.has(p.expediente)) continue;
+            // De expedientes hermanos (misma marca y titular, números casi
+            // seguidos) basta uno: su fecha sirve para los demás.
+            if (elegidos.some(e => e.familia && e.familia === p.familia && Math.abs(Number(e.expediente) - Number(p.expediente)) <= 50)) continue;
+            elegidos.push(p);
+            if (elegidos.length >= (max || 20)) break;
+        }
+        return elegidos.map(p => ({ expediente: p.expediente,
+            enlace: p.a.enlace || '/marcanet/vistas/common/busquedas/detalleExpedienteParcial.pgi?tipo=1&anio=1985&expediente=' + p.expediente }));
     }
 
     /** "SIGA no respondió y MARCia respondió a medias" */
@@ -1085,7 +1129,7 @@
         situacionDe, mismoTitular, palabrasDistintivas, observacionesRegistrabilidad, desdeMARCia, desdeMarcanet,
         desdeSIGA, consolidar, evaluarAntecedente, analizar, recomendaciones, resumenTexto, fechaIMPI,
         leerDetalleMarcanet, variantesComodin, aConsultarDetalle, nombresParaGaceta, etiquetaGaceta, historialTexto,
-        leerFichaMARCia, avisosDeFicha, agruparMarcas, aConsultarMARCia, nombreDe, claveTitular
+        leerFichaMARCia, avisosDeFicha, agruparMarcas, aConsultarMARCia, aConsultarFechas, nombreDe, claveTitular
     };
 
     if (typeof module !== 'undefined' && module.exports) module.exports = Motor;
@@ -1440,7 +1484,8 @@
     }
 
     /** La ficha de Marcanet de cada antecedente que importa: estatus y vigencia. */
-    async function consultarDetalles(objetivos) {
+    async function consultarDetalles(objetivos, idPaso) {
+        idPaso = idPaso || 'detalle';
         const detalles = {};
         let leidos = 0;
         for (const o of objetivos) {
@@ -1459,9 +1504,9 @@
                 }
                 if (leerDetalleMarcanet(data && data.detail)) { detalles[o.expediente] = data.detail; leidos++; }
             } catch (e) { /* sin ficha, el antecedente se queda como estaba */ }
-            marcar('detalle', 'espera', leidos + ' de ' + objetivos.length);
+            marcar(idPaso, 'espera', leidos + ' de ' + objetivos.length);
         }
-        marcar('detalle', leidos ? 'ok' : 'error', leidos + ' de ' + objetivos.length + (leidos ? '' : ': no respondió'));
+        marcar(idPaso, leidos ? 'ok' : 'error', leidos + ' de ' + objetivos.length + (leidos ? '' : ': no respondió'));
         return detalles;
     }
 
@@ -1470,7 +1515,8 @@
      * ampara. Cada objetivo trae los ids posibles; el primero que corresponda
      * al expediente se queda.
      */
-    async function consultarFichasMARCia(objetivos) {
+    async function consultarFichasMARCia(objetivos, idPaso) {
+        idPaso = idPaso || 'marcia-fichas';
         const fichas = {};
         let leidas = 0;
         const ver = async (id) => {
@@ -1488,9 +1534,9 @@
                 const f = leerFichaMARCia(await ver(id), o.expediente);
                 if (f) { fichas[o.expediente] = f; leidas++; break; }
             }
-            marcar('marcia-fichas', 'espera', leidas + ' de ' + objetivos.length);
+            marcar(idPaso, 'espera', leidas + ' de ' + objetivos.length);
         }
-        marcar('marcia-fichas', leidas ? 'ok' : 'error', leidas + ' de ' + objetivos.length + (leidas ? '' : ': no respondió'));
+        marcar(idPaso, leidas ? 'ok' : 'error', leidas + ' de ' + objetivos.length + (leidas ? '' : ': no respondió'));
         return fichas;
     }
 
@@ -1559,26 +1605,58 @@
     async function completar(entrada, crudo) {
         crudo.fuentes = { MARCia: crudo.fuentes.MARCia, Marcanet: crudo.fuentes.Marcanet, SIGA: crudo.fuentes.SIGA };
         let rep = analizar(entrada, crudo, Date.now());
+        // Cada tanda devuelve cuántas leyó: si una fuente no dio ninguna, no se
+        // le insiste con la siguiente.
+        const fichasMarcanet = async (objetivos, idPaso, texto) => {
+            paso(idPaso, texto);
+            const leidas = await consultarDetalles(objetivos, idPaso);
+            crudo.detalles = Object.assign(crudo.detalles || {}, leidas);
+            crudo.fichasPedidas = Array.from(new Set((crudo.fichasPedidas || []).concat(objetivos.map(o => o.expediente))));
+            crudo.fichas = { pedidas: crudo.fichasPedidas.length, leidas: crudo.fichasPedidas.filter(x => crudo.detalles[x]).length };
+            rep = analizar(entrada, crudo, Date.now());
+            return Object.keys(leidas).length;
+        };
+        const fichasMARCia = async (objetivos, idPaso, texto) => {
+            paso(idPaso, texto);
+            const leidas = await consultarFichasMARCia(objetivos, idPaso);
+            objetivos.forEach(o => { pedidasAhora[o.expediente] = true; });
+            crudo.fichasMARCia = Object.assign(crudo.fichasMARCia || {}, leidas);
+            crudo.fichasMPedidas = Array.from(new Set((crudo.fichasMPedidas || []).concat(objetivos.map(o => o.expediente))));
+            crudo.fichasM = { pedidas: crudo.fichasMPedidas.length, leidas: crudo.fichasMPedidas.filter(x => crudo.fichasMARCia[x]).length };
+            rep = analizar(entrada, crudo, Date.now());
+            return Object.keys(leidas).length;
+        };
+        const pedidasAhora = {};
+        let marcanetResponde = true, marciaResponde = true;
         // Las listas no traen estatus fiable: se confirma en la ficha de
         // Marcanet de los antecedentes de riesgo alto y medio, y se vuelve a
         // evaluar con lo que diga.
         const objetivos = aConsultarDetalle(rep, 8);
         if (objetivos.length) {
-            paso('detalle', 'Marcanet: estatus y vigencia de los ' + objetivos.length + ' antecedentes principales');
-            crudo.detalles = Object.assign(crudo.detalles || {}, await consultarDetalles(objetivos));
-            crudo.fichasPedidas = Array.from(new Set((crudo.fichasPedidas || []).concat(objetivos.map(o => o.expediente))));
-            crudo.fichas = { pedidas: crudo.fichasPedidas.length, leidas: crudo.fichasPedidas.filter(x => crudo.detalles[x]).length };
-            rep = analizar(entrada, crudo, Date.now());
+            marcanetResponde = (await fichasMarcanet(objetivos, 'detalle', 'Marcanet: estatus y vigencia de los ' + objetivos.length + ' antecedentes principales')) > 0;
         }
         // La clase y lo que ampara, de la ficha de MARCia: la búsqueda de
         // Marcanet a veces muestra las clases de toda una familia de solicitudes.
-        const deMARCia = aConsultarMARCia(rep, 8, crudo.fichasMARCia);
-        if (deMARCia.length) {
-            paso('marcia-fichas', 'MARCia: clase y productos de los ' + deMARCia.length + ' antecedentes principales');
-            crudo.fichasMARCia = Object.assign(crudo.fichasMARCia || {}, await consultarFichasMARCia(deMARCia));
-            crudo.fichasMPedidas = Array.from(new Set((crudo.fichasMPedidas || []).concat(deMARCia.map(o => o.expediente))));
-            crudo.fichasM = { pedidas: crudo.fichasMPedidas.length, leidas: crudo.fichasMPedidas.filter(x => crudo.fichasMARCia[x]).length };
-            rep = analizar(entrada, crudo, Date.now());
+        const principales = aConsultarMARCia(rep, 8, crudo.fichasMARCia);
+        if (principales.length) {
+            marciaResponde = (await fichasMARCia(principales, 'marcia-fichas', 'MARCia: clase y productos de los ' + principales.length + ' antecedentes principales')) > 0;
+        }
+        // Y la de todos los demás que se parecen, aunque sean de riesgo bajo:
+        // así cada uno muestra su clase real, y si resulta de una clase del
+        // estudio, su riesgo sube. A los que no traen el año de su id, su
+        // ficha de Marcanet se lo da (y su estatus).
+        const fechas = marcanetResponde ? aConsultarFechas(rep, 20, crudo.fichasPedidas) : [];
+        if (fechas.length) {
+            await fichasMarcanet(fechas, 'detalle-resto', 'Marcanet: fecha y estatus de ' + fechas.length + ' antecedente' + (fechas.length === 1 ? '' : 's') + ' más');
+        }
+        const resto = marciaResponde ? aConsultarMARCia(rep, 40, Object.assign({}, crudo.fichasMARCia, pedidasAhora), true) : [];
+        if (resto.length) {
+            await fichasMARCia(resto, 'marcia-resto', 'MARCia: clase y productos de ' + resto.length + ' antecedente' + (resto.length === 1 ? '' : 's') + ' más');
+        }
+        // Si con su ficha alguno subió a riesgo alto o medio, su estatus en Marcanet.
+        const subieron = marcanetResponde ? aConsultarDetalle(rep, 8).filter(o => !(crudo.fichasPedidas || []).includes(o.expediente)) : [];
+        if (subieron.length) {
+            await fichasMarcanet(subieron, 'detalle-nuevos', 'Marcanet: estatus de ' + subieron.length + ' que subieron de riesgo');
         }
         // SIGA solo encuentra palabras exactas: con los nombres de los
         // antecedentes principales trae su historial en la Gaceta (registro,
@@ -1922,10 +2000,11 @@
         const dia = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
         const filas = [['Estudio de viabilidad', rep.entrada.denominacion, 'Clases ' + rep.entrada.clases.join(' '), dia],
             ['Dictamen', rep.dictamen.titulo, rep.dictamen.resumen], ['Aviso', AVISO_VIABILIDAD], [],
-            ['Riesgo', 'Marca', 'Expediente', 'Registro', 'Clases', 'Relación de clase', 'Estatus', 'Titular', 'Parecido (%)', 'Tipo de parecido', 'Por qué', 'Fuentes', 'Ampara', 'En Gaceta']];
+            ['Riesgo', 'Marca', 'Expediente', 'Registro', 'Clases', 'Relación de clase', 'Estatus', 'Titular', 'Parecido (%)', 'Tipo de parecido', 'Por qué', 'Fuentes', 'Ampara', 'En Gaceta', 'Fichas leídas']];
         for (const a of rep.antecedentes) {
             filas.push([a.descartado ? 'descartado' : a.riesgo, a.titulo, a.expediente, a.registro, a.clases.join(' '), ETIQUETA_RELACION[a.relacion], a.estado,
-                a.titulares.join('; '), a.similitud.puntaje, a.similitud.detalle, a.motivos.join('. '), a.fuentes.join(' '), a.ampara || '', historialTexto(a)]);
+                a.titulares.join('; '), a.similitud.puntaje, a.similitud.detalle, a.motivos.join('. '), a.fuentes.join(' '), a.ampara || '', historialTexto(a),
+                [a.conDetalle && 'Marcanet', a.conFichaMARCia && 'MARCia'].filter(Boolean).join(' ')]);
         }
         if (rep.publicaciones.length) {
             filas.push([], ['Publicaciones en Gaceta'], ['Denominación', 'Clases', 'Gaceta', 'Sección', 'Ejemplar', 'Fecha', 'Parecido (%)']);
