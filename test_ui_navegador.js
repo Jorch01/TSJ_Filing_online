@@ -2145,6 +2145,8 @@ async function probarViabilidadMarca(navegador) {
         // En el primer estudio, MARCia falla una vez su búsqueda principal (como hace a veces).
         window.__marciaFallaUna = modo === false;
         window.__marciaFallaClase = modo === 'marcia-clase' ? '43' : null;
+        // Con Marcanet vacía, tampoco se dejan leer las fichas de MARCia.
+        window.__marciaVistaFalla = modo === 'marcanet-vacia';
         window.__llamadas = [];
         window.__fonetica = 0;
         const marca = (id, title, status, owners, classes) => ({ id, applicationNumber: id.slice(-6), registrationNumber: status === 'REGISTRADO' ? '9' + id.slice(-5) : '',
@@ -2166,12 +2168,23 @@ async function probarViabilidadMarca(navegador) {
                          marca('RM201700888888', 'LUNA ASUL', 'REGISTRADO', ['TOSTADORES DEL GOLFO  '])];
                 }
                 if (opcion === 'similar' && titulo === 'LUNA AZUL' && clase === '43') {
+                    // Otro expediente de LUNA AZUL del mismo titular: una sola marca.
                     r = [marca('RM201800444444', 'LA LUNA AZUL CAFETERIA', 'REGISTRADO', ['JUAN LOPEZ']),
-                         marca('RM201000555555', 'SOL Y MAR', 'REGISTRADO', ['MARISCOS SA'])];
+                         marca('RM201000555555', 'SOL Y MAR', 'REGISTRADO', ['MARISCOS SA']),
+                         marca('RM201900222222', 'LUNA AZUL', 'REGISTRADO', ['CAFES DEL SURESTE SA DE CV'])];
                 }
                 if (opcion === 'identica' && !clase) r = [marca('RM202000777777', 'LUNA AZUL', 'REGISTRADO', ['MODAS LUNA AZUL SA'], [25]),
                     marca('RM202100999999', 'LUNARES', 'REGISTRADO', ['BOUTIQUE LUNARES'], [25])];
                 return { resultPage: r, totalResults: r.length, aggregates: { NICE_CLASSES: [{ key: '30', docCount: 2 }, { key: '43', docCount: 1 }] } };
+            }
+            // La ficha de MARCia de cada expediente: su clase y lo que ampara.
+            if (ruta.startsWith('/marcia/view/')) {
+                if (window.__marciaVistaFalla) throw new Error('HTTP 500');
+                const id = ruta.slice('/marcia/view/'.length);
+                const fichas = { RM201900111111: [30, 'CAFÉ EN GRANO; CAFÉ MOLIDO.'], RM201900222222: [43, 'SERVICIOS DE CAFETERÍA.'], RM201700888888: [30, 'CAFÉ TOSTADO.'] };
+                if (!fichas[id]) throw new Error('HTTP 404');
+                return { details: { generalInformation: { applicationNumber: id.slice(-6) }, productsAndServices: [{ classes: fichas[id][0], goodsAndServices: fichas[id][1] }] },
+                    result: { id, applicationNumber: id.slice(-6), status: 'REGISTRADO' } };
             }
             if (ruta === '/marcanet/fonetica') {
                 // La primera llega vacía, como hace Marcanet con la sesión recién abierta.
@@ -2229,7 +2242,7 @@ async function probarViabilidadMarca(navegador) {
         verificar('viabilidad: consulta las tres fuentes', ['/marcia/search', '/marcanet/fonetica', '/siga/search'].every(r => llamadas.some(l => l.startsWith(r))), llamadas.join(' | '));
         igual('viabilidad: si MARCia falla una clase, la repite y el estudio sale completo',
             [await page.evaluate(() => window.__llamadas.filter(l => l.ruta === '/marcia/results' && l.body.searchId === 'similar:LUNA AZUL' && l.body.niceClassFilter[0] === '30').length),
-             /MARCia 7 resultados revisados/.test((await page.textContent('.vb-fuentes')).replace(/\s+/g, ' '))], [2, true]);
+             /MARCia 8 resultados revisados/.test((await page.textContent('.vb-fuentes')).replace(/\s+/g, ' '))], [2, true]);
         verificar('viabilidad: MARCia busca parecidas y también idénticas', llamadas.includes('/marcia/search "similar"') && llamadas.includes('/marcia/search ""'), llamadas.join(' | '));
         verificar('viabilidad: pide a MARCia cada clase que tiene resultados', llamadas.includes('/marcia/results ["30"]') && llamadas.includes('/marcia/results ["43"]'));
         const foneticas = await page.evaluate(() => window.__llamadas.filter(l => l.ruta === '/marcanet/fonetica').map(l => l.body));
@@ -2238,6 +2251,11 @@ async function probarViabilidadMarca(navegador) {
         const fichas = await page.evaluate(() => window.__llamadas.filter(l => l.ruta === '/marcanet/full-detail').map(l => l.body.expediente));
         verificar('viabilidad: confirma en Marcanet el estatus de los de riesgo alto y medio', fichas.includes('111111') && fichas.includes('333333'), fichas.join(', '));
         verificar('viabilidad: y lo dice en los pasos', /estatus y vigencia/.test(await page.textContent('#vb-progreso')));
+        const vistas = await page.evaluate(() => window.__llamadas.filter(l => l.ruta.startsWith('/marcia/view/')).map(l => l.ruta.slice('/marcia/view/'.length)));
+        igual('viabilidad: lee en MARCia la clase y los productos de los de riesgo alto y medio', vistas.slice().sort(), ['RM201700888888', 'RM201900111111', 'RM201900222222']);
+        verificar('viabilidad: y lo dice en los pasos y en las fuentes', /MARCia: clase y productos/.test(await page.textContent('#vb-progreso')) &&
+            /Fichas de MARCia 3 de 3 \(clase y productos\)/.test((await page.textContent('.vb-fuentes')).replace(/\s+/g, ' ')),
+            (await page.textContent('.vb-fuentes')).replace(/\s+/g, ' '));
         const historial = await page.evaluate(() => window.__llamadas.filter(l => l.ruta === '/siga/search').map(l => l.body.Busqueda));
         igual('viabilidad: busca en SIGA la denominación y el nombre de los antecedentes principales', historial, ['Luna Azul', 'LUNA ASUL']);
         verificar('viabilidad: busca también cada palabra distintiva', llamadas.includes('/marcia/search "similar"') && await page.evaluate(() =>
@@ -2248,6 +2266,12 @@ async function probarViabilidadMarca(navegador) {
         const filas = await page.$$eval('.vb-tabla tbody tr', trs => trs.map(tr => tr.innerText.replace(/\s+/g, ' ')));
         verificar('viabilidad: la marca que vieron MARCia y Marcanet sale una vez, con las dos fuentes',
             filas.filter(f => /^⛔ Alto LUNA AZUL/.test(f)).length === 1 && filas.some(f => /LUNA AZUL.*MARCia, Marcanet/.test(f)), filas.join('\n'));
+        const azul = filas.find(f => /^⛔ Alto LUNA AZUL/.test(f)) || '';
+        verificar('viabilidad: los dos expedientes de LUNA AZUL de un mismo titular van en una fila', /Reg\. 911111 y 1 más/.test(azul) && /Sus 2 expedientes/.test(azul) && /30, 43/.test(azul), azul);
+        verificar('viabilidad: con lo que ampara, según su ficha en MARCia', /Ampara: 30: CAFÉ EN GRANO; CAFÉ MOLIDO\./.test(azul) && /Misma clase, según MARCia/.test(azul), azul);
+        await page.click('.vb-miembros summary');
+        const deLaMarca = (await page.textContent('.vb-miembros')).replace(/\s+/g, ' ');
+        verificar('viabilidad: y se ven sus expedientes, cada uno con su clase', /Reg\. 911111 · clase 30/.test(deLaMarca) && /Reg\. 922222 · clase 43/.test(deLaMarca), deLaMarca);
         verificar('viabilidad: la del mismo solicitante no es obstáculo', filas.some(f => /Propia LA LUNA AZUL CAFETERIA/.test(f)), filas.join('\n'));
         verificar('viabilidad: la idéntica en otra clase sale como riesgo bajo', filas.some(f => /Bajo LUNA AZUL.*25/.test(f)), filas.join('\n'));
         verificar('viabilidad: el historial en Gaceta del antecedente', filas.some(f => /LUNA ASUL.*En Gaceta: Renovada 15\/03\/2024/.test(f)), filas.join('\n'));
@@ -2312,12 +2336,14 @@ async function probarViabilidadMarca(navegador) {
         verificar('viabilidad: la tercera, con una sesión nueva en el proxy (otro identificador de cliente)',
             clientes.length === 3 && clientes[0] === null && clientes[1] === null && /-m[0-9a-z]+$/.test(clientes[2] || ''), JSON.stringify(clientes));
         verificar('viabilidad: el reporte ofrece reintentar lo que faltó', await page.isVisible('[data-vb="reintentar"]'));
+        verificar('viabilidad: y avisa que no se leyó ninguna ficha de MARCia', /Fichas de MARCia 0 de \d/.test((await page.textContent('.vb-fuentes')).replace(/\s+/g, ' ')),
+            (await page.textContent('.vb-fuentes')).replace(/\s+/g, ' '));
 
         // Reintentar: Marcanet ya responde. Solo se pide lo que faltó y no
         // cuenta como otro estudio.
         const cuotasAntes = pedidasCuota;
         const recientesAntes = await page.evaluate(() => JSON.parse(localStorage.getItem('impi_estudios_viabilidad') || '[]').length);
-        await page.evaluate(() => { window.__llamadas = []; window.__marcanetVacia = false; window.__fonetica = 1; });   // la siguiente ya trae resultados
+        await page.evaluate(() => { window.__llamadas = []; window.__marcanetVacia = false; window.__marciaVistaFalla = false; window.__fonetica = 1; });   // la siguiente ya trae resultados
         await page.click('[data-vb="reintentar"]');
         await page.waitForFunction(() => !/no respondió/.test((document.querySelector('.vb-dictamen') || {}).textContent || ''), null, { timeout: 20000 }).catch(() => {});
         const rutas = await page.evaluate(() => window.__llamadas.map(l => l.ruta));
@@ -2325,6 +2351,8 @@ async function probarViabilidadMarca(navegador) {
             /Marcanet 1 resultados revisados/.test((await page.textContent('.vb-fuentes')).replace(/\s+/g, ' ')), (await page.textContent('.vb-fuentes')).replace(/\s+/g, ' '));
         verificar('reintentar: solo vuelve a pedir lo que faltó (no MARCia ni SIGA de nuevo)',
             rutas.includes('/marcanet/fonetica') && !rutas.includes('/marcia/search') && !rutas.includes('/siga/search'), rutas.join(', '));
+        verificar('reintentar: también vuelve a pedir las fichas de MARCia que no se leyeron', rutas.some(r => r.startsWith('/marcia/view/')) &&
+            /Fichas de MARCia (\d) de \1/.test((await page.textContent('.vb-fuentes')).replace(/\s+/g, ' ')), (await page.textContent('.vb-fuentes')).replace(/\s+/g, ' '));
         igual('reintentar: no cuenta como otro estudio', pedidasCuota, cuotasAntes);
         igual('reintentar: completa el estudio reciente, no agrega otro',
             await page.evaluate(() => JSON.parse(localStorage.getItem('impi_estudios_viabilidad') || '[]').length), recientesAntes);

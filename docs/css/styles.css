@@ -6174,6 +6174,10 @@ body.cta-abierto #tour-menu, body.cta-abierto #tour-oferta, body.cta-abierto #re
 .vb-tabla td small { color: var(--text-muted); }
 .vb-tabla .vb-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .vb-motivos { min-width: 14rem; color: var(--text-secondary); }
+.vb-miembros { margin-top: 0.3rem; font-size: 0.74rem; }
+.vb-miembros summary { cursor: pointer; color: var(--primary); width: max-content; max-width: 100%; }
+.vb-miembros ul { margin: 0.25rem 0 0; padding-left: 1rem; display: grid; gap: 0.2rem; color: var(--text-secondary); }
+.vb-miembros .btn { padding: 0.05rem 0.4rem; font-size: 0.7rem; }
 .vb-riesgo { display: inline-block; white-space: nowrap; font-size: 0.74rem; font-weight: 600; padding: 0.12rem 0.5rem;
     border-radius: var(--radius-full); border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); }
 .vb-riesgo-alto { border-color: #d03b3b; background: rgba(208, 59, 59, 0.1); }

@@ -344,6 +344,14 @@
         return 'desconocida';
     }
 
+    /**
+     * El titular sin su forma jurídica, venga como venga: el IMPI la escribe
+     * sin puntos ("PHARMA GBC SAPI DE CV") y a veces la omite.
+     */
+    function claveTitular(t) {
+        return normalizarMarca(t).replace(/(\s+(S A P I|SAPI|S A B|SAB|S A|SA|S DE R L|S DE RL|S R L|SRL|S C|SC|A C|AC|S P R|SPR|DE C V|DE CV|DE R L|DE RL|DE R I|DE RI|DE C|CV|SDAD|LTDA|INC|LLC|LTD|CORP|CO|GMBH|AG|SL|SAS|BV|NV|PLC))+$/g, '').trim();
+    }
+
     function mismoTitular(solicitante, titulares) {
         const s = normalizarMarca(solicitante);
         if (!s || s.length < 4) return false;
@@ -448,7 +456,48 @@
         }
         else if (registro) estado = 'REGISTRADA';
         else estado = /OPOSICION/.test(texto) ? 'EN TRÁMITE, con oposición' : 'EN TRÁMITE';
-        return { estado, vigencia, registro, ampara, amparaPorClase };
+        return { estado, vigencia, registro, ampara, amparaPorClase, presentacion: String(det['Fecha de presentación'] || '').trim() };
+    }
+
+    /**
+     * La ficha de MARCia de un expediente (/marcia/view): la clase y lo que
+     * ampara, clase por clase, y su historial de trámites y oficios. Es la
+     * fuente buena para la clase: la búsqueda de Marcanet a veces muestra las
+     * de toda una familia de solicitudes (LUNA PHARMA, exp. 3295484: Marcanet
+     * dice 35, 36 y 43; su ficha, solo 35). Si no es del expediente pedido, nada.
+     */
+    function leerFichaMARCia(d, expediente) {
+        const det = d && d.details;
+        if (!det) return null;
+        const g = det.generalInformation || {};
+        const cifras = v => String(v || '').replace(/\D/g, '').replace(/^0+/, '');
+        const num = cifras(g.applicationNumber || (d.result && d.result.applicationNumber));
+        if (expediente && num && num !== cifras(expediente)) return null;
+        // La clase viene como número (35); por si llega "35, 43", cada una.
+        const productos = (det.productsAndServices || [])
+            .flatMap(p => numeros(p.classes).map(clase => ({ clase, texto: sinEntidades(p.goodsAndServices).trim() })));
+        if (!productos.length) return null;
+        const historial = (d.historyData && d.historyData.historyRecords) || [];
+        const tramites = historial.map(h => ({ texto: String(h.description || '').trim(), fecha: String(h.startDate || '').trim() }));
+        const oficios = historial.flatMap(h => ((h.details && h.details.officios) || [])
+            .map(o => ({ texto: String(o.descriptionOfTheTrade || '').trim(), fecha: String(o.dateOfTheTrade || '').trim() })));
+        return {
+            id: String((d.result && d.result.id) || (det.trademark && det.trademark.id) || ''),
+            clases: Array.from(new Set(productos.map(p => p.clase))).sort((a, b) => a - b),
+            productos, tramites, oficios, estado: String((d.result && d.result.status) || '').trim()
+        };
+    }
+
+    /** Lo que conviene saber de su trámite: anterioridades citadas, oposición. Solo informa. */
+    function avisosDeFicha(f) {
+        const ultimo = (lista, re) => lista.filter(x => re.test(normalizarMarca(x.texto)))
+            .sort((x, y) => (fechaIMPI(x.fecha) || 0) - (fechaIMPI(y.fecha) || 0)).pop();
+        const avisos = [];
+        const cita = ultimo(f.oficios || [], /CITA ANTERIORIDAD/);
+        if (cita) avisos.push('El IMPI le citó anterioridades' + (cita.fecha ? ' (oficio del ' + cita.fecha + ')' : ''));
+        const oposicion = ultimo(f.tramites || [], /OPOSICION/);
+        if (oposicion) avisos.push('Tiene una oposición' + (oposicion.fecha ? ' (presentada el ' + oposicion.fecha + ')' : ''));
+        return avisos;
     }
 
     function desdeSIGA(ficha) {
@@ -546,7 +595,7 @@
             } else {
                 for (const c of a.clases) if (!previo.clases.includes(c)) previo.clases.push(c);
                 for (const f of a.fuentes) if (!previo.fuentes.includes(f)) previo.fuentes.push(f);
-                for (const t of a.titulares) if (!previo.titulares.some(x => normalizarMarca(x) === normalizarMarca(t))) previo.titulares.push(t);
+                for (const t of a.titulares) if (!previo.titulares.some(x => claveTitular(x) === claveTitular(t))) previo.titulares.push(t);
                 for (const campo of ['id', 'expediente', 'registro', 'estado', 'tipoSolicitud', 'solicitud', 'vencimiento', 'imagen', 'enlace']) {
                     if (!previo[campo] && a[campo]) previo[campo] = a[campo];
                 }
@@ -619,6 +668,8 @@
         if (situacion === 'desconocida' && riesgo !== 'bajo') motivos.push('Sin estatus en la fuente: se trató como vigente');
         if (vencida && !sinRenovar) motivos.push('Su vigencia reportada terminó el ' + ant.vencimiento + ': confirma si se renovó (hay seis meses de gracia)');
         if (renovadaEnGaceta) motivos.push('Se renovó (Gaceta del ' + renovacion.fecha + ')');
+        if (ant.clasesAntes) motivos.push('Clase según su ficha en MARCia (la búsqueda' + (ant.fuentes.includes('MARCia') ? '' : ' de Marcanet') + ' mostraba ' + ant.clasesAntes + ')');
+        for (const aviso of ant.avisos || []) motivos.push(aviso);
         // Lo que se dedujo de la Gaceta, sin ficha de Marcanet, conviene confirmarlo.
         const deduccion = !ant.conDetalle && (ant.segunGaceta || (sinRenovar && conGaceta) || renovadaEnGaceta);
         return { ...ant, similitud: sim, relacion, situacion, notoria, vencida: vencida && !sinRenovar, riesgo, motivos, deduccion };
@@ -685,11 +736,75 @@
     // ---- El dictamen ----
 
     /**
-     * Junta lo que respondió cada fuente y arma el reporte completo.
-     * entrada: { denominacion, clases, tipo, productos, solicitante }
-     * crudo: { marcia: [{ clase, resultados }], marcanet: [{ clase, resultados }],
-     *          siga: [fichas], fuentes: { MARCia: { ok, total, error }, ... } }
+     * Una fila por marca y titular: el mismo titular suele pedir la misma
+     * denominación en varios expedientes, uno por clase (LUNA PHARMA: 4). La
+     * familia toma riesgo, estatus y motivos de su expediente más grave y
+     * junta clases y fuentes; cada expediente queda en `miembros`.
      */
+    function agruparMarcas(antecedentes) {
+        const familias = [];
+        const porClave = new Map();
+        for (const a of antecedentes) {
+            const titular = claveTitular((a.titulares || [])[0] || '');
+            const clave = titular ? normalizarMarca(a.titulo) + '|' + titular : 'solo:' + familias.length;
+            let f = porClave.get(clave);
+            if (!f) { f = []; porClave.set(clave, f); familias.push(f); }
+            f.push(a);
+        }
+        const orden = (x, y) => RIESGOS.indexOf(x.riesgo) - RIESGOS.indexOf(y.riesgo) || y.similitud.puntaje - x.similitud.puntaje;
+        return familias.map(miembros => {
+            miembros = miembros.slice().sort(orden);
+            const union = (campo) => Array.from(new Set(miembros.flatMap(m => m[campo] || [])));
+            return { ...miembros[0], miembros, clases: union('clases').sort((x, y) => x - y), fuentes: union('fuentes'),
+                descartado: miembros.every(m => m.descartado) };
+        }).sort((x, y) => orden(x, y) || x.titulo.localeCompare(y.titulo, 'es'));
+    }
+
+    /** "reg. 1261657" o "exp. 3295484" */
+    function numeroDe(a) {
+        return a.registro ? 'reg. ' + a.registro : a.expediente ? 'exp. ' + a.expediente : '';
+    }
+
+    /** «LUNA PHARMA» (exp. 3295486, exp. 3295484 y 2 más); con `cuales`, solo esos expedientes. */
+    function nombreDe(a, cuales) {
+        const nums = (a.miembros || [a]).filter(m => !cuales || cuales(m)).map(numeroDe).filter(Boolean);
+        return '«' + a.titulo + '»' + (nums.length ? ' (' + nums.slice(0, 2).join(', ') + (nums.length > 2 ? ' y ' + (nums.length - 2) + ' más' : '') + ')' : '');
+    }
+
+    /**
+     * Los expedientes de riesgo alto o medio cuya ficha de MARCia falta. El id
+     * es "RM" + año de presentación + expediente a 8 cifras; si no viene de
+     * MARCia, se arma con la fecha de la ficha de Marcanet.
+     */
+    function aConsultarMARCia(rep, max, ya) {
+        ya = ya || {};
+        const res = [];
+        const vistos = new Set();
+        for (const a of rep.antecedentes) {
+            if (a.riesgo !== 'alto' && a.riesgo !== 'medio') continue;
+            const expediente = String(a.expediente || '').replace(/\D/g, '');
+            if (!expediente || vistos.has(expediente) || ya[expediente]) continue;
+            vistos.add(expediente);
+            const ids = /^RM\d{12}$/.test(a.id || '') ? [a.id] : [];
+            const fecha = fechaIMPI(a.solicitud);
+            if (fecha != null) {
+                // MARCia y Marcanet registran la fecha con horas de diferencia:
+                // junto al año nuevo, el id puede llevar el año de al lado.
+                const d = new Date(fecha), anio = d.getFullYear();
+                const anios = [anio];
+                if (d.getMonth() === 0 && d.getDate() <= 2) anios.push(anio - 1);
+                if (d.getMonth() === 11 && d.getDate() >= 30) anios.push(anio + 1);
+                for (const y of anios) {
+                    const id = 'RM' + y + expediente.padStart(8, '0');
+                    if (!ids.includes(id)) ids.push(id);
+                }
+            }
+            if (ids.length) res.push({ expediente, ids });
+            if (res.length >= (max || 8)) break;
+        }
+        return res;
+    }
+
     /** "SIGA no respondió y MARCia respondió a medias" */
     function queFalto(fuentes) {
         const nada = fuentes.filter(f => !f.ok && !f.parcial).map(f => f.nombre);
@@ -700,6 +815,14 @@
         return partes.join(' y ');
     }
 
+    /**
+     * Junta lo que respondió cada fuente y arma el reporte completo.
+     * entrada: { denominacion, clases, tipo, productos, solicitante }
+     * crudo: { marcia: [{ clase, resultados }], marcanet: [{ clase, resultados }],
+     *          siga: [fichas], fuentes: { MARCia: { ok, total, error }, ... },
+     *          detalles: { expediente: ficha de Marcanet }, fichas: { pedidas, leidas },
+     *          fichasMARCia: { expediente: leerFichaMARCia(...) }, fichasM: { pedidas, leidas } }
+     */
     function analizar(entrada, crudo, ahora) {
         ahora = ahora != null ? ahora : Date.now();
         entrada = { ...entrada, clases: (entrada.clases || []).map(Number).filter(n => n >= 1 && n <= 45) };
@@ -708,6 +831,7 @@
         for (const lote of crudo.marcanet || []) for (const r of lote.resultados || []) brutos.push(desdeMarcanet(r));
 
         const detalles = crudo.detalles || {};
+        const fichasMARCia = crudo.fichasMARCia || {};
         const digitos = v => String(v || '').replace(/\D/g, '');
         const historial = (crudo.sigaHistorial || []).map(desdeSIGA);
         const usadas = new Set();
@@ -719,7 +843,19 @@
             // puede seguir diciendo "en trámite" de una solicitud abandonada.
             // Lo que ampara, solo en las clases del estudio y sus relacionadas.
             const ampara = d.amparaPorClase.filter(x => clasesQueImportan.includes(x.clase)).map(x => x.clase + ': ' + x.texto).join(' · ');
-            return { ...a, estado: d.estado, vencimiento: d.vigencia || a.vencimiento, registro: a.registro || d.registro, ampara, conDetalle: true };
+            return { ...a, estado: d.estado, vencimiento: d.vigencia || a.vencimiento, registro: a.registro || d.registro, ampara, conDetalle: true,
+                solicitud: a.solicitud || d.presentacion };
+        }).map(a => {
+            // La clase y lo que ampara, de su ficha de MARCia (la de la búsqueda
+            // de Marcanet puede ser la de toda una familia de solicitudes).
+            const f = fichasMARCia[digitos(a.expediente)];
+            if (!f) return a;
+            const antes = a.clases.slice().sort((x, y) => x - y).join(', ');
+            const ampara = f.productos.filter(p => clasesQueImportan.includes(p.clase)).map(p => p.clase + ': ' + p.texto).join(' · ');
+            // Su estatus solo llena el hueco: el de la ficha de Marcanet es más fino.
+            return { ...a, id: a.id || f.id || null, estado: a.estado || f.estado, clases: f.clases.slice(),
+                clasesAntes: antes && antes !== f.clases.join(', ') ? antes : '',
+                ampara: ampara || (f.productos.some(p => clasesQueImportan.includes(p.clase)) ? a.ampara : ''), avisos: avisosDeFicha(f), conFichaMARCia: true };
         }).map(a => {
             // Lo que SIGA publicó de los antecedentes principales (se buscaron
             // por su nombre): se pega a cada uno por su expediente o su registro.
@@ -755,9 +891,11 @@
             .sort((a, b) => b.similitud.puntaje - a.similitud.puntaje);
 
         const observaciones = observacionesRegistrabilidad(entrada);
-        const cuenta = r => antecedentes.filter(a => a.riesgo === r && !a.descartado).length;
+        // Se cuentan marcas (una por denominación y titular), no expedientes.
+        const marcas = agruparMarcas(antecedentes);
+        const cuenta = r => marcas.filter(a => a.riesgo === r && !a.descartado).length;
         const conteo = { alto: cuenta('alto'), medio: cuenta('medio'), bajo: cuenta('bajo'), propia: cuenta('propia'),
-            descartados: antecedentes.filter(a => a.descartado).length, total: antecedentes.length };
+            descartados: marcas.filter(a => a.descartado).length, total: marcas.length, expedientes: antecedentes.length };
         const fuentes = Object.entries(crudo.fuentes || {}).map(([nombre, f]) => ({ nombre, ok: !!f.ok, parcial: !!f.parcial, total: f.total || 0, error: f.error || '' }));
         const respondieron = fuentes.filter(f => f.ok || f.parcial);
         const fallaron = fuentes.filter(f => !f.ok);
@@ -796,6 +934,7 @@
             distintivas: palabrasDistintivas(entrada.denominacion, entrada.clases, entrada.productos),
             dictamen: { nivel, titulo, resumen, parcial },
             fichas: crudo.fichas || null,
+            fichasMARCia: crudo.fichasM || null,
             conteo, fuentes, observaciones, antecedentes, publicaciones,
             // Todo lo que SIGA devolvió, como punto de partida si se vigila la
             // denominación: lo ya visto no debe llegar luego como novedad.
@@ -822,9 +961,12 @@
 
     function recomendaciones(rep) {
         const r = [];
-        const altos = rep.antecedentes.filter(a => a.riesgo === 'alto');
-        const medios = rep.antecedentes.filter(a => a.riesgo === 'medio');
-        const nombre = a => '«' + a.titulo + '»' + (a.registro ? ' (reg. ' + a.registro + ')' : a.expediente ? ' (exp. ' + a.expediente + ')' : '');
+        // Por marca y titular: los expedientes de una misma familia se nombran juntos.
+        const marcas = agruparMarcas(rep.antecedentes);
+        const altos = marcas.filter(a => a.riesgo === 'alto');
+        const medios = marcas.filter(a => a.riesgo === 'medio');
+        const nombre = a => nombreDe(a);
+        const graves = m => m.riesgo === 'alto' || m.riesgo === 'medio';
         if (rep.dictamen.nivel === 'incompleta') {
             r.push('Repite el estudio cuando respondan las fuentes del IMPI; sin ellas no hay dictamen.');
             return r;
@@ -843,9 +985,9 @@
         if (altos.some(a => a.notoria)) {
             r.push('Evita cualquier parecido con ' + altos.filter(a => a.notoria).map(nombre).join(', ') + ': las marcas notorias se protegen en todas las clases.');
         }
-        const vencidas = altos.concat(medios).filter(a => a.vencida);
+        const vencidas = altos.concat(medios).filter(a => a.miembros.some(m => graves(m) && m.vencida));
         if (vencidas.length) {
-            r.push('Revisa en Marcanet si se renovó ' + vencidas.slice(0, 3).map(nombre).join(', ') + ': si no, puede quedar libre.');
+            r.push('Revisa en Marcanet si se renovó ' + vencidas.slice(0, 3).map(a => nombreDe(a, m => graves(m) && m.vencida)).join(', ') + ': si no, puede quedar libre.');
         }
         const vigentes = altos.filter(a => a.situacion === 'vigente');
         if (vigentes.length) {
@@ -875,14 +1017,14 @@
         // Lo que el estudio ya confirmó en la ficha de Marcanet no hace falta
         // volver a pedirlo; solo lo que se quedó sin confirmar.
         const marcados = altos.concat(medios);
-        const sinFicha = marcados.filter(a => !a.conDetalle);
-        const deducidos = rep.antecedentes.filter(a => a.deduccion && !marcados.includes(a) && !a.descartado);
+        const sinFicha = marcados.filter(a => a.miembros.some(m => graves(m) && !m.conDetalle));
+        const deducidos = marcas.filter(a => !graves(a) && !a.descartado && a.miembros.some(m => m.deduccion));
         if (deducidos.length) {
-            r.push('Sin la ficha de Marcanet, el estatus de ' + deducidos.slice(0, 4).map(nombre).join(', ') +
+            r.push('Sin la ficha de Marcanet, el estatus de ' + deducidos.slice(0, 4).map(a => nombreDe(a, m => m.deduccion)).join(', ') +
                 ' se dedujo de la Gaceta: confírmalo en Marcanet antes de presentar.');
         }
         if (sinFicha.length) {
-            r.push('Antes de presentar, confirma en Marcanet el estatus de ' + sinFicha.slice(0, 4).map(nombre).join(', ') + '.');
+            r.push('Antes de presentar, confirma en Marcanet el estatus de ' + sinFicha.slice(0, 4).map(a => nombreDe(a, m => graves(m) && !m.conDetalle)).join(', ') + '.');
         } else if (marcados.length) {
             const d = new Date(rep.fecha);
             const dia = isNaN(d.getTime()) ? '' : String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
@@ -907,22 +1049,28 @@
             rep.dictamen.resumen,
             'Antecedentes: ' + rep.conteo.alto + ' de riesgo alto, ' + rep.conteo.medio + ' medio, ' + rep.conteo.bajo + ' bajo' +
                 (rep.conteo.propia ? ', ' + rep.conteo.propia + ' del mismo solicitante' : '') +
-                (rep.conteo.descartados ? ' (y ' + rep.conteo.descartados + ' resultado' + (rep.conteo.descartados === 1 ? '' : 's') + ' que no se parece' + (rep.conteo.descartados === 1 ? '' : 'n') + ', descartado' + (rep.conteo.descartados === 1 ? '' : 's') + ')' : '') + '.',
+                (rep.conteo.descartados ? ' (y ' + rep.conteo.descartados + ' resultado' + (rep.conteo.descartados === 1 ? '' : 's') + ' que no se parece' + (rep.conteo.descartados === 1 ? '' : 'n') + ', descartado' + (rep.conteo.descartados === 1 ? '' : 's') + ')' : '') + '.' +
+                (rep.conteo.expedientes > rep.conteo.total ? ' Se cuenta una vez cada marca de un mismo titular; son ' + rep.conteo.expedientes + ' expedientes.' : ''),
             'Fuentes: ' + rep.fuentes.map(x => x.nombre + (x.ok ? ' (' + x.total + ')' : x.parcial ? ' (' + x.total + ', a medias: ' + x.error + ')' :
                 ' (sin respuesta' + (x.error ? ': ' + x.error : '') + ')')).join(', ') + '.' +
-                (rep.fichas && rep.fichas.pedidas ? ' Fichas de Marcanet: ' + rep.fichas.leidas + ' de ' + rep.fichas.pedidas + '.' : '')
+                (rep.fichas && rep.fichas.pedidas ? ' Fichas de Marcanet: ' + rep.fichas.leidas + ' de ' + rep.fichas.pedidas + '.' : '') +
+                (rep.fichasMARCia && rep.fichasMARCia.pedidas ? ' Fichas de MARCia: ' + rep.fichasMARCia.leidas + ' de ' + rep.fichasMARCia.pedidas + '.' : '')
         ];
         if (rep.observaciones.length) {
             lineas.push('', 'OBSERVACIONES');
             for (const o of rep.observaciones) lineas.push('• ' + o.texto);
         }
-        const relevantes = rep.antecedentes.filter(a => a.riesgo === 'alto' || a.riesgo === 'medio');
+        const relevantes = agruparMarcas(rep.antecedentes).filter(a => a.riesgo === 'alto' || a.riesgo === 'medio');
         if (relevantes.length) {
             lineas.push('', 'ANTECEDENTES A REVISAR');
             for (const a of relevantes.slice(0, 15)) {
-                lineas.push('• [' + a.riesgo.toUpperCase() + '] ' + a.titulo + ' — clase ' + (a.clases.join(', ') || '¿?') +
-                    (a.registro ? ', reg. ' + a.registro : a.expediente ? ', exp. ' + a.expediente : '') +
-                    (a.estado ? ', ' + a.estado : '') + (a.titulares.length ? ', ' + a.titulares[0] : '') + '. ' + a.motivos.join('; ') + '.' +
+                const familia = a.miembros.length > 1
+                    ? ' — ' + a.miembros.length + ' expedientes' + (a.titulares.length ? ' de ' + a.titulares[0] : '') + ': ' +
+                      a.miembros.map(m => numeroDe(m) + ' (clase ' + (m.clases.join(', ') || '¿?') + (m.estado ? ', ' + m.estado : '') + ', riesgo ' + m.riesgo + ')').join('; ') + '.'
+                    : ' — clase ' + (a.clases.join(', ') || '¿?') + (numeroDe(a) ? ', ' + numeroDe(a) : '') +
+                      (a.estado ? ', ' + a.estado : '') + (a.titulares.length ? ', ' + a.titulares[0] : '') + '.';
+                lineas.push('• [' + a.riesgo.toUpperCase() + '] ' + a.titulo + familia + ' ' + a.motivos.join('; ') + '.' +
+                    (a.ampara ? ' Ampara: ' + a.ampara.replace(/\.+$/, '') + '.' : '') +
                     (a.gaceta && a.gaceta.length ? ' En Gaceta: ' + historialTexto(a) + '.' : ''));
             }
         }
@@ -936,7 +1084,8 @@
         CLASES_NIZA, RIESGOS, AVISO_VIABILIDAD, normalizarMarca, claveFonetica, compararMarcas, clasesRelacionadas, relacionClases,
         situacionDe, mismoTitular, palabrasDistintivas, observacionesRegistrabilidad, desdeMARCia, desdeMarcanet,
         desdeSIGA, consolidar, evaluarAntecedente, analizar, recomendaciones, resumenTexto, fechaIMPI,
-        leerDetalleMarcanet, variantesComodin, aConsultarDetalle, nombresParaGaceta, etiquetaGaceta, historialTexto
+        leerDetalleMarcanet, variantesComodin, aConsultarDetalle, nombresParaGaceta, etiquetaGaceta, historialTexto,
+        leerFichaMARCia, avisosDeFicha, agruparMarcas, aConsultarMARCia, nombreDe, claveTitular
     };
 
     if (typeof module !== 'undefined' && module.exports) module.exports = Motor;
@@ -1316,6 +1465,35 @@
         return detalles;
     }
 
+    /**
+     * La ficha de MARCia de cada antecedente que importa: su clase y lo que
+     * ampara. Cada objetivo trae los ids posibles; el primero que corresponda
+     * al expediente se queda.
+     */
+    async function consultarFichasMARCia(objetivos) {
+        const fichas = {};
+        let leidas = 0;
+        const ver = async (id) => {
+            const pedir = () => global.proxyFetch('/marcia/view/' + encodeURIComponent(id));
+            try {
+                return await pedir();
+            } catch (e) {
+                if (!esErrorSesion(e)) return null;
+                // La sesión de MARCia en el proxy se perdió: otra, y una vez más.
+                try { await global.proxyFetch('/marcia/csrf'); return await pedir(); } catch (e2) { return null; }
+            }
+        };
+        for (const o of objetivos) {
+            for (const id of o.ids) {
+                const f = leerFichaMARCia(await ver(id), o.expediente);
+                if (f) { fichas[o.expediente] = f; leidas++; break; }
+            }
+            marcar('marcia-fichas', 'espera', leidas + ' de ' + objetivos.length);
+        }
+        marcar('marcia-fichas', leidas ? 'ok' : 'error', leidas + ' de ' + objetivos.length + (leidas ? '' : ': no respondió'));
+        return fichas;
+    }
+
     /** SIGA por el nombre de cada antecedente principal: su historial en la Gaceta. */
     async function consultarHistorialSIGA(nombres) {
         const fichas = [];
@@ -1373,10 +1551,10 @@
     }
 
     /**
-     * Lo que sigue a las fuentes: el dictamen, las fichas de Marcanet de los
-     * antecedentes principales y su historial en la Gaceta. Sirve igual para
-     * el estudio y para reintentar lo que faltó: lo que ya se tiene no se
-     * vuelve a pedir.
+     * Lo que sigue a las fuentes: el dictamen, las fichas de Marcanet y de
+     * MARCia de los antecedentes principales y su historial en la Gaceta.
+     * Sirve igual para el estudio y para reintentar lo que faltó: lo que ya
+     * se tiene no se vuelve a pedir.
      */
     async function completar(entrada, crudo) {
         crudo.fuentes = { MARCia: crudo.fuentes.MARCia, Marcanet: crudo.fuentes.Marcanet, SIGA: crudo.fuentes.SIGA };
@@ -1390,6 +1568,16 @@
             crudo.detalles = Object.assign(crudo.detalles || {}, await consultarDetalles(objetivos));
             crudo.fichasPedidas = Array.from(new Set((crudo.fichasPedidas || []).concat(objetivos.map(o => o.expediente))));
             crudo.fichas = { pedidas: crudo.fichasPedidas.length, leidas: crudo.fichasPedidas.filter(x => crudo.detalles[x]).length };
+            rep = analizar(entrada, crudo, Date.now());
+        }
+        // La clase y lo que ampara, de la ficha de MARCia: la búsqueda de
+        // Marcanet a veces muestra las clases de toda una familia de solicitudes.
+        const deMARCia = aConsultarMARCia(rep, 8, crudo.fichasMARCia);
+        if (deMARCia.length) {
+            paso('marcia-fichas', 'MARCia: clase y productos de los ' + deMARCia.length + ' antecedentes principales');
+            crudo.fichasMARCia = Object.assign(crudo.fichasMARCia || {}, await consultarFichasMARCia(deMARCia));
+            crudo.fichasMPedidas = Array.from(new Set((crudo.fichasMPedidas || []).concat(deMARCia.map(o => o.expediente))));
+            crudo.fichasM = { pedidas: crudo.fichasMPedidas.length, leidas: crudo.fichasMPedidas.filter(x => crudo.fichasMARCia[x]).length };
             rep = analizar(entrada, crudo, Date.now());
         }
         // SIGA solo encuentra palabras exactas: con los nombres de los
@@ -1407,14 +1595,15 @@
     }
 
     /**
-     * Lo que no respondió: las fuentes, y las fichas de Marcanet si no se
-     * leyó ninguna (señal de que la sesión se atoró). Una ficha suelta que no
-     * se deja leer no se arregla reintentando.
+     * Lo que no respondió: las fuentes, y las fichas de Marcanet o de MARCia
+     * si no se leyó ninguna (señal de que la sesión se atoró). Una ficha
+     * suelta que no se deja leer no se arregla reintentando.
      */
     function faltantes(rep) {
         if (!rep) return [];
         const f = rep.fuentes.filter(x => !x.ok).map(x => x.nombre);
         if (rep.fichas && rep.fichas.pedidas && !rep.fichas.leidas) f.push('fichas');
+        if (rep.fichasMARCia && rep.fichasMARCia.pedidas && !rep.fichasMARCia.leidas) f.push('fichas-marcia');
         return f;
     }
 
@@ -1542,19 +1731,27 @@
         if (!cont || !rep) return;
         const e = rep.entrada;
         const d = rep.dictamen;
-        const utiles = rep.antecedentes.filter(a => !a.descartado);
+        // Una fila por marca y titular; sus expedientes, dentro.
+        const utiles = agruparMarcas(rep.antecedentes).filter(a => !a.descartado);
         const relevantes = utiles.filter(a => a.riesgo !== 'bajo' || a.similitud.puntaje >= 75);
         const bajos = utiles.filter(a => !relevantes.includes(a));
         const visibles = ui.verBajos ? utiles : relevantes;
         const descartados = rep.conteo.descartados || 0;
 
+        const numero = a => a.registro ? 'Reg. ' + a.registro : a.expediente ? 'Exp. ' + a.expediente : '';
+        const verMARCia = id => '<button type="button" class="btn btn-sm btn-secondary" data-vb="detalle" data-id="' + esc(id) + '">Ver</button>';
+        // Los expedientes de una marca con varios: riesgo, número, clase y estatus de cada uno.
+        const miembros = a => a.miembros.length < 2 ? '' :
+            '<details class="vb-miembros"><summary>Sus ' + a.miembros.length + ' expedientes</summary><ul>' +
+            a.miembros.map(m => '<li>' + esc([ETIQUETA_RIESGO[m.riesgo], numero(m), 'clase ' + (m.clases.join(', ') || '—'), m.estado].filter(Boolean).join(' · ')) +
+                (m.id && m.id !== a.id ? ' ' + verMARCia(m.id) : '') + '</li>').join('') + '</ul></details>';
         const fila = a => {
-            const num = a.registro ? 'Reg. ' + a.registro : a.expediente ? 'Exp. ' + a.expediente : '';
-            const acciones = a.id ? '<button type="button" class="btn btn-sm btn-secondary" data-vb="detalle" data-id="' + esc(a.id) + '">Ver</button>' : '';
+            const num = numero(a) + (a.miembros.length > 1 ? ' y ' + (a.miembros.length - 1) + ' más' : '');
+            const acciones = a.id ? verMARCia(a.id) : '';
             return '<tr class="vb-fila-' + a.riesgo + '">' +
                 '<td><span class="vb-riesgo vb-riesgo-' + a.riesgo + '">' + ETIQUETA_RIESGO[a.riesgo] + '</span></td>' +
-                '<td><strong>' + esc(a.titulo) + '</strong>' + (num ? '<br><small>' + esc(num) + '</small>' : '') + '</td>' +
-                '<td>' + esc(a.clases.join(', ') || '—') + '<br><small>' + esc(ETIQUETA_RELACION[a.relacion]) + '</small></td>' +
+                '<td><strong>' + esc(a.titulo) + '</strong>' + (num ? '<br><small>' + esc(num) + '</small>' : '') + miembros(a) + '</td>' +
+                '<td>' + esc(a.clases.join(', ') || '—') + '<br><small>' + esc(ETIQUETA_RELACION[a.relacion]) + (a.conFichaMARCia ? ', según MARCia' : '') + '</small></td>' +
                 '<td>' + esc(a.estado || '—') + (a.conDetalle ? '<br><small>según su ficha en Marcanet</small>' : '') +
                     (a.gaceta && a.gaceta.length ? '<br><small>En Gaceta: ' + esc(historialTexto(a)) + '</small>' : '') + '</td>' +
                 '<td>' + esc(a.titulares.slice(0, 2).join('; ') || '—') + (a.ampara ? '<br><small>Ampara: ' + esc(a.ampara.length > 140 ? a.ampara.slice(0, 140) + '…' : a.ampara) + '</small>' : '') + '</td>' +
@@ -1568,6 +1765,9 @@
             ? '<div class="vb-tabla-marco"><table class="vb-tabla"><thead><tr><th>Riesgo</th><th>Marca</th><th>Clase</th><th>Estatus</th><th>Titular</th>' +
               '<th class="vb-num">Parecido</th><th>Por qué</th><th>Fuente</th><th></th></tr></thead><tbody>' + visibles.map(fila).join('') + '</tbody></table></div>'
             : '<p class="vb-vacio">' + (rep.antecedentes.length ? 'Ningún antecedente se parece lo suficiente para considerarse.' : 'Las fuentes no devolvieron antecedentes.') + '</p>';
+        const notaMarcas = visibles.some(a => a.miembros.length > 1)
+            ? '<p class="vb-nota">Cada fila es una marca de un mismo titular. Si tiene varios expedientes (suele pedirse uno por clase), la fila toma el riesgo del más grave y los demás se ven en «Sus expedientes».</p>'
+            : '';
         const notaDescartados = descartados
             ? '<p class="vb-nota">Se descartaron ' + descartados + ' resultado' + (descartados === 1 ? '' : 's') + ' de las fuentes que no se parece' + (descartados === 1 ? '' : 'n') +
               ' a la denominación (menos de 50%). Van en el CSV por si quieres revisarlos.</p>'
@@ -1609,14 +1809,17 @@
                         esc('sin respuesta' + (f.error ? ': ' + f.error : ''))) + '</li>').join('') +
                     (rep.fichas && rep.fichas.pedidas ? '<li class="' + (rep.fichas.leidas === rep.fichas.pedidas ? 'vb-ok' : 'vb-falla') + '">' +
                         (rep.fichas.leidas === rep.fichas.pedidas ? '✅ ' : '⚠️ ') + '<strong>Fichas de Marcanet</strong> ' +
-                        esc(rep.fichas.leidas + ' de ' + rep.fichas.pedidas + ' (estatus y vigencia)') + '</li>' : '') + '</ul>' +
+                        esc(rep.fichas.leidas + ' de ' + rep.fichas.pedidas + ' (estatus y vigencia)') + '</li>' : '') +
+                    (rep.fichasMARCia && rep.fichasMARCia.pedidas ? '<li class="' + (rep.fichasMARCia.leidas === rep.fichasMARCia.pedidas ? 'vb-ok' : 'vb-falla') + '">' +
+                        (rep.fichasMARCia.leidas === rep.fichasMARCia.pedidas ? '✅ ' : '⚠️ ') + '<strong>Fichas de MARCia</strong> ' +
+                        esc(rep.fichasMARCia.leidas + ' de ' + rep.fichasMARCia.pedidas + ' (clase y productos)') + '</li>' : '') + '</ul>' +
                     (puedeReintentar() ? '<p class="vb-reintentar"><button type="button" class="btn btn-sm btn-primary" data-vb="reintentar">🔄 Reintentar lo que faltó</button> ' +
                         '<small>Vuelve a pedir solo lo que no respondió. No cuenta como otro estudio.</small></p>' : '') + '</section>' +
                 (rep.observaciones.length ? '<section class="vb-seccion"><h4>Sobre la denominación</h4><ul class="vb-observaciones">' +
                     rep.observaciones.map(o => '<li class="vb-obs-' + o.nivel + '"><span aria-hidden="true">' + ICONO_OBS[o.nivel] + '</span> ' + esc(o.texto) + '</li>').join('') + '</ul></section>' : '') +
                 '<section class="vb-seccion"><h4>Antecedentes</h4>' +
                     '<p class="vb-nota">El parecido combina cómo se escribe y cómo suena en español; pesa más el principio de la palabra. Los umbrales son orientativos.</p>' +
-                    tablaAntecedentes + notaDescartados +
+                    tablaAntecedentes + notaMarcas + notaDescartados +
                     (bajos.length ? '<button type="button" class="btn btn-sm btn-secondary vb-mas" data-vb="ver-bajos">' +
                         (ui.verBajos ? 'Ocultar los de riesgo bajo' : 'Ver también los ' + bajos.length + ' de riesgo bajo') + '</button>' : '') +
                 '</section>' +
@@ -1689,6 +1892,7 @@
     }
 
     function imprimir() {
+        document.querySelectorAll('#vb-reporte details.vb-miembros').forEach(d => { d.open = true; });
         document.body.classList.add('imprimiendo-viabilidad');
         const quitar = () => { document.body.classList.remove('imprimiendo-viabilidad'); window.removeEventListener('afterprint', quitar); };
         window.addEventListener('afterprint', quitar);
