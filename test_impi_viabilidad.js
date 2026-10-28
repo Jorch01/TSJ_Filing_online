@@ -300,6 +300,54 @@ console.log('\nUn caso real: lunafardo');
     const marciaVieja = V.analizar(entrada, { marcia: [{ clase: 41, resultados: [marcia('RM200600772119', 'L LUNFARDO', 'EN TRÁMITE', { applicationNumber: '772119' })] }],
         marcanet: [], siga: [], fuentes, detalles }, AHORA);
     igual('la ficha manda sobre el estatus viejo de MARCia', marciaVieja.antecedentes[0].estado, 'ABANDONADA');
+
+    // Lo que no se parece es ruido de las fuentes: ni cuenta ni se muestra.
+    igual('cuenta solo lo que se parece: 1 alto, 4 bajos, 1 descartado (GA.MA)',
+        [conFicha.conteo.alto, conFicha.conteo.medio, conFicha.conteo.bajo, conFicha.conteo.descartados], [1, 0, 4, 1]);
+    igual('GA.MA queda marcado como descartado', conFicha.antecedentes.filter(a => a.descartado).map(a => a.titulo), ['GA.MA']);
+    verificar('el resumen lo dice', /4 bajo \(y 1 resultado que no se parece, descartado\)/.test(V.resumenTexto(conFicha)), V.resumenTexto(conFicha).split('\n')[7]);
+
+    // Recomendaciones: lo ya confirmado no se vuelve a pedir; con un solo
+    // obstáculo, la carta de consentimiento es una salida.
+    const recs = conFicha.recomendaciones.join('\n');
+    verificar('no pide confirmar en Marcanet lo que ya se confirmó', !/Antes de presentar, confirma en Marcanet/.test(recs) && /se confirmó en su ficha de Marcanet el \d\d\/\d\d\/\d{4}/.test(recs), recs);
+    verificar('con un solo obstáculo sugiere la carta de consentimiento de su titular',
+        /negociar con FERNANDO NESTOR POCH Y CLAUDIA MARIA VILLALOBOS MAYA, titular de «LUNFARDO» \(reg\. 1261657\), una carta de consentimiento/.test(recs), recs);
+    verificar('lo que se quedó sin ficha sí se pide confirmar',
+        /Antes de presentar, confirma en Marcanet el estatus de «LUNFARDO»/.test(sinFicha.recomendaciones.join('\n')), sinFicha.recomendaciones.join('\n'));
+    const muchos = { ...conFicha, antecedentes: [1, 2, 3].map(i => ({ ...conFicha.antecedentes[0], registro: String(i), expediente: String(i) })) };
+    verificar('con muchos obstáculos, no', !/carta de consentimiento/.test(V.recomendaciones(muchos).join(' ')));
+    const notoria = { ...conFicha, antecedentes: [{ ...conFicha.antecedentes[0], notoria: true }] };
+    verificar('ni frente a una marca notoria', !/carta de consentimiento/.test(V.recomendaciones(notoria).join(' ')));
+
+    // SIGA solo encuentra palabras exactas: se busca por el nombre de los
+    // antecedentes principales. Lo que respondió para «lunfardo», más una
+    // solicitud reciente inventada que todavía no estaría en MARCia.
+    igual('se busca en SIGA el nombre de los antecedentes principales', V.nombresParaGaceta(conFicha), ['LUNFARDO']);
+    igual('sin repetir ni incluir la propia denominación', V.nombresParaGaceta({ entrada: { denominacion: 'Luna' },
+        antecedentes: [{ riesgo: 'alto', titulo: 'LUNA' }, { riesgo: 'medio', titulo: 'Lunas' }, { riesgo: 'medio', titulo: 'LUNAS' }, { riesgo: 'bajo', titulo: 'SOL' }] }), ['LUNAS']);
+    const ficha = (fichaId, gaceta, seccion, fecha, datos) => ({ fichaId, gaceta, seccion, fechaPuestaCirculacion: fecha,
+        datos: Object.entries(datos).map(([descripcion, datoTxt]) => ({ descripcion, datoTxt })) });
+    const sigaHistorial = [
+        ficha(101, 'Marcas Registradas, Avisos y Nombres Comerciales', 'Marcas Registradas', '09/04/2012', { 'Registro de Marca': '1261657', 'Expediente': '1204050' }),
+        ficha(102, 'Ejemplar Extraordinario', 'Solicitudes de Marcas Abandonadas', '07/12/2007', { 'Expediente': '772119', 'Denominación': 'L LUNFARDO' }),
+        ficha(103, 'Marcas Registradas, Avisos y Nombres Comerciales', 'Marcas Registradas', '28/03/2008', { 'Registro de Marca': '1012592', 'Expediente': '879084' }),
+        ficha(104, 'Conservación de los Derechos', 'Marcas Renovadas en el Mes', '11/05/2022', { 'Registro de Marca': '1261657', 'Clase': '43', 'Denominación': 'LUNFARDO y diseño' }),
+        ficha(105, 'Solicitudes de Marcas, Avisos y Nombres Comerciales presentadas ante el Instituto', 'Solicitudes de Marcas', '20/10/2026',
+            { 'Expediente': '3456789', 'Denominación': 'LUNFARDO BAR', 'Clase': '43' })
+    ];
+    const conGaceta = V.analizar(entrada, { marcia: [], marcanet: [{ clase: null, resultados: marcanet }], siga: [], fuentes, detalles, sigaHistorial }, AHORA);
+    const lunfardo = conGaceta.antecedentes.find(a => a.registro === '1261657');
+    igual('el historial en Gaceta se pega a su antecedente, en orden', V.historialTexto(lunfardo), 'Registrada 09/04/2012 · Renovada 11/05/2022');
+    igual('también el del abandonado', V.historialTexto(conGaceta.antecedentes.find(a => a.expediente === '772119')), 'Abandonada 07/12/2007');
+    igual('la solicitud reciente parecida, de nadie conocido, sale en publicaciones', conGaceta.publicaciones.map(p => p.denominacion), ['LUNFARDO BAR']);
+    verificar('la recomendación de caducidad dice cuándo se renovó', /su última renovación se publicó en la Gaceta el 11\/05\/2022\./.test(conGaceta.recomendaciones.join(' ')), conGaceta.recomendaciones.join('\n'));
+    verificar('y el resumen trae el historial', /En Gaceta: Registrada 09\/04\/2012 · Renovada 11\/05\/2022/.test(V.resumenTexto(conGaceta)));
+    igual('etiquetas de la Gaceta', ['Marcas Renovadas en el Mes', 'Solicitudes de Marcas Abandonadas', 'Declaraciones Administrativas de Caducidad', 'Solicitudes de Marcas']
+        .map(V.etiquetaGaceta), ['Renovada', 'Abandonada', 'Caducidad', 'Solicitud publicada']);
+
+    igual('los titulares de MARCia llegan sin espacios de más', V.desdeMARCia(marcia('RM200700879084', 'L LUNFARDO', 'REGISTRADO',
+        { owners: ['RAFAEL TABLADO RASCON  ', '  '] })).titulares, ['RAFAEL TABLADO RASCON']);
 }
 
 console.log(`\n${pasadas} pasadas, ${fallos.length} fallidas`);

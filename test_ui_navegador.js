@@ -2114,6 +2114,7 @@ async function probarViabilidadMarca(navegador) {
 
     const simulador = (fallaSIGA) => {
         window.__llamadas = [];
+        window.__fonetica = 0;
         const marca = (id, title, status, owners, classes) => ({ id, applicationNumber: id.slice(-6), registrationNumber: status === 'REGISTRADO' ? '9' + id.slice(-5) : '',
             title, status, appType: 'REGISTRO DE MARCA', owners, dates: { application: '10/02/2019', expiry: '10/02/2029' }, goodsAndServices: '', classes: classes || [], images: '' });
         window.proxyFetch = async (ruta, opciones) => {
@@ -2127,17 +2128,21 @@ async function probarViabilidadMarca(navegador) {
                 let r = [];
                 if (opcion === 'similar' && titulo === 'LUNA AZUL' && clase === '30') {
                     r = [marca('RM201900111111', 'LUNA AZUL', 'REGISTRADO', ['CAFES DEL SURESTE SA DE CV']),
-                         marca('RM201500333333', 'LUNA ROJA', 'REGISTRADO', ['ALIMENTOS ROJOS SA'])];
+                         marca('RM201500333333', 'LUNA ROJA', 'REGISTRADO', ['ALIMENTOS ROJOS SA']),
+                         marca('RM201700888888', 'LUNA ASUL', 'REGISTRADO', ['TOSTADORES DEL GOLFO  '])];
                 }
                 if (opcion === 'similar' && titulo === 'LUNA AZUL' && clase === '43') {
                     r = [marca('RM201800444444', 'LA LUNA AZUL CAFETERIA', 'REGISTRADO', ['JUAN LOPEZ']),
                          marca('RM201000555555', 'SOL Y MAR', 'REGISTRADO', ['MARISCOS SA'])];
                 }
-                if (opcion === 'identica' && !clase) r = [marca('RM202000777777', 'LUNA AZUL', 'REGISTRADO', ['MODAS LUNA AZUL SA'], [25])];
+                if (opcion === 'identica' && !clase) r = [marca('RM202000777777', 'LUNA AZUL', 'REGISTRADO', ['MODAS LUNA AZUL SA'], [25]),
+                    marca('RM202100999999', 'LUNARES', 'REGISTRADO', ['BOUTIQUE LUNARES'], [25])];
                 return { resultPage: r, totalResults: r.length, aggregates: { NICE_CLASSES: [{ key: '30', docCount: 2 }, { key: '43', docCount: 1 }] } };
             }
             if (ruta === '/marcanet/fonetica') {
-                return { results: body.clase === '30' ? [{ 'Denominación': 'LUNA AZUL', 'Expediente': '111111', 'Clase': '30', 'Titular': 'CAFES DEL SURESTE', 'Situación': 'REGISTRADA' }] : [] };
+                // La primera llega vacía, como hace Marcanet con la sesión recién abierta.
+                window.__fonetica = (window.__fonetica || 0) + 1;
+                return { results: window.__fonetica === 1 ? [] : [{ 'Denominación': 'LUNA AZUL', 'Expediente': '111111', 'Clase': '30', 'Titular': 'CAFES DEL SURESTE', 'Situación': 'REGISTRADA' }] };
             }
             // La ficha de cada expediente: LUNA ROJA resulta abandonada.
             if (ruta === '/marcanet/full-detail') {
@@ -2147,6 +2152,9 @@ async function probarViabilidadMarca(navegador) {
             }
             if (ruta === '/siga/search') {
                 if (fallaSIGA) throw new Error('HTTP 502');
+                // El historial de un antecedente, buscado por su nombre.
+                if (body.Busqueda === 'LUNA ASUL') return { successed: true, data: [{ fichaId: 31, gaceta: 'Conservación de los Derechos', seccion: 'Marcas Renovadas en el Mes',
+                    fechaPuestaCirculacion: '15/03/2024', datos: [{ descripcion: 'Expediente', datoTxt: '888888' }, { descripcion: 'Denominación', datoTxt: 'LUNA ASUL' }] }] };
                 return { successed: true, data: [{ fichaId: 7, gaceta: 'Solicitudes', seccion: 'Solicitudes publicadas', ejemplar: 'Octubre de 2026',
                     datos: [{ descripcion: 'Denominación', datoTxt: 'LUNA AZUL CAFÉ' }, { descripcion: 'Clase', datoTxt: '43' }] }] };
             }
@@ -2184,12 +2192,14 @@ async function probarViabilidadMarca(navegador) {
         verificar('viabilidad: consulta las tres fuentes', ['/marcia/search', '/marcanet/fonetica', '/siga/search'].every(r => llamadas.some(l => l.startsWith(r))), llamadas.join(' | '));
         verificar('viabilidad: MARCia busca parecidas y también idénticas', llamadas.includes('/marcia/search "similar"') && llamadas.includes('/marcia/search ""'), llamadas.join(' | '));
         verificar('viabilidad: pide a MARCia cada clase que tiene resultados', llamadas.includes('/marcia/results ["30"]') && llamadas.includes('/marcia/results ["43"]'));
-        verificar('viabilidad: la fonética de Marcanet clase por clase', llamadas.includes('/marcanet/fonetica "30"') && llamadas.includes('/marcanet/fonetica "43"'));
-        igual('viabilidad: si Marcanet llega vacía, se repite una vez (sesión recién abierta)',
-            [llamadas.filter(l => l === '/marcanet/fonetica "43"').length, llamadas.filter(l => l === '/marcanet/fonetica "30"').length], [2, 1]);
+        const foneticas = await page.evaluate(() => window.__llamadas.filter(l => l.ruta === '/marcanet/fonetica').map(l => l.body));
+        igual('viabilidad: Marcanet no filtra por clase: una sola búsqueda (repetida una vez si llega vacía)',
+            foneticas.map(b => b.clase + '/' + b.maxResultados), ['30/60', '30/60']);
         const fichas = await page.evaluate(() => window.__llamadas.filter(l => l.ruta === '/marcanet/full-detail').map(l => l.body.expediente));
         verificar('viabilidad: confirma en Marcanet el estatus de los de riesgo alto y medio', fichas.includes('111111') && fichas.includes('333333'), fichas.join(', '));
         verificar('viabilidad: y lo dice en los pasos', /estatus y vigencia/.test(await page.textContent('#vb-progreso')));
+        const historial = await page.evaluate(() => window.__llamadas.filter(l => l.ruta === '/siga/search').map(l => l.body.Busqueda));
+        igual('viabilidad: busca en SIGA la denominación y el nombre de los antecedentes principales', historial, ['Luna Azul', 'LUNA ASUL']);
         verificar('viabilidad: busca también cada palabra distintiva', llamadas.includes('/marcia/search "similar"') && await page.evaluate(() =>
             window.__llamadas.some(l => l.ruta === '/marcia/search' && l.body.query.title === 'LUNA') && window.__llamadas.some(l => l.ruta === '/marcia/search' && l.body.query.title === 'AZUL')));
 
@@ -2200,6 +2210,11 @@ async function probarViabilidadMarca(navegador) {
             filas.filter(f => /^⛔ Alto LUNA AZUL/.test(f)).length === 1 && filas.some(f => /LUNA AZUL.*MARCia, Marcanet/.test(f)), filas.join('\n'));
         verificar('viabilidad: la del mismo solicitante no es obstáculo', filas.some(f => /Propia LA LUNA AZUL CAFETERIA/.test(f)), filas.join('\n'));
         verificar('viabilidad: la idéntica en otra clase sale como riesgo bajo', filas.some(f => /Bajo LUNA AZUL.*25/.test(f)), filas.join('\n'));
+        verificar('viabilidad: el historial en Gaceta del antecedente', filas.some(f => /LUNA ASUL.*En Gaceta: Renovada 15\/03\/2024/.test(f)), filas.join('\n'));
+        verificar('viabilidad: el titular sin espacios de más', filas.some(f => /TOSTADORES DEL GOLFO(?! {2})/.test(f)), filas.join('\n'));
+        verificar('viabilidad: lo que no se parece no se muestra', !filas.some(f => /SOL Y MAR/.test(f)), filas.join('\n'));
+        verificar('viabilidad: pero se cuenta como descartado', /1 descartado por no parecerse/.test(await page.textContent('.vb-conteo')) &&
+            /Se descartaron 1 resultado/.test(await page.textContent('.vb-reporte')), await page.textContent('.vb-conteo'));
         verificar('viabilidad: y las publicaciones en Gaceta', /LUNA AZUL CAFÉ/.test(await page.textContent('.vb-reporte')));
 
         // Acciones del reporte.
@@ -2210,6 +2225,8 @@ async function probarViabilidadMarca(navegador) {
         if (descarga) {
             const csv = fs.readFileSync(await descarga.path(), 'utf8');
             verificar('viabilidad: el CSV trae dictamen y antecedentes', /Viabilidad baja/.test(csv) && /LUNA ROJA/.test(csv), csv.slice(0, 200));
+            verificar('viabilidad: y también los descartados, marcados', /\ndescartado,SOL Y MAR,/.test(csv), csv);
+            verificar('viabilidad: con su historial en Gaceta', /Renovada 15\/03\/2024/.test(csv));
         }
         await page.click('[data-vb="nota"]');
         await pausa(700);
@@ -2226,6 +2243,7 @@ async function probarViabilidadMarca(navegador) {
         verificar('viabilidad: se pueden ver también los de riesgo bajo', /Ocultar/.test(await page.textContent('[data-vb="ver-bajos"]')));
         const conBajos = await page.$$eval('.vb-tabla tbody tr', trs => trs.map(tr => tr.innerText.replace(/\s+/g, ' ')));
         verificar('viabilidad: la abandonada, según su ficha, ya no estorba', conBajos.some(f => /Bajo LUNA ROJA.*ABANDONADA.*ficha en Marcanet/.test(f)), conBajos.join('\n'));
+        verificar('viabilidad: los bajos que sí se parecen aparecen al pedirlos', conBajos.some(f => /Bajo LUNARES/.test(f)) && !conBajos.some(f => /SOL Y MAR/.test(f)), conBajos.join('\n'));
 
         // Estudios recientes.
         verificar('viabilidad: queda en los estudios recientes', /Luna Azul/.test(await page.textContent('#vb-recientes')));
