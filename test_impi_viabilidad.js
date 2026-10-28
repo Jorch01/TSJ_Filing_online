@@ -214,7 +214,7 @@ console.log('\nEl dictamen');
 
     const texto = V.resumenTexto(rep);
     verificar('el resumen en texto lleva dictamen, antecedentes y recomendaciones',
-        /DICTAMEN: VIABILIDAD BAJA/.test(texto) && /\[ALTO\] LUNA AZUL/.test(texto) && /RECOMENDACIONES/.test(texto) && /orientativo/.test(texto));
+        /DICTAMEN: VIABILIDAD BAJA/.test(texto) && /\[ALTO\] LUNA AZUL/.test(texto) && /RECOMENDACIONES/.test(texto) && /nunca son concluyentes/.test(texto));
 }
 
 console.log('\nConectado con la app');
@@ -346,6 +346,8 @@ console.log('\nUn caso real: lunafardo');
     igual('etiquetas de la Gaceta', ['Marcas Renovadas en el Mes', 'Solicitudes de Marcas Abandonadas', 'Declaraciones Administrativas de Caducidad', 'Solicitudes de Marcas']
         .map(V.etiquetaGaceta), ['Renovada', 'Abandonada', 'Caducidad', 'Solicitud publicada']);
 
+    verificar('el resumen termina con el aviso: no es concluyente y hay que consultar a un especialista',
+        /AVISO: Los resultados de este estudio dependen por completo de búsquedas en sistemas externos.*nunca son concluyentes.*especialista/.test(V.resumenTexto(conFicha)));
     igual('los titulares de MARCia llegan sin espacios de más', V.desdeMARCia(marcia('RM200700879084', 'L LUNFARDO', 'REGISTRADO',
         { owners: ['RAFAEL TABLADO RASCON  ', '  '] })).titulares, ['RAFAEL TABLADO RASCON']);
 
