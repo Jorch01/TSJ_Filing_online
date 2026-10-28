@@ -2112,7 +2112,9 @@ async function probarViabilidadMarca(navegador) {
     page.on('pageerror', e => errores.push(e.message));
     const pausa = (ms) => page.waitForTimeout(ms);
 
-    const simulador = (fallaSIGA) => {
+    const simulador = (modo) => {
+        const fallaSIGA = modo === true;
+        const marcanetVacia = modo === 'marcanet-vacia';
         window.__llamadas = [];
         window.__fonetica = 0;
         const marca = (id, title, status, owners, classes) => ({ id, applicationNumber: id.slice(-6), registrationNumber: status === 'REGISTRADO' ? '9' + id.slice(-5) : '',
@@ -2142,7 +2144,7 @@ async function probarViabilidadMarca(navegador) {
             if (ruta === '/marcanet/fonetica') {
                 // La primera llega vacía, como hace Marcanet con la sesión recién abierta.
                 window.__fonetica = (window.__fonetica || 0) + 1;
-                return { results: window.__fonetica === 1 ? [] : [{ 'Denominación': 'LUNA AZUL', 'Expediente': '111111', 'Clase': '30', 'Titular': 'CAFES DEL SURESTE', 'Situación': 'REGISTRADA' }] };
+                return { results: window.__fonetica === 1 || marcanetVacia ? [] : [{ 'Denominación': 'LUNA AZUL', 'Expediente': '111111', 'Clase': '30', 'Titular': 'CAFES DEL SURESTE', 'Situación': 'REGISTRADA' }] };
             }
             // La ficha de cada expediente: LUNA ROJA resulta abandonada.
             if (ruta === '/marcanet/full-detail') {
@@ -2254,6 +2256,19 @@ async function probarViabilidadMarca(navegador) {
         await page.waitForFunction(() => /no respondió/.test((document.querySelector('.vb-dictamen') || {}).textContent || ''), null, { timeout: 15000 }).catch(() => {});
         verificar('viabilidad: si SIGA falla, el dictamen avisa que es parcial', /SIGA no respondió/.test(await page.textContent('.vb-dictamen')));
         verificar('viabilidad: y la fuente aparece sin respuesta', /SIGA sin respuesta/.test((await page.textContent('.vb-fuentes')).replace(/\s+/g, ' ')));
+
+        // Marcanet a veces responde vacía: se espera y se repite; si sigue
+        // vacía, no se da por hecho que "no hay nada".
+        await page.evaluate(simulador, 'marcanet-vacia');
+        // Es el tercer estudio y el plan gratuito da dos: este va con Premium.
+        await page.evaluate(() => { estadoPremium.activo = true; estadoPremium.codigo = 'LIC-PRUEBA'; estadoPremium.dispositivoId = 'D'; });
+        await page.click('[data-vb="repetir-reciente"]');
+        await page.waitForFunction(() => /Marcanet no respondió/.test((document.querySelector('.vb-dictamen') || {}).textContent || ''), null, { timeout: 30000 }).catch(() => {});
+        verificar('viabilidad: Marcanet vacía tres veces cuenta como sin respuesta, no como "no hay nada"',
+            /Marcanet no respondió/.test(await page.textContent('.vb-dictamen')) &&
+            /Marcanet sin respuesta: respondió vacía tres veces/.test((await page.textContent('.vb-fuentes')).replace(/\s+/g, ' ')),
+            (await page.textContent('.vb-fuentes')).replace(/\s+/g, ' '));
+        igual('viabilidad: antes la pidió tres veces, con pausas', await page.evaluate(() => window.__fonetica), 3);
 
         // En el teléfono.
         await page.setViewportSize({ width: 390, height: 844 });

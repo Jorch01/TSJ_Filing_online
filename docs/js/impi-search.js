@@ -115,14 +115,18 @@ function obtenerClientId() {
     return impiClientId;
 }
 
-// Con la sesión recién abierta, la fonética de Marcanet responde la primera
-// búsqueda vacía: se repite una vez antes de creerle.
+// La fonética de Marcanet a veces responde vacía en un segundo (sesión recién
+// abierta, o todavía ocupada con la búsqueda anterior). Esperando un poco casi
+// siempre se recupera: se repite una vez a los 3 segundos antes de creerle.
 async function marcanetFonetica(denominacion, clase) {
     var pedir = function () {
         return proxyFetch('/marcanet/fonetica', { method: 'POST', body: JSON.stringify({ denominacion: denominacion, clase: clase }) });
     };
     var data = await pedir();
-    if (!data || data.isFormPage || !(data.results || []).length) data = await pedir();
+    if (!data || data.isFormPage || !(data.results || []).length) {
+        await new Promise(function (r) { setTimeout(r, 3000); });
+        data = await pedir();
+    }
     return data;
 }
 

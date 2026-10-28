@@ -243,7 +243,10 @@
         let puntaje = Math.round(100 * Math.max(orto, fon));
         let tipo = fon > orto + 0.02 ? 'fonetica' : 'escrita';
         let detalle = fon > orto + 0.02 ? 'Suena parecido' : 'Se escribe parecido';
-        if (fa.slice(0, 3) === fb.slice(0, 3) && fa.length >= 3 && puntaje < 94) puntaje = Math.min(94, puntaje + 5);
+        // Empezar igual pesa, pero solo en lo que ya se parece: con un
+        // principio tan común como LUN-, «LUNA & FRIDA» no se acerca a
+        // «LUNAFARDO» por eso.
+        if (fa.slice(0, 3) === fb.slice(0, 3) && fa.length >= 3 && puntaje >= 70 && puntaje < 94) puntaje = Math.min(94, puntaje + 5);
         if (puntaje < 50) { tipo = 'distinta'; detalle = 'Poco parecido'; }
 
         const desc = descriptivasDe(clases);
@@ -372,10 +375,19 @@
         };
     }
 
+    // Marcanet manda el texto de su HTML tal cual: «LUNA &amp; FRIDA».
+    function sinEntidades(t) {
+        return String(t == null ? '' : t)
+            .replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n))
+            .replace(/&#x([0-9a-f]+);/gi, (m, n) => String.fromCharCode(parseInt(n, 16)))
+            .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+            .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
+    }
+
     // Marcanet no tiene nombres de columna fijos: se buscan como los busca la
     // pestaña de Marcanet.
     function campoMarcanet(r, nombres) {
-        for (const n of nombres) if (r[n]) return String(r[n]).trim();
+        for (const n of nombres) if (r[n]) return sinEntidades(r[n]).trim();
         return '';
     }
 
@@ -389,7 +401,7 @@
             enlace,
             fuentes: ['Marcanet'],
             id: null,
-            titulo: campoMarcanet(r, ['Denominación', 'denominacion', 'Denominacion', 'Marca', 'marca']) || String(r[llaves[0]] || '').trim(),
+            titulo: campoMarcanet(r, ['Denominación', 'denominacion', 'Denominacion', 'Marca', 'marca']) || sinEntidades(r[llaves[0]] || '').trim(),
             expediente: campoMarcanet(r, ['Expediente', 'No. Expediente', 'expediente', 'No. de Expediente']),
             registro: campoMarcanet(r, ['Registro', 'No. Registro', 'registro', 'No. de Registro']),
             estado: campoMarcanet(r, ['Situación', 'Situacion', 'Status', 'Estado', 'situacion', 'Estatus']),
@@ -415,7 +427,11 @@
         const texto = normalizarMarca(campos.map(k => k + ' ' + det[k]).join(' '));
         const vigencia = String(det['Fecha de vigencia'] || '').trim();
         const registro = String(det['Número de registro'] || '').replace(/\D/g, '');
-        const ampara = campos.filter(k => /^\d{1,2}\s*Edici/.test(k)).map(k => k.match(/^\d{1,2}/)[0] + ': ' + String(det[k]).trim()).join(' · ');
+        // Lo que ampara, clase por clase. La ficha no siempre trae todas: si
+        // falta la que importa, mejor no mostrar otra en su lugar.
+        const amparaPorClase = campos.filter(k => /^\d{1,2}\s*Edici/.test(k))
+            .map(k => ({ clase: +k.match(/^\d{1,2}/)[0], texto: sinEntidades(det[k]).trim() }));
+        const ampara = amparaPorClase.map(a => a.clase + ': ' + a.texto).join(' · ');
         let estado;
         if (/SOLICITUDES ABANDONADAS|ABANDONAD/.test(texto)) estado = 'ABANDONADA';
         else if (/NEGATIVA DE REGISTRO|NEGAD/.test(texto)) estado = 'NEGADA';
@@ -427,7 +443,7 @@
         }
         else if (registro) estado = 'REGISTRADA';
         else estado = /OPOSICION/.test(texto) ? 'EN TRÁMITE, con oposición' : 'EN TRÁMITE';
-        return { estado, vigencia, registro, ampara };
+        return { estado, vigencia, registro, ampara, amparaPorClase };
     }
 
     function desdeSIGA(ficha) {
@@ -664,11 +680,15 @@
         for (const lote of crudo.marcanet || []) for (const r of lote.resultados || []) brutos.push(desdeMarcanet(r));
 
         const detalles = crudo.detalles || {};
+        const clasesQueImportan = entrada.clases.concat(clasesRelacionadas(entrada.clases));
         const antecedentes = consolidar(brutos).map(a => {
             const d = leerDetalleMarcanet(detalles[String(a.expediente || '').replace(/\D/g, '')], ahora);
+            if (!d) return a;
             // La ficha de Marcanet manda sobre el estatus de la lista: MARCia
             // puede seguir diciendo "en trámite" de una solicitud abandonada.
-            return d ? { ...a, estado: d.estado, vencimiento: d.vigencia || a.vencimiento, registro: a.registro || d.registro, ampara: d.ampara, conDetalle: true } : a;
+            // Lo que ampara, solo en las clases del estudio y sus relacionadas.
+            const ampara = d.amparaPorClase.filter(x => clasesQueImportan.includes(x.clase)).map(x => x.clase + ': ' + x.texto).join(' · ');
+            return { ...a, estado: d.estado, vencimiento: d.vigencia || a.vencimiento, registro: a.registro || d.registro, ampara, conDetalle: true };
         }).map(a => evaluarAntecedente(a, entrada, ahora))
             // Lo que no se parece (menos de 50%) y no estorba es ruido de las
             // fuentes: no cuenta ni se muestra, solo va en el CSV.
@@ -1121,6 +1141,11 @@
     // Cuántos resultados se le piden a la fonética de Marcanet. Su página trae
     // 10; el proxy lee las siguientes hasta juntar estos.
     const MAX_MARCANET = 60;
+    // Marcanet a veces responde vacía en un segundo: con la sesión recién
+    // abierta o todavía ocupada con la búsqueda anterior. Medido en vivo, una
+    // de cada ocho búsquedas; casi todas se recuperan si se espera un poco.
+    const PAUSAS_MARCANET = [3000, 5000];
+    const esperar = (ms) => new Promise(r => setTimeout(r, ms));
 
     /**
      * La fonética de Marcanet no filtra por clase: con la 25 o con la 43
@@ -1133,11 +1158,18 @@
         });
         try {
             let data = await pedir();
-            // Marcanet a veces responde vacía (sesión recién abierta, o una
-            // búsqueda sí y la siguiente no): se repite una vez antes de creerle.
-            if (!data || data.isFormPage || !(data.results || []).length) data = await pedir();
+            for (const pausa of PAUSAS_MARCANET) {
+                if (data && !data.isFormPage && (data.results || []).length) break;
+                marcar('mcn', 'espera', 'respondió vacía; se repite en ' + (pausa / 1000) + ' s');
+                await esperar(pausa);
+                data = await pedir();
+            }
             if (data && data.isFormPage) throw new Error('Marcanet devolvió su formulario en vez de resultados');
             const resultados = (data && data.results) || [];
+            // Su fonética siempre encuentra algo (para «lunafardo», 197): vacía
+            // tres veces es una falla de Marcanet, y decir "no hay nada" sería
+            // peor que decir que no respondió.
+            if (!resultados.length) throw new Error('respondió vacía tres veces; repite el estudio en unos minutos');
             crudo.marcanet.push({ clase: null, resultados });
             fuente.total = resultados.length;
             fuente.ok = true;
