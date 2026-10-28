@@ -37,6 +37,12 @@
         <priority>0.8</priority>
     </url>
     <url>
+        <loc>https://tsjia.empirica.mx/terminos-y-condiciones/</loc>
+        <lastmod>2026-10-27</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.3</priority>
+    </url>
+    <url>
         <loc>https://tsjia.empirica.mx/docs/</loc>
         <lastmod>2026-10-27</lastmod>
         <changefreq>monthly</changefreq>

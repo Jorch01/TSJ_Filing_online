@@ -1918,6 +1918,32 @@ async function probarCuotasIMPI(navegador) {
             /plan Premium de 6 meses \(\$530 MXN\)/.test(pedido.texto) && /datos para el pago/.test(pedido.texto) && /comprobante/.test(pedido.texto), pedido.texto);
         verificar('planes: y el ID de dispositivo', pedido.texto.includes('ID de dispositivo: ' + pedido.dispositivo), pedido.texto);
 
+        // Términos y condiciones: hay que aceptarlos antes de contratar.
+        await page.evaluate(() => { localStorage.removeItem('tsj_terminos_aceptados'); window.__abiertas = []; window.open = (u) => { window.__abiertas.push(u); return null; }; renderizarPlanesPremium(); });
+        await page.click('#pricing-planes a >> nth=1');
+        await page.waitForTimeout(300);
+        verificar('términos: elegir un plan sin aceptarlos los muestra primero', /Términos y condiciones/.test(await page.textContent('#modal-titulo')) &&
+            /Sin devoluciones/.test(await page.textContent('#modal-body')) && /caso fortuito o fuerza mayor/.test(await page.textContent('#modal-body')));
+        igual('términos: sin la casilla no se puede continuar, ni se abre WhatsApp',
+            [await page.isDisabled('#terminos-aceptar'), await page.evaluate(() => window.__abiertas.length)], [true, 0]);
+        await page.check('#terminos-check');
+        await page.click('#terminos-aceptar');
+        await page.waitForTimeout(300);
+        const abierta = await page.evaluate(() => window.__abiertas[0] || '');
+        verificar('términos: al aceptar, se abre WhatsApp con el plan y la aceptación en el mensaje',
+            /^https:\/\/wa\.me\/529981399930\?/.test(abierta) && /plan Premium de 6 meses/.test(decodeURIComponent(abierta)) &&
+            /Acepto los Términos y condiciones de TSJ Filing Online \(versión \d{4}-\d{2}-\d{2}\)/.test(decodeURIComponent(abierta)), decodeURIComponent(abierta));
+        verificar('términos: se recuerda la versión y la fecha', await page.evaluate(() => {
+            const t = JSON.parse(localStorage.getItem('tsj_terminos_aceptados') || '{}');
+            return t.version === TERMINOS.VERSION && !isNaN(Date.parse(t.fecha));
+        }));
+        verificar('términos: ya aceptados, el enlace del plan lleva la aceptación', /Acepto%20los%20T%C3%A9rminos/.test(await page.getAttribute('#pricing-planes a >> nth=0', 'href')));
+        await page.evaluate(() => { localStorage.removeItem('tsj_terminos_aceptados'); document.getElementById('premium-username').value = 'Prueba'; document.getElementById('premium-code').value = 'CODIGO-1'; });
+        await page.evaluate(() => activarPremium());
+        await page.waitForTimeout(300);
+        verificar('términos: activar un código también los pide', /Términos y condiciones/.test(await page.textContent('#modal-titulo')) && await page.isVisible('#terminos-check'));
+        await page.evaluate(() => { localStorage.setItem('tsj_terminos_aceptados', JSON.stringify({ version: TERMINOS.VERSION, fecha: new Date().toISOString() })); cerrarModal(); });
+
         // Con Premium no hay límite.
         igual('cuotas: con Premium no hay límite', await page.evaluate(async () => {
             estadoPremium.activo = true; estadoPremium.codigo = 'LIC'; estadoPremium.dispositivoId = 'D';
@@ -2173,6 +2199,9 @@ async function probarViabilidadMarca(navegador) {
         await pausa(200);
 
         igual('viabilidad: es la pestaña que abre IMPI', await page.isVisible('#vb-form'), true);
+        verificar('viabilidad: el aviso de que los resultados no son concluyentes, a la vista antes de buscar',
+            /dependen por completo de búsquedas en sistemas externos/.test(await page.textContent('#vb-form')) && /nunca son concluyentes/.test(await page.textContent('#vb-form')) &&
+            /consulta siempre a un especialista/.test(await page.textContent('#vb-form')));
         igual('viabilidad: las otras herramientas siguen ahí', await page.locator('.impi-tab').count(), 4);
 
         // Sin clase no se hace nada.
@@ -2227,6 +2256,7 @@ async function probarViabilidadMarca(navegador) {
         if (descarga) {
             const csv = fs.readFileSync(await descarga.path(), 'utf8');
             verificar('viabilidad: el CSV trae dictamen y antecedentes', /Viabilidad baja/.test(csv) && /LUNA ROJA/.test(csv), csv.slice(0, 200));
+            verificar('viabilidad: y el aviso', /Aviso,.*nunca son concluyentes/.test(csv));
             verificar('viabilidad: y también los descartados, marcados', /\ndescartado,SOL Y MAR,/.test(csv), csv);
             verificar('viabilidad: con su historial en Gaceta', /Renovada 15\/03\/2024/.test(csv));
         }

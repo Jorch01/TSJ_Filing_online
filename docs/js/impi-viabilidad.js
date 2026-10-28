@@ -140,6 +140,11 @@
 
     const RIESGOS = ['alto', 'medio', 'propia', 'bajo'];
 
+    // Va en el formulario, en el reporte, en el resumen y en el CSV.
+    const AVISO_VIABILIDAD = 'Los resultados de este estudio dependen por completo de búsquedas en sistemas externos (MARCia, Marcanet y SIGA del IMPI), ' +
+        'que pueden estar incompletos, desactualizados o fallar. Por eso nunca son concluyentes: antes de usar esta información para un trámite de registro, ' +
+        'consulta siempre a un especialista en propiedad industrial.';
+
     // ---- Texto ----
 
     /** Mayúsculas, sin acentos ni signos, sin la forma jurídica de la empresa. */
@@ -886,12 +891,12 @@
         }
         lineas.push('', 'RECOMENDACIONES');
         for (const r of rep.recomendaciones) lineas.push('• ' + r);
-        lineas.push('', 'Estudio orientativo con datos de MARCia, Marcanet y SIGA (IMPI). No sustituye el examen del IMPI ni un dictamen profesional.');
+        lineas.push('', 'AVISO: ' + AVISO_VIABILIDAD);
         return lineas.join('\n');
     }
 
     const Motor = {
-        CLASES_NIZA, RIESGOS, normalizarMarca, claveFonetica, compararMarcas, clasesRelacionadas, relacionClases,
+        CLASES_NIZA, RIESGOS, AVISO_VIABILIDAD, normalizarMarca, claveFonetica, compararMarcas, clasesRelacionadas, relacionClases,
         situacionDe, mismoTitular, palabrasDistintivas, observacionesRegistrabilidad, desdeMARCia, desdeMarcanet,
         desdeSIGA, consolidar, evaluarAntecedente, analizar, recomendaciones, resumenTexto, fechaIMPI,
         leerDetalleMarcanet, variantesComodin, aConsultarDetalle, nombresParaGaceta, etiquetaGaceta, historialTexto
@@ -958,6 +963,7 @@
                                 '<input type="text" id="vb-solicitante" maxlength="160" autocomplete="off" placeholder="Para no contar como obstáculo sus propias marcas"></div>' +
                             '<div class="form-group vb-opcion"><label class="checkbox-label"><input type="checkbox" id="vb-palabras" checked> Buscar también cada palabra distintiva por separado</label></div>' +
                         '</div>' +
+                        '<p class="vb-aviso vb-aviso-form" role="note">⚠️ ' + esc(AVISO_VIABILIDAD) + '</p>' +
                         '<div class="vb-acciones-form"><button type="submit" class="btn btn-primary" id="vb-ejecutar">🧭 Hacer el estudio</button></div>' +
                     '</form>' +
                     '<ol id="vb-progreso" class="vb-progreso" hidden></ol>' +
@@ -1395,7 +1401,7 @@
                 '<section class="vb-seccion vb-guardar"><label for="vb-expediente">Guardar como nota del expediente</label>' +
                     '<div class="vb-guardar-fila"><select id="vb-expediente"><option value="">Sin expediente (nota general)</option></select>' +
                     '<button type="button" class="btn btn-sm btn-primary" data-vb="nota">📝 Guardar nota</button></div></section>' +
-                '<p class="vb-aviso">Estudio orientativo con datos públicos de MARCia, Marcanet y SIGA del IMPI. No sustituye el examen de fondo del IMPI ni el dictamen de un especialista; las fuentes pueden estar incompletas o desactualizadas.</p>' +
+                '<p class="vb-aviso" role="note">⚠️ ' + esc(AVISO_VIABILIDAD) + '</p>' +
             '</article>';
         llenarExpedientes();
     }
@@ -1484,7 +1490,7 @@
         const d = new Date(rep.fecha);
         const dia = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
         const filas = [['Estudio de viabilidad', rep.entrada.denominacion, 'Clases ' + rep.entrada.clases.join(' '), dia],
-            ['Dictamen', rep.dictamen.titulo, rep.dictamen.resumen], [],
+            ['Dictamen', rep.dictamen.titulo, rep.dictamen.resumen], ['Aviso', AVISO_VIABILIDAD], [],
             ['Riesgo', 'Marca', 'Expediente', 'Registro', 'Clases', 'Relación de clase', 'Estatus', 'Titular', 'Parecido (%)', 'Tipo de parecido', 'Por qué', 'Fuentes', 'Ampara', 'En Gaceta']];
         for (const a of rep.antecedentes) {
             filas.push([a.descartado ? 'descartado' : a.riesgo, a.titulo, a.expediente, a.registro, a.clases.join(' '), ETIQUETA_RELACION[a.relacion], a.estado,

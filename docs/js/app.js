@@ -8248,6 +8248,58 @@ function textoPrecioDesde() {
 
 // El mensaje de WhatsApp para pedir los datos de pago de un plan (sin plan:
 // varias licencias). Lleva el ID de dispositivo para dar de alta la licencia.
+// ==================== TÉRMINOS Y CONDICIONES ====================
+// Para contratar o activar un plan hay que aceptar los términos vigentes
+// (js/terminos.js). Se guarda qué versión y cuándo, y el mensaje de WhatsApp
+// lo dice, para que la aceptación quede también en el chat.
+const CLAVE_TERMINOS = 'tsj_terminos_aceptados';
+
+function terminosAceptados() {
+    if (typeof TERMINOS === 'undefined') return null;
+    try {
+        const t = JSON.parse(localStorage.getItem(CLAVE_TERMINOS) || 'null');
+        return t && t.version === TERMINOS.VERSION ? t : null;
+    } catch (e) { return null; }
+}
+
+/** La ventana con los términos. Con alAceptar, pide la casilla y continúa al aceptar. */
+function pedirAceptacionTerminos(alAceptar) {
+    if (typeof TERMINOS === 'undefined') { if (alAceptar) alAceptar(); return; }
+    window.__alAceptarTerminos = alAceptar || null;
+    document.getElementById('modal-titulo').textContent = '📄 Términos y condiciones';
+    document.getElementById('modal-body').innerHTML =
+        '<div class="terminos-texto">' + TERMINOS.html(4) +
+        '<p class="text-muted">Versión ' + TERMINOS.VERSION + ', vigente desde el ' + TERMINOS.VIGENTES_DESDE + '.</p></div>' +
+        (alAceptar ? '<label class="checkbox-label terminos-acepto"><input type="checkbox" id="terminos-check" onchange="document.getElementById(\'terminos-aceptar\').disabled = !this.checked"> ' +
+            'He leído y acepto los Términos y condiciones, incluido que las cuotas no se devuelven.</label>' : '');
+    document.getElementById('modal-footer').innerHTML = alAceptar
+        ? '<button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>' +
+          '<button class="btn btn-success" id="terminos-aceptar" disabled onclick="aceptarTerminos()">Aceptar y continuar</button>'
+        : '<button class="btn btn-secondary" onclick="cerrarModal()">Cerrar</button>';
+    abrirModal();
+}
+
+function aceptarTerminos() {
+    try { localStorage.setItem(CLAVE_TERMINOS, JSON.stringify({ version: TERMINOS.VERSION, fecha: new Date().toISOString() })); } catch (e) { /* sin almacenamiento */ }
+    cerrarModal();
+    renderizarPlanesPremium();
+    const seguir = window.__alAceptarTerminos;
+    window.__alAceptarTerminos = null;
+    if (typeof seguir === 'function') seguir();
+}
+
+/** El clic en un plan: con los términos aceptados abre WhatsApp; si no, primero los pide. */
+function elegirPlanPremium(evento, idPlan) {
+    const plan = PREMIUM_CONFIG.planes.find(p => p.id === idPlan) || null;
+    if (terminosAceptados()) {
+        evento.currentTarget.href = enlaceSolicitudPremium(plan);
+        return true;
+    }
+    evento.preventDefault();
+    pedirAceptacionTerminos(() => window.open(enlaceSolicitudPremium(plan), '_blank', 'noopener'));
+    return false;
+}
+
 function enlaceSolicitudPremium(plan) {
     const pedido = plan
         ? `el plan Premium de ${plan.nombre} (${_pesos(plan.precio)})`
@@ -8256,7 +8308,8 @@ function enlaceSolicitudPremium(plan) {
     try { dispositivo = obtenerDeviceId(); } catch (e) { /* sin almacenamiento */ }
     const texto = `Hola, quiero contratar ${pedido} de TSJ Filing Online. ` +
         '¿Me pueden enviar los datos para el pago? En cuanto pague les mando el comprobante por aquí.' +
-        (dispositivo ? `\n\nMi ID de dispositivo: ${dispositivo}` : '');
+        (dispositivo ? `\n\nMi ID de dispositivo: ${dispositivo}` : '') +
+        (terminosAceptados() ? `\n\nAcepto los Términos y condiciones de TSJ Filing Online (versión ${TERMINOS.VERSION}).` : '');
     return `https://wa.me/${PREMIUM_CONFIG.whatsappVentas}?text=${encodeURIComponent(texto)}`;
 }
 
@@ -8275,12 +8328,12 @@ function renderizarPlanesPremium() {
                 <span>${p.nombre}${ahorro > 0 ? `<small class="pricing-ahorro">ahorras ${ahorro}%</small>` : ''}</span>
                 <span>${_pesos(p.precio)}</span>
                 <span>${_pesos(Math.round(mes))}</span>
-                <span><a href="${enlaceSolicitudPremium(p)}" target="_blank" rel="noopener" class="btn btn-primary btn-xs" title="Abre WhatsApp para pedir los datos de pago">💬 Elegir</a></span>
+                <span><a href="${enlaceSolicitudPremium(p)}" target="_blank" rel="noopener" class="btn btn-primary btn-xs" title="Abre WhatsApp para pedir los datos de pago" onclick="return elegirPlanPremium(event, '${p.id}')">💬 Elegir</a></span>
             </div>`;
         }).join('')}
         <div class="pricing-row">
             <span>Varias licencias</span><span>Precio especial</span><span>—</span>
-            <span><a href="${enlaceSolicitudPremium(null)}" target="_blank" rel="noopener" class="btn btn-secondary btn-xs">💬 Contactar</a></span>
+            <span><a href="${enlaceSolicitudPremium(null)}" target="_blank" rel="noopener" class="btn btn-secondary btn-xs" onclick="return elegirPlanPremium(event, '')">💬 Contactar</a></span>
         </div>`;
 }
 
@@ -8625,6 +8678,12 @@ async function activarPremium() {
     if (!codigo) {
         mostrarToast('Ingresa un código de activación', 'warning');
         codigoInput.focus();
+        return;
+    }
+
+    // Activar un plan también es aceptar sus términos.
+    if (!terminosAceptados()) {
+        pedirAceptacionTerminos(() => activarPremium());
         return;
     }
 

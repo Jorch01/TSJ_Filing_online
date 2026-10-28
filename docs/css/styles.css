@@ -1480,7 +1480,7 @@ input:checked + .slider:before { transform: translateX(22px); }
     display: none;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    z-index: 1250;   /* por encima de los botones flotantes (micrófono, ayuda) */
     padding: 1rem;
 }
 
@@ -1505,7 +1505,7 @@ input:checked + .slider:before { transform: translateX(22px); }
 .modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 1rem 1.25rem; border-top: 1px solid var(--border-color); }
 
 /* Toast */
-.toast-container { position: fixed; top: 80px; right: 1rem; z-index: 1100; display: flex; flex-direction: column; gap: 0.5rem; }
+.toast-container { position: fixed; top: 80px; right: 1rem; z-index: 1260; display: flex; flex-direction: column; gap: 0.5rem; }
 
 .toast {
     padding: 0.75rem 1.25rem;
@@ -6210,3 +6210,14 @@ body.cta-abierto #tour-menu, body.cta-abierto #tour-oferta, body.cta-abierto #re
     body.imprimiendo-viabilidad .vb-mas, body.imprimiendo-viabilidad .vb-tabla button { display: none !important; }
     body.imprimiendo-viabilidad .vb-reporte { box-shadow: none; border: none; }
 }
+
+/* Aviso del estudio de viabilidad en el formulario: a la vista, no en letra chica. */
+.vb-aviso.vb-aviso-form { margin: 0.5rem 0 1rem; padding: 0.6rem 0.8rem; border: 1px solid #f0c36d; border-left-width: 4px;
+    border-radius: 6px; background: #fff8e6; color: #6b4e00; font-size: 0.82rem; }
+[data-theme="dark"] .vb-aviso.vb-aviso-form { background: rgba(240, 195, 109, 0.12); color: #f3d58c; }
+
+/* Términos y condiciones en la ventana de contratación. */
+.terminos-texto { max-height: 50vh; overflow-y: auto; padding-right: 0.5rem; font-size: 0.85rem; line-height: 1.5; }
+.terminos-texto h4 { margin: 0.9rem 0 0.3rem; font-size: 0.9rem; }
+.terminos-texto p { margin: 0 0 0.5rem; }
+.terminos-acepto { display: flex; gap: 0.5rem; align-items: flex-start; margin-top: 0.9rem; font-weight: 600; }

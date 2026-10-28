@@ -154,3 +154,9 @@ body.sitio { background: var(--bg-primary); }
 .sitio-cta-botones { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; }
 .sitio-cta-final .sitio-recomendar { background: transparent; color: #fff; border: 1px solid rgba(255, 255, 255, 0.6); }
 .sitio-cta-final .sitio-recomendar:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+
+/* Aviso del estudio de viabilidad y texto de los términos. */
+.sitio-aviso { max-width: 780px; margin: 1.25rem 0 0; padding: 0.7rem 0.9rem; border: 1px solid #f0c36d; border-left-width: 4px;
+    border-radius: 6px; background: #fff8e6; color: #6b4e00; font-size: 0.9rem; line-height: 1.5; }
+.sitio-terminos h2 { font-size: 1.15rem; margin: 1.6rem 0 0.5rem; }
+.sitio-terminos p { color: var(--text-secondary); line-height: 1.65; margin: 0 0 0.7rem; }

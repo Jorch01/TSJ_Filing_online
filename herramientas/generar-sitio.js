@@ -8,6 +8,7 @@
  *   /calculadora-finiquito-liquidacion/ la calculadora laboral, funcionando
  *   /estrados-laborales-quintana-roo/   el TCA y las Juntas de Conciliación
  *   /estudio-viabilidad-marca-impi/     el estudio de viabilidad de marca
+ *   /terminos-y-condiciones/            los términos de los planes Premium
  *
  * Las listas salen de los catálogos de la app (docs/js/juzgados.js,
  * docs/data/organismos.json, las unidades de docs/js/estrados-laborales.js),
@@ -79,10 +80,16 @@ function planesPremium() {
         // Igual que en la app: el plan se pide por WhatsApp.
         whatsapp: `https://wa.me/${wa[1]}?text=` + encodeURIComponent(
             `Hola, quiero contratar el plan Premium de ${p.nombre} (${pesos(p.precio)}) de TSJ Filing Online. ` +
-            '¿Me pueden enviar los datos para el pago? En cuanto pague les mando el comprobante por aquí.') }));
+            '¿Me pueden enviar los datos para el pago? En cuanto pague les mando el comprobante por aquí.\n\n' +
+            `Acepto los Términos y condiciones de TSJ Filing Online (versión ${TERMINOS.VERSION}): ${SITIO}/terminos-y-condiciones/`) }));
 }
 
 const pesos = (n) => '$' + n.toLocaleString('en-US') + ' MXN';
+
+// Los términos de los planes, los mismos que la app pide aceptar.
+const TERMINOS = require(path.join(RAIZ, 'docs/js/terminos.js'));
+// El aviso del estudio de viabilidad, el mismo que muestra la app.
+const AVISO_VIABILIDAD = require(path.join(RAIZ, 'docs/js/impi-viabilidad.js')).AVISO_VIABILIDAD;
 
 function formularioCalculadora() {
     const html = fs.readFileSync(path.join(RAIZ, 'docs/index.html'), 'utf8');
@@ -199,6 +206,7 @@ function pie() {
                     <li><a href="/calculadora-finiquito-liquidacion/">Calculadora de finiquito y liquidación</a></li>
                     <li><a href="/estudio-viabilidad-marca-impi/">Estudio de viabilidad de marca (IMPI)</a></li>
                     <li><a href="/#planes">Planes y precios</a></li>
+                    <li><a href="/terminos-y-condiciones/">Términos y condiciones</a></li>
                 </ul>
             </div>
             <div>
@@ -434,6 +442,7 @@ ${planes.map(p => `                    <article class="sitio-funcion">
                             <li>Sincronización entre dispositivos</li>
                         </ul>
                         <a href="${esc(p.whatsapp)}" target="_blank" rel="noopener">💬 Contratar por WhatsApp →</a>
+                        <p class="sitio-legal">Al contratar aceptas los <a href="/terminos-y-condiciones/">Términos y condiciones</a>: sin devoluciones.</p>
                     </article>`).join('\n')}
                 </div>
             </div>
@@ -761,7 +770,7 @@ const PREGUNTAS_VIABILIDAD = (lim, planes) => [
     ['¿Cuántos estudios puedo hacer gratis?',
         `El plan gratuito incluye ${lim.viabilidad.limite} estudios de viabilidad y ${lim.busqueda.limite} búsquedas al mes en MARCia, SIGA y Marcanet. Con Premium no hay límite: ${textoPlanes(planes)}.`],
     ['¿Sustituye la opinión de un abogado?',
-        'No. Es una herramienta de apoyo: los umbrales son orientativos y la decisión final es del IMPI y del criterio profesional de quien asesora el registro.']
+        'No. ' + AVISO_VIABILIDAD + ' Los umbrales de la herramienta son orientativos y la decisión final es del IMPI.']
 ];
 
 function paginaViabilidad(lim, planes) {
@@ -798,6 +807,7 @@ function paginaViabilidad(lim, planes) {
                 <div class="sitio-hero-botones">
                     <a class="btn btn-primary btn-lg" href="${APP}?tour=1#impi">Hacer un estudio gratis →</a>
                 </div>
+                <p class="sitio-aviso">⚠️ ${esc(AVISO_VIABILIDAD)}</p>
             </div>
         </section>
 
@@ -833,6 +843,31 @@ ${faqHTML(preguntas)}
 ` + pie();
 }
 
+// ==================== TÉRMINOS Y CONDICIONES ====================
+
+function paginaTerminos() {
+    return cabeza({
+        ruta: '/terminos-y-condiciones/',
+        tituloPagina: 'Términos y condiciones de TSJ Filing Online | Quintana Roo',
+        descripcion: 'Términos y condiciones de los planes Premium de TSJ Filing Online: contratación, vigencia, sin devoluciones, continuidad del servicio y responsabilidad.',
+        jsonld: [migas({ nombre: 'Términos y condiciones', ruta: '/terminos-y-condiciones/' })]
+    }) + `
+        <section class="sitio-hero sitio-hero-chico">
+            <div class="sitio-ancho">
+                <nav class="sitio-migas" aria-label="Ruta"><a href="/">Inicio</a> › Términos y condiciones</nav>
+                <h1>Términos y condiciones de los planes Premium</h1>
+                <p class="sitio-lead">Versión ${TERMINOS.VERSION}, vigente desde el ${TERMINOS.VIGENTES_DESDE}. Para contratar o activar un plan hay que aceptarlos en la app.</p>
+            </div>
+        </section>
+
+        <section class="sitio-seccion">
+            <div class="sitio-ancho sitio-angosto sitio-terminos">
+${TERMINOS.html(2).replace(/<section/g, '\n                <section')}
+            </div>
+        </section>
+` + pie();
+}
+
 // ==================== SITEMAP ====================
 
 function sitemap() {
@@ -843,6 +878,7 @@ function sitemap() {
         ['/estrados-laborales-quintana-roo/', '0.8'],
         ['/estudio-viabilidad-marca-impi/', '0.8'],
         ['/expedientes-pjf-quintana-roo/', '0.8'],
+        ['/terminos-y-condiciones/', '0.3'],
         ['/docs/', '0.7']
     ];
     return `<?xml version="1.0" encoding="UTF-8"?>
@@ -871,6 +907,7 @@ function generar() {
         'calculadora-finiquito-liquidacion/index.html': paginaCalculadora(),
         'estrados-laborales-quintana-roo/index.html': paginaLaborales(unidadesLaborales()),
         'estudio-viabilidad-marca-impi/index.html': paginaViabilidad(lim, planes),
+        'terminos-y-condiciones/index.html': paginaTerminos(),
         'sitemap.xml': sitemap()
     };
 }
