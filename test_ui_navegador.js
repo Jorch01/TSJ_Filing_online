@@ -2132,7 +2132,8 @@ async function probarEstadisticas(navegador) {
 async function probarViabilidadMarca(navegador) {
     const contexto = await navegador.newContext({ acceptDownloads: true, viewport: { width: 1280, height: 900 }, locale: 'es-MX' });
     // Las cuotas se piden al proxy real: aquí se simula uno sin límites activados.
-    await contexto.route('**/cuota', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ servidor: false, permitido: true }) }));
+    let pedidasCuota = 0;
+    await contexto.route('**/cuota', r => { pedidasCuota++; return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ servidor: false, permitido: true }) }); });
     const page = await contexto.newPage();
     const errores = [];
     page.on('pageerror', e => errores.push(e.message));
@@ -2140,19 +2141,24 @@ async function probarViabilidadMarca(navegador) {
 
     const simulador = (modo) => {
         const fallaSIGA = modo === true;
-        const marcanetVacia = modo === 'marcanet-vacia';
+        window.__marcanetVacia = modo === 'marcanet-vacia';
+        // En el primer estudio, MARCia falla una vez su búsqueda principal (como hace a veces).
+        window.__marciaFallaUna = modo === false;
+        window.__marciaFallaClase = modo === 'marcia-clase' ? '43' : null;
         window.__llamadas = [];
         window.__fonetica = 0;
         const marca = (id, title, status, owners, classes) => ({ id, applicationNumber: id.slice(-6), registrationNumber: status === 'REGISTRADO' ? '9' + id.slice(-5) : '',
             title, status, appType: 'REGISTRO DE MARCA', owners, dates: { application: '10/02/2019', expiry: '10/02/2029' }, goodsAndServices: '', classes: classes || [], images: '' });
         window.proxyFetch = async (ruta, opciones) => {
             const body = opciones && opciones.body ? JSON.parse(opciones.body) : null;
-            window.__llamadas.push({ ruta, body });
+            window.__llamadas.push({ ruta, body, cliente: ((opciones && opciones.headers) || {})['X-IMPI-Client'] || null });
             if (ruta === '/marcia/csrf') return {};
             if (ruta === '/marcia/search') return { id: (body.query.titleOption || 'identica') + ':' + body.query.title.toUpperCase(), count: 5 };
             if (ruta === '/marcia/results') {
                 const [opcion, titulo] = body.searchId.split(':');
                 const clase = body.niceClassFilter[0];
+                if (window.__marciaFallaUna && opcion === 'similar' && clase === '30') { window.__marciaFallaUna = false; throw new Error('Unexpected end of JSON input'); }
+                if (window.__marciaFallaClase && clase === window.__marciaFallaClase) throw new Error('Unexpected end of JSON input');
                 let r = [];
                 if (opcion === 'similar' && titulo === 'LUNA AZUL' && clase === '30') {
                     r = [marca('RM201900111111', 'LUNA AZUL', 'REGISTRADO', ['CAFES DEL SURESTE SA DE CV']),
@@ -2170,7 +2176,7 @@ async function probarViabilidadMarca(navegador) {
             if (ruta === '/marcanet/fonetica') {
                 // La primera llega vacía, como hace Marcanet con la sesión recién abierta.
                 window.__fonetica = (window.__fonetica || 0) + 1;
-                return { results: window.__fonetica === 1 || marcanetVacia ? [] : [{ 'Denominación': 'LUNA AZUL', 'Expediente': '111111', 'Clase': '30', 'Titular': 'CAFES DEL SURESTE', 'Situación': 'REGISTRADA' }] };
+                return { results: window.__fonetica === 1 || window.__marcanetVacia ? [] : [{ 'Denominación': 'LUNA AZUL', 'Expediente': '111111', 'Clase': '30', 'Titular': 'CAFES DEL SURESTE', 'Situación': 'REGISTRADA' }] };
             }
             // La ficha de cada expediente: LUNA ROJA resulta abandonada.
             if (ruta === '/marcanet/full-detail') {
@@ -2221,6 +2227,9 @@ async function probarViabilidadMarca(navegador) {
 
         const llamadas = await page.evaluate(() => window.__llamadas.map(l => l.ruta + ' ' + JSON.stringify(l.body ? (l.body.niceClassFilter || l.body.clase || (l.body.query && l.body.query.titleOption) || l.body.Busqueda || '') : '')));
         verificar('viabilidad: consulta las tres fuentes', ['/marcia/search', '/marcanet/fonetica', '/siga/search'].every(r => llamadas.some(l => l.startsWith(r))), llamadas.join(' | '));
+        igual('viabilidad: si MARCia falla una clase, la repite y el estudio sale completo',
+            [await page.evaluate(() => window.__llamadas.filter(l => l.ruta === '/marcia/results' && l.body.searchId === 'similar:LUNA AZUL' && l.body.niceClassFilter[0] === '30').length),
+             /MARCia 7 resultados revisados/.test((await page.textContent('.vb-fuentes')).replace(/\s+/g, ' '))], [2, true]);
         verificar('viabilidad: MARCia busca parecidas y también idénticas', llamadas.includes('/marcia/search "similar"') && llamadas.includes('/marcia/search ""'), llamadas.join(' | '));
         verificar('viabilidad: pide a MARCia cada clase que tiene resultados', llamadas.includes('/marcia/results ["30"]') && llamadas.includes('/marcia/results ["43"]'));
         const foneticas = await page.evaluate(() => window.__llamadas.filter(l => l.ruta === '/marcanet/fonetica').map(l => l.body));
@@ -2299,6 +2308,39 @@ async function probarViabilidadMarca(navegador) {
             /Marcanet sin respuesta: respondió vacía tres veces/.test((await page.textContent('.vb-fuentes')).replace(/\s+/g, ' ')),
             (await page.textContent('.vb-fuentes')).replace(/\s+/g, ' '));
         igual('viabilidad: antes la pidió tres veces, con pausas', await page.evaluate(() => window.__fonetica), 3);
+        const clientes = await page.evaluate(() => window.__llamadas.filter(l => l.ruta === '/marcanet/fonetica').map(l => l.cliente));
+        verificar('viabilidad: la tercera, con una sesión nueva en el proxy (otro identificador de cliente)',
+            clientes.length === 3 && clientes[0] === null && clientes[1] === null && /-m[0-9a-z]+$/.test(clientes[2] || ''), JSON.stringify(clientes));
+        verificar('viabilidad: el reporte ofrece reintentar lo que faltó', await page.isVisible('[data-vb="reintentar"]'));
+
+        // Reintentar: Marcanet ya responde. Solo se pide lo que faltó y no
+        // cuenta como otro estudio.
+        const cuotasAntes = pedidasCuota;
+        const recientesAntes = await page.evaluate(() => JSON.parse(localStorage.getItem('impi_estudios_viabilidad') || '[]').length);
+        await page.evaluate(() => { window.__llamadas = []; window.__marcanetVacia = false; window.__fonetica = 1; });   // la siguiente ya trae resultados
+        await page.click('[data-vb="reintentar"]');
+        await page.waitForFunction(() => !/no respondió/.test((document.querySelector('.vb-dictamen') || {}).textContent || ''), null, { timeout: 20000 }).catch(() => {});
+        const rutas = await page.evaluate(() => window.__llamadas.map(l => l.ruta));
+        verificar('reintentar: completa el estudio (Marcanet ya cuenta)', !/no respondió/.test(await page.textContent('.vb-dictamen')) &&
+            /Marcanet 1 resultados revisados/.test((await page.textContent('.vb-fuentes')).replace(/\s+/g, ' ')), (await page.textContent('.vb-fuentes')).replace(/\s+/g, ' '));
+        verificar('reintentar: solo vuelve a pedir lo que faltó (no MARCia ni SIGA de nuevo)',
+            rutas.includes('/marcanet/fonetica') && !rutas.includes('/marcia/search') && !rutas.includes('/siga/search'), rutas.join(', '));
+        igual('reintentar: no cuenta como otro estudio', pedidasCuota, cuotasAntes);
+        igual('reintentar: completa el estudio reciente, no agrega otro',
+            await page.evaluate(() => JSON.parse(localStorage.getItem('impi_estudios_viabilidad') || '[]').length), recientesAntes);
+        verificar('reintentar: ya completo, el botón desaparece', !(await page.isVisible('[data-vb="reintentar"]')));
+
+        // MARCia falla una clase aunque se repita: lo de las otras clases se
+        // queda, y el estudio dice que MARCia respondió a medias.
+        await page.evaluate(simulador, 'marcia-clase');
+        await page.evaluate(() => { window.__fonetica = 1; });
+        await page.click('[data-vb="repetir-reciente"]');
+        await page.waitForFunction(() => /a medias/.test((document.querySelector('.vb-dictamen') || {}).textContent || ''), null, { timeout: 30000 }).catch(() => {});
+        const fuentesMedias = (await page.textContent('.vb-fuentes')).replace(/\s+/g, ' ');
+        verificar('MARCia a medias: conserva las otras clases y dice cuál faltó',
+            /MARCia respondió a medias; el resultado es parcial/.test(await page.textContent('.vb-dictamen')) && /faltaron las clases 43/.test(fuentesMedias) &&
+            (await page.$$eval('.vb-tabla tbody tr', trs => trs.map(t => t.innerText))).some(t => /LUNA AZUL/.test(t)), fuentesMedias);
+        verificar('MARCia a medias: se puede reintentar', await page.isVisible('[data-vb="reintentar"]'));
 
         // En el teléfono.
         await page.setViewportSize({ width: 390, height: 844 });

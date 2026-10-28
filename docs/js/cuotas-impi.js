@@ -225,6 +225,16 @@
         return true;
     }
 
+    /** Cuándo vence el pase que se tiene (ms), o null si no hay. Su vigencia viene a la vista en él. */
+    function vencePase() {
+        if (!pase || typeof pase !== 'string' || pase.indexOf('.') < 0) return null;
+        try {
+            const datos = pase.split('.')[0].replace(/-/g, '+').replace(/_/g, '/');
+            const json = JSON.parse(decodeURIComponent(escape(atob(datos))));
+            return typeof json.e === 'number' ? json.e : null;
+        } catch (e) { return null; }
+    }
+
     /** El proxy rechazó por falta de pase o de cupo (respuesta 402). */
     function agotado() {
         avisar('busqueda');
@@ -260,5 +270,5 @@
         if (typeof actualizarLimitesIMPIEnPantalla === 'function') actualizarLimitesIMPIEnPantalla();
     }
 
-    global.CUOTAS_IMPI = { ...Motor, autorizar, agotado, resumen, huella, pase: () => pase, premium };
+    global.CUOTAS_IMPI = { ...Motor, autorizar, agotado, resumen, huella, pase: () => pase, vencePase, premium };
 })(typeof window !== 'undefined' ? window : globalThis);

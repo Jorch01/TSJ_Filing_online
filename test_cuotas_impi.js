@@ -143,6 +143,9 @@ const peticion = (pase) => ({ headers: { get: (h) => (h === 'X-TSJ-Cuota' ? pase
         verificar('buscar en las 3 cuenta una sola vez', /buscarMARCia\(\{ silencioso: true, cuotaAutorizada: true \}\)/.test(impi));
         verificar('el proxy recibe el pase en cada petición', /headers\['X-TSJ-Cuota'\] = paseCuota/.test(impi));
         verificar('el estudio de viabilidad pide permiso', /CUOTAS_IMPI\.autorizar\('viabilidad'\)/.test(leer('js/impi-viabilidad.js')));
+        const cq = leer('js/cuotas-impi.js');
+        verificar('la app sabe cuándo vence su pase (para reintentar sin gastar otro estudio)',
+            /function vencePase\(\)/.test(cq) && /pase: \(\) => pase, vencePase,/.test(cq) && /Q\.vencePase\(\)/.test(leer('js/impi-viabilidad.js')));
         verificar('el proxy expone /cuota y deja pasar la cabecera del pase', WORKER.includes("path === '/cuota'") && /CLIENT_HEADER \+ ', ' \+ CUOTA_HEADER/.test(WORKER));
     }
 
