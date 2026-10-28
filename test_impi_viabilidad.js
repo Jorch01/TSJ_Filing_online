@@ -205,7 +205,14 @@ console.log('\nEl dictamen');
 
     const parcial = V.analizar(entrada, { ...crudo, fuentes: { ...fuentesOk, SIGA: { ok: false, error: 'HTTP 502' } } }, AHORA);
     verificar('si una fuente no respondió, el dictamen lo dice', parcial.dictamen.parcial && /SIGA no respondió/.test(parcial.dictamen.resumen), parcial.dictamen.resumen);
-    verificar('y recomienda repetirlo', parcial.recomendaciones.some(r => /Repite el estudio para completar SIGA/.test(r)));
+    // MARCia responde una búsqueda y falla otras: lo que trajo cuenta, pero no es completo.
+    const aMedias = V.analizar(entrada, { ...crudo, fuentes: { ...fuentesOk, MARCia: { ok: false, parcial: true, total: 3, error: '3 de 4 búsquedas fallaron (MARCia respondió vacío)' } } }, AHORA);
+    verificar('MARCia a medias: el dictamen lo dice y es parcial', aMedias.dictamen.parcial && /MARCia respondió a medias; el resultado es parcial/.test(aMedias.dictamen.resumen), aMedias.dictamen.resumen);
+    verificar('y lo que sí trajo cuenta', aMedias.antecedentes.some(a => a.fuentes.includes('MARCia')));
+    verificar('y propone reintentar', aMedias.recomendaciones.some(r => /^MARCia respondió a medias: usa «Reintentar lo que faltó»/.test(r)));
+    verificar('el resumen dice cuántas búsquedas fallaron', /MARCia \(3, a medias: 3 de 4 búsquedas fallaron/.test(V.resumenTexto(aMedias)));
+    verificar('y recomienda reintentar lo que faltó, sin gastar otro estudio',
+        parcial.recomendaciones.some(r => /SIGA no respondió: usa «Reintentar lo que faltó» en este reporte \(no cuenta como otro estudio\)/.test(r)), parcial.recomendaciones.join('\n'));
     const nada = V.analizar(entrada, { marcia: [], marcanet: [], siga: [], fuentes: { MARCia: { ok: false }, Marcanet: { ok: false }, SIGA: { ok: false } } }, AHORA);
     igual('si no respondió ninguna, no hay dictamen', nada.dictamen.nivel, 'incompleta');
 
@@ -366,6 +373,44 @@ console.log('\nUn caso real: lunafardo');
         detalles: { 3295484: p43.ficha, 3295486: p39.ficha } }, AHORA);
     const a43 = conPharma.antecedentes.find(a => a.expediente === '3295484'), a39 = conPharma.antecedentes.find(a => a.expediente === '3295486');
     igual('lo que ampara: si la ficha solo trae otra clase (35), no se muestra en lugar de la 43', a43.ampara, '');
+    // El estudio del 27/10/2026: Marcanet no respondió (ni su búsqueda ni sus
+    // fichas). Con MARCia y el historial de la Gaceta el estatus viejo de las
+    // listas se corrige: la solicitud abandonada y el registro vencido sin
+    // renovación ya no estorban; LUNFARDO, renovada, sí.
+    const deMarcia = (id, titulo, estado, extra) => marcia(id, titulo, estado, extra);
+    const sinMarcanet = V.analizar(entrada, {
+        marcia: [
+            { clase: 43, resultados: [deMarcia('RM201101204050', 'LUNFARDO', 'REGISTRADO', { applicationNumber: '1204050', registrationNumber: '1261657',
+                owners: ['FERNANDO NESTOR POCH Y CLAUDIA MARIA VILLALOBOS MAYA'], dates: { application: '18/08/2011', expiry: '18/08/2021' } })] },
+            { clase: 41, resultados: [
+                deMarcia('RM200600772119', 'L LUNFARDO', 'EN TRÁMITE', { applicationNumber: '772119', registrationNumber: '', owners: ['RAFAEL TABLADO RASCON'], dates: { application: '20/2/2006' } }),
+                deMarcia('RM200700879084', 'L LUNFARDO', 'REGISTRADO', { applicationNumber: '879084', registrationNumber: '1012592', owners: ['RAFAEL TABLADO RASCON'],
+                    dates: { application: '09/08/2007', expiry: '09/08/2017' } })] }
+        ],
+        marcanet: [], siga: [], sigaHistorial: sigaHistorial.slice(0, 4),
+        fuentes: { MARCia: { ok: true, total: 4 }, Marcanet: { ok: false, error: 'respondió vacía tres veces' }, SIGA: { ok: true, total: 0 } },
+        fichas: { pedidas: 3, leidas: 0 }
+    }, AHORA);
+    const deEste = (exp) => sinMarcanet.antecedentes.find(a => a.expediente === exp);
+    igual('sin Marcanet: LUNFARDO sigue alto (la Gaceta publica su renovación de 2022)', [deEste('1204050').riesgo, deEste('1204050').vencida], ['alto', false]);
+    verificar('y lo dice', /Se renovó \(Gaceta del 11\/05\/2022\)/.test(deEste('1204050').motivos.join(' ')), deEste('1204050').motivos.join(' '));
+    igual('la solicitud que MARCia ve «en trámite» pero la Gaceta publicó abandonada: bajo',
+        [deEste('772119').estado, deEste('772119').riesgo], ['ABANDONADA (Gaceta del 07/12/2007)', 'bajo']);
+    igual('el registro vencido en 2017 sin renovación publicada: bajo', deEste('879084').riesgo, 'bajo');
+    verificar('y dice por qué', /terminó el 09\/08\/2017 y la Gaceta no publica su renovación/.test(deEste('879084').motivos.join(' ')), deEste('879084').motivos.join(' '));
+    igual('el dictamen: 1 alto, 0 medio', [sinMarcanet.dictamen.nivel, sinMarcanet.conteo.alto, sinMarcanet.conteo.medio], ['baja', 1, 0]);
+    const recsSin = sinMarcanet.recomendaciones.join('\n');
+    verificar('lo deducido de la Gaceta se pide confirmar en Marcanet', /«L LUNFARDO» \(exp\. 772119\).*se dedujo de la Gaceta: confírmalo en Marcanet/.test(recsSin) &&
+        /«L LUNFARDO» \(reg\. 1012592\)/.test(recsSin), recsSin);
+    verificar('ya no pide revisar si se renovó «L LUNFARDO»', !/Revisa en Marcanet si se renovó/.test(recsSin), recsSin);
+    verificar('el resumen dice por qué falló Marcanet y cuántas fichas se leyeron',
+        /Marcanet \(sin respuesta: respondió vacía tres veces\)/.test(V.resumenTexto(sinMarcanet)) && /Fichas de Marcanet: 0 de 3\./.test(V.resumenTexto(sinMarcanet)));
+    // Sin historial de la Gaceta no se deduce nada: la vigencia vieja sigue pidiendo confirmación.
+    const sinHistoria = V.analizar(entrada, { marcia: [{ clase: 41, resultados: [deMarcia('RM200700879084', 'L LUNFARDO', 'REGISTRADO',
+        { applicationNumber: '879084', registrationNumber: '1012592', dates: { application: '09/08/2007', expiry: '09/08/2017' } })] }],
+        marcanet: [], siga: [], fuentes: { MARCia: { ok: true, total: 1 } } }, AHORA);
+    igual('sin historial de la Gaceta, una vigencia vieja de MARCia no basta para bajar el riesgo', sinHistoria.antecedentes[0].riesgo, 'medio');
+
     igual('y el de una clase relacionada (39) sí', a39.ampara, '39: TRANSPORTE; ORGANIZACIÓN DE VIAJES.');
 }
 

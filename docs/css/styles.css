@@ -6221,3 +6221,7 @@ body.cta-abierto #tour-menu, body.cta-abierto #tour-oferta, body.cta-abierto #re
 .terminos-texto h4 { margin: 0.9rem 0 0.3rem; font-size: 0.9rem; }
 .terminos-texto p { margin: 0 0 0.5rem; }
 .terminos-acepto { display: flex; gap: 0.5rem; align-items: flex-start; margin-top: 0.9rem; font-weight: 600; }
+
+/* Reintentar lo que faltó en el estudio de viabilidad. */
+.vb-reintentar { margin: 0.6rem 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.vb-reintentar small { color: var(--text-muted); }
