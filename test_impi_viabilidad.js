@@ -194,7 +194,11 @@ console.log('\nEl dictamen');
     const rep = V.analizar(entrada, crudo, AHORA);
     igual('con una idéntica en la misma clase: viabilidad baja', rep.dictamen.nivel, 'baja');
     igual('cuenta una vez la marca que vieron MARCia y Marcanet', rep.antecedentes.filter(a => a.titulo === 'LUNA AZUL' && a.clases.includes(30)).length, 1);
-    igual('conteo por riesgo', [rep.conteo.alto, rep.conteo.medio, rep.conteo.bajo], [1, 1, 1]);
+    // LUNA AZUL en la 30 y en la 25 son del mismo titular: una marca, dos expedientes.
+    igual('conteo por marca y titular: LUNA AZUL en la 30 y en la 25 cuenta una vez', [rep.conteo.alto, rep.conteo.medio, rep.conteo.bajo, rep.conteo.expedientes], [1, 1, 0, 3]);
+    const otroTitular = V.analizar(entrada, { ...crudo, marcia: [crudo.marcia[0],
+        { clase: null, resultados: [marcia('RM2019000004', 'LUNA AZUL', 'REGISTRADO', { classes: [25], owners: ['CONFECCIONES DEL GOLFO SA DE CV'] })] }] }, AHORA);
+    igual('de otro titular es otra marca: conteo por riesgo', [otroTitular.conteo.alto, otroTitular.conteo.medio, otroTitular.conteo.bajo], [1, 1, 1]);
     igual('los de mayor riesgo van primero', rep.antecedentes[0].riesgo, 'alto');
     igual('las publicaciones en Gaceta parecidas, no las demás', rep.publicaciones.map(p => p.denominacion), ['LUNA AZUL CAFÉ']);
     verificar('recomienda cambiar la denominación', rep.recomendaciones.some(r => /Cambia la denominación/.test(r)));
@@ -309,10 +313,12 @@ console.log('\nUn caso real: lunafardo');
     igual('la ficha manda sobre el estatus viejo de MARCia', marciaVieja.antecedentes[0].estado, 'ABANDONADA');
 
     // Lo que no se parece es ruido de las fuentes: ni cuenta ni se muestra.
-    igual('cuenta solo lo que se parece: 1 alto, 4 bajos, 1 descartado (GA.MA)',
-        [conFicha.conteo.alto, conFicha.conteo.medio, conFicha.conteo.bajo, conFicha.conteo.descartados], [1, 0, 4, 1]);
+    // Y cuenta marcas, no expedientes: L LUNFARDO y LUNAFURY tienen dos cada una.
+    igual('cuenta solo lo que se parece, por marca: 1 alto, 2 bajos, 1 descartado (GA.MA); 6 expedientes',
+        [conFicha.conteo.alto, conFicha.conteo.medio, conFicha.conteo.bajo, conFicha.conteo.descartados, conFicha.conteo.expedientes], [1, 0, 2, 1, 6]);
     igual('GA.MA queda marcado como descartado', conFicha.antecedentes.filter(a => a.descartado).map(a => a.titulo), ['GA.MA']);
-    verificar('el resumen lo dice', /4 bajo \(y 1 resultado que no se parece, descartado\)/.test(V.resumenTexto(conFicha)), V.resumenTexto(conFicha).split('\n')[7]);
+    verificar('el resumen lo dice', /2 bajo \(y 1 resultado que no se parece, descartado\)\. Se cuenta una vez cada marca de un mismo titular; son 6 expedientes\./.test(V.resumenTexto(conFicha)),
+        V.resumenTexto(conFicha).split('\n')[7]);
 
     // Recomendaciones: lo ya confirmado no se vuelve a pedir; con un solo
     // obstáculo, la carta de consentimiento es una salida.
@@ -322,8 +328,12 @@ console.log('\nUn caso real: lunafardo');
         /negociar con FERNANDO NESTOR POCH Y CLAUDIA MARIA VILLALOBOS MAYA, titular de «LUNFARDO» \(reg\. 1261657\), una carta de consentimiento/.test(recs), recs);
     verificar('lo que se quedó sin ficha sí se pide confirmar',
         /Antes de presentar, confirma en Marcanet el estatus de «LUNFARDO»/.test(sinFicha.recomendaciones.join('\n')), sinFicha.recomendaciones.join('\n'));
-    const muchos = { ...conFicha, antecedentes: [1, 2, 3].map(i => ({ ...conFicha.antecedentes[0], registro: String(i), expediente: String(i) })) };
+    const muchos = { ...conFicha, antecedentes: [1, 2, 3].map(i => ({ ...conFicha.antecedentes[0], registro: String(i), expediente: String(i), titulares: ['TITULAR ' + i] })) };
     verificar('con muchos obstáculos, no', !/carta de consentimiento/.test(V.recomendaciones(muchos).join(' ')));
+    const deUnTitular = { ...conFicha, antecedentes: [1, 2, 3].map(i => ({ ...conFicha.antecedentes[0], registro: String(i), expediente: String(i) })) };
+    verificar('pero tres expedientes de un mismo titular son un solo obstáculo: sí, y los nombra',
+        /negociar con FERNANDO NESTOR POCH Y CLAUDIA MARIA VILLALOBOS MAYA, titular de «LUNFARDO» \(reg\. 1, reg\. 2 y 1 más\), una carta de consentimiento/.test(V.recomendaciones(deUnTitular).join(' ')),
+        V.recomendaciones(deUnTitular).join('\n'));
     const notoria = { ...conFicha, antecedentes: [{ ...conFicha.antecedentes[0], notoria: true }] };
     verificar('ni frente a una marca notoria', !/carta de consentimiento/.test(V.recomendaciones(notoria).join(' ')));
 
@@ -400,8 +410,8 @@ console.log('\nUn caso real: lunafardo');
     verificar('y dice por qué', /terminó el 09\/08\/2017 y la Gaceta no publica su renovación/.test(deEste('879084').motivos.join(' ')), deEste('879084').motivos.join(' '));
     igual('el dictamen: 1 alto, 0 medio', [sinMarcanet.dictamen.nivel, sinMarcanet.conteo.alto, sinMarcanet.conteo.medio], ['baja', 1, 0]);
     const recsSin = sinMarcanet.recomendaciones.join('\n');
-    verificar('lo deducido de la Gaceta se pide confirmar en Marcanet', /«L LUNFARDO» \(exp\. 772119\).*se dedujo de la Gaceta: confírmalo en Marcanet/.test(recsSin) &&
-        /«L LUNFARDO» \(reg\. 1012592\)/.test(recsSin), recsSin);
+    verificar('lo deducido de la Gaceta se pide confirmar en Marcanet, con los dos expedientes de «L LUNFARDO»',
+        /el estatus de «L LUNFARDO» \(exp\. 772119, reg\. 1012592\) se dedujo de la Gaceta: confírmalo en Marcanet/.test(recsSin), recsSin);
     verificar('ya no pide revisar si se renovó «L LUNFARDO»', !/Revisa en Marcanet si se renovó/.test(recsSin), recsSin);
     verificar('el resumen dice por qué falló Marcanet y cuántas fichas se leyeron',
         /Marcanet \(sin respuesta: respondió vacía tres veces\)/.test(V.resumenTexto(sinMarcanet)) && /Fichas de Marcanet: 0 de 3\./.test(V.resumenTexto(sinMarcanet)));
@@ -412,6 +422,98 @@ console.log('\nUn caso real: lunafardo');
     igual('sin historial de la Gaceta, una vigencia vieja de MARCia no basta para bajar el riesgo', sinHistoria.antecedentes[0].riesgo, 'medio');
 
     igual('y el de una clase relacionada (39) sí', a39.ampara, '39: TRANSPORTE; ORGANIZACIÓN DE VIAJES.');
+}
+
+// La ficha de MARCia (/marcia/view) trae la clase y lo que ampara cada
+// expediente. La búsqueda de Marcanet a veces muestra las clases de toda una
+// familia de solicitudes: LUNA PHARMA, de PHARMA GBC, son cuatro expedientes
+// de una clase cada uno, y en la búsqueda el 3295484 decía «35 36 43».
+console.log('\nLa ficha de MARCia y las marcas con varios expedientes');
+{
+    // Lo que respondió MARCia el 28/10/2026, recortado.
+    const fichaPharma = (exp, clase, productos, historial) => ({
+        details: {
+            generalInformation: { title: 'LUNA PHARMA', applicationNumber: exp, applicationDate: '6/1/2025', publicationDt: '13/01/2025', appType: 'REGISTRO DE MARCA' },
+            productsAndServices: [{ classes: clase, goodsAndServices: productos }],
+            trademark: { id: 'RM20250' + exp }
+        },
+        result: { id: 'RM20250' + exp, applicationNumber: exp, title: 'LUNA PHARMA', status: 'EN TRÁMITE', owners: ['PHARMA GBC SAPI DE CV'] },
+        historyData: { historyRecords: historial || [{ description: 'SOLICITUD DE REGISTRO', startDate: '06/01/2025', details: { officios: [
+            { descriptionOfTheTrade: 'SE LE CITA ANTERIORIDAD', officeNumber: '20250639944', dateOfTheTrade: '29/04/2025' },
+            { descriptionOfTheTrade: 'ARCHIVO FONETICO', officeNumber: '20250634583', dateOfTheTrade: '28/04/2025' },
+            { descriptionOfTheTrade: 'ARCHIVO FONETICO', officeNumber: '20250321872', dateOfTheTrade: '28/02/2025' }] } }] }
+    });
+    const crudo84 = fichaPharma('3295484', 35, 'PUBLICIDAD; GESTIÓN, ORGANIZACIÓN Y ADMINISTRACIÓN DE NEGOCIOS COMERCIALES; TRABAJOS DE OFICINA.');
+    const f84 = V.leerFichaMARCia(crudo84, '3295484');
+    igual('ficha de MARCia: su clase y lo que ampara', [f84.id, f84.clases, f84.productos[0].texto.slice(0, 10), f84.estado],
+        ['RM202503295484', [35], 'PUBLICIDAD', 'EN TRÁMITE']);
+    igual('ficha de MARCia: avisa de las anterioridades que le citó el IMPI', V.avisosDeFicha(f84), ['El IMPI le citó anterioridades (oficio del 29/04/2025)']);
+    igual('y de una oposición', V.avisosDeFicha(V.leerFichaMARCia(fichaPharma('3417716', 28, 'JUGUETES.',
+        [{ description: 'SOLICITUD DE REGISTRO', startDate: '07/05/2025' }, { description: 'OPOSICION', startDate: '15/08/2025' }]), '3417716')),
+        ['Tiene una oposición (presentada el 15/08/2025)']);
+    igual('si la ficha es de otro expediente, no se usa', V.leerFichaMARCia(crudo84, '3295485'), null);
+    igual('ni si no trae productos (o es un error)', [V.leerFichaMARCia({ details: { generalInformation: {}, productsAndServices: [] } }, '1'),
+        V.leerFichaMARCia({ error: 'HTTP 404' }, '1'), V.leerFichaMARCia(null, '1')], [null, null, null]);
+    igual('varias clases en un expediente: todas', V.leerFichaMARCia({ details: { generalInformation: { applicationNumber: '1' },
+        productsAndServices: [{ classes: 43, goodsAndServices: 'RESTAURANTES.' }, { classes: '30, 32', goodsAndServices: 'CAF&#201; Y BEBIDAS.' }] } }, '0001').productos
+        .map(p => p.clase + ': ' + p.texto), ['43: RESTAURANTES.', '30: CAFÉ Y BEBIDAS.', '32: CAFÉ Y BEBIDAS.']);
+
+    const entrada = { denominacion: 'lunafardo', clases: [43], solicitante: '', productos: '', tipo: 'nominativa' };
+    const fuentes = { MARCia: { ok: true, total: 0 }, Marcanet: { ok: true, total: 4 }, SIGA: { ok: true, total: 0 } };
+    const fila = (exp, clase) => ({ Titular: 'PHARMA GBC SAPI DE CV', Expediente: exp, Registro: '', 'Denominación': 'LUNA PHARMA', Clase: clase });
+    const filas = [fila('3295484', '35 36 43'), fila('3295485', '10'), fila('3295486', '39'), fila('3295488', '5')];
+    const detalles = {
+        3295484: { 'Fecha de presentación': '07/01/2025 12:00:00 AM', 'Denominación': 'LUNA PHARMA', '35Edición 12 del Clasificador de Niza': 'PUBLICIDAD.' },
+        3295486: { 'Fecha de presentación': '07/01/2025 12:00:00 AM', 'Denominación': 'LUNA PHARMA', '39Edición 12 del Clasificador de Niza': 'TRANSPORTE.' }
+    };
+    const base = { marcia: [], marcanet: [{ clase: null, resultados: filas }], siga: [], fuentes, detalles, fichas: { pedidas: 2, leidas: 2 } };
+
+    // Sin las fichas de MARCia manda la clase de la búsqueda: conservador.
+    const sinFichas = V.analizar(entrada, base, AHORA);
+    const familia = V.agruparMarcas(sinFichas.antecedentes);
+    igual('cuatro expedientes de la misma marca y titular: una fila', [familia.length, familia[0].miembros.length, sinFichas.conteo.total, sinFichas.conteo.expedientes], [1, 4, 1, 4]);
+    igual('la fila toma el riesgo del más grave y junta las clases', [familia[0].riesgo, familia[0].expediente, familia[0].clases], ['alto', '3295484', [5, 10, 35, 36, 39, 43]]);
+    igual('sin la ficha de MARCia, la clase de la búsqueda manda (se queda alto)', sinFichas.antecedentes.find(a => a.expediente === '3295484').riesgo, 'alto');
+    igual('se pide la ficha de MARCia de los de riesgo alto y medio, con el año de su presentación',
+        V.aConsultarMARCia(sinFichas), [{ expediente: '3295484', ids: ['RM202503295484'] }, { expediente: '3295486', ids: ['RM202503295486'] }]);
+    igual('junto al año nuevo, también el id del año de al lado', V.aConsultarMARCia({ antecedentes: [
+        { riesgo: 'alto', expediente: '1234', solicitud: '01/01/2021' }, { riesgo: 'medio', expediente: '5678', solicitud: '31/12/2020' },
+        { riesgo: 'alto', id: 'RM201900111111', expediente: '111111' }, { riesgo: 'alto', expediente: '999' }, { riesgo: 'bajo', expediente: '42', solicitud: '05/05/2020' }] }),
+        [{ expediente: '1234', ids: ['RM202100001234', 'RM202000001234'] }, { expediente: '5678', ids: ['RM202000005678', 'RM202100005678'] },
+         { expediente: '111111', ids: ['RM201900111111'] }]);
+
+    const fichasMARCia = { 3295484: f84, 3295486: V.leerFichaMARCia(fichaPharma('3295486', 39, 'TRANSPORTE; ORGANIZACIÓN DE VIAJES.'), '3295486') };
+    const conFichas = V.analizar(entrada, { ...base, fichasMARCia, fichasM: { pedidas: 2, leidas: 2 } }, AHORA);
+    const a84 = conFichas.antecedentes.find(a => a.expediente === '3295484'), a86 = conFichas.antecedentes.find(a => a.expediente === '3295486');
+    igual('con su ficha de MARCia, el 3295484 es de la 35: bajo', [a84.clases, a84.riesgo], [[35], 'bajo']);
+    verificar('y dice por qué, y lo que le citó el IMPI',
+        /Clase según su ficha en MARCia \(la búsqueda de Marcanet mostraba 35, 36, 43\)/.test(a84.motivos.join('. ')) && /citó anterioridades \(oficio del 29\/04\/2025\)/.test(a84.motivos.join('. ')),
+        a84.motivos.join('. '));
+    igual('el de la 39, relacionada, sigue en medio y muestra lo que ampara', [a86.riesgo, a86.ampara, a86.id], ['medio', '39: TRANSPORTE; ORGANIZACIÓN DE VIAJES.', 'RM202503295486']);
+    igual('la marca queda en riesgo medio: viabilidad media', [conFichas.dictamen.nivel, conFichas.conteo.alto, conFichas.conteo.medio, conFichas.conteo.bajo], ['media', 0, 1, 0]);
+    const fam = V.agruparMarcas(conFichas.antecedentes)[0];
+    igual('la fila de la marca la encabeza su expediente más grave', [fam.expediente, V.nombreDe(fam)], ['3295486', '«LUNA PHARMA» (exp. 3295486, exp. 3295484 y 2 más)']);
+    const texto = V.resumenTexto(conFichas);
+    verificar('el resumen lista sus expedientes', /\[MEDIO\] LUNA PHARMA — 4 expedientes de PHARMA GBC SAPI DE CV: exp\. 3295486 \(clase 39, .*riesgo medio\); exp\. 3295484 \(clase 35, .*riesgo bajo\)/.test(texto),
+        texto.split('\n').find(l => /LUNA PHARMA/.test(l)));
+    verificar('y cuántas fichas de MARCia se leyeron', /Fichas de MARCia: 2 de 2\./.test(texto));
+    verificar('con lo que ampara, sin punto doble', /Ampara: 39: TRANSPORTE; ORGANIZACIÓN DE VIAJES\. En Gaceta|Ampara: 39: TRANSPORTE; ORGANIZACIÓN DE VIAJES\.$/m.test(texto) && !/\.\./.test(texto),
+        texto.split('\n').find(l => /LUNA PHARMA/.test(l)));
+    igual('lo ya leído no se vuelve a pedir', V.aConsultarMARCia(conFichas, 8, fichasMARCia), []);
+    // Con otra clase en la ficha que sí es la del estudio, el riesgo sube.
+    const sube = V.analizar(entrada, { ...base, fichasMARCia: { 3295485: { ...f84, clases: [10, 43], productos: [{ clase: 43, texto: 'RESTAURANTES.' }], oficios: [] } } }, AHORA);
+    igual('si la ficha trae la clase del estudio, el riesgo sube', sube.antecedentes.find(a => a.expediente === '3295485').riesgo, 'alto');
+    igual('el titular se compara sin su forma jurídica, con o sin puntos',
+        ['PHARMA GBC SAPI DE CV', 'Pharma GBC, S.A.P.I. de C.V.', 'GRUPO X S DE RL DE CV', 'SHENZHEN NULING ELECTRONIC TECHNOLOGY CO., LTD'].map(V.claveTitular),
+        ['PHARMA GBC', 'PHARMA GBC', 'GRUPO X', 'SHENZHEN NULING ELECTRONIC TECHNOLOGY']);
+    igual('así, la misma marca del mismo titular escrito de dos formas es una fila', V.agruparMarcas([
+        { titulo: 'LUNA PHARMA', titulares: ['PHARMA GBC SAPI DE CV'], riesgo: 'medio', similitud: { puntaje: 80 }, clases: [39], fuentes: ['Marcanet'] },
+        { titulo: 'Luna Pharma', titulares: ['PHARMA GBC, S.A.P.I. DE C.V.'], riesgo: 'bajo', similitud: { puntaje: 80 }, clases: [5], fuentes: ['MARCia'] }])
+        .map(f => [f.miembros.length, f.riesgo, f.clases, f.fuentes]), [[2, 'medio', [5, 39], ['Marcanet', 'MARCia']]]);
+    // Y una marca sin titular conocido no se junta con nada.
+    igual('sin titular, cada expediente es su propia fila', V.agruparMarcas([
+        { titulo: 'LUNA', titulares: [], riesgo: 'medio', similitud: { puntaje: 80 }, clases: [43], fuentes: ['SIGA'] },
+        { titulo: 'LUNA', titulares: [], riesgo: 'medio', similitud: { puntaje: 80 }, clases: [43], fuentes: ['SIGA'] }]).length, 2);
 }
 
 console.log(`\n${pasadas} pasadas, ${fallos.length} fallidas`);
