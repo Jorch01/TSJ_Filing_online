@@ -510,6 +510,20 @@ console.log('\nLa ficha de MARCia y las marcas con varios expedientes');
         { titulo: 'LUNA PHARMA', titulares: ['PHARMA GBC SAPI DE CV'], riesgo: 'medio', similitud: { puntaje: 80 }, clases: [39], fuentes: ['Marcanet'] },
         { titulo: 'Luna Pharma', titulares: ['PHARMA GBC, S.A.P.I. DE C.V.'], riesgo: 'bajo', similitud: { puntaje: 80 }, clases: [5], fuentes: ['MARCia'] }])
         .map(f => [f.miembros.length, f.riesgo, f.clases, f.fuentes]), [[2, 'medio', [5, 39], ['Marcanet', 'MARCia']]]);
+    // Todas las fichas, no solo las de riesgo alto y medio: así cada expediente
+    // muestra su clase real (LUNA PHARMA 3295488 salía «1 5» y es solo 5).
+    igual('con «todos», también se piden las de riesgo bajo; el año sale del expediente hermano',
+        V.aConsultarMARCia(conFichas, 40, fichasMARCia, true), [{ expediente: '3295485', ids: ['RM202503295485'] }, { expediente: '3295488', ids: ['RM202503295488'] }]);
+    const sinHermanos = V.analizar(entrada, { ...base, marcanet: [{ clase: null, resultados: filas.concat([
+        { Titular: 'SHENZHEN NULING ELECTRONIC TECHNOLOGY CO., LTD', Expediente: '3417716', 'Denominación': 'LUNAFURY', Clase: '12 26 27 28' },
+        { Titular: 'SHENZHEN NULING ELECTRONIC TECHNOLOGY CO., LTD', Expediente: '3417715', 'Denominación': 'LUNAFURY', Clase: '9 10 12' },
+        { Titular: 'ITW POLY MEX, S.A. DE C.V.', Expediente: '565012', Registro: '782649', 'Denominación': 'LUNAFLEX', Clase: '1' },
+        { Titular: 'MARIO  ALBERTO DONIZ', Expediente: '1270851', 'Denominación': 'GA.MA', Clase: '12' }]) }], fichasMARCia }, AHORA);
+    igual('sin año ni hermano con fecha, se pide su ficha de Marcanet (una por grupo de hermanos, nada de los descartados)',
+        V.aConsultarFechas(sinHermanos).map(o => o.expediente), ['3417716', '565012']);
+    igual('y no se repite lo ya pedido', V.aConsultarFechas(sinHermanos, 20, ['3417716']).map(o => o.expediente), ['3417715', '565012']);
+    igual('los titulares de Marcanet llegan sin espacios de más', V.desdeMarcanet({ 'Denominación': 'X', Expediente: '1', Titular: 'JOSÉ GERARDO  PACHUCA  HERNÁNDEZ ' }).titulares,
+        ['JOSÉ GERARDO PACHUCA HERNÁNDEZ']);
     // Y una marca sin titular conocido no se junta con nada.
     igual('sin titular, cada expediente es su propia fila', V.agruparMarcas([
         { titulo: 'LUNA', titulares: [], riesgo: 'medio', similitud: { puntaje: 80 }, clases: [43], fuentes: ['SIGA'] },
