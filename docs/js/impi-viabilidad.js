@@ -363,7 +363,7 @@
             expediente: r.applicationNumber ? String(r.applicationNumber) : '',
             registro: r.registrationNumber ? String(r.registrationNumber) : '',
             estado: r.status || '',
-            titulares: lista(r.owners).map(String),
+            titulares: lista(r.owners).map(t => String(t).replace(/\s+/g, ' ').trim()).filter(Boolean),
             clases,
             tipoSolicitud: r.appType || '',
             solicitud: (r.dates && r.dates.application) || '',
@@ -452,6 +452,46 @@
             ejemplar: ficha.ejemplar || '',
             fecha: ficha.fechaPuestaCirculacion || ''
         };
+    }
+
+    /** Lo que dice la sección de la Gaceta, en una palabra: "Renovada", "Abandonada"… */
+    function etiquetaGaceta(seccion) {
+        const s = normalizarMarca(seccion);
+        if (/RENOVAD/.test(s)) return 'Renovada';
+        if (/ABANDONAD/.test(s)) return 'Abandonada';
+        if (/CADUC/.test(s)) return 'Caducidad';
+        if (/NULIDAD/.test(s)) return 'Nulidad';
+        if (/CANCELA/.test(s)) return 'Cancelación';
+        if (/TRANSMISI|CESION/.test(s)) return 'Transmisión';
+        if (/LICENCIA/.test(s)) return 'Licencia';
+        if (/REGISTRADA/.test(s)) return 'Registrada';
+        if (/SOLICITUD/.test(s)) return 'Solicitud publicada';
+        return String(seccion || 'Publicación').trim();
+    }
+
+    /** "Registrada 09/04/2012 · Renovada 11/05/2022" */
+    function historialTexto(a) {
+        return (a.gaceta || []).map(g => g.etiqueta + (g.fecha ? ' ' + g.fecha : '')).join(' · ');
+    }
+
+    /**
+     * Los nombres que vale la pena buscar en SIGA, que solo encuentra palabras
+     * exactas: «lunafardo» no trae nada, «LUNFARDO» trae su registro, su
+     * renovación y su abandono. Los de riesgo alto y medio, sin repetir y sin
+     * la propia denominación (esa ya se buscó).
+     */
+    function nombresParaGaceta(rep, max) {
+        const propia = normalizarMarca(rep.entrada.denominacion);
+        const vistos = new Set([propia]);
+        const nombres = [];
+        for (const a of rep.antecedentes) {
+            if (a.riesgo !== 'alto' && a.riesgo !== 'medio') continue;
+            const n = normalizarMarca(a.titulo);
+            if (!n || vistos.has(n)) continue;
+            vistos.add(n);
+            nombres.push(n);
+        }
+        return nombres.slice(0, max || 3);
     }
 
     /**
@@ -630,18 +670,42 @@
             // puede seguir diciendo "en trámite" de una solicitud abandonada.
             return d ? { ...a, estado: d.estado, vencimiento: d.vigencia || a.vencimiento, registro: a.registro || d.registro, ampara: d.ampara, conDetalle: true } : a;
         }).map(a => evaluarAntecedente(a, entrada, ahora))
+            // Lo que no se parece (menos de 50%) y no estorba es ruido de las
+            // fuentes: no cuenta ni se muestra, solo va en el CSV.
+            .map(a => ({ ...a, descartado: a.riesgo === 'bajo' && a.similitud.tipo === 'distinta' }))
             .sort((a, b) => RIESGOS.indexOf(a.riesgo) - RIESGOS.indexOf(b.riesgo) || b.similitud.puntaje - a.similitud.puntaje ||
                 a.titulo.localeCompare(b.titulo, 'es'));
 
-        const publicaciones = (crudo.siga || []).map(desdeSIGA).map(p => ({
-            ...p, similitud: compararMarcas(entrada.denominacion, p.denominacion, entrada.clases),
-            relacion: relacionClases(entrada.clases, p.clases)
-        })).filter(p => p.denominacion && p.similitud.puntaje >= 60)
+        // Lo que SIGA publicó de los antecedentes principales (se buscaron por
+        // su nombre): se pega a cada uno por su expediente o su registro.
+        const digitos = v => String(v || '').replace(/\D/g, '');
+        const historial = (crudo.sigaHistorial || []).map(desdeSIGA);
+        const usadas = new Set();
+        for (const a of antecedentes) {
+            const exp = digitos(a.expediente), reg = digitos(a.registro);
+            const suyas = historial.filter(p => (exp && digitos(p.expediente) === exp) || (reg && digitos(p.registro) === reg));
+            if (!suyas.length) continue;
+            for (const p of suyas) usadas.add(p.fichaId);
+            a.gaceta = suyas.filter((p, i) => suyas.findIndex(q => q.fichaId === p.fichaId) === i)
+                .map(p => ({ etiqueta: etiquetaGaceta(p.seccion), fecha: p.fecha, seccion: p.seccion, gaceta: p.gaceta }))
+                .sort((x, y) => (fechaIMPI(x.fecha) || 0) - (fechaIMPI(y.fecha) || 0));
+        }
+
+        // Las publicaciones parecidas que no son de ningún antecedente: una
+        // solicitud reciente puede estar en la Gaceta antes que en MARCia.
+        const sueltas = historial.filter(p => !usadas.has(p.fichaId));
+        const publicaciones = (crudo.siga || []).map(desdeSIGA).concat(sueltas)
+            .filter((p, i, todas) => p.fichaId == null || todas.findIndex(q => q.fichaId === p.fichaId) === i)
+            .map(p => ({
+                ...p, similitud: compararMarcas(entrada.denominacion, p.denominacion, entrada.clases),
+                relacion: relacionClases(entrada.clases, p.clases)
+            })).filter(p => p.denominacion && p.similitud.puntaje >= 60)
             .sort((a, b) => b.similitud.puntaje - a.similitud.puntaje);
 
         const observaciones = observacionesRegistrabilidad(entrada);
-        const cuenta = r => antecedentes.filter(a => a.riesgo === r).length;
-        const conteo = { alto: cuenta('alto'), medio: cuenta('medio'), bajo: cuenta('bajo'), propia: cuenta('propia'), total: antecedentes.length };
+        const cuenta = r => antecedentes.filter(a => a.riesgo === r && !a.descartado).length;
+        const conteo = { alto: cuenta('alto'), medio: cuenta('medio'), bajo: cuenta('bajo'), propia: cuenta('propia'),
+            descartados: antecedentes.filter(a => a.descartado).length, total: antecedentes.length };
         const fuentes = Object.entries(crudo.fuentes || {}).map(([nombre, f]) => ({ nombre, ok: !!f.ok, total: f.total || 0, error: f.error || '' }));
         const respondieron = fuentes.filter(f => f.ok);
         const fallaron = fuentes.filter(f => !f.ok);
@@ -715,6 +779,14 @@
         if (altos.some(a => a.relacion === 'misma')) {
             r.push('Cambia la denominación o agrégale un elemento distintivo fuerte: las coincidencias en la misma clase son la causa más común de negativa.');
         }
+        // Con uno o dos obstáculos identificados, hablar con su titular es una
+        // salida real; con muchos, no.
+        const bloqueos = altos.filter(a => !a.notoria && a.situacion !== 'inactiva');
+        if (bloqueos.length && bloqueos.length <= 2 && bloqueos.length === altos.length) {
+            const titulares = bloqueos.map(a => (a.titulares[0] ? a.titulares[0] + ', titular de ' : 'el titular de ') + nombre(a));
+            r.push('Si no quieres cambiar la denominación, otra vía es negociar con ' + titulares.join(', y con ') +
+                ', una carta de consentimiento para que las marcas coexistan. Valora si procede en tu caso.');
+        }
         if (altos.some(a => a.notoria)) {
             r.push('Evita cualquier parecido con ' + altos.filter(a => a.notoria).map(nombre).join(', ') + ': las marcas notorias se protegen en todas las clases.');
         }
@@ -724,7 +796,11 @@
         }
         const vigentes = altos.filter(a => a.situacion === 'vigente');
         if (vigentes.length) {
-            r.push('Si ' + vigentes.slice(0, 3).map(nombre).join(', ') + ' no se ha usado en los últimos tres años, puede pedirse su caducidad por falta de uso y despejar el camino.');
+            const renovada = a => ((a.gaceta || []).filter(g => g.etiqueta === 'Renovada' && g.fecha).pop() || {}).fecha;
+            const nota = vigentes.length === 1
+                ? (renovada(vigentes[0]) ? ' Toma en cuenta que su última renovación se publicó en la Gaceta el ' + renovada(vigentes[0]) + '.' : '')
+                : (vigentes.some(renovada) ? ' Toma en cuenta que ' + vigentes.filter(renovada).map(a => nombre(a) + ' se renovó (Gaceta del ' + renovada(a) + ')').join('; ') + '.' : '');
+            r.push('Si ' + vigentes.slice(0, 3).map(nombre).join(', ') + ' no se ha usado en los últimos tres años, puede pedirse su caducidad por falta de uso y despejar el camino.' + nota);
         }
         if (altos.concat(medios).some(a => a.relacion === 'relacionada')) {
             r.push('Delimita con precisión los productos o servicios de la solicitud para alejarte de las clases relacionadas donde hay antecedentes.');
@@ -741,7 +817,18 @@
         if (rep.publicaciones.length) {
             r.push('Revisa las publicaciones en Gaceta de la lista: una solicitud publicada hace menos de un mes todavía admite oposición.');
         }
-        r.push('Antes de presentar, confirma en Marcanet el estatus de los antecedentes marcados.');
+        // Lo que el estudio ya confirmó en la ficha de Marcanet no hace falta
+        // volver a pedirlo; solo lo que se quedó sin confirmar.
+        const marcados = altos.concat(medios);
+        const sinFicha = marcados.filter(a => !a.conDetalle);
+        if (sinFicha.length) {
+            r.push('Antes de presentar, confirma en Marcanet el estatus de ' + sinFicha.slice(0, 4).map(nombre).join(', ') + '.');
+        } else if (marcados.length) {
+            const d = new Date(rep.fecha);
+            const dia = isNaN(d.getTime()) ? '' : String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+            r.push('El estatus de ' + (marcados.length === 1 ? 'ese antecedente' : 'esos antecedentes') + ' se confirmó en su ficha de Marcanet' +
+                (dia ? ' el ' + dia : '') + '. Si pasan semanas antes de presentar, repite el estudio.');
+        }
         r.push('Ya presentada, vigila la Gaceta: hay un mes para que terceros se opongan desde que se publica tu solicitud.');
         return r;
     }
@@ -759,7 +846,8 @@
             'DICTAMEN: ' + rep.dictamen.titulo.toUpperCase(),
             rep.dictamen.resumen,
             'Antecedentes: ' + rep.conteo.alto + ' de riesgo alto, ' + rep.conteo.medio + ' medio, ' + rep.conteo.bajo + ' bajo' +
-                (rep.conteo.propia ? ', ' + rep.conteo.propia + ' del mismo solicitante' : '') + '.',
+                (rep.conteo.propia ? ', ' + rep.conteo.propia + ' del mismo solicitante' : '') +
+                (rep.conteo.descartados ? ' (y ' + rep.conteo.descartados + ' resultado' + (rep.conteo.descartados === 1 ? '' : 's') + ' que no se parece' + (rep.conteo.descartados === 1 ? '' : 'n') + ', descartado' + (rep.conteo.descartados === 1 ? '' : 's') + ')' : '') + '.',
             'Fuentes: ' + rep.fuentes.map(x => x.nombre + (x.ok ? ' (' + x.total + ')' : ' (sin respuesta)')).join(', ') + '.'
         ];
         if (rep.observaciones.length) {
@@ -772,7 +860,8 @@
             for (const a of relevantes.slice(0, 15)) {
                 lineas.push('• [' + a.riesgo.toUpperCase() + '] ' + a.titulo + ' — clase ' + (a.clases.join(', ') || '¿?') +
                     (a.registro ? ', reg. ' + a.registro : a.expediente ? ', exp. ' + a.expediente : '') +
-                    (a.estado ? ', ' + a.estado : '') + (a.titulares.length ? ', ' + a.titulares[0] : '') + '. ' + a.motivos.join('; ') + '.');
+                    (a.estado ? ', ' + a.estado : '') + (a.titulares.length ? ', ' + a.titulares[0] : '') + '. ' + a.motivos.join('; ') + '.' +
+                    (a.gaceta && a.gaceta.length ? ' En Gaceta: ' + historialTexto(a) + '.' : ''));
             }
         }
         lineas.push('', 'RECOMENDACIONES');
@@ -785,7 +874,7 @@
         CLASES_NIZA, RIESGOS, normalizarMarca, claveFonetica, compararMarcas, clasesRelacionadas, relacionClases,
         situacionDe, mismoTitular, palabrasDistintivas, observacionesRegistrabilidad, desdeMARCia, desdeMarcanet,
         desdeSIGA, consolidar, evaluarAntecedente, analizar, recomendaciones, resumenTexto, fechaIMPI,
-        leerDetalleMarcanet, variantesComodin, aConsultarDetalle
+        leerDetalleMarcanet, variantesComodin, aConsultarDetalle, nombresParaGaceta, etiquetaGaceta, historialTexto
     };
 
     if (typeof module !== 'undefined' && module.exports) module.exports = Motor;
@@ -947,14 +1036,20 @@
      * que MARCia dice que hay resultados, la página de esa clase. Así cada
      * antecedente llega con su clase aunque MARCia no la ponga en la lista.
      */
-    async function buscarEnMARCia(consulta, clases, sinFiltro) {
+    // MARCia entrega 100 por página. En las clases pedidas se leen hasta 3
+    // páginas: con palabras comunes («luna» tiene 263 marcas en la 43) la
+    // primera se queda corta. En las relacionadas basta la primera.
+    const PAGINAS_MARCIA = 3;
+
+    async function buscarEnMARCia(consulta, clases, sinFiltro, clasesProfundas) {
+        const profundas = (clasesProfundas || []).map(String);
         const intento = async () => {
             const registro = await global.proxyFetch('/marcia/search', {
                 method: 'POST', body: JSON.stringify({ _type: 'Search$Structured', images: [], query: consulta })
             });
-            const pedir = (filtro) => global.proxyFetch('/marcia/results', {
+            const pedir = (filtro, pagina) => global.proxyFetch('/marcia/results', {
                 method: 'POST',
-                body: JSON.stringify({ searchId: registro.id, pageSize: 100, pageNumber: 0, statusFilter: [], viennaCodeFilter: [], niceClassFilter: filtro })
+                body: JSON.stringify({ searchId: registro.id, pageSize: 100, pageNumber: pagina || 0, statusFilter: [], viennaCodeFilter: [], niceClassFilter: filtro })
             });
             const primera = await pedir([]);
             const lotes = sinFiltro ? [{ clase: null, resultados: primera.resultPage || [] }] : [];
@@ -965,7 +1060,16 @@
                     if (!a || !a.docCount) continue;
                 }
                 const r = await pedir([String(c)]);
-                lotes.push({ clase: c, resultados: r.resultPage || [] });
+                const resultados = (r.resultPage || []).slice();
+                const total = r.totalResults || 0;
+                if (profundas.includes(String(c))) {
+                    for (let pagina = 1; pagina < PAGINAS_MARCIA && resultados.length < total; pagina++) {
+                        const mas = (await pedir([String(c)], pagina)).resultPage || [];
+                        if (!mas.length) break;
+                        resultados.push(...mas);
+                    }
+                }
+                lotes.push({ clase: c, resultados });
             }
             return { total: primera.totalResults || registro.count || 0, lotes };
         };
@@ -992,7 +1096,7 @@
         }
         const correr = async (id, consulta, clases, sinFiltro) => {
             try {
-                const r = await buscarEnMARCia(consulta, clases, sinFiltro);
+                const r = await buscarEnMARCia(consulta, clases, sinFiltro, entrada.clases);
                 crudo.marcia.push(...r.lotes);
                 const n = r.lotes.reduce((s, l) => s + l.resultados.length, 0);
                 fuente.total += n;
@@ -1014,28 +1118,33 @@
         fuente.ok = alguna;
     }
 
+    // Cuántos resultados se le piden a la fonética de Marcanet. Su página trae
+    // 10; el proxy lee las siguientes hasta juntar estos.
+    const MAX_MARCANET = 60;
+
+    /**
+     * La fonética de Marcanet no filtra por clase: con la 25 o con la 43
+     * devuelve las mismas marcas, cada una con su clase. Basta una consulta.
+     */
     async function consultarMarcanet(entrada, crudo) {
         const fuente = crudo.fuentes.Marcanet = { ok: false, total: 0, error: '' };
-        const pedir = (c) => global.proxyFetch('/marcanet/fonetica', {
-            method: 'POST', body: JSON.stringify({ denominacion: entrada.denominacion, clase: String(c) })
+        const pedir = () => global.proxyFetch('/marcanet/fonetica', {
+            method: 'POST', body: JSON.stringify({ denominacion: entrada.denominacion, clase: String(entrada.clases[0]), maxResultados: MAX_MARCANET })
         });
-        for (const c of entrada.clases) {
-            const id = 'mcn-' + c;
-            try {
-                let data = await pedir(c);
-                // Con la sesión recién abierta, Marcanet responde la primera
-                // búsqueda vacía: se repite una vez antes de creerle.
-                if (!data || data.isFormPage || !(data.results || []).length) data = await pedir(c);
-                if (data && data.isFormPage) throw new Error('Marcanet devolvió su formulario en vez de resultados');
-                const resultados = (data && data.results) || [];
-                crudo.marcanet.push({ clase: c, resultados });
-                fuente.total += resultados.length;
-                fuente.ok = true;
-                marcar(id, 'ok', resultados.length + ' resultados');
-            } catch (e) {
-                fuente.error = fuente.error || e.message;
-                marcar(id, 'error', e.message);
-            }
+        try {
+            let data = await pedir();
+            // Marcanet a veces responde vacía (sesión recién abierta, o una
+            // búsqueda sí y la siguiente no): se repite una vez antes de creerle.
+            if (!data || data.isFormPage || !(data.results || []).length) data = await pedir();
+            if (data && data.isFormPage) throw new Error('Marcanet devolvió su formulario en vez de resultados');
+            const resultados = (data && data.results) || [];
+            crudo.marcanet.push({ clase: null, resultados });
+            fuente.total = resultados.length;
+            fuente.ok = true;
+            marcar('mcn', 'ok', resultados.length + ' resultados');
+        } catch (e) {
+            fuente.error = e.message;
+            marcar('mcn', 'error', e.message);
         }
     }
 
@@ -1057,6 +1166,24 @@
         }
         marcar('detalle', leidos ? 'ok' : 'error', leidos + ' de ' + objetivos.length + (leidos ? '' : ': no respondió'));
         return detalles;
+    }
+
+    /** SIGA por el nombre de cada antecedente principal: su historial en la Gaceta. */
+    async function consultarHistorialSIGA(nombres) {
+        const fichas = [];
+        let leidos = 0;
+        for (const n of nombres) {
+            try {
+                const data = await global.proxyFetch('/siga/search', {
+                    method: 'POST', body: JSON.stringify({ Busqueda: n, IdArea: '2', IdGaceta: [], FechaDesde: '', FechaHasta: '' })
+                });
+                if (data && data.successed === false) throw new Error(data.message || 'SIGA rechazó la búsqueda');
+                fichas.push(...((data && data.data) || []));
+                leidos++;
+            } catch (e) { /* sin historial de ese nombre: el reporte sigue */ }
+        }
+        marcar('siga-historial', leidos ? 'ok' : 'error', leidos ? fichas.length + ' publicaciones' : 'no respondió');
+        return fichas;
     }
 
     async function consultarSIGA(entrada, crudo) {
@@ -1107,7 +1234,7 @@
         const comodines = todas.filter((w, i, a) => a.indexOf(w) === i).sort((a, b) => b.length - a.length).slice(0, 2)
             .flatMap(variantesComodin);
         comodines.forEach((w, i) => paso('m-comodin-' + i, 'MARCia: variantes «' + w.toLowerCase() + '»'));
-        entrada.clases.forEach(c => paso('mcn-' + c, 'Marcanet: búsqueda fonética en la clase ' + c));
+        paso('mcn', 'Marcanet: búsqueda fonética (en todas las clases)');
         paso('siga', 'SIGA: publicaciones en Gaceta');
 
         const crudo = { marcia: [], marcanet: [], siga: [], fuentes: {} };
@@ -1123,6 +1250,15 @@
             if (objetivos.length) {
                 paso('detalle', 'Marcanet: estatus y vigencia de los ' + objetivos.length + ' antecedentes principales');
                 crudo.detalles = await consultarDetalles(objetivos);
+                ui.reporte = analizar(entrada, crudo, Date.now());
+            }
+            // SIGA solo encuentra palabras exactas: con los nombres de los
+            // antecedentes principales trae su historial en la Gaceta (registro,
+            // renovaciones, abandono…) y solicitudes recientes parecidas.
+            const nombres = nombresParaGaceta(ui.reporte, 3);
+            if (nombres.length) {
+                paso('siga-historial', 'SIGA: historial en Gaceta de ' + nombres.map(n => '«' + n + '»').join(', '));
+                crudo.sigaHistorial = await consultarHistorialSIGA(nombres);
                 ui.reporte = analizar(entrada, crudo, Date.now());
             }
             ui.verBajos = false;
@@ -1149,9 +1285,11 @@
         if (!cont || !rep) return;
         const e = rep.entrada;
         const d = rep.dictamen;
-        const relevantes = rep.antecedentes.filter(a => a.riesgo !== 'bajo' || a.similitud.puntaje >= 75);
-        const bajos = rep.antecedentes.filter(a => !relevantes.includes(a));
-        const visibles = ui.verBajos ? rep.antecedentes : relevantes;
+        const utiles = rep.antecedentes.filter(a => !a.descartado);
+        const relevantes = utiles.filter(a => a.riesgo !== 'bajo' || a.similitud.puntaje >= 75);
+        const bajos = utiles.filter(a => !relevantes.includes(a));
+        const visibles = ui.verBajos ? utiles : relevantes;
+        const descartados = rep.conteo.descartados || 0;
 
         const fila = a => {
             const num = a.registro ? 'Reg. ' + a.registro : a.expediente ? 'Exp. ' + a.expediente : '';
@@ -1160,7 +1298,8 @@
                 '<td><span class="vb-riesgo vb-riesgo-' + a.riesgo + '">' + ETIQUETA_RIESGO[a.riesgo] + '</span></td>' +
                 '<td><strong>' + esc(a.titulo) + '</strong>' + (num ? '<br><small>' + esc(num) + '</small>' : '') + '</td>' +
                 '<td>' + esc(a.clases.join(', ') || '—') + '<br><small>' + esc(ETIQUETA_RELACION[a.relacion]) + '</small></td>' +
-                '<td>' + esc(a.estado || '—') + (a.conDetalle ? '<br><small>según su ficha en Marcanet</small>' : '') + '</td>' +
+                '<td>' + esc(a.estado || '—') + (a.conDetalle ? '<br><small>según su ficha en Marcanet</small>' : '') +
+                    (a.gaceta && a.gaceta.length ? '<br><small>En Gaceta: ' + esc(historialTexto(a)) + '</small>' : '') + '</td>' +
                 '<td>' + esc(a.titulares.slice(0, 2).join('; ') || '—') + (a.ampara ? '<br><small>Ampara: ' + esc(a.ampara.length > 140 ? a.ampara.slice(0, 140) + '…' : a.ampara) + '</small>' : '') + '</td>' +
                 '<td class="vb-num">' + a.similitud.puntaje + '%<br><small>' + esc(a.similitud.detalle) + '</small></td>' +
                 '<td class="vb-motivos">' + esc(a.motivos.join('. ')) + '</td>' +
@@ -1172,6 +1311,10 @@
             ? '<div class="vb-tabla-marco"><table class="vb-tabla"><thead><tr><th>Riesgo</th><th>Marca</th><th>Clase</th><th>Estatus</th><th>Titular</th>' +
               '<th class="vb-num">Parecido</th><th>Por qué</th><th>Fuente</th><th></th></tr></thead><tbody>' + visibles.map(fila).join('') + '</tbody></table></div>'
             : '<p class="vb-vacio">' + (rep.antecedentes.length ? 'Ningún antecedente se parece lo suficiente para considerarse.' : 'Las fuentes no devolvieron antecedentes.') + '</p>';
+        const notaDescartados = descartados
+            ? '<p class="vb-nota">Se descartaron ' + descartados + ' resultado' + (descartados === 1 ? '' : 's') + ' de las fuentes que no se parece' + (descartados === 1 ? '' : 'n') +
+              ' a la denominación (menos de 50%). Van en el CSV por si quieres revisarlos.</p>'
+            : '';
 
         const publicaciones = rep.publicaciones.length
             ? '<div class="vb-tabla-marco"><table class="vb-tabla"><thead><tr><th>Denominación</th><th>Clase</th><th>Gaceta y sección</th><th>Ejemplar</th><th class="vb-num">Parecido</th></tr></thead><tbody>' +
@@ -1200,7 +1343,8 @@
                     '<span class="vb-dictamen-icono" aria-hidden="true">' + ({ alta: '✅', media: '⚠️', baja: '⛔', incompleta: '❔' }[d.nivel]) + '</span>' +
                     '<div><strong>' + esc(d.titulo) + '</strong><p>' + esc(d.resumen) + '</p>' +
                     '<p class="vb-conteo">' + rep.conteo.alto + ' de riesgo alto · ' + rep.conteo.medio + ' medio · ' + rep.conteo.bajo + ' bajo' +
-                    (rep.conteo.propia ? ' · ' + rep.conteo.propia + ' del mismo solicitante' : '') + '</p></div>' +
+                    (rep.conteo.propia ? ' · ' + rep.conteo.propia + ' del mismo solicitante' : '') +
+                    (descartados ? ' · ' + descartados + ' descartado' + (descartados === 1 ? '' : 's') + ' por no parecerse' : '') + '</p></div>' +
                 '</div>' +
                 '<section class="vb-seccion"><h4>Fuentes consultadas</h4><ul class="vb-fuentes">' + rep.fuentes.map(f =>
                     '<li class="' + (f.ok ? 'vb-ok' : 'vb-falla') + '">' + (f.ok ? '✅ ' : '⚠️ ') + '<strong>' + esc(f.nombre) + '</strong> ' +
@@ -1209,7 +1353,7 @@
                     rep.observaciones.map(o => '<li class="vb-obs-' + o.nivel + '"><span aria-hidden="true">' + ICONO_OBS[o.nivel] + '</span> ' + esc(o.texto) + '</li>').join('') + '</ul></section>' : '') +
                 '<section class="vb-seccion"><h4>Antecedentes</h4>' +
                     '<p class="vb-nota">El parecido combina cómo se escribe y cómo suena en español; pesa más el principio de la palabra. Los umbrales son orientativos.</p>' +
-                    tablaAntecedentes +
+                    tablaAntecedentes + notaDescartados +
                     (bajos.length ? '<button type="button" class="btn btn-sm btn-secondary vb-mas" data-vb="ver-bajos">' +
                         (ui.verBajos ? 'Ocultar los de riesgo bajo' : 'Ver también los ' + bajos.length + ' de riesgo bajo') + '</button>' : '') +
                 '</section>' +
@@ -1309,10 +1453,10 @@
         const dia = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
         const filas = [['Estudio de viabilidad', rep.entrada.denominacion, 'Clases ' + rep.entrada.clases.join(' '), dia],
             ['Dictamen', rep.dictamen.titulo, rep.dictamen.resumen], [],
-            ['Riesgo', 'Marca', 'Expediente', 'Registro', 'Clases', 'Relación de clase', 'Estatus', 'Titular', 'Parecido (%)', 'Tipo de parecido', 'Por qué', 'Fuentes', 'Ampara']];
+            ['Riesgo', 'Marca', 'Expediente', 'Registro', 'Clases', 'Relación de clase', 'Estatus', 'Titular', 'Parecido (%)', 'Tipo de parecido', 'Por qué', 'Fuentes', 'Ampara', 'En Gaceta']];
         for (const a of rep.antecedentes) {
-            filas.push([a.riesgo, a.titulo, a.expediente, a.registro, a.clases.join(' '), ETIQUETA_RELACION[a.relacion], a.estado,
-                a.titulares.join('; '), a.similitud.puntaje, a.similitud.detalle, a.motivos.join('. '), a.fuentes.join(' '), a.ampara || '']);
+            filas.push([a.descartado ? 'descartado' : a.riesgo, a.titulo, a.expediente, a.registro, a.clases.join(' '), ETIQUETA_RELACION[a.relacion], a.estado,
+                a.titulares.join('; '), a.similitud.puntaje, a.similitud.detalle, a.motivos.join('. '), a.fuentes.join(' '), a.ampara || '', historialTexto(a)]);
         }
         if (rep.publicaciones.length) {
             filas.push([], ['Publicaciones en Gaceta'], ['Denominación', 'Clases', 'Gaceta', 'Sección', 'Ejemplar', 'Fecha', 'Parecido (%)']);

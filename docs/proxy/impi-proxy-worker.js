@@ -28,7 +28,7 @@
 
 // Sirve para confirmar, desde /health, que el worker publicado es el esperado.
 // Actualízala cuando el cambio valga la pena verificar tras desplegar.
-const WORKER_VERSION = '2026-10-27-cuotas';
+const WORKER_VERSION = '2026-10-28-paginas';
 
 const ALLOWED_ORIGINS = [
     'https://jorch01.github.io',
@@ -823,7 +823,9 @@ async function getMarcanetFormPage(session, sessionKey, formUrl) {
 async function sendPrimeFacesAjax(session, sessionKey, formUrl, params) {
     const formData = new URLSearchParams();
     formData.append('javax.faces.partial.ajax', 'true');
-    formData.append('javax.faces.partial.execute', '@all');
+    // JSF toma el primer valor: si la petición trae su propio execute (la
+    // paginación ejecuta solo la tabla), no se antepone @all.
+    if (!('javax.faces.partial.execute' in params)) formData.append('javax.faces.partial.execute', '@all');
     for (const [k, v] of Object.entries(params)) {
         formData.append(k, v);
     }
@@ -904,15 +906,18 @@ function parseMarcanetResultsHTML(html) {
     return bestResults;
 }
 
-function parseMarcanetTable(tableHTML) {
+function parseMarcanetTable(tableHTML, encabezadosRespaldo) {
     const results = [];
     // Extraer encabezados
-    const headers = [];
+    let headers = [];
     const thMatches = tableHTML.match(/<th[^>]*>([\s\S]*?)<\/th>/gi) || [];
     for (const th of thMatches) {
         const text = th.replace(/<[^>]+>/g, '').trim();
         headers.push(text);
     }
+    // Las páginas siguientes de una tabla llegan sin encabezados: se usan
+    // los de la primera.
+    if (!headers.length && encabezadosRespaldo) headers = encabezadosRespaldo;
 
     // Extraer filas de datos
     const rows = tableHTML.match(/<tr[^>]*>([\s\S]*?)<\/tr>/gi) || [];
@@ -1107,84 +1112,221 @@ async function handleMarcanetFonetica(request) {
     const sessionKey = 'marcanet_' + getSessionKey(request);
     const formUrl = MARCANET_BASE + '/marcanet/vistas/common/datos/bsqFonetica.pgi';
 
-    // PASO 1: Obtener la página del formulario para extraer ViewState
-    let viewState;
-    try {
+    // Hasta cuántos resultados juntar leyendo las páginas siguientes (10 es
+    // la primera página, lo de siempre). Solo el estudio de viabilidad pide más.
+    const maxResultados = Math.max(0, Math.min(100, parseInt(body.maxResultados, 10) || 0));
+    const depurar = body.depurar === true;
+
+    // Una búsqueda: formulario nuevo (ViewState) y el AJAX de PrimeFaces.
+    // Simular: PrimeFaces.ab({s:"frmBsqFonetica:busquedaId2", f:"frmBsqFonetica",
+    //   u:"frmBsqFonetica:pnlBsqFonetica frmBsqFonetica:dlgListaFoneticos"})
+    const buscar = async () => {
         const formPage = await getMarcanetFormPage(session, sessionKey, formUrl);
-        viewState = formPage.viewState;
+        const viewState = formPage.viewState;
+        if (!viewState) throw new Error('No se encontró ViewState en formulario Marcanet');
+        const ajaxParams = {
+            'javax.faces.source': 'frmBsqFonetica:busquedaId2',
+            'javax.faces.partial.render': 'frmBsqFonetica:pnlBsqFonetica frmBsqFonetica:dlgListaFoneticos',
+            'frmBsqFonetica:busquedaId2': 'frmBsqFonetica:busquedaId2',
+            'frmBsqFonetica': 'frmBsqFonetica',
+            'frmBsqFonetica:denominacion': denominacion,
+            'javax.faces.ViewState': viewState
+        };
+        if (clase) {
+            ajaxParams['frmBsqFonetica:idClase'] = clase;
+            ajaxParams['frmBsqFonetica:clase'] = clase;
+        }
+        const ajaxResp = await sendPrimeFacesAjax(session, sessionKey, formUrl, ajaxParams);
+        const updates = ajaxResp.updates;
+
+        // Los resultados deberían estar en el update de dlgListaFoneticos o pnlBsqFonetica
+        let resultsHtml = '';
+        for (const [updateId, updateHtml] of Object.entries(updates)) {
+            if (updateId.includes('dlgListaFoneticos') || updateId.includes('pnlBsqFonetica') || updateId.includes('tblResultados')) {
+                resultsHtml += updateHtml + '\n';
+            }
+        }
+        // Si no se encontraron en updates específicos, buscar en todo el response
+        if (!resultsHtml) resultsHtml = ajaxResp.text;
+
+        // Filtrar resultados que son leyendas de formulario (como "TM = Tipo de marca")
+        const results = parseMarcanetResultsHTML(resultsHtml).filter(function(r) {
+            const vals = Object.values(r).filter(v => typeof v === 'string' && !v.startsWith('_'));
+            // Si todos los valores contienen " = " son leyendas, no resultados
+            const isLegend = vals.every(v => /^\w+ = /.test(v) || v.length < 3);
+            return !isLegend;
+        });
+        return { ajaxResp, updates, resultsHtml, results, viewState };
+    };
+
+    let busqueda;
+    try {
+        busqueda = await buscar();
+        // Marcanet a veces responde vacía (sesión recién abierta, o una
+        // búsqueda sí y la siguiente no): una vez más antes de creerle.
+        if (!busqueda.results.length) busqueda = await buscar();
     } catch (e) {
         return new Response(JSON.stringify({ error: 'No se pudo acceder al formulario de Marcanet: ' + e.message }),
             { status: 502, headers: { 'Content-Type': 'application/json' } });
     }
+    let results = busqueda.results;
+    const debugInfo = { updateKeys: Object.keys(busqueda.updates), rawLength: busqueda.ajaxResp.text.length };
 
-    if (!viewState) {
-        return new Response(JSON.stringify({ error: 'No se encontró ViewState en formulario Marcanet' }),
-            { status: 502, headers: { 'Content-Type': 'application/json' } });
-    }
-
-    // PASO 2: Enviar búsqueda PrimeFaces AJAX
-    // Simular: PrimeFaces.ab({s:"frmBsqFonetica:busquedaId2", f:"frmBsqFonetica",
-    //   u:"frmBsqFonetica:pnlBsqFonetica frmBsqFonetica:dlgListaFoneticos"})
-    const ajaxParams = {
-        'javax.faces.source': 'frmBsqFonetica:busquedaId2',
-        'javax.faces.partial.render': 'frmBsqFonetica:pnlBsqFonetica frmBsqFonetica:dlgListaFoneticos',
-        'frmBsqFonetica:busquedaId2': 'frmBsqFonetica:busquedaId2',
-        'frmBsqFonetica': 'frmBsqFonetica',
-        'frmBsqFonetica:denominacion': denominacion,
-        'javax.faces.ViewState': viewState
-    };
-
-    // Agregar clase si se seleccionó
-    if (clase) {
-        ajaxParams['frmBsqFonetica:idClase'] = clase;
-        ajaxParams['frmBsqFonetica:clase'] = clase;
-    }
-
-    const ajaxResp = await sendPrimeFacesAjax(session, sessionKey, formUrl, ajaxParams);
-    const updates = ajaxResp.updates;
-
-    // PASO 3: Extraer resultados del HTML de la respuesta AJAX
-    // Los resultados deberían estar en el update de dlgListaFoneticos o pnlBsqFonetica
-    let resultsHtml = '';
-    let results = [];
-    const debugInfo = { updateKeys: Object.keys(updates), rawLength: ajaxResp.text.length };
-
-    for (const [updateId, updateHtml] of Object.entries(updates)) {
-        if (updateId.includes('dlgListaFoneticos') || updateId.includes('pnlBsqFonetica') || updateId.includes('tblResultados')) {
-            resultsHtml += updateHtml + '\n';
+    // Las páginas siguientes, si se pidieron y la primera vino llena.
+    let paginacion = null;
+    let primeraPagina = '';
+    if (maxResultados > results.length) {
+        const t = tablaMarcanet(busqueda.ajaxResp.text, results);
+        if (t.id && results.length >= (t.porPagina || 10)) {
+            const pag = await paginarMarcanet(params => sendPrimeFacesAjax(session, sessionKey, formUrl, params), {
+                tabla: t.id, porPagina: t.porPagina || results.length, total: t.total, max: maxResultados, primeras: results,
+                viewState: viewStateDe(busqueda.updates) || busqueda.viewState,
+                encabezados: Object.keys(results[0]).filter(k => !k.startsWith('_')),
+                extra: { 'frmBsqFonetica:denominacion': denominacion },
+                alPedir: depurar ? (r => { if (!primeraPagina) primeraPagina = r.text; }) : null
+            });
+            results = results.concat(pag.filas);
+            paginacion = pag.info;
+        } else {
+            paginacion = { tabla: t.id, porPagina: t.porPagina, total: t.total, leidas: 1, metodo: t.id ? 'una sola página' : 'sin tabla', error: '' };
         }
     }
 
-    // Si no se encontraron en updates específicos, buscar en todo el response
-    if (!resultsHtml) {
-        resultsHtml = ajaxResp.text;
-    }
-
-    results = parseMarcanetResultsHTML(resultsHtml);
-
-    // Filtrar resultados que son leyendas de formulario (como "TM = Tipo de marca")
-    results = results.filter(function(r) {
-        const vals = Object.values(r).filter(v => typeof v === 'string' && !v.startsWith('_'));
-        // Si todos los valores contienen " = " son leyendas, no resultados
-        const isLegend = vals.every(v => /^\w+ = /.test(v) || v.length < 3);
-        return !isLegend;
-    });
-
     // Debug snippet
-    const rawSnippet = resultsHtml.substring(0, 2000).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const rawSnippet = busqueda.resultsHtml.substring(0, 2000).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     debugInfo.rawSnippet = rawSnippet.substring(0, 800);
-    debugInfo.fullResponseSnippet = ajaxResp.text.substring(0, 1500).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 500);
+    debugInfo.fullResponseSnippet = busqueda.ajaxResp.text.substring(0, 1500).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 500);
 
-    return new Response(JSON.stringify({
+    const salida = {
         results: results,
         totalResults: results.length,
-        rawLength: ajaxResp.text.length,
+        rawLength: busqueda.ajaxResp.text.length,
         status: 200,
         debug: debugInfo
-    }), {
+    };
+    if (paginacion) salida.paginacion = paginacion;
+    // Para revisar en vivo cómo responde Marcanet (lo pide quien mantiene el proxy).
+    if (depurar) salida.depuracion = { busqueda: busqueda.ajaxResp.text.substring(0, 40000), pagina: primeraPagina.substring(0, 20000) };
+    return new Response(JSON.stringify(salida), {
         headers: { 'Content-Type': 'application/json' }
     });
 }
+
+// ==================== MARCANET PÁGINAS (INICIO) ====================
+// La fonética de Marcanet entrega 10 resultados: es la primera página de una
+// tabla de PrimeFaces. Las demás se piden como lo hace su paginador, con un
+// AJAX "page" sobre la tabla. Primero se intenta todo de una vez (pidiendo
+// más filas por página) y, si no lo acepta, página por página. Si algo no
+// cuadra se devuelve lo que ya se tenía: nunca menos que antes.
+
+/** id de la tabla, filas por página y total, de la respuesta de la búsqueda. */
+function tablaMarcanet(html, filas) {
+    let id = null;
+    const cw = /PrimeFaces\.cw\(\s*["']DataTable["']\s*,\s*["'][^"']*["']\s*,\s*\{\s*id\s*:\s*["']([^"']+)["']/.exec(html || '');
+    if (cw) id = cw[1];
+    if (!id) {
+        // Del onclick de las filas: s:"frmBsqFonetica:resultadoExpediente:0:j_idt54"
+        const texto = (filas || []).map(f => Object.keys(f).filter(k => k.startsWith('_onclick')).map(k => f[k]).join(' ')).join(' ') + ' ' + (html || '');
+        const m = /s:(?:&quot;|")([A-Za-z0-9_]+:[A-Za-z0-9_]+):\d+:/.exec(texto);
+        if (m) id = m[1];
+    }
+    let porPagina = null, total = null;
+    if (cw) {
+        const config = html.slice(cw.index, cw.index + 4000);
+        const r = /\brows\s*:\s*(\d+)/.exec(config);
+        const t = /\browCount\s*:\s*(\d+)/.exec(config);
+        if (r) porPagina = parseInt(r[1], 10);
+        if (t) total = parseInt(t[1], 10);
+    }
+    if (total == null) {
+        // "(1 de 7)" o "1 - 10 de 63" en el paginador
+        const m = /ui-paginator-current[^>]*>[^<]*?(\d+)\s*(?:de|of)\s*(\d+)\s*\)?\s*</i.exec(html || '');
+        if (m && porPagina) total = /\(/.test(m[0]) ? parseInt(m[2], 10) * porPagina : parseInt(m[2], 10);
+    }
+    return { id, porPagina, total, paginador: /ui-paginator/.test(html || '') };
+}
+
+function claveFilaMarcanet(f) {
+    return f['Expediente'] || f['Registro'] || JSON.stringify(Object.keys(f).filter(k => !k.startsWith('_')).map(k => f[k]));
+}
+
+function viewStateDe(updates) {
+    for (const [id, v] of Object.entries(updates || {})) if (/javax\.faces\.ViewState/.test(id) && v && v.trim()) return v.trim();
+    return null;
+}
+
+function parametrosPaginaMarcanet(tabla, primero, filas, viewState, extra) {
+    const form = tabla.split(':')[0];
+    return Object.assign({}, extra || {}, {
+        'javax.faces.source': tabla,
+        'javax.faces.partial.execute': tabla,
+        'javax.faces.partial.render': tabla,
+        'javax.faces.behavior.event': 'page',
+        'javax.faces.partial.event': 'page',
+        [tabla]: tabla,
+        [tabla + '_pagination']: 'true',
+        [tabla + '_first']: String(primero),
+        [tabla + '_rows']: String(filas),
+        [tabla + '_skipChildren']: 'true',
+        [tabla + '_encodeFeature']: 'true',
+        [form]: form,
+        'javax.faces.ViewState': viewState
+    });
+}
+
+/** Las filas de la respuesta de una página: llegan solas (<tr>…) o con la tabla. */
+function filasDePaginaMarcanet(updates, tabla, encabezados) {
+    let html = (updates || {})[tabla];
+    if (html == null) html = Object.values(updates || {}).find(v => /<tr[\s>]/i.test(v)) || '';
+    if (/<table[\s>]/i.test(html)) return parseMarcanetResultsHTML(html);
+    return parseMarcanetTable('<table>' + html + '</table>', encabezados)
+        .filter(r => !isFormLabelRow(r));
+}
+
+/**
+ * enviar(params) → { text, updates }: el AJAX a Marcanet, ya con la sesión.
+ * Devuelve las filas nuevas (sin las de la primera página) y qué pasó.
+ */
+async function paginarMarcanet(enviar, op) {
+    const info = { tabla: op.tabla, porPagina: op.porPagina, total: op.total, leidas: 1, metodo: '', error: '' };
+    const vistos = new Set(op.primeras.map(claveFilaMarcanet));
+    const nuevas = [];
+    const agregar = (filas) => {
+        let n = 0;
+        for (const f of filas) {
+            const k = claveFilaMarcanet(f);
+            if (!vistos.has(k)) { vistos.add(k); nuevas.push(f); n++; }
+        }
+        return n;
+    };
+    const objetivo = Math.min(op.max, op.total || op.max);
+    const tengo = () => op.primeras.length + nuevas.length;
+    let viewState = op.viewState;
+    const pedir = async (primero, filas) => {
+        info.leidas++;
+        const r = await enviar(parametrosPaginaMarcanet(op.tabla, primero, filas, viewState, op.extra));
+        viewState = viewStateDe(r.updates) || viewState;
+        if (op.alPedir) op.alPedir(r);
+        return filasDePaginaMarcanet(r.updates, op.tabla, op.encabezados);
+    };
+    try {
+        // 1) Todo de una vez: PrimeFaces suele aceptar otro tamaño de página.
+        if (agregar(await pedir(0, objetivo)) > 0) info.metodo = 'una';
+        // 2) Lo que falte, página por página, hasta que una llegue vacía o repetida.
+        if (tengo() < objetivo) {
+            if (!info.metodo) info.metodo = 'paginas';
+            const paso = op.porPagina || op.primeras.length || 10;
+            for (let primero = Math.ceil(tengo() / paso) * paso; tengo() < objetivo && info.leidas < 12; primero += paso) {
+                if (!agregar(await pedir(primero, paso))) break;
+            }
+        }
+    } catch (e) {
+        info.error = e.message;
+    }
+    if (!nuevas.length && !info.error) info.metodo = info.metodo || 'sin más páginas';
+    return { filas: nuevas, info };
+}
+// ==================== MARCANET PÁGINAS (FIN) ====================
 
 // Handler: búsqueda por número de expediente
 async function handleMarcanetExpediente(request) {
