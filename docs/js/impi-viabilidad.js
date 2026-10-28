@@ -262,7 +262,33 @@
             tipo = 'comparte';
             detalle = 'Comparten «' + comunes[0] + '»';
         }
+        // Una palabra casi igual a la que distingue, aunque el resto cambie:
+        // «L LUNFARDO» frente a «LUNAFARDO». Pesa un poco menos que el todo.
+        let mejor = null;
+        for (const w of pa.filter(x => util(x) && x.length >= 5)) {
+            for (const v of pb.filter(x => x.length >= 5)) {
+                const sim = Math.max(parecido(w, v), parecido(fonetizarPalabra(w), fonetizarPalabra(v)));
+                if (sim >= 0.85 && (!mejor || sim > mejor.sim)) mejor = { sim, v };
+            }
+        }
+        if (mejor && palabras(na).length + palabras(nb).length > 2) {
+            const p = Math.round(100 * mejor.sim) - 6;
+            if (p > puntaje) { puntaje = p; tipo = 'comparte'; detalle = 'Contiene «' + mejor.v + '», casi igual'; }
+        }
         return { puntaje, tipo, detalle };
+    }
+
+    /**
+     * MARCia busca palabras enteras: «lunafardo» no encuentra «LUNFARDO».
+     * Sí acepta comodines, así que se busca la primera mitad larga y la
+     * segunda («lunaf*» y «*fardo»): un cambio de una letra deja intacta
+     * alguna de las dos.
+     */
+    function variantesComodin(palabra) {
+        const w = normalizarMarca(palabra).replace(/ /g, '');
+        if (w.length < 6) return [];
+        const k = Math.min(w.length - 1, Math.max(5, Math.ceil(w.length * 0.55)));
+        return [w.slice(0, k) + '*', '*' + w.slice(-k)];
     }
 
     // ---- Clases y estatus ----
@@ -353,11 +379,14 @@
         return '';
     }
 
-    function desdeMarcanet(r, claseConsultada) {
+    // La clase es la que trae la fila: aunque se le pida una, la fonética de
+    // Marcanet responde con marcas de cualquier clase.
+    function desdeMarcanet(r) {
         const llaves = Object.keys(r).filter(k => !k.startsWith('_'));
         const clases = numeros(campoMarcanet(r, ['Clase', 'clase', 'Clase Niza']));
-        if (claseConsultada && !clases.includes(Number(claseConsultada))) clases.push(Number(claseConsultada));
+        const enlace = Object.keys(r).filter(k => k.startsWith('_link')).map(k => r[k]).find(v => /detalleExpediente/.test(v)) || '';
         return {
+            enlace,
             fuentes: ['Marcanet'],
             id: null,
             titulo: campoMarcanet(r, ['Denominación', 'denominacion', 'Denominacion', 'Marca', 'marca']) || String(r[llaves[0]] || '').trim(),
@@ -371,6 +400,34 @@
             vencimiento: campoMarcanet(r, ['Vigencia', 'Fecha de vigencia']),
             imagen: ''
         };
+    }
+
+    /**
+     * La ficha de un expediente en Marcanet (detalleExpedienteParcial): de ahí
+     * salen el estatus y la vigencia que la búsqueda no trae. Sus campos
+     * llegan con nombres irregulares, así que lo que no tiene nombre fijo se
+     * busca en todo el texto.
+     */
+    function leerDetalleMarcanet(det, ahora) {
+        if (!det) return null;
+        const campos = Object.keys(det).filter(k => !k.startsWith('_'));
+        if (!det['Fecha de presentación'] && !det['Denominación']) return null;
+        const texto = normalizarMarca(campos.map(k => k + ' ' + det[k]).join(' '));
+        const vigencia = String(det['Fecha de vigencia'] || '').trim();
+        const registro = String(det['Número de registro'] || '').replace(/\D/g, '');
+        const ampara = campos.filter(k => /^\d{1,2}\s*Edici/.test(k)).map(k => k.match(/^\d{1,2}/)[0] + ': ' + String(det[k]).trim()).join(' · ');
+        let estado;
+        if (/SOLICITUDES ABANDONADAS|ABANDONAD/.test(texto)) estado = 'ABANDONADA';
+        else if (/NEGATIVA DE REGISTRO|NEGAD/.test(texto)) estado = 'NEGADA';
+        else if (/DESISTID|DESISTIMIENTO/.test(texto)) estado = 'DESISTIDA';
+        else if (/CADUCAD/.test(texto)) estado = 'CADUCADA';
+        else if (registro && vigencia) {
+            const fin = fechaIMPI(vigencia);
+            estado = fin != null && fin < (ahora != null ? ahora : Date.now()) ? 'REGISTRADA, vigencia terminada el ' + vigencia : 'REGISTRADA, vigente hasta ' + vigencia;
+        }
+        else if (registro) estado = 'REGISTRADA';
+        else estado = /OPOSICION/.test(texto) ? 'EN TRÁMITE, con oposición' : 'EN TRÁMITE';
+        return { estado, vigencia, registro, ampara };
     }
 
     function desdeSIGA(ficha) {
@@ -428,7 +485,7 @@
                 for (const c of a.clases) if (!previo.clases.includes(c)) previo.clases.push(c);
                 for (const f of a.fuentes) if (!previo.fuentes.includes(f)) previo.fuentes.push(f);
                 for (const t of a.titulares) if (!previo.titulares.some(x => normalizarMarca(x) === normalizarMarca(t))) previo.titulares.push(t);
-                for (const campo of ['id', 'expediente', 'registro', 'estado', 'tipoSolicitud', 'solicitud', 'vencimiento', 'imagen']) {
+                for (const campo of ['id', 'expediente', 'registro', 'estado', 'tipoSolicitud', 'solicitud', 'vencimiento', 'imagen', 'enlace']) {
                     if (!previo[campo] && a[campo]) previo[campo] = a[campo];
                 }
             }
@@ -452,7 +509,11 @@
         const situacion = situacionDe(ant.estado);
         const notoria = /NOTORI|FAMOS/.test(normalizarMarca(ant.tipoSolicitud));
         const venc = fechaIMPI(ant.vencimiento);
-        const vencida = situacion === 'vigente' && venc != null && venc < ahora;
+        const vencida = situacion !== 'inactiva' && venc != null && venc < ahora;
+        // Seis meses de gracia para renovar; después, el registro ya no estorba.
+        // Solo si la fecha viene de la ficha de Marcanet, que se actualiza al
+        // renovar; la de una lista puede ser vieja.
+        const sinRenovar = vencida && !!ant.conDetalle && ahora - venc > 183 * 864e5;
         const motivos = [];
         let riesgo = 'bajo';
 
@@ -463,6 +524,9 @@
         if (situacion === 'inactiva') {
             riesgo = 'bajo';
             motivos.push('Ya no está vigente (' + (ant.estado || 'sin estatus') + '): en principio no impide el registro');
+        } else if (sinRenovar) {
+            riesgo = 'bajo';
+            motivos.push('Su vigencia terminó el ' + ant.vencimiento + ' y no aparece renovada: en principio no impide el registro');
         } else if (notoria && sim.puntaje >= 70) {
             riesgo = 'alto';
             motivos.push('Marca notoria o famosa: su protección alcanza todas las clases');
@@ -481,9 +545,9 @@
         }
         if (riesgo !== 'bajo' || sim.puntaje >= 75) motivos.unshift(sim.detalle + ' (' + sim.puntaje + '%)');
         if (situacion === 'tramite') motivos.push('Está en trámite: si se concede, tendrá prioridad sobre la tuya');
-        if (situacion === 'desconocida') motivos.push('Sin estatus en la fuente: se trató como vigente');
-        if (vencida) motivos.push('Su vigencia reportada terminó el ' + ant.vencimiento + ': confirma si se renovó (hay seis meses de gracia)');
-        return { ...ant, similitud: sim, relacion, situacion, notoria, vencida, riesgo, motivos };
+        if (situacion === 'desconocida' && riesgo !== 'bajo') motivos.push('Sin estatus en la fuente: se trató como vigente');
+        if (vencida && !sinRenovar) motivos.push('Su vigencia reportada terminó el ' + ant.vencimiento + ': confirma si se renovó (hay seis meses de gracia)');
+        return { ...ant, similitud: sim, relacion, situacion, notoria, vencida: vencida && !sinRenovar, riesgo, motivos };
     }
 
     // ---- Lo que se ve en la propia denominación ----
@@ -557,9 +621,15 @@
         entrada = { ...entrada, clases: (entrada.clases || []).map(Number).filter(n => n >= 1 && n <= 45) };
         const brutos = [];
         for (const lote of crudo.marcia || []) for (const r of lote.resultados || []) brutos.push(desdeMARCia(r, lote.clase));
-        for (const lote of crudo.marcanet || []) for (const r of lote.resultados || []) brutos.push(desdeMarcanet(r, lote.clase));
+        for (const lote of crudo.marcanet || []) for (const r of lote.resultados || []) brutos.push(desdeMarcanet(r));
 
-        const antecedentes = consolidar(brutos).map(a => evaluarAntecedente(a, entrada, ahora))
+        const detalles = crudo.detalles || {};
+        const antecedentes = consolidar(brutos).map(a => {
+            const d = leerDetalleMarcanet(detalles[String(a.expediente || '').replace(/\D/g, '')], ahora);
+            // La ficha de Marcanet manda sobre el estatus de la lista: MARCia
+            // puede seguir diciendo "en trámite" de una solicitud abandonada.
+            return d ? { ...a, estado: d.estado, vencimiento: d.vigencia || a.vencimiento, registro: a.registro || d.registro, ampara: d.ampara, conDetalle: true } : a;
+        }).map(a => evaluarAntecedente(a, entrada, ahora))
             .sort((a, b) => RIESGOS.indexOf(a.riesgo) - RIESGOS.indexOf(b.riesgo) || b.similitud.puntaje - a.similitud.puntaje ||
                 a.titulo.localeCompare(b.titulo, 'es'));
 
@@ -616,6 +686,21 @@
         };
         reporte.recomendaciones = recomendaciones(reporte);
         return reporte;
+    }
+
+    /**
+     * Los antecedentes cuyo estatus vale la pena confirmar en la ficha de
+     * Marcanet: los de riesgo alto o medio que tienen expediente. Primero los
+     * más graves, y no más de `max` para no hacer esperar de más.
+     */
+    function aConsultarDetalle(rep, max) {
+        return rep.antecedentes
+            .filter(a => (a.riesgo === 'alto' || a.riesgo === 'medio') && !a.conDetalle && /\d/.test(a.expediente || ''))
+            .slice(0, max || 8)
+            .map(a => {
+                const expediente = String(a.expediente).replace(/\D/g, '');
+                return { expediente, enlace: a.enlace || '/marcanet/vistas/common/busquedas/detalleExpedienteParcial.pgi?tipo=1&anio=1985&expediente=' + expediente };
+            });
     }
 
     function recomendaciones(rep) {
@@ -699,7 +784,8 @@
     const Motor = {
         CLASES_NIZA, RIESGOS, normalizarMarca, claveFonetica, compararMarcas, clasesRelacionadas, relacionClases,
         situacionDe, mismoTitular, palabrasDistintivas, observacionesRegistrabilidad, desdeMARCia, desdeMarcanet,
-        desdeSIGA, consolidar, evaluarAntecedente, analizar, recomendaciones, resumenTexto, fechaIMPI
+        desdeSIGA, consolidar, evaluarAntecedente, analizar, recomendaciones, resumenTexto, fechaIMPI,
+        leerDetalleMarcanet, variantesComodin, aConsultarDetalle
     };
 
     if (typeof module !== 'undefined' && module.exports) module.exports = Motor;
@@ -892,7 +978,8 @@
         }
     }
 
-    async function consultarMARCia(entrada, crudo, distintivas) {
+    async function consultarMARCia(entrada, crudo, distintivas, comodines) {
+        comodines = comodines || [];
         const clasesRevisar = entrada.clases.concat(clasesRelacionadas(entrada.clases));
         const fuente = crudo.fuentes.MARCia = { ok: false, total: 0, error: '' };
         let alguna = false;
@@ -900,7 +987,7 @@
             await global.proxyFetch('/marcia/csrf');
         } catch (e) {
             fuente.error = e.message;
-            for (const id of ['m-similar', 'm-identica'].concat(distintivas.map((_, i) => 'm-palabra-' + i))) marcar(id, 'error', e.message);
+            for (const id of ['m-similar', 'm-identica'].concat(distintivas.map((_, i) => 'm-palabra-' + i), comodines.map((_, i) => 'm-comodin-' + i))) marcar(id, 'error', e.message);
             return;
         }
         const correr = async (id, consulta, clases, sinFiltro) => {
@@ -921,17 +1008,24 @@
         for (let i = 0; i < distintivas.length; i++) {
             await correr('m-palabra-' + i, consultaMARCia(distintivas[i], 'similar'), entrada.clases, false);
         }
+        for (let i = 0; i < comodines.length; i++) {
+            await correr('m-comodin-' + i, consultaMARCia(comodines[i], ''), clasesRevisar, false);
+        }
         fuente.ok = alguna;
     }
 
     async function consultarMarcanet(entrada, crudo) {
         const fuente = crudo.fuentes.Marcanet = { ok: false, total: 0, error: '' };
+        const pedir = (c) => global.proxyFetch('/marcanet/fonetica', {
+            method: 'POST', body: JSON.stringify({ denominacion: entrada.denominacion, clase: String(c) })
+        });
         for (const c of entrada.clases) {
             const id = 'mcn-' + c;
             try {
-                const data = await global.proxyFetch('/marcanet/fonetica', {
-                    method: 'POST', body: JSON.stringify({ denominacion: entrada.denominacion, clase: String(c) })
-                });
+                let data = await pedir(c);
+                // Con la sesión recién abierta, Marcanet responde la primera
+                // búsqueda vacía: se repite una vez antes de creerle.
+                if (!data || data.isFormPage || !(data.results || []).length) data = await pedir(c);
                 if (data && data.isFormPage) throw new Error('Marcanet devolvió su formulario en vez de resultados');
                 const resultados = (data && data.results) || [];
                 crudo.marcanet.push({ clase: c, resultados });
@@ -943,6 +1037,26 @@
                 marcar(id, 'error', e.message);
             }
         }
+    }
+
+    /** La ficha de Marcanet de cada antecedente que importa: estatus y vigencia. */
+    async function consultarDetalles(objetivos) {
+        const detalles = {};
+        let leidos = 0;
+        for (const o of objetivos) {
+            const pedir = () => global.proxyFetch('/marcanet/full-detail', {
+                method: 'POST', body: JSON.stringify({ expediente: o.expediente, link: o.enlace })
+            });
+            try {
+                let data = await pedir();
+                // Igual que la búsqueda: con la sesión recién abierta puede llegar vacía.
+                if (!leerDetalleMarcanet(data && data.detail)) data = await pedir();
+                if (leerDetalleMarcanet(data && data.detail)) { detalles[o.expediente] = data.detail; leidos++; }
+            } catch (e) { /* sin ficha, el antecedente se queda como estaba */ }
+            marcar('detalle', 'espera', leidos + ' de ' + objetivos.length);
+        }
+        marcar('detalle', leidos ? 'ok' : 'error', leidos + ' de ' + objetivos.length + (leidos ? '' : ': no respondió'));
+        return detalles;
     }
 
     async function consultarSIGA(entrada, crudo) {
@@ -989,15 +1103,28 @@
         paso('m-similar', 'MARCia: marcas parecidas, por clase');
         paso('m-identica', 'MARCia: idénticas en todas las clases');
         distintivas.forEach((w, i) => paso('m-palabra-' + i, 'MARCia: la palabra «' + w + '»'));
+        // Variantes de una letra de las palabras que distinguen (MARCia no las ve solas).
+        const comodines = todas.filter((w, i, a) => a.indexOf(w) === i).sort((a, b) => b.length - a.length).slice(0, 2)
+            .flatMap(variantesComodin);
+        comodines.forEach((w, i) => paso('m-comodin-' + i, 'MARCia: variantes «' + w.toLowerCase() + '»'));
         entrada.clases.forEach(c => paso('mcn-' + c, 'Marcanet: búsqueda fonética en la clase ' + c));
         paso('siga', 'SIGA: publicaciones en Gaceta');
 
         const crudo = { marcia: [], marcanet: [], siga: [], fuentes: {} };
         try {
-            await Promise.all([consultarMARCia(entrada, crudo, distintivas), consultarMarcanet(entrada, crudo), consultarSIGA(entrada, crudo)]);
+            await Promise.all([consultarMARCia(entrada, crudo, distintivas, comodines), consultarMarcanet(entrada, crudo), consultarSIGA(entrada, crudo)]);
             // Mismo orden siempre en el reporte, sin importar quién terminó antes.
             crudo.fuentes = { MARCia: crudo.fuentes.MARCia, Marcanet: crudo.fuentes.Marcanet, SIGA: crudo.fuentes.SIGA };
             ui.reporte = analizar(entrada, crudo, Date.now());
+            // Las listas no traen estatus fiable: se confirma en la ficha de
+            // Marcanet de los antecedentes de riesgo alto y medio, y se vuelve
+            // a evaluar con lo que diga.
+            const objetivos = aConsultarDetalle(ui.reporte, 8);
+            if (objetivos.length) {
+                paso('detalle', 'Marcanet: estatus y vigencia de los ' + objetivos.length + ' antecedentes principales');
+                crudo.detalles = await consultarDetalles(objetivos);
+                ui.reporte = analizar(entrada, crudo, Date.now());
+            }
             ui.verBajos = false;
             guardarReciente(ui.reporte);
             pintarReporte();
@@ -1033,8 +1160,8 @@
                 '<td><span class="vb-riesgo vb-riesgo-' + a.riesgo + '">' + ETIQUETA_RIESGO[a.riesgo] + '</span></td>' +
                 '<td><strong>' + esc(a.titulo) + '</strong>' + (num ? '<br><small>' + esc(num) + '</small>' : '') + '</td>' +
                 '<td>' + esc(a.clases.join(', ') || '—') + '<br><small>' + esc(ETIQUETA_RELACION[a.relacion]) + '</small></td>' +
-                '<td>' + esc(a.estado || '—') + '</td>' +
-                '<td>' + esc(a.titulares.slice(0, 2).join('; ') || '—') + '</td>' +
+                '<td>' + esc(a.estado || '—') + (a.conDetalle ? '<br><small>según su ficha en Marcanet</small>' : '') + '</td>' +
+                '<td>' + esc(a.titulares.slice(0, 2).join('; ') || '—') + (a.ampara ? '<br><small>Ampara: ' + esc(a.ampara.length > 140 ? a.ampara.slice(0, 140) + '…' : a.ampara) + '</small>' : '') + '</td>' +
                 '<td class="vb-num">' + a.similitud.puntaje + '%<br><small>' + esc(a.similitud.detalle) + '</small></td>' +
                 '<td class="vb-motivos">' + esc(a.motivos.join('. ')) + '</td>' +
                 '<td><small>' + esc(a.fuentes.join(', ')) + '</small></td>' +
@@ -1178,19 +1305,21 @@
 
     function exportarCSV(rep) {
         const celda = v => { const s = String(v == null ? '' : v); return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-        const filas = [['Estudio de viabilidad', rep.entrada.denominacion, 'Clases ' + rep.entrada.clases.join(' '), rep.fecha.slice(0, 10)],
+        const d = new Date(rep.fecha);
+        const dia = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        const filas = [['Estudio de viabilidad', rep.entrada.denominacion, 'Clases ' + rep.entrada.clases.join(' '), dia],
             ['Dictamen', rep.dictamen.titulo, rep.dictamen.resumen], [],
-            ['Riesgo', 'Marca', 'Expediente', 'Registro', 'Clases', 'Relación de clase', 'Estatus', 'Titular', 'Parecido (%)', 'Tipo de parecido', 'Por qué', 'Fuentes']];
+            ['Riesgo', 'Marca', 'Expediente', 'Registro', 'Clases', 'Relación de clase', 'Estatus', 'Titular', 'Parecido (%)', 'Tipo de parecido', 'Por qué', 'Fuentes', 'Ampara']];
         for (const a of rep.antecedentes) {
             filas.push([a.riesgo, a.titulo, a.expediente, a.registro, a.clases.join(' '), ETIQUETA_RELACION[a.relacion], a.estado,
-                a.titulares.join('; '), a.similitud.puntaje, a.similitud.detalle, a.motivos.join('. '), a.fuentes.join(' ')]);
+                a.titulares.join('; '), a.similitud.puntaje, a.similitud.detalle, a.motivos.join('. '), a.fuentes.join(' '), a.ampara || '']);
         }
         if (rep.publicaciones.length) {
             filas.push([], ['Publicaciones en Gaceta'], ['Denominación', 'Clases', 'Gaceta', 'Sección', 'Ejemplar', 'Fecha', 'Parecido (%)']);
             for (const p of rep.publicaciones) filas.push([p.denominacion, p.clases.join(' '), p.gaceta, p.seccion, p.ejemplar, p.fecha, p.similitud.puntaje]);
         }
         const nombre = 'viabilidad-' + (normalizarMarca(rep.entrada.denominacion).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'marca') +
-            '-' + rep.fecha.slice(0, 10) + '.csv';
+            '-' + dia + '.csv';
         const contenido = '﻿' + filas.map(f => f.map(celda).join(',')).join('\r\n');
         if (typeof global.descargarArchivo === 'function') global.descargarArchivo(nombre, contenido, 'text/csv;charset=utf-8');
         toast('Exportado: ' + nombre, 'success');
