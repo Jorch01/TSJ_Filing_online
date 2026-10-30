@@ -370,6 +370,32 @@ console.log('\nLo desmarcado no vuelve a aparecer');
     verificar('fusionarDatos lo junta', /seguimientoDescartados:\s*typeof fusionarSeguimientoDescartados === 'function'/.test(extraer('fusionarDatos')));
     verificar('obtenerTodosLosDatos lo sube', /obtenerSeguimientoDescartados/.test(extraer('obtenerTodosLosDatos')));
     verificar('aplicarDatosLocalmente lo guarda al bajar', /aplicarSeguimientoDescartados\(datos\.seguimientoDescartados\)/.test(extraer('aplicarDatosLocalmente')));
+
+    // Los asuntos que se pidió no importar también viajan.
+    const omitido = { asunto: 'fit and more', omitir: true, el: '2026-10-30T10:00:00.000Z' };
+    verificar('dejar de importar un asunto cambia la huella: se sube a la nube', sb.huellaContenido(base) !== sb.huellaContenido({ ...base, seguimientoOmitidos: [omitido] }));
+    verificar('fusionarDatos junta los asuntos omitidos', /seguimientoOmitidos:\s*typeof fusionarSeguimientoOmitidos === 'function'/.test(extraer('fusionarDatos')));
+    verificar('obtenerTodosLosDatos los sube', /obtenerSeguimientoOmitidos/.test(extraer('obtenerTodosLosDatos')));
+    verificar('aplicarDatosLocalmente los guarda al bajar', /aplicarSeguimientoOmitidos\(datos\.seguimientoOmitidos\)/.test(extraer('aplicarDatosLocalmente')));
+}
+
+console.log('\nLos asuntos que no se importan, en todos los dispositivos');
+{
+    const omitido = { asunto: 'fit and more', omitir: true, el: '2026-10-30T10:00:00.000Z' };
+    const recuperado = { asunto: 'fit and more', omitir: false, el: '2026-10-31T09:00:00.000Z' };
+    const otro = { asunto: 'asunto concluido', omitir: true, el: '2026-10-29T08:00:00.000Z' };
+    igual('de dos dispositivos se juntan los asuntos distintos', S.fusionarOmitidos([omitido], [otro]).map(o => o.asunto), ['asunto concluido', 'fit and more']);
+    igual('de un mismo asunto manda lo más reciente: recuperarlo después gana', S.fusionarOmitidos([omitido], [recuperado]).find(o => o.asunto === 'fit and more').omitir, false);
+    igual('y en el orden contrario también', S.fusionarOmitidos([recuperado], [omitido]).find(o => o.asunto === 'fit and more').omitir, false);
+    igual('dejarlo de importar otra vez, más tarde, vuelve a ganar',
+        S.fusionarOmitidos([recuperado], [{ ...omitido, el: '2026-11-01T09:00:00.000Z' }])[0].omitir, true);
+
+    igual('lo omitido en otro dispositivo se omite aquí', S.asignacionesConOmitidos({}, [omitido]), { 'fit and more': 'omitir' });
+    igual('lo recuperado allá deja de omitirse aquí', S.asignacionesConOmitidos({ 'fit and more': 'omitir', otro: 5 }, [recuperado]), { otro: 5 });
+    igual('un "no importar" de antes de sincronizar se respeta', S.asignacionesConOmitidos({ 'fit and more': 'omitir' }, []), { 'fit and more': 'omitir' });
+    igual('recuperar no toca un expediente asignado a mano', S.asignacionesConOmitidos({ 'fit and more': 7 }, [recuperado]), { 'fit and more': 7 });
+    const marca = S.omisionDe('fit and more', true);
+    igual('se anota el asunto, si se omite y cuándo', [marca.asunto, marca.omitir, typeof marca.el], ['fit and more', true, 'string']);
 }
 
 console.log('\nLo que se le dice al asistente');

@@ -437,7 +437,8 @@ function huellaContenido(datos) {
         historial: histNorm,
         sigaGuardadas: datos.sigaGuardadas || [],
         cuentas: datos.cuentas || [],
-        seguimientoDescartados: datos.seguimientoDescartados || []
+        seguimientoDescartados: datos.seguimientoDescartados || [],
+        seguimientoOmitidos: datos.seguimientoOmitidos || []
     };
     try {
         return JSON.stringify(copia);
@@ -798,6 +799,11 @@ function fusionarDatos(local, remoto) {
         seguimientoDescartados: typeof fusionarSeguimientoDescartados === 'function'
             ? fusionarSeguimientoDescartados(local.seguimientoDescartados || [], remoto.seguimientoDescartados || [])
             : (local.seguimientoDescartados || remoto.seguimientoDescartados || []),
+        // Los asuntos que se pidió no importar: de cada uno manda lo más reciente
+        // (dejarlo de importar o recuperarlo), venga de donde venga.
+        seguimientoOmitidos: typeof fusionarSeguimientoOmitidos === 'function'
+            ? fusionarSeguimientoOmitidos(local.seguimientoOmitidos || [], remoto.seguimientoOmitidos || [])
+            : (local.seguimientoOmitidos || remoto.seguimientoOmitidos || []),
         eliminados: eliminadosFusionados,
         metadata: local.metadata
     };
@@ -1571,6 +1577,8 @@ async function obtenerTodosLosDatos() {
         ? await obtenerCuentasCompartidas().catch(() => []) : [];
     const seguimientoDescartados = typeof obtenerSeguimientoDescartados === 'function'
         ? await obtenerSeguimientoDescartados().catch(() => []) : [];
+    const seguimientoOmitidos = typeof obtenerSeguimientoOmitidos === 'function'
+        ? await obtenerSeguimientoOmitidos().catch(() => []) : [];
 
     return {
         expedientes: [...expedientes, ...archivados],
@@ -1582,7 +1590,8 @@ async function obtenerTodosLosDatos() {
         sigaGuardadas,
         carpetas,
         cuentas,
-        seguimientoDescartados
+        seguimientoDescartados,
+        seguimientoOmitidos
     };
 }
 
@@ -1666,6 +1675,9 @@ async function aplicarDatosLocalmente(datos) {
     }
     if (typeof aplicarSeguimientoDescartados === 'function' && Array.isArray(datos.seguimientoDescartados)) {
         try { await aplicarSeguimientoDescartados(datos.seguimientoDescartados); } catch (e) { console.warn('No se pudo aplicar lo descartado del seguimiento:', e); }
+    }
+    if (typeof aplicarSeguimientoOmitidos === 'function' && Array.isArray(datos.seguimientoOmitidos)) {
+        try { await aplicarSeguimientoOmitidos(datos.seguimientoOmitidos); } catch (e) { console.warn('No se pudieron aplicar los asuntos omitidos del seguimiento:', e); }
     }
 
     // El blob remoto trae nuevas notas e historial: invalidar el caché de

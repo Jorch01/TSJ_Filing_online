@@ -464,6 +464,45 @@
         return Array.from(mapa.values()).sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
     }
 
+    /**
+     * Los asuntos que el usuario pidió no importar, para la sincronización:
+     * [{ asunto, omitir, el }]. Recuperar un asunto también se anota (omitir
+     * false): así, si se recupera en un dispositivo, no lo vuelve a ocultar
+     * el otro.
+     */
+    function omisionDe(asunto, omitir) {
+        return { asunto, omitir: !!omitir, el: new Date().toISOString() };
+    }
+
+    /** Une las omisiones de dos dispositivos: de cada asunto manda la más reciente. */
+    function fusionarOmitidos(a, b) {
+        const mapa = new Map();
+        for (const o of [...(a || []), ...(b || [])]) {
+            if (!o || !o.asunto) continue;
+            const previa = mapa.get(o.asunto);
+            if (!previa || (o.el || '') > (previa.el || '') || ((o.el || '') === (previa.el || '') && o.omitir && !previa.omitir)) {
+                mapa.set(o.asunto, o);
+            }
+        }
+        return Array.from(mapa.values()).sort((x, y) => (x.asunto < y.asunto ? -1 : x.asunto > y.asunto ? 1 : 0));
+    }
+
+    /**
+     * Las asignaciones de este dispositivo con las omisiones sincronizadas
+     * encima: lo omitido en otro dispositivo se omite aquí, y lo recuperado
+     * allá deja de omitirse aquí. Un "no importar" de antes de sincronizarse
+     * (sin anotar) se respeta.
+     */
+    function asignacionesConOmitidos(locales, omitidos) {
+        const asignaciones = { ...(locales || {}) };
+        for (const o of omitidos || []) {
+            if (!o || !o.asunto) continue;
+            if (o.omitir) asignaciones[o.asunto] = 'omitir';
+            else if (asignaciones[o.asunto] === 'omitir') delete asignaciones[o.asunto];
+        }
+        return asignaciones;
+    }
+
     function sumarDias(f, n) {
         const [y, m, d] = f.split('-').map(Number);
         return diaDe(new Date(y, m - 1, d + n).toISOString());
@@ -514,7 +553,7 @@
     const Motor = {
         ORIGEN, normalizar, palabras, parecido, numerosEn, fechaValida, isoDeFecha, diaDe,
         horaDe, isoDeFechaHora, semanaDelReporte, leerIndice, emparejar, planificar, esPeticionAbrir,
-        descarteDe, fusionarDescartados
+        descarteDe, fusionarDescartados, omisionDe, fusionarOmitidos, asignacionesConOmitidos
     };
 
     if (typeof module !== 'undefined' && module.exports) module.exports = Motor;
@@ -541,6 +580,24 @@
     global.fusionarSeguimientoDescartados = fusionarDescartados;
     global.aplicarSeguimientoDescartados = async (remotos) => {
         await guardarDescartados(fusionarDescartados(await leerDescartados(), remotos));
+    };
+    // Los asuntos que se pidió no importar. Como lo desmarcado, van en la base
+    // y viajan en la sincronización: no reaparecen en ningún dispositivo.
+    const CLAVE_OMITIDOS = 'seguimiento_omitidos';
+
+    async function leerOmitidos() {
+        try {
+            const v = typeof obtenerConfig === 'function' ? await obtenerConfig(CLAVE_OMITIDOS) : null;
+            return Array.isArray(v) ? v : [];
+        } catch (e) { return []; }
+    }
+    async function guardarOmitidos(lista) {
+        if (typeof guardarConfig === 'function') await guardarConfig(CLAVE_OMITIDOS, lista);
+    }
+    global.obtenerSeguimientoOmitidos = leerOmitidos;
+    global.fusionarSeguimientoOmitidos = fusionarOmitidos;
+    global.aplicarSeguimientoOmitidos = async (remotos) => {
+        await guardarOmitidos(fusionarOmitidos(await leerOmitidos(), remotos));
     };
     const OMITIR = 'omitir';
     const ui = { entrada: null, revision: null, nombreArchivo: '', expedientes: [], pendientes: [], asignaciones: {}, plan: null };
@@ -620,7 +677,8 @@
         ui.todos = false;
         ui.descartados = await leerDescartados();
         ui.recuperar = new Set();
-        ui.asignaciones = leerAsignaciones();
+        ui.omitidosSync = await leerOmitidos();
+        ui.asignaciones = asignacionesConOmitidos(leerAsignaciones(), ui.omitidosSync);
         // Los que se pidió no importar en otra semana ya no se enseñan; solo
         // se pueden recuperar desde su bloque, al final.
         ui.omitidosAntes = new Set(Object.keys(ui.asignaciones).filter(k => ui.asignaciones[k] === OMITIR));
@@ -883,6 +941,18 @@
                     descartadosNuevos = nuevos.length;
                     await guardarDescartados(fusionarDescartados(quedan, nuevos));
                 }
+
+                // Los asuntos que se dejan de importar o se recuperan, también
+                // para los demás dispositivos.
+                const yaOmitidos = new Set(ui.omitidosSync.filter(o => o.omitir).map(o => o.asunto));
+                const omisiones = [];
+                for (const a of asuntos) {
+                    if (a.omitido && a.por === 'usuario' && !yaOmitidos.has(a.asunto.clave)) omisiones.push(omisionDe(a.asunto.clave, true));
+                }
+                for (const clave of ui.restaurar) {
+                    if (!asuntos.some(a => a.asunto.clave === clave && a.omitido)) omisiones.push(omisionDe(clave, false));
+                }
+                if (omisiones.length) await guardarOmitidos(fusionarOmitidos(await leerOmitidos(), omisiones));
             });
         } finally {
             // Lo que el usuario eligió a mano se recuerda para la próxima semana.

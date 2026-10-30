@@ -1716,6 +1716,8 @@ async function probarSeguimientoSemanal(navegador) {
         igual('seguimiento: la fecha nueva se aplicó', lista.find(p => /estrados/.test(p.titulo)).local, F('2026-11-03'));
         igual('seguimiento: el que ya no aparece quedó terminado', lista.find(p => /amparo/.test(p.titulo)).completado, true);
         igual('seguimiento: la audiencia no se duplica', (await audiencias()).length, 1);
+        igual('seguimiento: el asunto que no se importa queda anotado para los demás dispositivos',
+            await page.evaluate(async () => (await obtenerSeguimientoOmitidos()).map(o => [o.asunto, o.omitir])), [['fit and more', true]]);
 
         // ---- La semana siguiente, con el asunto que se pidió no importar ----
         await elegirArchivo(siguiente);
@@ -1734,6 +1736,15 @@ async function probarSeguimientoSemanal(navegador) {
         await pausa(1000);
         igual('seguimiento: ya no queda como "no importar"',
             await page.evaluate(() => Object.prototype.hasOwnProperty.call(JSON.parse(localStorage.getItem('seguimiento_asignaciones') || '{}'), 'fit and more')), false);
+        igual('seguimiento: y la recuperación queda anotada para sincronizarse',
+            await page.evaluate(async () => (await obtenerSeguimientoOmitidos()).map(o => [o.asunto, o.omitir])), [['fit and more', false]]);
+
+        // ---- Otro dispositivo lo deja de importar después: la sincronización lo trae ----
+        await page.evaluate(() => aplicarSeguimientoOmitidos([{ asunto: 'fit and more', omitir: true, el: new Date(Date.now() + 60000).toISOString() }]));
+        await elegirArchivo(siguiente);
+        igual('seguimiento: lo que se dejó de importar en otro dispositivo tampoco se muestra aquí', await asignar(), []);
+        verificar('seguimiento: y se puede recuperar aquí', /Asuntos que pediste no importar \(1\)/.test(await page.textContent('#seg-omitidos summary')));
+        await page.evaluate(() => cerrarModal());
         igual('seguimiento: sin errores en la página', errores, []);
     } finally {
         await contexto.close();
