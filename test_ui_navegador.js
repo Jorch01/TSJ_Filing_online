@@ -1705,6 +1705,10 @@ async function probarSeguimientoSemanal(navegador) {
             return b.scrollWidth - b.clientWidth;
         });
         verificar('seguimiento: la vista previa cabe en un celular', desborde <= 1, 'desborde de ' + desborde + 'px');
+        // Este asunto ya no se quiere importar: desde la próxima vez no se muestra.
+        await page.click('#seg-asignacion summary');
+        await page.selectOption('.seg-exp[data-asunto="fit and more"]', 'omitir');
+        await pausa(200);
         await page.click('#seg-aplicar');
         await pausa(1500);
         lista = await importados();
@@ -1712,6 +1716,24 @@ async function probarSeguimientoSemanal(navegador) {
         igual('seguimiento: la fecha nueva se aplicó', lista.find(p => /estrados/.test(p.titulo)).local, F('2026-11-03'));
         igual('seguimiento: el que ya no aparece quedó terminado', lista.find(p => /amparo/.test(p.titulo)).completado, true);
         igual('seguimiento: la audiencia no se duplica', (await audiencias()).length, 1);
+
+        // ---- La semana siguiente, con el asunto que se pidió no importar ----
+        await elegirArchivo(siguiente);
+        const asignar = () => page.$$eval('.seg-asignar strong', s => s.map(x => x.textContent));
+        igual('seguimiento: el asunto que no se importa ya no se muestra aunque venga en el índice', await asignar(), []);
+        verificar('seguimiento: solo se cuenta', /1 que pediste no importar/.test(await page.textContent('.seg-resumen')));
+        verificar('seguimiento: y se puede recuperar desde su bloque', /Asuntos que pediste no importar \(1\)/.test(await page.textContent('#seg-omitidos summary')));
+        verificar('seguimiento: sin nada que traer, no hay qué importar', await page.isDisabled('#seg-aplicar'));
+        await page.click('#seg-omitidos summary');
+        // Marcarla vuelve a pintar la vista: se hace clic, sin esperar a que siga marcada.
+        await page.click('[data-restaurar="fit and more"]');
+        await pausa(200);
+        igual('seguimiento: al recuperarlo vuelve a la lista', await asignar(), ['Gimnasio Fit and More — subarriendo del local']);
+        verificar('seguimiento: y recuperarlo se puede guardar', !(await page.isDisabled('#seg-aplicar')));
+        await page.click('#seg-aplicar');
+        await pausa(1000);
+        igual('seguimiento: ya no queda como "no importar"',
+            await page.evaluate(() => Object.prototype.hasOwnProperty.call(JSON.parse(localStorage.getItem('seguimiento_asignaciones') || '{}'), 'fit and more')), false);
         igual('seguimiento: sin errores en la página', errores, []);
     } finally {
         await contexto.close();

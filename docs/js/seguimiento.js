@@ -621,6 +621,11 @@
         ui.descartados = await leerDescartados();
         ui.recuperar = new Set();
         ui.asignaciones = leerAsignaciones();
+        // Los que se pidió no importar en otra semana ya no se enseñan; solo
+        // se pueden recuperar desde su bloque, al final.
+        ui.omitidosAntes = new Set(Object.keys(ui.asignaciones).filter(k => ui.asignaciones[k] === OMITIR));
+        ui.restaurar = new Set();
+        ui.asignacionCambiada = false;
         pintar();
     }
 
@@ -670,7 +675,9 @@
         replanificar();
         const { asuntos, desaparecidos, totales, semana } = ui.plan;
         const activos = asuntos.filter(a => !a.asunto.fuera && !a.omitido);
-        const porConfirmar = asuntos.filter(a => !a.asunto.fuera && (a.por === 'nombre' || a.por === null || a.por === 'usuario' || a.omitido));
+        const ocultos = asuntos.filter(a => !a.asunto.fuera && a.omitido && ui.omitidosAntes.has(a.asunto.clave));
+        const porConfirmar = asuntos.filter(a => !a.asunto.fuera && !ocultos.includes(a) &&
+            (a.por === 'nombre' || a.por === null || a.por === 'usuario' || a.omitido));
 
         let html = '<div class="seg-resumen">' +
             '<p><strong>' + esc(ui.nombreArchivo) + '</strong>' + (ui.revision ? ' · revisión del ' + esc(fechaCorta(ui.revision)) : '') + '</p>' +
@@ -739,6 +746,15 @@
             '</ul></details>';
         }
 
+        // Los asuntos que se pidió no importar: no se enseñan, pero se pueden recuperar.
+        if (ocultos.length) {
+            html += '<details class="seg-bloque" id="seg-omitidos"><summary>Asuntos que pediste no importar (' + ocultos.length + ')</summary>' +
+                '<p class="seg-nota">No se muestran ni se importan aunque vengan en el índice. Marca los que quieras volver a importar.</p><ul>' +
+                ocultos.map(a => '<li class="seg-p"><label><input type="checkbox" data-restaurar="' + esc(a.asunto.clave) + '">' +
+                    '<span class="seg-cuerpo"><span class="seg-accion">' + esc(a.asunto.titulo) + '</span></span></label></li>').join('') +
+            '</ul></details>';
+        }
+
         // Audiencias que aún no pasan y van (o cambian) en el calendario.
         const audiencias = activos.flatMap(a => a.audiencias.map((au, i) => ({ a, au, i })))
             .filter(x => x.au.accionPlan !== 'igual');
@@ -764,11 +780,21 @@
         }
 
         $('modal-body').innerHTML = '<div class="seg-vista">' + html + '</div>';
+        // Aunque no haya pendientes que traer, un asunto que se deja de importar
+        // (o se recupera) tiene que guardarse.
         $('modal-footer').innerHTML = '<button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>' +
-            '<button class="btn btn-primary" id="seg-aplicar"' + (hayAlgo ? '' : ' disabled') + '>Importar</button>';
+            '<button class="btn btn-primary" id="seg-aplicar"' + (hayAlgo || ui.asignacionCambiada ? '' : ' disabled') + '>Importar</button>';
 
         $('modal-body').querySelectorAll('[data-recuperar]').forEach(c => c.addEventListener('change', () => {
             ui.recuperar.add(c.dataset.recuperar);
+            pintar();
+        }));
+        $('modal-body').querySelectorAll('[data-restaurar]').forEach(c => c.addEventListener('change', () => {
+            const clave = c.dataset.restaurar;
+            delete ui.asignaciones[clave];
+            ui.omitidosAntes.delete(clave);
+            ui.restaurar.add(clave);
+            ui.asignacionCambiada = true;
             pintar();
         }));
         const todos = $('seg-todos');
@@ -778,6 +804,7 @@
         $('modal-body').querySelectorAll('.seg-exp').forEach(sel => sel.addEventListener('change', () => {
             const v = sel.value;
             ui.asignaciones[sel.dataset.asunto] = v === '' ? null : v === OMITIR ? OMITIR : (isNaN(Number(v)) ? v : Number(v));
+            ui.asignacionCambiada = true;
             pintar();
         }));
         $('seg-aplicar').addEventListener('click', aplicar);
@@ -860,6 +887,7 @@
         } finally {
             // Lo que el usuario eligió a mano se recuerda para la próxima semana.
             const guardadas = leerAsignaciones();
+            for (const clave of ui.restaurar) delete guardadas[clave];
             for (const a of asuntos) {
                 if (a.por === 'usuario') guardadas[a.asunto.clave] = a.omitido ? OMITIR : a.expedienteId;
             }
@@ -872,6 +900,10 @@
         if (terminados) partes.push(`${terminados} terminados`);
         if (agendadas) partes.push(`${agendadas} audiencias al calendario`);
         if (descartadosNuevos) partes.push(`${descartadosNuevos} desmarcados no volverán a aparecer`);
+        const omitidosNuevos = asuntos.filter(a => !a.asunto.fuera && a.omitido && !ui.omitidosAntes.has(a.asunto.clave)).length;
+        if (omitidosNuevos) partes.push(`${omitidosNuevos} asunto${omitidosNuevos !== 1 ? 's' : ''} que ya no se mostrará${omitidosNuevos !== 1 ? 'n' : ''}`);
+        const restaurados = [...ui.restaurar].filter(k => !asuntos.some(a => a.asunto.clave === k && a.omitido)).length;
+        if (restaurados) partes.push(`${restaurados} asunto${restaurados !== 1 ? 's' : ''} que se vuelve${restaurados !== 1 ? 'n' : ''} a importar`);
         toast('Seguimiento importado: ' + (partes.join(', ') || 'sin cambios') + (fallos.length ? ` · ${fallos.length} no se pudieron guardar` : ''),
             fallos.length ? 'warning' : 'success');
     }
