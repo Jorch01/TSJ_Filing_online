@@ -1597,6 +1597,88 @@ async function probarCuentasCompartidas(navegador) {
     }
 }
 
+// El mismo asunto dos veces en el índice (dos carpetas para la misma
+// demanda): sus pendientes entran una sola vez, lo desmarcado no se pierde al
+// cambiar una asignación y los duplicados que ya existían se proponen cerrar.
+async function probarSeguimientoRepetidos(navegador) {
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, locale: 'es-MX', timezoneId: 'America/Cancun' });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    const pausa = (ms) => page.waitForTimeout(ms);
+    const SEG = require('./docs/js/seguimiento.js');
+    // Todo cae en la semana del reporte, corra cuando corra la prueba.
+    const lunes = SEG.semanaDelReporte(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Cancun' })).lunes;
+    const indice = [
+        { carpeta: 'asuntos lopez / vs arquitectos', asunto: 'Ana López Mar vs Constructora Alfa — juicio ordinario civil', cliente: 'Ana López Mar', materia: 'civil',
+          expedientes: ['Exp. 174/2026'], estado: 'ACTIVO', prioridad: 'ALTA',
+          pendientes: [{ accion: 'Revisar acuerdo recaído al escrito de 29-sep en el exp. 174/2026', tipo: 'SEGUIMIENTO', fecha_limite: lunes },
+                       { accion: 'Coordinar con el actuario la diligencia de emplazamiento', tipo: 'AUDIENCIA/DILIGENCIA', fecha_limite: lunes }] },
+        { carpeta: 'litigio / 174-2026 lopez', asunto: 'López vs Constructora Alfa (exp. 174/2026-IV)', cliente: 'Ana López', materia: 'civil',
+          expedientes: ['174/2026-IV'], estado: 'ACTIVO',
+          pendientes: [{ accion: 'Revisar el acuerdo recaído al escrito del 29 de septiembre (exp. 174/2026)', tipo: 'SEGUIMIENTO', fecha_limite: lunes },
+                       { accion: 'Coordinar con actuario la diligencia de emplazamiento al demandado', tipo: 'AUDIENCIA/DILIGENCIA', fecha_limite: lunes }] },
+        { carpeta: 'fit and more', asunto: 'Gimnasio Fit and More — subarriendo del local', cliente: 'Persona Sin Expediente', materia: 'civil',
+          expedientes: [], estado: 'ACTIVO',
+          pendientes: [{ accion: 'Enviar a la clienta el contrato de subarriendo revisado', tipo: 'ENTREGABLE', fecha_limite: lunes }] }
+    ];
+    const elegirArchivo = async () => {
+        await page.evaluate(() => VOZ.abrir());
+        await pausa(300);
+        await page.fill('#voz-input', 'actualiza mis pendientes');
+        await page.press('#voz-input', 'Enter');
+        await pausa(500);
+        await page.setInputFiles('#seg-archivo', { name: 'indice_asuntos.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(indice)) });
+        await pausa(500);
+    };
+    const cifras = () => page.$$eval('.seg-cifras li', ls => ls.map(l => l.textContent.trim()));
+    const abiertos = () => page.evaluate(async () => (await obtenerPendientes())
+        .filter(p => p.origen && p.origen.tipo === 'seguimiento' && !p.completado).map(p => p.titulo).sort());
+    const subarriendo = '.seg-p:has-text("contrato de subarriendo") input[type="checkbox"]';
+
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => window.SEGUIMIENTO && typeof crearExpedienteCore === 'function' && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+        await pausa(1000);
+        const lopez = await page.evaluate(() => crearExpedienteCore({ numero: '174/2026', institucion: 'TSJ', juzgado: 'JUZGADO CUARTO CIVIL CANCUN', nombre: 'López vs Alfa', cliente: 'Ana López Mar' }));
+
+        // ---- El índice trae dos veces la misma demanda ----
+        await elegirArchivo();
+        igual('repetidos: los pendientes del asunto repetido no se cuentan dos veces', await cifras(), ['3 nuevos', '0 se actualizan', '0 sin cambios', '0 ya no aparecen']);
+        verificar('repetidos: el resumen lo explica', /2 repetidos en otro asunto del índice se importan una sola vez/.test(await page.textContent('.seg-resumen')));
+        verificar('repetidos: y se pueden ver', /Repetidos en el índice \(2\)/.test(await page.textContent('#seg-repetidos-indice summary')));
+
+        // Desmarcar algo y luego corregir una asignación ya no lo vuelve a marcar.
+        await page.locator(subarriendo).uncheck();
+        await page.click('#seg-asignacion summary');
+        await page.selectOption('.seg-exp[data-asunto="fit and more"]', String(lopez));
+        await pausa(200);
+        verificar('repetidos: lo desmarcado sigue desmarcado tras cambiar una asignación', !(await page.locator(subarriendo).isChecked()));
+        await page.selectOption('.seg-exp[data-asunto="fit and more"]', '');
+        await pausa(200);
+        await page.locator(subarriendo).check();
+        await page.click('#seg-aplicar');
+        await pausa(1500);
+        igual('repetidos: se crean tres, no cinco', (await abiertos()).length, 3);
+
+        // ---- Un duplicado de antes del arreglo ----
+        await page.evaluate((id) => crearPendienteCore({ titulo: 'Coordinar con actuario la diligencia de emplazamiento al demandado', expedienteId: id, prioridad: 'alta',
+            origen: { tipo: 'seguimiento', asunto: 'litigio / 174-2026 lopez' } }), lopez);
+        await pausa(500);
+        igual('repetidos: (el duplicado viejo existe)', (await abiertos()).length, 4);
+        await elegirArchivo();
+        verificar('repetidos: el duplicado se propone para cerrar', /Repetidos que ya tenías \(1\)/.test(await page.textContent('#seg-repetidos summary')));
+        igual('repetidos: nada nuevo', (await cifras())[0], '0 nuevos');
+        await page.click('#seg-aplicar');
+        await pausa(1500);
+        const quedan = await abiertos();
+        igual('repetidos: el duplicado quedó cerrado y el original sigue', [quedan.length, quedan.filter(t => /actuario/.test(t)).length], [3, 1]);
+        igual('repetidos: sin errores en la página', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
 /**
  * Estadísticas del despacho, en un navegador de verdad: el formulario guarda
  * los datos nuevos (cliente, responsable, tipo, inicio, resultado), la página
@@ -2090,7 +2172,14 @@ async function probarEstadisticas(navegador) {
         verificar('estadísticas: "María López" y "maria lopez" son un cliente',
             /María López[\s\S]{0,40}2/.test(await page.textContent('[data-tarjeta="clientes"]')) &&
             !/maria lopez/.test(await page.textContent('[data-tarjeta="clientes"]')));
-        igual('estadísticas: la tendencia tiene una columna por mes', await page.locator('[data-tarjeta="tendencia"] .est-grupo').count(), 13);
+        // Los últimos 12 meses empiezan el día siguiente de hace un año: tocan
+        // 13 meses del calendario, salvo el último día de un mes, en que son
+        // justo 12 (del 1 del mes siguiente). Se cuenta con el reloj de la página.
+        const mesesTendencia = await page.evaluate(() => {
+            const d = new Date();
+            return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getDate() === 1 ? 12 : 13;
+        });
+        igual('estadísticas: la tendencia tiene una columna por mes', await page.locator('[data-tarjeta="tendencia"] .est-grupo').count(), mesesTendencia);
 
         // Descripción emergente al pasar el ratón.
         await page.locator('[data-tarjeta="tendencia"] .est-grupo').last().hover();
@@ -4027,6 +4116,7 @@ async function main() {
 
         // ---- Seguimiento semanal (indice_asuntos.json) ----
         await probarSeguimientoSemanal(navegador);
+        await probarSeguimientoRepetidos(navegador);
 
         // ---- Estrados laborales (TCA y Juntas) ----
         await probarEstradosLaborales(navegador);

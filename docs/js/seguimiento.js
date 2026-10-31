@@ -19,6 +19,9 @@
  *     prioridad o nota; si el usuario ya lo terminó, no se reabre;
  *   - un pendiente importado antes que ya no aparece en el índice se propone
  *     como terminado;
+ *   - si el índice cataloga el mismo asunto dos veces (dos carpetas, una
+ *     subcarpeta, un nombre escrito distinto), sus pendientes entran una
+ *     sola vez, y los que ya se habían duplicado se proponen para cerrar;
  *   - nada se aplica sin que el usuario vea antes qué va a pasar.
  *
  * Dos partes, como las demás herramientas: el motor, puro (se prueba en
@@ -37,14 +40,24 @@
     const UMBRAL_MISMO = 0.6;
     // Parecido entre el cliente y un expediente para proponerlo sin número.
     const UMBRAL_NOMBRE = 0.67;
+    // Dos asuntos del índice sin números que los distingan son el mismo si se
+    // llaman casi igual (y son del mismo cliente y materia).
+    const UMBRAL_TITULO = 0.75;
     const PRIORIDADES = { ALTA: 'alta', MEDIA: 'media', BAJA: 'baja' };
 
     const VACIAS = new Set([
         'el', 'la', 'los', 'las', 'de', 'del', 'que', 'con', 'por', 'para', 'una', 'uno', 'unos', 'unas',
         'sus', 'son', 'sea', 'ser', 'hay', 'ante', 'sobre', 'entre', 'como', 'mas', 'sin', 'desde', 'hasta',
         'este', 'esta', 'ese', 'esa', 'lo', 'al', 'se', 'si', 'su', 'en', 'y', 'o', 'a', 'e', 'u', 'vs',
-        'sa', 'cv', 'rl', 'sc', 'lic', 'exp', 'num'
+        'sa', 'cv', 'rl', 'sc', 'lic', 'exp', 'num', 'and'
     ]);
+
+    // "29-sep", "29 sept" y "29 de septiembre" dicen lo mismo. La abreviatura
+    // solo cuenta junto a un día: "Mar" también es apellido.
+    const MESES = { enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8,
+        septiembre: 9, setiembre: 9, octubre: 10, noviembre: 11, diciembre: 12 };
+    const MESES_CORTOS = { ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6, jul: 7, ago: 8,
+        sep: 9, sept: 9, set: 9, oct: 10, nov: 11, dic: 12 };
 
     function normalizar(s) {
         return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -52,10 +65,41 @@
     }
 
     // Los números cuentan aunque sean cortos: "29-sep" y "8-oct" distinguen
-    // dos escritos que por lo demás se redactan igual.
+    // dos escritos que por lo demás se redactan igual. Los meses se escriben
+    // como número ("m09") y el plural cuenta como el singular ("acuerdos" es
+    // "acuerdo"): la revisión redacta cada semana un poco distinto.
     function palabras(s) {
-        return normalizar(s).replace(/[^a-z0-9ñ]+/g, ' ').split(' ')
-            .filter(p => p && (/\d/.test(p) || (p.length >= 3 && !VACIAS.has(p))));
+        const t = normalizar(s).replace(/[^a-z0-9ñ]+/g, ' ').split(' ').filter(Boolean);
+        const esDia = (x) => /^\d{1,2}$/.test(x || '');
+        for (let i = 0; i < t.length; i++) {
+            let mes = MESES[t[i]];
+            if (!mes && MESES_CORTOS[t[i]] && (esDia(t[i - 1]) || (t[i - 1] === 'de' && esDia(t[i - 2])))) mes = MESES_CORTOS[t[i]];
+            if (mes) t[i] = 'm' + String(mes).padStart(2, '0');
+        }
+        return t.filter(p => /\d/.test(p) || (p.length >= 3 && !VACIAS.has(p)))
+            .map(p => (p.length >= 5 && !/\d/.test(p) && p.endsWith('s') ? p.slice(0, -1) : p));
+    }
+
+    const compactas = new Map();
+    /**
+     * Una clave de asunto sin mayúsculas, acentos, signos ni conectores:
+     * "Asuntos López/vs Alfa" y "asuntos lopez / vs alfa" son la misma
+     * carpeta, y "Fit & More" y "fit and more" también. Todo lo demás cuenta:
+     * "Arrendamientos A" y "Arrendamientos B" son dos carpetas.
+     */
+    function compacta(clave) {
+        const k = String(clave == null ? '' : clave);
+        if (!compactas.has(k)) {
+            compactas.set(k, normalizar(k).replace(/[^a-z0-9]+/g, ' ').split(' ')
+                .filter(t => t && t !== 'y' && t !== 'and').join(' '));
+        }
+        return compactas.get(k);
+    }
+    function mismaClave(a, b) {
+        if (a == null || b == null) return false;
+        if (a === b) return true;
+        const ca = compacta(a);
+        return !!ca && ca === compacta(b);
     }
 
     /**
@@ -187,14 +231,16 @@
                         lugar: String(x.lugar || '').trim()
                     }))
             };
-            // La misma carpeta dos veces: se juntan sus pendientes.
-            if (vistos.has(clave)) {
-                const previo = vistos.get(clave);
+            // La misma carpeta dos veces (aunque se escriba distinto: "Fit & More"
+            // y "fit and more"): se juntan sus pendientes.
+            const llave = compacta(clave) || clave;
+            if (vistos.has(llave)) {
+                const previo = vistos.get(llave);
                 for (const p of pendientes) if (!previo.pendientes.some(x => parecido(x.accion, p.accion) >= 0.85)) previo.pendientes.push(p);
                 previo.audiencias.push(...asunto.audiencias);
                 return;
             }
-            vistos.set(clave, asunto);
+            vistos.set(llave, asunto);
             asuntos.push(asunto);
         });
         return { asuntos, errores };
@@ -245,6 +291,81 @@
         return { expediente: null, por: null, candidatos: porNombre.map(x => x.exp) };
     }
 
+    function numerosDe(asunto) {
+        return numerosEn(asunto.expedientes.join(' ') + ' ' + asunto.titulo);
+    }
+
+    function clientesCompatibles(x, y) {
+        const a = normalizar(x), b = normalizar(y);
+        return !a || !b || a.includes(b) || b.includes(a) || parecido(a, b) >= UMBRAL_NOMBRE;
+    }
+
+    /**
+     * ¿Dos nombres de asunto se distinguen por un código corto? "Local A" y
+     * "Local B", "Juicio I" y "Juicio II" o "Bodega 3" y "Bodega 4" son
+     * asuntos distintos aunque todo lo demás coincida.
+     */
+    function codigosDistintos(x, y) {
+        // Las letras sueltas cuentan: "A" puede ser el nombre del local.
+        const fichas = (s) => new Set(normalizar(s).replace(/[^a-z0-9]+/g, ' ').split(' ').filter(t => t && !(t.length >= 2 && VACIAS.has(t))));
+        const codigo = (t) => /\d/.test(t) || /^[ivx]{1,4}$/.test(t) || (t.length <= 2 && !['ya', 'no', 'mi', 'tu', 'le', 'me', 'te', 'ni', 'un'].includes(t));
+        const fx = fichas(x), fy = fichas(y);
+        for (const t of fx) if (!fy.has(t) && codigo(t)) return true;
+        for (const t of fy) if (!fx.has(t) && codigo(t)) return true;
+        return false;
+    }
+
+    /**
+     * Lo que separa a dos asuntos del índice aunque se parezcan: números de
+     * expediente sin ninguno en común, materias distintas o clientes
+     * distintos. La querella por fraude no es el juicio civil del mismo cliente.
+     */
+    function distintos(a, b) {
+        if (mismaClave(a.clave, b.clave)) return false;
+        const ma = palabras(a.materia)[0], mb = palabras(b.materia)[0];
+        if (ma && mb && ma !== mb) return true;
+        if (!clientesCompatibles(a.cliente, b.cliente)) return true;
+        const na = numerosDe(a), nb = numerosDe(b);
+        return na.size > 0 && nb.size > 0 && ![...na].some(n => nb.has(n));
+    }
+
+    /**
+     * ¿Dos asuntos del índice son el mismo? La revisión a veces cataloga un
+     * asunto dos veces: dos carpetas, una subcarpeta, un nombre escrito
+     * distinto. Lo son si su carpeta dice lo mismo; o, si nada los separa, si
+     * comparten un número de expediente o, sin números, son del mismo cliente
+     * y se llaman casi igual.
+     */
+    function mismoAsunto(a, b) {
+        if (mismaClave(a.clave, b.clave)) return true;
+        if (distintos(a, b)) return false;
+        if (numerosDe(a).size && numerosDe(b).size) return true; // comparten alguno: si no, serían distintos
+        return !!normalizar(a.cliente) && !!normalizar(b.cliente) && parecido(a.titulo, b.titulo) >= UMBRAL_TITULO &&
+            !codigosDistintos(a.titulo, b.titulo);
+    }
+
+    /**
+     * Junta los asuntos del índice que son el mismo. Devuelve, para cada uno,
+     * la posición del primero de su grupo. Un asunto entra a un grupo solo si
+     * no choca con ninguno de los que ya están (así un asunto sin números no
+     * une dos juicios de números distintos).
+     */
+    function agrupar(asuntos) {
+        const grupo = [];
+        const miembros = new Map();
+        asuntos.forEach((a, j) => {
+            let elegido = j;
+            if (!a.fuera) {
+                for (const [primero, ms] of miembros) {
+                    if (ms.some(i => mismoAsunto(asuntos[i], a)) && !ms.some(i => distintos(asuntos[i], a))) { elegido = primero; break; }
+                }
+                miembros.set(elegido, [...(miembros.get(elegido) || []), j]);
+            }
+            grupo.push(elegido);
+        });
+        return grupo;
+    }
+
     function descripcionDe(asunto, p) {
         return [
             p.tipo ? 'Tipo: ' + p.tipo : '',
@@ -269,7 +390,12 @@
                                  que lleva el reporte de Word (ver semanaDelReporte)
      * }
      *
-     * Devuelve { asuntos: [...], desaparecidos: [...], totales }.
+     * Un asunto que el índice cataloga dos veces (ver mismoAsunto) aporta sus
+     * pendientes una sola vez: lo que trae el segundo y ya trajo el primero
+     * queda como "repetido", y si de antes había quedado duplicado, el
+     * duplicado se propone para cerrar.
+     *
+     * Devuelve { asuntos: [...], desaparecidos: [...], repetidos: [...], totales, semana }.
      */
     function planificar(entrada, ctx) {
         const expedientes = ctx.expedientes || [];
@@ -277,7 +403,7 @@
         const asignaciones = ctx.asignaciones || {};
         const usados = new Set();
         const totales = { asuntos: 0, nuevos: 0, actualizar: 0, iguales: 0, yaTerminados: 0, desaparecidos: 0, fuera: 0, omitidos: 0, sinExpediente: 0,
-            audienciasNuevas: 0, audienciasActualizar: 0, audienciasIguales: 0 };
+            audienciasNuevas: 0, audienciasActualizar: 0, audienciasIguales: 0, repetidos: 0, repetidosExistentes: 0, audienciasRepetidas: 0 };
         // Los eventos que reflejan un pendiente no son audiencias.
         const eventos = (ctx.eventos || []).filter(e => e.pendienteId == null);
         const eventosUsados = new Set();
@@ -286,116 +412,230 @@
         totales.fueraDelReporte = 0;
         totales.descartados = 0;
         const descartados = ctx.descartados || [];
-        const descartado = (asunto, texto, fecha) => descartados.find(d => d.asunto === asunto &&
+        const descartado = (asunto, texto, fecha) => descartados.find(d => mismaClave(d.asunto, asunto) &&
             (d.fecha || null) === (fecha || null) && parecido(d.accion, texto) >= UMBRAL_MISMO);
+        const delSeguimiento = (x) => !!(x && x.origen && x.origen.tipo === ORIGEN);
 
         // Lo que ya se importó antes, por asunto: así se sabe a qué
         // expediente se asignó aunque el número no coincida.
         const asignadoAntes = new Map();
         for (const p of todos) {
-            if (p.origen && p.origen.tipo === ORIGEN && p.origen.asunto && !asignadoAntes.has(p.origen.asunto)) {
-                asignadoAntes.set(p.origen.asunto, p.expedienteId != null ? p.expedienteId : null);
+            if (delSeguimiento(p) && p.origen.asunto) {
+                const k = compacta(p.origen.asunto) || p.origen.asunto;
+                if (!asignadoAntes.has(k)) asignadoAntes.set(k, p.expedienteId != null ? p.expedienteId : null);
             }
         }
         const porId = new Map(expedientes.map(e => [e.id, e]));
+        const eleccion = (clave) => {
+            if (Object.prototype.hasOwnProperty.call(asignaciones, clave)) return { hay: true, valor: asignaciones[clave] };
+            const k = Object.keys(asignaciones).find(x => mismaClave(x, clave));
+            return k === undefined ? { hay: false } : { hay: true, valor: asignaciones[k] };
+        };
 
-        const asuntos = entrada.asuntos.map(asunto => {
+        // 1. A qué expediente va cada asunto.
+        const lista = entrada.asuntos;
+        const grupos = agrupar(lista);
+        const asuntos = lista.map(asunto => {
             const auto = emparejar(asunto, expedientes, ctx.nombreCarpetaDe);
+            const manual = eleccion(asunto.clave);
+            const antes = compacta(asunto.clave) || asunto.clave;
             let expedienteId, por;
-            if (Object.prototype.hasOwnProperty.call(asignaciones, asunto.clave)) {
-                expedienteId = asignaciones[asunto.clave];
+            if (manual.hay) {
+                expedienteId = manual.valor;
                 por = 'usuario';
             } else if (auto.expediente) {
                 expedienteId = auto.expediente.id;
                 por = auto.por;
-            } else if (asignadoAntes.has(asunto.clave) && (asignadoAntes.get(asunto.clave) == null || porId.has(asignadoAntes.get(asunto.clave)))) {
-                expedienteId = asignadoAntes.get(asunto.clave);
+            } else if (asignadoAntes.has(antes) && (asignadoAntes.get(antes) == null || porId.has(asignadoAntes.get(antes)))) {
+                expedienteId = asignadoAntes.get(antes);
                 por = 'antes';
             } else {
                 expedienteId = null;
                 por = null;
             }
             const omitido = expedienteId === 'omitir';
-            const plan = {
+            return {
                 asunto, expedienteId: omitido ? null : expedienteId, por, omitido,
                 candidatos: auto.candidatos, pendientes: [], audiencias: []
             };
-            if (asunto.fuera) { totales.fuera++; return plan; }
-            if (omitido) { totales.omitidos++; return plan; }
+        });
+
+        // 2. Un asunto que el índice repite y que por sí solo no encontró
+        // expediente va al de su gemelo, si el gemelo tiene uno (y solo uno).
+        asuntos.forEach((plan, i) => {
+            if (plan.asunto.fuera || plan.omitido || plan.por !== null) return;
+            const gemelos = asuntos.filter((o, j) => j !== i && grupos[j] === grupos[i] && !o.asunto.fuera && !o.omitido && o.expedienteId != null);
+            if (gemelos.length && new Set(gemelos.map(o => o.expedienteId)).size === 1) {
+                plan.expedienteId = gemelos[0].expedienteId;
+                plan.por = 'grupo';
+                plan.gemelo = gemelos[0].asunto.titulo;
+            }
+        });
+
+        // Lo que esta importación ya dejó en cada destino (un expediente, o el
+        // grupo de un asunto sin expediente): otro asunto que va al mismo
+        // lugar no lo repite.
+        const planeados = new Map();
+        const audPlaneadas = new Map();
+        const enDestino = (mapa, destino) => {
+            if (!mapa.has(destino)) mapa.set(destino, []);
+            return mapa.get(destino);
+        };
+        const repetidos = [];
+        const cerrarRepetido = (x, gemelo) => {
+            usados.add(x.id);
+            // Solo se propone cerrar lo que trajo la importación, nunca lo
+            // que el usuario capturó a mano; y lo que ya conservó no vuelve.
+            if (x.completado || !delSeguimiento(x) || descartado(x.origen.asunto, x.titulo)) return;
+            repetidos.push({ existente: x, gemelo });
+            totales.repetidosExistentes++;
+        };
+
+        // Importados antes cuya carpeta ya no está en el índice: si la carpeta
+        // cambió de nombre, se reconocen por el nombre del asunto.
+        const huerfanos = new Set(todos.filter(x => delSeguimiento(x) && !lista.some(a => mismaClave(a.clave, x.origen.asunto))).map(x => x.id));
+
+        // 3. Los pendientes y las audiencias de cada asunto.
+        asuntos.forEach((plan, i) => {
+            const asunto = plan.asunto;
+            if (asunto.fuera) { totales.fuera++; return; }
+            if (plan.omitido) { totales.omitidos++; return; }
             totales.asuntos++;
             if (plan.expedienteId == null) totales.sinExpediente++;
+            const destino = plan.expedienteId != null ? 'e:' + plan.expedienteId : 'g:' + grupos[i];
+            const previos = enDestino(planeados, destino);
+            const gemelos = lista.filter((a, j) => j !== i && grupos[j] === grupos[i]).map(a => a.clave);
 
             // Los que ya existen y pueden ser de este asunto.
             const existentes = todos.filter(x => !usados.has(x.id) && (
-                (x.origen && x.origen.tipo === ORIGEN && x.origen.asunto === asunto.clave) ||
-                (plan.expedienteId != null && x.expedienteId === plan.expedienteId)));
+                (delSeguimiento(x) && mismaClave(x.origen.asunto, asunto.clave)) ||
+                (plan.expedienteId != null && x.expedienteId === plan.expedienteId) ||
+                (plan.expedienteId == null && x.expedienteId == null && delSeguimiento(x) &&
+                    gemelos.some(c => mismaClave(c, x.origen.asunto))) ||
+                (plan.expedienteId == null && x.expedienteId == null && huerfanos.has(x.id) &&
+                    parecido(x.expedienteTexto || '', asunto.titulo) >= UMBRAL_TITULO)));
 
-            for (const p of asunto.pendientes) {
-                let mejor = null, mejorP = 0;
+            // Cada pendiente del índice con su existente, de la pareja más
+            // parecida a la menos: así uno que solo se parece no le quita a
+            // otro el que es idéntico.
+            const pareja = new Map();
+            const pares = [];
+            asunto.pendientes.forEach((p, k) => {
                 for (const x of existentes) {
-                    if (usados.has(x.id)) continue;
                     const v = parecido(x.titulo, p.accion);
-                    if (v > mejorP) { mejor = x; mejorP = v; }
+                    if (v >= UMBRAL_MISMO) pares.push({ k, x, v });
                 }
+            });
+            pares.sort((a, b) => b.v - a.v);
+            const tomados = new Set();
+            for (const { k, x } of pares) {
+                if (pareja.has(k) || tomados.has(x.id)) continue;
+                pareja.set(k, x);
+                tomados.add(x.id);
+            }
+
+            asunto.pendientes.forEach((p, k) => {
+                const mejor = pareja.get(k) || null;
                 // Lo que el usuario desmarcó otra semana no se vuelve a proponer.
                 const desc = descartado(asunto.clave, p.accion);
                 if (desc) {
-                    if (mejor && mejorP >= UMBRAL_MISMO) usados.add(mejor.id);
+                    if (mejor) usados.add(mejor.id);
                     plan.pendientes.push({ ...p, accionPlan: 'descartado', descartado: desc });
                     totales.descartados++;
-                    continue;
+                    return;
                 }
+
+                // ¿Ya lo trajo otro asunto del índice que va al mismo lugar? (Los
+                // del mismo asunto ya se juntaron al leer el índice.)
+                let fecha = p.fecha;
+                const gemelo = previos.find(g => g.asunto !== asunto.clave && parecido(g.accion, p.accion) >= UMBRAL_MISMO);
+                if (gemelo) {
+                    if (gemelo.entrada.accionPlan === 'nuevo' && mejor) {
+                        // El gemelo iba a crearse, pero este ya existe: se
+                        // queda el que existe, con la fecha más próxima de los dos.
+                        if (gemelo.fecha && (!fecha || gemelo.fecha < fecha)) fecha = gemelo.fecha;
+                        const e = gemelo.entrada;
+                        e.accionPlan = 'repetido';
+                        e.gemelo = { asunto: asunto.titulo, accion: p.accion };
+                        delete e.datos;
+                        totales.nuevos--;
+                        totales.repetidos++;
+                        previos.splice(previos.indexOf(gemelo), 1);
+                    } else {
+                        // De dos fechas para lo mismo manda la más próxima.
+                        const e = gemelo.entrada;
+                        if (fecha && (!gemelo.fecha || fecha < gemelo.fecha)) {
+                            gemelo.fecha = fecha;
+                            e.fecha = fecha;
+                            if (e.accionPlan === 'nuevo') e.datos.fechaLimite = isoDeFecha(fecha);
+                            else if ((e.accionPlan === 'igual' || e.accionPlan === 'actualizar') && diaDe(e.existente.fechaLimite) !== fecha) {
+                                e.cambios.fechaLimite = isoDeFecha(fecha);
+                                if (e.accionPlan === 'igual') { e.accionPlan = 'actualizar'; totales.iguales--; totales.actualizar++; }
+                            }
+                        }
+                        if (mejor) cerrarRepetido(mejor, { asunto: gemelo.titulo, accion: gemelo.accion });
+                        plan.pendientes.push({ ...p, accionPlan: 'repetido', gemelo: { asunto: gemelo.titulo, accion: gemelo.accion } });
+                        totales.repetidos++;
+                        return;
+                    }
+                }
+
                 const datos = {
                     titulo: p.accion,
                     descripcion: descripcionDe(asunto, p),
                     expedienteId: plan.expedienteId,
                     expedienteTexto: plan.expedienteId == null ? asunto.titulo : null,
-                    fechaLimite: isoDeFecha(p.fecha),
+                    fechaLimite: isoDeFecha(fecha),
                     prioridad: p.prioridad,
                     origen: { tipo: ORIGEN, asunto: asunto.clave, revision: ctx.revision || null }
                 };
-                if (!mejor || mejorP < UMBRAL_MISMO) {
+                const anotar = (entradaPlan) => {
+                    plan.pendientes.push(entradaPlan);
+                    previos.push({ asunto: asunto.clave, titulo: asunto.titulo, accion: p.accion, fecha, entrada: entradaPlan });
+                };
+                if (!mejor) {
                     // Lo que el reporte de Word no lleva no se agrega (si ya
                     // existía sí se reconoce, para no darlo por desaparecido).
-                    if (!ctx.todos && !semana.incluye(p)) {
-                        plan.pendientes.push({ ...p, accionPlan: 'fuera' });
+                    if (!ctx.todos && !semana.incluye({ ...p, fecha })) {
+                        plan.pendientes.push({ ...p, fecha, accionPlan: 'fuera' });
                         totales.fueraDelReporte++;
-                        continue;
+                        return;
                     }
-                    plan.pendientes.push({ ...p, accionPlan: 'nuevo', datos });
+                    anotar({ ...p, fecha, accionPlan: 'nuevo', datos });
                     totales.nuevos++;
-                    continue;
+                    return;
                 }
                 usados.add(mejor.id);
                 if (mejor.completado) {
-                    plan.pendientes.push({ ...p, accionPlan: 'terminado', existente: mejor });
+                    anotar({ ...p, fecha, accionPlan: 'terminado', existente: mejor });
                     totales.yaTerminados++;
-                    continue;
+                    return;
                 }
                 // Ya existe: se trae lo que cambió. El título solo se reescribe
                 // si lo había puesto la importación, no si lo escribió el usuario.
                 const cambios = {};
-                const delSeguimiento = !!(mejor.origen && mejor.origen.tipo === ORIGEN);
-                if (p.fecha && diaDe(mejor.fechaLimite) !== p.fecha) cambios.fechaLimite = datos.fechaLimite;
+                const importado = delSeguimiento(mejor);
+                if (fecha && diaDe(mejor.fechaLimite) !== fecha) cambios.fechaLimite = datos.fechaLimite;
                 if (p.prioridad && mejor.prioridad !== p.prioridad) cambios.prioridad = p.prioridad;
-                if (delSeguimiento) {
+                if (importado) {
                     if (mejor.titulo !== datos.titulo) cambios.titulo = datos.titulo;
                     if ((mejor.descripcion || '') !== datos.descripcion) cambios.descripcion = datos.descripcion;
                 }
-                if (!delSeguimiento || (mejor.origen.asunto !== asunto.clave)) cambios.origen = datos.origen;
+                if (!importado || (mejor.origen.asunto !== asunto.clave)) cambios.origen = datos.origen;
                 else if (ctx.revision && mejor.origen.revision !== ctx.revision) cambios.origen = datos.origen;
-                const visibles = Object.keys(cambios).filter(k => k !== 'origen');
+                const visibles = Object.keys(cambios).filter(c => c !== 'origen');
                 if (visibles.length) {
-                    plan.pendientes.push({ ...p, accionPlan: 'actualizar', existente: mejor, cambios });
+                    anotar({ ...p, fecha, accionPlan: 'actualizar', existente: mejor, cambios });
                     totales.actualizar++;
                 } else {
-                    plan.pendientes.push({ ...p, accionPlan: 'igual', existente: mejor, cambios });
+                    anotar({ ...p, fecha, accionPlan: 'igual', existente: mejor, cambios });
                     totales.iguales++;
                 }
-            }
+            });
 
             // Audiencias: las que aún no pasan van al calendario. Las pasadas
             // no: la revisión ya las trae como pendiente ("registrar resultado").
+            const audPrevias = enDestino(audPlaneadas, destino);
             for (const au of asunto.audiencias) {
                 if (au.fecha < hoy) continue;
                 if (descartado(asunto.clave, au.descripcion, au.fecha)) { totales.descartados++; continue; }
@@ -413,10 +653,31 @@
                 // La misma audiencia ya en el calendario: mismo día y del mismo
                 // asunto (importada antes) o del mismo expediente con texto parecido.
                 const existente = eventos.find(e => !eventosUsados.has(e.id) && diaDe(e.fechaInicio) === au.fecha && (
-                    (e.origen && e.origen.tipo === ORIGEN && e.origen.asunto === asunto.clave && parecido(e.titulo, au.descripcion) >= 0.4) ||
+                    (delSeguimiento(e) && mismaClave(e.origen.asunto, asunto.clave) && parecido(e.titulo, au.descripcion) >= 0.4) ||
                     (plan.expedienteId != null && e.expedienteId === plan.expedienteId && (e.tipo === 'audiencia' || parecido(e.titulo, au.descripcion) >= 0.4))));
+                // La misma audiencia que ya trajo otro asunto del índice que va al mismo lugar.
+                const gemela = audPrevias.find(g => g.fecha === au.fecha && parecido(g.descripcion, au.descripcion) >= 0.4);
+                if (gemela) {
+                    if (gemela.entrada.accionPlan === 'nuevo' && existente) {
+                        gemela.entrada.accionPlan = 'repetida';
+                        gemela.entrada.gemelo = asunto.titulo;
+                        delete gemela.entrada.datos;
+                        totales.audienciasNuevas--;
+                        totales.audienciasRepetidas++;
+                        audPrevias.splice(audPrevias.indexOf(gemela), 1);
+                    } else {
+                        if (existente) eventosUsados.add(existente.id);
+                        plan.audiencias.push({ ...au, accionPlan: 'repetida', gemelo: gemela.titulo });
+                        totales.audienciasRepetidas++;
+                        continue;
+                    }
+                }
+                const anotar = (entradaPlan) => {
+                    plan.audiencias.push(entradaPlan);
+                    audPrevias.push({ fecha: au.fecha, descripcion: au.descripcion, titulo: asunto.titulo, entrada: entradaPlan });
+                };
                 if (!existente) {
-                    plan.audiencias.push({ ...au, accionPlan: 'nuevo', datos });
+                    anotar({ ...au, accionPlan: 'nuevo', datos });
                     totales.audienciasNuevas++;
                     continue;
                 }
@@ -426,30 +687,29 @@
                     cambios.fechaInicio = datos.fechaInicio;
                     cambios.todoElDia = false;
                 }
-                if (existente.origen && existente.origen.tipo === ORIGEN) {
+                if (delSeguimiento(existente)) {
                     if (existente.titulo !== datos.titulo) cambios.titulo = datos.titulo;
                     if ((existente.descripcion || '') !== datos.descripcion) cambios.descripcion = datos.descripcion;
                 }
                 if (Object.keys(cambios).length) {
-                    plan.audiencias.push({ ...au, accionPlan: 'actualizar', existente, cambios });
+                    anotar({ ...au, accionPlan: 'actualizar', existente, cambios });
                     totales.audienciasActualizar++;
                 } else {
-                    plan.audiencias.push({ ...au, accionPlan: 'igual', existente });
+                    anotar({ ...au, accionPlan: 'igual', existente });
                     totales.audienciasIguales++;
                 }
             }
-            return plan;
         });
 
         // Importados antes, abiertos, que esta revisión ya no trae. Los de
         // asuntos que el usuario dejó fuera no se tocan.
-        const omitidas = new Set(asuntos.filter(a => a.omitido).map(a => a.asunto.clave));
+        const omitidas = asuntos.filter(a => a.omitido).map(a => a.asunto.clave);
         const desaparecidos = todos.filter(x => !x.completado && !usados.has(x.id) &&
-            x.origen && x.origen.tipo === ORIGEN && !omitidas.has(x.origen.asunto) &&
+            delSeguimiento(x) && !omitidas.some(c => mismaClave(c, x.origen.asunto)) &&
             !descartado(x.origen.asunto, x.titulo));
         totales.desaparecidos = desaparecidos.length;
 
-        return { asuntos, desaparecidos, totales, semana };
+        return { asuntos, desaparecidos, repetidos, totales, semana };
     }
 
     /** Lo que se recuerda de algo que el usuario desmarcó. */
@@ -553,7 +813,8 @@
     const Motor = {
         ORIGEN, normalizar, palabras, parecido, numerosEn, fechaValida, isoDeFecha, diaDe,
         horaDe, isoDeFechaHora, semanaDelReporte, leerIndice, emparejar, planificar, esPeticionAbrir,
-        descarteDe, fusionarDescartados, omisionDe, fusionarOmitidos, asignacionesConOmitidos
+        descarteDe, fusionarDescartados, omisionDe, fusionarOmitidos, asignacionesConOmitidos,
+        compacta, mismaClave, mismoAsunto, agrupar
     };
 
     if (typeof module !== 'undefined' && module.exports) module.exports = Motor;
@@ -684,6 +945,9 @@
         ui.omitidosAntes = new Set(Object.keys(ui.asignaciones).filter(k => ui.asignaciones[k] === OMITIR));
         ui.restaurar = new Set();
         ui.asignacionCambiada = false;
+        // Lo que el usuario desmarca en la vista previa. Cambiar una asignación
+        // la vuelve a pintar, y antes todo regresaba marcado sin avisar.
+        ui.desmarcados = new Set();
         pintar();
     }
 
@@ -708,6 +972,22 @@
         '</select>';
     }
 
+    /** ' checked', salvo que el usuario la haya desmarcado en esta vista previa. */
+    function marca(clave) {
+        return ui.desmarcados && ui.desmarcados.has(clave) ? '' : ' checked';
+    }
+
+    /** ¿Este asunto ya se había pedido no importar? (La carpeta puede venir escrita distinto.) */
+    function fueOmitido(clave) {
+        return [...ui.omitidosAntes].some(k => mismaClave(k, clave));
+    }
+
+    /** El expediente o el asunto al que pertenece un pendiente de la app. */
+    function contextoDe(x) {
+        const exp = x.expedienteId != null ? ui.expedientes.find(e => e.id === x.expedienteId) : null;
+        return exp ? etiquetaExp(exp) : (x.expedienteTexto || 'sin expediente');
+    }
+
     function filaPendiente(a, p, i) {
         const id = esc(a.asunto.clave) + '|' + i;
         let detalle = '';
@@ -720,7 +1000,7 @@
             detalle = '<span class="seg-cambio">' + esc(partes.join(' · ')) + '</span>';
         }
         return '<li class="seg-p seg-p-' + p.accionPlan + '">' +
-            '<label><input type="checkbox" data-p="' + id + '" checked>' +
+            '<label><input type="checkbox" data-p="' + id + '"' + marca('p:' + a.asunto.clave + '|' + i) + '>' +
             '<span class="seg-cuerpo"><span class="seg-meta">' +
                 '<span class="seg-fecha">' + esc(fechaCorta(p.fecha)) + '</span>' +
                 (p.prioridad === 'alta' ? '<span class="seg-alta" title="Prioridad alta">ALTA</span>' : '') +
@@ -731,11 +1011,12 @@
 
     function pintar() {
         replanificar();
-        const { asuntos, desaparecidos, totales, semana } = ui.plan;
+        const { asuntos, desaparecidos, repetidos, totales, semana } = ui.plan;
         const activos = asuntos.filter(a => !a.asunto.fuera && !a.omitido);
-        const ocultos = asuntos.filter(a => !a.asunto.fuera && a.omitido && ui.omitidosAntes.has(a.asunto.clave));
+        const ocultos = asuntos.filter(a => !a.asunto.fuera && a.omitido && fueOmitido(a.asunto.clave));
         const porConfirmar = asuntos.filter(a => !a.asunto.fuera && !ocultos.includes(a) &&
-            (a.por === 'nombre' || a.por === null || a.por === 'usuario' || a.omitido));
+            (a.por === 'nombre' || a.por === 'grupo' || a.por === null || a.por === 'usuario' || a.omitido));
+        const errores = (ui.entrada && ui.entrada.errores) || [];
 
         let html = '<div class="seg-resumen">' +
             '<p><strong>' + esc(ui.nombreArchivo) + '</strong>' + (ui.revision ? ' · revisión del ' + esc(fechaCorta(ui.revision)) : '') + '</p>' +
@@ -750,6 +1031,8 @@
                 (totales.fuera ? ` · ${totales.fuera} concluidos no se importan` : '') +
                 (totales.omitidos ? ` · ${totales.omitidos} que pediste no importar` : '') +
                 (totales.descartados ? ` · ${totales.descartados} que desmarcaste antes no se proponen` : '') +
+                (totales.repetidos ? ` · ${totales.repetidos} repetido${totales.repetidos !== 1 ? 's' : ''} en otro asunto del índice se importa${totales.repetidos !== 1 ? 'n' : ''} una sola vez` : '') +
+                (errores.length ? ` · <span title="${esc(errores.join('\n'))}">${errores.length} elemento${errores.length !== 1 ? 's' : ''} del índice no se pudo leer</span>` : '') +
                 (totales.audienciasNuevas + totales.audienciasActualizar ? ` · ${totales.audienciasNuevas + totales.audienciasActualizar} audiencias al calendario` : '') + '</p>' +
             '<p class="seg-nota">Como el reporte de Word: lo vencido y lo de la semana del ' + esc(fechaCorta(semana.lunes)) + ' al ' + esc(fechaCorta(semana.viernes)) +
                 ', más los escritos por preparar.' +
@@ -763,14 +1046,20 @@
         // número o por parecido) o, si no tiene, con el nombre del asunto. Aquí
         // solo se puede corregir, y se abre si el usuario quiere.
         if (porConfirmar.length) {
-            const sinExp = porConfirmar.filter(a => a.expedienteId == null && !a.omitido).length;
+            const cuantos = (f) => porConfirmar.filter(f).length;
+            const como = [
+                [cuantos(a => a.por === 'nombre'), 'por parecido con el cliente, la contraparte o la carpeta'],
+                [cuantos(a => a.por === 'grupo'), 'por ser el mismo asunto que otro del índice'],
+                [cuantos(a => a.por === null && !a.omitido), 'sin expediente en la app, con el nombre del asunto'],
+                [cuantos(a => a.por === 'usuario'), 'como los elegiste tú']
+            ].filter(([n]) => n).map(([n, t]) => n + ' ' + t);
             html += '<details class="seg-bloque" id="seg-asignacion"' + (ui.verAsignacion ? ' open' : '') + '>' +
                 '<summary>Expedientes asignados sin número (' + porConfirmar.length + ')</summary>' +
-                '<p class="seg-nota">Se asignaron solos: ' + (porConfirmar.length - sinExp) + ' por parecido con el cliente, la contraparte o la carpeta, y ' +
-                sinExp + ' sin expediente en la app, con el nombre del asunto. Corrige aquí solo si alguno está mal; se recuerda para la próxima semana.</p>' +
+                '<p class="seg-nota">Así quedaron: ' + como.join('; ') + '. Corrige aquí solo si alguno está mal; se recuerda para la próxima semana.</p>' +
                 porConfirmar.map(a =>
                     '<div class="seg-asignar"><div><strong>' + esc(a.asunto.titulo) + '</strong>' +
-                    (a.asunto.expedientes.length ? '<small>' + esc(a.asunto.expedientes.join(' · ')) + '</small>' : '') + '</div>' +
+                    (a.asunto.expedientes.length ? '<small>' + esc(a.asunto.expedientes.join(' · ')) + '</small>' : '') +
+                    (a.por === 'grupo' ? '<small>Es el mismo asunto que «' + esc(a.gemelo) + '»</small>' : '') + '</div>' +
                     selectorExpediente(a) + '</div>').join('') +
             '</details>';
         }
@@ -804,6 +1093,29 @@
             '</ul></details>';
         }
 
+        // El mismo asunto dos veces en el índice: lo repetido se importa una vez.
+        const repetidosIndice = activos.flatMap(a => [
+            ...a.pendientes.filter(p => p.accionPlan === 'repetido').map(p => ({ texto: p.accion, asunto: a.asunto.titulo, gemelo: p.gemelo.asunto })),
+            ...a.audiencias.filter(au => au.accionPlan === 'repetida').map(au => ({ texto: au.descripcion, asunto: a.asunto.titulo, gemelo: au.gemelo }))
+        ]);
+        if (repetidosIndice.length) {
+            html += '<details class="seg-bloque" id="seg-repetidos-indice"><summary>Repetidos en el índice (' + repetidosIndice.length + ')</summary>' +
+                '<p class="seg-nota">El índice trae el mismo asunto dos veces. Esto ya viene en el otro y se importa una sola vez.</p><ul>' +
+                repetidosIndice.map(r => '<li class="seg-p"><span class="seg-cuerpo"><span class="seg-accion">' + esc(r.texto) + '</span>' +
+                    '<span class="seg-cambio">' + esc(r.asunto) + ' · es el mismo que en «' + esc(r.gemelo) + '»</span></span></li>').join('') +
+            '</ul></details>';
+        }
+
+        // Duplicados de importaciones anteriores: se proponen para cerrar.
+        if (repetidos.length) {
+            html += '<details class="seg-bloque" id="seg-repetidos" open><summary>Repetidos que ya tenías (' + repetidos.length + ')</summary>' +
+                '<p class="seg-nota">Se importaron dos veces porque el índice repetía el asunto. Los marcados se dan por terminados y queda el otro; los que desmarques se quedan como están y no se vuelven a proponer.</p><ul>' +
+                repetidos.map(r => '<li class="seg-p"><label><input type="checkbox" data-rep="' + esc(r.existente.id) + '"' + marca('rep:' + r.existente.id) + '>' +
+                    '<span class="seg-cuerpo"><span class="seg-accion">' + esc(r.existente.titulo) + '</span>' +
+                    '<span class="seg-cambio">' + esc(contextoDe(r.existente)) + ' · queda el de «' + esc(r.gemelo.asunto) + '»</span></span></label></li>').join('') +
+            '</ul></details>';
+        }
+
         // Los asuntos que se pidió no importar: no se enseñan, pero se pueden recuperar.
         if (ocultos.length) {
             html += '<details class="seg-bloque" id="seg-omitidos"><summary>Asuntos que pediste no importar (' + ocultos.length + ')</summary>' +
@@ -815,10 +1127,10 @@
 
         // Audiencias que aún no pasan y van (o cambian) en el calendario.
         const audiencias = activos.flatMap(a => a.audiencias.map((au, i) => ({ a, au, i })))
-            .filter(x => x.au.accionPlan !== 'igual');
+            .filter(x => x.au.accionPlan === 'nuevo' || x.au.accionPlan === 'actualizar');
         if (audiencias.length) {
             html += '<details class="seg-bloque" open><summary>Audiencias al calendario (' + audiencias.length + ')</summary><ul>' +
-                audiencias.map(({ a, au, i }) => '<li class="seg-p"><label><input type="checkbox" data-aud="' + esc(a.asunto.clave + '|' + i) + '" checked>' +
+                audiencias.map(({ a, au, i }) => '<li class="seg-p"><label><input type="checkbox" data-aud="' + esc(a.asunto.clave + '|' + i) + '"' + marca('aud:' + a.asunto.clave + '|' + i) + '>' +
                     '<span class="seg-cuerpo"><span class="seg-meta"><span class="seg-fecha">' + esc(fechaCorta(au.fecha)) + (au.hora ? ' ' + esc(au.hora) : '') + '</span>' +
                     (au.accionPlan === 'actualizar' ? '<span class="seg-tipo">CAMBIA</span>' : '') + '</span>' +
                     '<span class="seg-accion">' + esc(au.descripcion) + '</span>' +
@@ -829,10 +1141,11 @@
         if (desaparecidos.length) {
             html += '<details class="seg-bloque" open><summary>Ya no aparecen en la revisión (' + desaparecidos.length + ')</summary>' +
                 '<p class="seg-nota">Los importaste antes y esta revisión ya no los trae. Los marcados se darán por terminados; los que desmarques se quedan como están y no se vuelven a proponer.</p><ul>' +
-                desaparecidos.map(x => '<li class="seg-p"><label><input type="checkbox" data-desap="' + esc(x.id) + '" checked>' +
-                    '<span class="seg-cuerpo"><span class="seg-accion">' + esc(x.titulo) + '</span></span></label></li>').join('') + '</ul></details>';
+                desaparecidos.map(x => '<li class="seg-p"><label><input type="checkbox" data-desap="' + esc(x.id) + '"' + marca('desap:' + x.id) + '>' +
+                    '<span class="seg-cuerpo"><span class="seg-accion">' + esc(x.titulo) + '</span>' +
+                    '<span class="seg-cambio">' + esc(contextoDe(x)) + '</span></span></label></li>').join('') + '</ul></details>';
         }
-        const hayAlgo = totales.nuevos || totales.actualizar || desaparecidos.length || audiencias.length;
+        const hayAlgo = totales.nuevos || totales.actualizar || desaparecidos.length || audiencias.length || repetidos.length;
         if (!hayAlgo) {
             html += '<p class="seg-ok">✓ Tu lista ya está al día con esta revisión.</p>';
         }
@@ -843,14 +1156,20 @@
         $('modal-footer').innerHTML = '<button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>' +
             '<button class="btn btn-primary" id="seg-aplicar"' + (hayAlgo || ui.asignacionCambiada ? '' : ' disabled') + '>Importar</button>';
 
+        $('modal-body').querySelectorAll('input[data-p], input[data-aud], input[data-desap], input[data-rep]').forEach(c => c.addEventListener('change', () => {
+            const d = c.dataset;
+            const clave = d.p != null ? 'p:' + d.p : d.aud != null ? 'aud:' + d.aud : d.desap != null ? 'desap:' + d.desap : 'rep:' + d.rep;
+            if (c.checked) ui.desmarcados.delete(clave);
+            else ui.desmarcados.add(clave);
+        }));
         $('modal-body').querySelectorAll('[data-recuperar]').forEach(c => c.addEventListener('change', () => {
             ui.recuperar.add(c.dataset.recuperar);
             pintar();
         }));
         $('modal-body').querySelectorAll('[data-restaurar]').forEach(c => c.addEventListener('change', () => {
             const clave = c.dataset.restaurar;
-            delete ui.asignaciones[clave];
-            ui.omitidosAntes.delete(clave);
+            for (const k of Object.keys(ui.asignaciones)) if (mismaClave(k, clave)) delete ui.asignaciones[k];
+            for (const k of [...ui.omitidosAntes]) if (mismaClave(k, clave)) ui.omitidosAntes.delete(k);
             ui.restaurar.add(clave);
             ui.asignacionCambiada = true;
             pintar();
@@ -872,8 +1191,8 @@
         const boton = $('seg-aplicar');
         if (boton) boton.disabled = true;
         const marcado = (sel) => { const c = $('modal-body').querySelector(sel); return !c || c.checked; };
-        const { asuntos, desaparecidos } = ui.plan;
-        let creados = 0, actualizados = 0, terminados = 0, agendadas = 0, descartadosNuevos = 0;
+        const { asuntos, desaparecidos, repetidos } = ui.plan;
+        let creados = 0, actualizados = 0, terminados = 0, agendadas = 0, descartadosNuevos = 0, cerrados = 0;
         const fallos = [];
         try {
             await enLoteCore(async () => {
@@ -903,7 +1222,7 @@
                     if (a.asunto.fuera || a.omitido) continue;
                     for (let i = 0; i < a.audiencias.length; i++) {
                         const au = a.audiencias[i];
-                        if (au.accionPlan === 'igual' || !marcado('[data-aud="' + CSS.escape(a.asunto.clave + '|' + i) + '"]')) continue;
+                        if ((au.accionPlan !== 'nuevo' && au.accionPlan !== 'actualizar') || !marcado('[data-aud="' + CSS.escape(a.asunto.clave + '|' + i) + '"]')) continue;
                         try {
                             if (au.accionPlan === 'nuevo') await crearEventoCore(au.datos);
                             else await actualizarEventoCore(au.existente.id, au.cambios);
@@ -917,6 +1236,10 @@
                     if (!marcado('[data-desap="' + CSS.escape(String(x.id)) + '"]')) continue;
                     try { await completarPendienteCore(x.id, true); terminados++; } catch (e) { fallos.push(x.titulo); }
                 }
+                for (const r of repetidos) {
+                    if (!marcado('[data-rep="' + CSS.escape(String(r.existente.id)) + '"]')) continue;
+                    try { await completarPendienteCore(r.existente.id, true); cerrados++; } catch (e) { fallos.push(r.existente.titulo); }
+                }
 
                 // Lo desmarcado se recuerda para no volver a proponerlo. Se
                 // guarda dentro del lote para que viaje en la misma sincronización.
@@ -928,13 +1251,16 @@
                             !marcado('[data-p="' + CSS.escape(a.asunto.clave + '|' + i) + '"]')) nuevos.push(descarteDe(a.asunto.clave, p.accion));
                     });
                     a.audiencias.forEach((au, i) => {
-                        if (au.accionPlan !== 'igual' && !marcado('[data-aud="' + CSS.escape(a.asunto.clave + '|' + i) + '"]')) {
+                        if ((au.accionPlan === 'nuevo' || au.accionPlan === 'actualizar') && !marcado('[data-aud="' + CSS.escape(a.asunto.clave + '|' + i) + '"]')) {
                             nuevos.push(descarteDe(a.asunto.clave, au.descripcion, au.fecha));
                         }
                     });
                 }
                 for (const x of desaparecidos) {
                     if (!marcado('[data-desap="' + CSS.escape(String(x.id)) + '"]')) nuevos.push(descarteDe(x.origen.asunto, x.titulo));
+                }
+                for (const r of repetidos) {
+                    if (!marcado('[data-rep="' + CSS.escape(String(r.existente.id)) + '"]')) nuevos.push(descarteDe(r.existente.origen.asunto, r.existente.titulo));
                 }
                 const quedan = (await leerDescartados()).filter(d => !ui.recuperar.has(d.id));
                 if (nuevos.length || ui.recuperar.size) {
@@ -944,10 +1270,10 @@
 
                 // Los asuntos que se dejan de importar o se recuperan, también
                 // para los demás dispositivos.
-                const yaOmitidos = new Set(ui.omitidosSync.filter(o => o.omitir).map(o => o.asunto));
+                const yaOmitido = (clave) => ui.omitidosSync.some(o => o.omitir && mismaClave(o.asunto, clave));
                 const omisiones = [];
                 for (const a of asuntos) {
-                    if (a.omitido && a.por === 'usuario' && !yaOmitidos.has(a.asunto.clave)) omisiones.push(omisionDe(a.asunto.clave, true));
+                    if (a.omitido && a.por === 'usuario' && !yaOmitido(a.asunto.clave)) omisiones.push(omisionDe(a.asunto.clave, true));
                 }
                 for (const clave of ui.restaurar) {
                     if (!asuntos.some(a => a.asunto.clave === clave && a.omitido)) omisiones.push(omisionDe(clave, false));
@@ -957,7 +1283,7 @@
         } finally {
             // Lo que el usuario eligió a mano se recuerda para la próxima semana.
             const guardadas = leerAsignaciones();
-            for (const clave of ui.restaurar) delete guardadas[clave];
+            for (const clave of ui.restaurar) for (const k of Object.keys(guardadas)) if (mismaClave(k, clave)) delete guardadas[k];
             for (const a of asuntos) {
                 if (a.por === 'usuario') guardadas[a.asunto.clave] = a.omitido ? OMITIR : a.expedienteId;
             }
@@ -968,9 +1294,10 @@
         if (creados) partes.push(`${creados} nuevos`);
         if (actualizados) partes.push(`${actualizados} actualizados`);
         if (terminados) partes.push(`${terminados} terminados`);
+        if (cerrados) partes.push(`${cerrados} repetido${cerrados !== 1 ? 's' : ''} cerrado${cerrados !== 1 ? 's' : ''}`);
         if (agendadas) partes.push(`${agendadas} audiencias al calendario`);
         if (descartadosNuevos) partes.push(`${descartadosNuevos} desmarcados no volverán a aparecer`);
-        const omitidosNuevos = asuntos.filter(a => !a.asunto.fuera && a.omitido && !ui.omitidosAntes.has(a.asunto.clave)).length;
+        const omitidosNuevos = asuntos.filter(a => !a.asunto.fuera && a.omitido && !fueOmitido(a.asunto.clave)).length;
         if (omitidosNuevos) partes.push(`${omitidosNuevos} asunto${omitidosNuevos !== 1 ? 's' : ''} que ya no se mostrará${omitidosNuevos !== 1 ? 'n' : ''}`);
         const restaurados = [...ui.restaurar].filter(k => !asuntos.some(a => a.asunto.clave === k && a.omitido)).length;
         if (restaurados) partes.push(`${restaurados} asunto${restaurados !== 1 ? 's' : ''} que se vuelve${restaurados !== 1 ? 'n' : ''} a importar`);
