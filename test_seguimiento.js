@@ -12,6 +12,8 @@
  *     prioridad, nota), lo que el usuario terminó no se reabre y lo que ya no
  *     aparece se propone como terminado;
  *   - dos pendientes que solo difieren en la fecha no se confunden;
+ *   - el mismo asunto catalogado dos veces aporta sus pendientes una vez, sin
+ *     juntar asuntos que solo se parecen (la querella no es el juicio civil);
  *   - lo que el usuario asigna u omite a mano manda.
  *
  * Los asuntos son inventados: el formato es el real, los datos no.
@@ -245,6 +247,117 @@ console.log('\nLo que el usuario decide manda');
     const previo = [{ id: 60, titulo: 'Algo viejo de este asunto', completado: true, expedienteId: 5, origen: { tipo: 'seguimiento', asunto: 'asunto laboral fiscalia perez' } }];
     const plan3 = S.planificar(entrada, { expedientes: sinNumero, pendientes: previo });
     igual('se usa el expediente al que se asignó la vez anterior', [plan3.asuntos[0].expedienteId, plan3.asuntos[0].por], [5, 'antes']);
+}
+
+console.log('\nEl mismo asunto dos veces en el índice');
+{
+    // La revisión catalogó la misma demanda desde dos carpetas.
+    const civil = (carpeta, asunto, cliente, exp, acciones) => ({ carpeta, asunto, cliente, materia: 'civil', expedientes: exp, estado: 'ACTIVO', prioridad: 'ALTA',
+        pendientes: acciones.map(([accion, fecha]) => ({ accion, tipo: 'SEGUIMIENTO', fecha_limite: fecha })) });
+    const dos = [
+        civil('asuntos lopez / vs arquitectos', 'Ana López Mar vs Constructora Alfa — juicio ordinario civil', 'Ana López Mar', ['Exp. 174/2026'], [
+            ['Revisar acuerdo recaído al escrito de 29-sep en el exp. 174/2026', '2026-10-23'],
+            ['Coordinar con el actuario la diligencia de emplazamiento', '2026-10-30']]),
+        civil('litigio / 174-2026 lopez', 'López vs Constructora Alfa (exp. 174/2026-IV)', 'Ana López', ['174/2026-IV'], [
+            ['Revisar el acuerdo recaído al escrito del 29 de septiembre (exp. 174/2026)', '2026-10-22'],
+            ['Coordinar con actuario la diligencia de emplazamiento al demandado', '2026-10-30'],
+            ['Preparar escrito de ofrecimiento de pruebas', '2026-10-29']])
+    ];
+    const plan = S.planificar(S.leerIndice(dos), { expedientes, pendientes: [], revision: '2026-10-23', todos: true });
+    igual('los dos van al mismo expediente', plan.asuntos.map(a => a.expedienteId), [2, 2]);
+    igual('lo que repite el segundo no se vuelve a crear: 3 nuevos, no 5', [plan.totales.nuevos, plan.totales.repetidos], [3, 2]);
+    igual('lo que solo trae el segundo sí entra', plan.asuntos[1].pendientes.map(p => p.accionPlan), ['repetido', 'repetido', 'nuevo']);
+    igual('el repetido dice con cuál es el mismo', plan.asuntos[1].pendientes[0].gemelo.asunto, 'Ana López Mar vs Constructora Alfa — juicio ordinario civil');
+    igual('de dos fechas para lo mismo queda la más próxima', S.diaDe(plan.asuntos[0].pendientes[0].datos.fechaLimite), '2026-10-22');
+
+    // Ya se habían importado dos veces (antes de este arreglo).
+    let ya = aplicar(S.planificar(S.leerIndice([dos[0]]), { expedientes, pendientes: [], revision: '2026-10-16', todos: true }), []);
+    const dobles = ya.map(p => ({ ...p, id: p.id + 1000, origen: { ...p.origen, asunto: 'litigio / 174-2026 lopez' } }));
+    ya = ya.concat(dobles);
+    const otra = S.planificar(S.leerIndice(dos), { expedientes, pendientes: ya, revision: '2026-10-23', todos: true });
+    igual('los duplicados de antes se proponen para cerrar', otra.repetidos.map(r => r.existente.id).sort(), dobles.map(p => p.id).sort());
+    igual('y queda el otro, con la fecha más próxima de los dos', [otra.asuntos[0].pendientes.map(p => p.accionPlan), S.diaDe(otra.asuntos[0].pendientes[0].cambios.fechaLimite)],
+        [['actualizar', 'igual'], '2026-10-22']);
+    igual('no se cuentan como "ya no aparecen"', otra.desaparecidos.length, 0);
+
+    // Lo que el usuario capturó a mano nunca se propone cerrar.
+    const manual = [{ id: 7, titulo: 'Coordinar con actuario la diligencia de emplazamiento al demandado', expedienteId: 2, completado: false }];
+    const conManual = S.planificar(S.leerIndice(dos), { expedientes, pendientes: ya.slice(0, 2).concat(manual), revision: '2026-10-23', todos: true });
+    igual('un pendiente capturado a mano no es un repetido que cerrar', conManual.repetidos.length, 0);
+    // Y si el usuario decidió conservar un duplicado, no vuelve a proponerse.
+    const conservado = S.planificar(S.leerIndice(dos), { expedientes, pendientes: ya, revision: '2026-10-23', todos: true,
+        descartados: dobles.map(d => S.descarteDe(d.origen.asunto, d.titulo)) });
+    igual('un duplicado que se conservó no vuelve a proponerse', conservado.repetidos.length, 0);
+}
+{
+    // Sin expediente en la app: el primero del índice es nuevo, pero el
+    // segundo ya existía. Se queda el que existe, no se crea otro.
+    const gym = (carpeta, titulo, cliente) => ({ carpeta, asunto: titulo, cliente, materia: 'civil', expedientes: [], estado: 'ACTIVO',
+        pendientes: [{ accion: 'Enviar a la clienta el contrato de subarriendo revisado', tipo: 'ENTREGABLE', fecha_limite: '2026-10-26' }] });
+    const indiceGym = [gym('locales / gimnasio', 'Gimnasio Fit and More — subarriendo del local', 'Gabriela Soto Luna'),
+        gym('fit and more', 'Gimnasio Fit and More - subarriendo del local', 'Gabriela Soto')];
+    const antes = [{ id: 70, titulo: 'Enviar a la clienta el contrato de subarriendo revisado', expedienteId: null, completado: false,
+        expedienteTexto: 'Gimnasio Fit and More - subarriendo del local', origen: { tipo: 'seguimiento', asunto: 'fit and more' } }];
+    const plan = S.planificar(S.leerIndice(indiceGym), { expedientes: [], pendientes: antes, revision: '2026-10-23', todos: true });
+    igual('sin expediente, el mismo asunto por cliente y nombre no se duplica', [plan.totales.nuevos, plan.totales.repetidos], [0, 1]);
+    igual('se queda el que ya existía', [plan.asuntos[0].pendientes[0].existente.id, plan.asuntos[1].pendientes[0].accionPlan], [70, 'repetido']);
+}
+{
+    const { asuntos } = S.leerIndice(indice());
+    igual('la querella no es el juicio civil del mismo cliente', S.mismoAsunto(asuntos[1], asuntos[2]), false);
+    const otroCliente = { ...asuntos[1], clave: 'familiar diaz', cliente: 'Roberto Díaz', titulo: 'Díaz — divorcio' };
+    igual('el mismo número con otro cliente es otro asunto', S.mismoAsunto(asuntos[1], otroCliente), false);
+    igual('ni siquiera se agrupan', new Set(S.agrupar([asuntos[1], asuntos[2], otroCliente])).size, 3);
+    const sinNumero = { ...asuntos[1], clave: 'lopez civil', expedientes: [], titulo: 'Ana López Mar vs Constructora Alfa — juicio ordinario civil' };
+    igual('un asunto sin número no une dos juicios de números distintos', S.agrupar([asuntos[1], sinNumero, asuntos[2]]), [0, 0, 2]);
+
+    const local = (letra) => ({ clave: 'arrendamientos ' + letra, carpeta: 'arrendamientos ' + letra, titulo: 'Ana López — arrendamiento del local ' + letra,
+        cliente: 'Ana López Mar', materia: 'civil', expedientes: [], fuera: false });
+    igual('"local A" y "local B" son asuntos distintos', S.mismoAsunto(local('A'), local('B')), false);
+    igual('"Bodega 3" y "Bodega 4" también', S.mismoAsunto({ ...local('A'), clave: 'b3', titulo: 'Ana López — bodega 3' }, { ...local('A'), clave: 'b4', titulo: 'Ana López — bodega 4' }), false);
+    igual('pero el mismo nombre, con o sin el segundo apellido, sí es el mismo',
+        S.mismoAsunto({ ...local('A'), clave: 'x', titulo: 'Ana López Mar vs Constructora Alfa — obra' }, { ...local('A'), clave: 'y', cliente: 'Ana López', titulo: 'Ana López vs Constructora Alfa — obra' }), true);
+
+    const dosVeces = S.leerIndice([{ carpeta: 'fit and more', asunto: 'Gimnasio', cliente: 'G', pendientes: [{ accion: 'Enviar contrato', fecha_limite: '2026-10-26' }] },
+        { carpeta: 'Fit & More', asunto: 'Gimnasio', cliente: 'G', pendientes: [{ accion: 'Cobrar la renta', fecha_limite: '2026-10-27' }] }]);
+    igual('la misma carpeta escrita distinto ("Fit & More") es una sola', dosVeces.asuntos.map(a => a.pendientes.length), [2]);
+    verificar('y su clave también', S.mismaClave('Asuntos López/vs Alfa', 'asuntos lopez / vs alfa') && !S.mismaClave('asunto 1', 'asunto 2'));
+    igual('pero dos carpetas que difieren en una letra son dos', S.mismaClave('Arrendamientos A', 'arrendamientos b'), false);
+
+    // Un asunto sin número que no encontró expediente va al de su gemelo.
+    const gemelo = { carpeta: 'clientes / ana lopez / juicio', asunto: 'Ana López Mar vs Constructora Alfa — juicio ordinario civil', cliente: 'Ana López Mar', materia: 'civil',
+        expedientes: [], estado: 'ACTIVO', pendientes: [{ accion: 'Llamar a la clienta para explicarle el emplazamiento', fecha_limite: '2026-10-27' }] };
+    const plan = S.planificar(S.leerIndice([indice()[1], gemelo]), { expedientes, pendientes: [], revision: '2026-10-23', todos: true });
+    igual('el gemelo sin número va al expediente del otro', [plan.asuntos[1].expedienteId, plan.asuntos[1].por, plan.asuntos[1].gemelo],
+        [2, 'grupo', 'Ana López Mar vs Constructora Alfa — juicio ordinario civil (obra inconclusa)']);
+}
+
+console.log('\nUna carpeta que cambió de nombre');
+{
+    const antes = [{ id: 80, titulo: 'Enviar a la clienta el contrato de subarriendo revisado', expedienteId: null, completado: false,
+        expedienteTexto: 'Gimnasio Fit and More — subarriendo del local', origen: { tipo: 'seguimiento', asunto: 'gimnasio fit' } }];
+    const plan = S.planificar(S.leerIndice([indice()[3]]), { expedientes: [], pendientes: antes, revision: '2026-10-23', todos: true });
+    igual('lo importado con la carpeta vieja se reconoce por el nombre del asunto', [plan.totales.nuevos, plan.totales.iguales + plan.totales.actualizar, plan.desaparecidos.length], [0, 1, 0]);
+    igual('y pasa a la carpeta nueva', plan.asuntos[0].pendientes[0].cambios.origen.asunto, 'fit and more');
+}
+
+console.log('\nLa revisión redacta distinto cada semana');
+{
+    verificar('"29-sep" y "29 de septiembre" son lo mismo',
+        S.parecido('Revisar acuerdo recaído al escrito de 29-sep', 'Revisar los acuerdos recaídos al escrito del 29 de septiembre') >= 0.6);
+    verificar('el 29-sep no es el 8-oct',
+        S.parecido('Revisar acuerdo recaído al escrito de 29-sep', 'Revisar acuerdo recaído al escrito de 8-oct') < 0.6);
+    igual('"Mar" de apellido no es marzo', S.palabras('Ana López Mar'), ['ana', 'lopez', 'mar']);
+    igual('pero "15 mar" sí', S.palabras('audiencia del 15 mar'), ['audiencia', '15', 'm03']);
+
+    // Cada pendiente con su pareja más parecida: el idéntico no se lo gana uno que solo se parece.
+    const existente = [{ id: 90, titulo: 'Coordinar con el actuario la diligencia de emplazamiento al demandado', expedienteId: 2, completado: false,
+        origen: { tipo: 'seguimiento', asunto: 'asuntos lopez / vs arquitectos' } }];
+    const idx = [{ ...indice()[1], pendientes: [
+        { accion: 'Coordinar con el actuario la diligencia', tipo: 'SEGUIMIENTO', fecha_limite: '2026-10-29' },
+        { accion: 'Coordinar con el actuario la diligencia de emplazamiento al demandado', tipo: 'AUDIENCIA/DILIGENCIA', fecha_limite: '2026-10-30' }] }];
+    const plan = S.planificar(S.leerIndice(idx), { expedientes, pendientes: existente, revision: '2026-10-23', todos: true });
+    igual('el idéntico se queda con el que ya existe', [plan.asuntos[0].pendientes[0].accionPlan, plan.asuntos[0].pendientes[1].existente.id], ['nuevo', 90]);
 }
 
 console.log('\nSolo lo que lleva el reporte de Word');
