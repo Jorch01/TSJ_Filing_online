@@ -1650,8 +1650,17 @@ async function probarSeguimientoRepetidos(navegador) {
 
         // Desmarcar algo y luego corregir una asignación ya no lo vuelve a marcar.
         await page.locator(subarriendo).uncheck();
-        await page.click('#seg-asignacion summary');
-        await page.selectOption('.seg-exp[data-asunto="fit and more"]', String(lopez));
+        // Se abre la lista y se corrige enseguida, antes de que llegue el aviso
+        // de que se abrió ("toggle"): al volver a pintar, la lista sigue abierta.
+        const abierta = await page.evaluate((id) => {
+            const lista = document.getElementById('seg-asignacion');
+            lista.open = true;
+            const sel = lista.querySelector('.seg-exp[data-asunto="fit and more"]');
+            sel.value = String(id);
+            sel.dispatchEvent(new Event('change'));
+            return document.getElementById('seg-asignacion').open;
+        }, lopez);
+        verificar('repetidos: la lista de asignación sigue abierta al corregir en ella', abierta);
         await pausa(200);
         verificar('repetidos: lo desmarcado sigue desmarcado tras cambiar una asignación', !(await page.locator(subarriendo).isChecked()));
         await page.selectOption('.seg-exp[data-asunto="fit and more"]', '');

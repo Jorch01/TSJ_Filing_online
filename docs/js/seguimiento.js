@@ -1182,6 +1182,9 @@
             const v = sel.value;
             ui.asignaciones[sel.dataset.asunto] = v === '' ? null : v === OMITIR ? OMITIR : (isNaN(Number(v)) ? v : Number(v));
             ui.asignacionCambiada = true;
+            // Se está corrigiendo en la lista: que siga abierta al volver a
+            // pintar, aunque el aviso de que se abrió ("toggle") aún no llegue.
+            ui.verAsignacion = true;
             pintar();
         }));
         $('seg-aplicar').addEventListener('click', aplicar);
