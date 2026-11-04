@@ -482,33 +482,88 @@ async function probarRecorridoGuiado(navegador) {
             out.cierra = !document.getElementById('tour-oferta');
             out.recuerda = localStorage.getItem('tour_bienvenida_visto') === '1';
 
-            // El botón 🧭 abre los recorridos.
+            // El botón 🧭 abre los recorridos, por grupos.
             document.getElementById('tour-fab').click();
             await pausa(100);
             out.menu = [...document.querySelectorAll('#tour-menu button')].length;
+            out.grupos = [...document.querySelectorAll('#tour-menu .tour-menu-grupo')].map(g => g.textContent);
             document.body.click();
             await pausa(50);
             out.menuCierra = !document.getElementById('tour-menu');
 
-            // Cada recorrido, paso por paso: el elemento señalado existe.
+            // Un paso se arma solo cuando el anterior terminó de armarse.
+            const titulo = () => document.querySelector('.tour-tarjeta .tour-titulo')?.textContent || '';
+            const esperarOtro = async (antes) => {
+                for (let t = 0; t < 60 && document.querySelector('.tour-tarjeta') && titulo() === antes; t++) await pausa(100);
+                await pausa(300);   // el resaltado se desliza 0.2 s hasta su lugar
+            };
+
+            // Cada recorrido, paso por paso: el elemento señalado existe, la
+            // tarjeta no lo tapa y la cuenta "n de m" no incluye los que se saltan.
             out.sinObjetivo = [];
+            out.tapados = [];
+            out.cuentas = [];
             out.pasos = 0;
             for (const [clave, rec] of Object.entries(RECORRIDOS_TOUR)) {
                 await iniciarTour(clave);
+                await esperarOtro('');
+                let vistos = 0, total = 0;
                 for (let i = 0; i < rec.pasos.length; i++) {
-                    await pausa(350);
                     const tarjeta = document.querySelector('.tour-tarjeta');
                     if (!tarjeta) break;
                     const paso = rec.pasos.find(p => tarjeta.querySelector('.tour-titulo')?.textContent === p.titulo);
-                    if (paso && paso.objetivo && tarjeta.classList.contains('centrada')) out.sinObjetivo.push(`${clave}: ${paso.objetivo}`);
+                    if (paso && paso.objetivo && tarjeta.classList.contains('centrada')) out.sinObjetivo.push(`${clave}: ${paso.titulo}`);
+                    const r = document.querySelector('.tour-resaltado');
+                    if (r && !r.classList.contains('sin-objetivo')) {
+                        const a = tarjeta.getBoundingClientRect(), b = r.getBoundingClientRect();
+                        if (!(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom)) out.tapados.push(`${clave}: ${paso && paso.titulo}`);
+                    }
+                    const m = /(\d+) de (\d+)/.exec(tarjeta.querySelector('.tour-progreso')?.textContent || '');
+                    vistos++;
+                    total = m ? +m[2] : 0;
+                    if (!m || +m[1] !== vistos) out.cuentas.push(`${clave}: paso ${vistos} dice "${m && m[0]}"`);
                     out.pasos++;
                     const sig = tarjeta.querySelector('.tour-siguiente');
                     if (/Terminar/.test(sig.textContent)) { sig.click(); break; }
+                    const antes = titulo();
                     sig.click();
+                    await esperarOtro(antes);
                 }
-                await pausa(200);
+                if (total && total !== vistos) out.cuentas.push(`${clave}: se vieron ${vistos} y decía ${total}`);
+                await pausa(150);
                 if (document.querySelector('.tour-tarjeta')) terminarTour();
             }
+
+            // Lo completado queda marcado en el menú; el de la página abierta, primero.
+            navegarA('laboral');
+            await pausa(200);
+            document.getElementById('tour-fab').click();
+            await pausa(100);
+            const botones = [...document.querySelectorAll('#tour-menu button')];
+            out.primeroEsDeLaPagina = /En esta página/.test(botones[0]?.textContent || '') && /Calculadora/.test(botones[0]?.textContent || '');
+            out.marcados = document.querySelectorAll('#tour-menu .tour-hecho').length;
+            cerrarMenuTour();
+
+            // Dos clics seguidos en "Siguiente" avanzan un paso, no dos ni en desorden.
+            await iniciarTour('agenda');
+            await esperarOtro('');
+            const primero = titulo();
+            pasoTour(1); pasoTour(1);
+            await esperarOtro(primero);
+            await pausa(400);
+            out.dobleClic = titulo();
+            terminarTour();
+
+            // Estrados laborales: señala dentro de su ventana y la cierra al terminar.
+            await iniciarTour('laborales');
+            await esperarOtro('');
+            pasoTour(1);
+            await esperarOtro('El Tribunal de Conciliación y Arbitraje y las Juntas');
+            out.laboralesVentana = !!document.querySelector('#modal-overlay.active .estl') &&
+                !document.querySelector('.tour-tarjeta').classList.contains('centrada');
+            terminarTour();
+            await pausa(100);
+            out.laboralesCierra = !document.querySelector('#modal-overlay.active');
 
             // Durante el recorrido la página se sigue usando y Esc lo cierra.
             await iniciarTour('laboral');
@@ -526,10 +581,18 @@ async function probarRecorridoGuiado(navegador) {
         igual('recorrido: ofrecer no oscurece la pantalla', r.sinOscurecer, true);
         igual('recorrido: "Ahora no" la cierra', r.cierra, true);
         igual('recorrido: y se recuerda', r.recuerda, true);
-        igual('recorrido: el botón 🧭 lista los recorridos', r.menu, 7);
+        igual('recorrido: el botón 🧭 lista los recorridos', r.menu, 15);
+        igual('recorrido: agrupados', r.grupos, ['Para empezar', 'Tu despacho', 'Tribunales', 'Herramientas', 'La app']);
         igual('recorrido: el menú se cierra al tocar fuera', r.menuCierra, true);
         igual('recorrido: cada paso señala un elemento que existe', r.sinObjetivo, []);
-        verificar('recorrido: se recorren todos los pasos', r.pasos >= 20, String(r.pasos));
+        igual('recorrido: la tarjeta no tapa lo que señala', r.tapados, []);
+        igual('recorrido: "n de m" cuenta solo los pasos que se ven', r.cuentas, []);
+        verificar('recorrido: se recorren todos los pasos', r.pasos >= 60, String(r.pasos));
+        igual('recorrido: el de la página abierta va primero en el menú', r.primeroEsDeLaPagina, true);
+        igual('recorrido: los terminados quedan marcados con ✓', r.marcados, 15);
+        igual('recorrido: dos clics seguidos avanzan un solo paso', r.dobleClic, 'Audiencias, vencimientos y recordatorios');
+        igual('recorrido: estrados laborales señala dentro de su ventana', r.laboralesVentana, true);
+        igual('recorrido: y la cierra al terminar', r.laboralesCierra, true);
         igual('recorrido: no bloquea la página', r.noBloquea, true);
         igual('recorrido: Esc lo cierra', r.escCierra, true);
 
@@ -544,6 +607,70 @@ async function probarRecorridoGuiado(navegador) {
         igual('enlace directo: #laboral abre la calculadora',
             await page.evaluate(() => document.getElementById('page-laboral').classList.contains('active')), true);
         igual('recorrido: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+    await probarRecorridosEnCelular(navegador);
+}
+
+/**
+ * En el celular la pantalla es angosta y lo que se señala suele ser más alto
+ * que ella: cada paso de cada recorrido debe encontrar su elemento y la
+ * tarjeta no debe taparlo.
+ */
+async function probarRecorridosEnCelular(navegador) {
+    const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => typeof iniciarTour === 'function' && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+        await page.evaluate(() => localStorage.setItem('tour_bienvenida_visto', '1'));
+        await page.waitForTimeout(2200);
+        const r = await page.evaluate(async () => {
+            const pausa = (ms) => new Promise(res => setTimeout(res, ms));
+            const titulo = () => document.querySelector('.tour-tarjeta .tour-titulo')?.textContent || '';
+            const esperarOtro = async (antes) => {
+                for (let t = 0; t < 60 && document.querySelector('.tour-tarjeta') && titulo() === antes; t++) await pausa(100);
+                await pausa(300);
+            };
+            const out = { sinObjetivo: [], tapados: [], fuera: [], pasos: 0 };
+            const vw = document.documentElement.clientWidth, vh = window.innerHeight;
+            for (const [clave, rec] of Object.entries(RECORRIDOS_TOUR)) {
+                await iniciarTour(clave);
+                await esperarOtro('');
+                for (let i = 0; i < rec.pasos.length; i++) {
+                    const tarjeta = document.querySelector('.tour-tarjeta');
+                    if (!tarjeta) break;
+                    const paso = rec.pasos.find(p => tarjeta.querySelector('.tour-titulo')?.textContent === p.titulo);
+                    if (paso && paso.objetivo && tarjeta.classList.contains('centrada')) out.sinObjetivo.push(`${clave}: ${paso.titulo}`);
+                    const a = tarjeta.getBoundingClientRect();
+                    if (a.left < 0 || a.top < 0 || a.right > vw + 1 || a.bottom > vh + 1) out.fuera.push(`${clave}: ${paso && paso.titulo}`);
+                    const r = document.querySelector('.tour-resaltado');
+                    if (r && !r.classList.contains('sin-objetivo')) {
+                        const b = r.getBoundingClientRect();
+                        // Lo que mide más que la pantalla se tapa por fuerza: basta con que se vea su parte de arriba.
+                        const cabe = b.height + a.height + 24 <= vh;
+                        if (cabe && !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom)) out.tapados.push(`${clave}: ${paso && paso.titulo}`);
+                    }
+                    out.pasos++;
+                    const sig = tarjeta.querySelector('.tour-siguiente');
+                    if (/Terminar/.test(sig.textContent)) { sig.click(); break; }
+                    const antes = titulo();
+                    sig.click();
+                    await esperarOtro(antes);
+                }
+                await pausa(150);
+                if (document.querySelector('.tour-tarjeta')) terminarTour();
+            }
+            return out;
+        });
+        igual('recorrido en el celular: cada paso señala un elemento que existe', r.sinObjetivo, []);
+        igual('recorrido en el celular: la tarjeta no tapa lo que señala', r.tapados, []);
+        igual('recorrido en el celular: la tarjeta cabe en la pantalla', r.fuera, []);
+        verificar('recorrido en el celular: se recorren todos los pasos', r.pasos >= 60, String(r.pasos));
+        igual('recorrido en el celular: sin errores de JavaScript', errores, []);
     } finally {
         await contexto.close();
     }
