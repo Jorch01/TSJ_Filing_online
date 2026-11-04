@@ -1221,8 +1221,13 @@ input:focus, textarea:focus, select:focus {
 .tribunal-opcion:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
 .tribunal-opcion.activa { background: var(--primary); color: #fff; box-shadow: var(--shadow); }
 @media (max-width: 480px) {
-    .tribunal-selector { display: flex; }
-    .tribunal-opcion { flex: 1; padding: 0.5rem 0.5rem; font-size: 0.85rem; }
+    .tribunal-selector { display: flex; border-radius: 14px; }
+    /* Con "Laboral Q. Roo" son tres: en una sola línea no caben en 390 px y la
+       página se desbordaba a lo ancho. Cada uno se parte en dos si hace falta. */
+    .tribunal-opcion {
+        flex: 1 1 0; min-width: 0; white-space: normal; line-height: 1.2;
+        padding: 0.45rem 0.35rem; font-size: 0.82rem; border-radius: 10px;
+    }
 }
 
 .calendario-container { display: grid; grid-template-columns: 1fr 280px; gap: 1.5rem; }
@@ -5527,8 +5532,20 @@ table th {
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-md);
     padding: 0.4rem;
+    /* Con todos los recorridos no cabe en el teléfono: se desplaza. */
+    max-height: min(620px, calc(100vh - 1.5rem - 56px - 0.6rem - 1rem - env(safe-area-inset-bottom, 0px)));
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 .tour-menu-titulo { font-size: 0.78rem; font-weight: 700; color: var(--text-muted); padding: 0.4rem 0.6rem; }
+.tour-menu-grupo {
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--text-muted); padding: 0.55rem 0.6rem 0.2rem; border-top: 1px solid var(--border-color);
+    margin-top: 0.25rem;
+}
+.tour-menu-texto small { display: block; font-size: 0.68rem; font-weight: 700; color: var(--primary); letter-spacing: 0.02em; }
+.tour-check { color: var(--success, #198754); font-weight: 700; }
+#tour-menu button.tour-hecho .tour-menu-texto { color: var(--text-secondary); }
 #tour-menu button {
     display: flex; align-items: center; gap: 0.6rem; width: 100%;
     background: none; border: 0; border-radius: var(--radius);
@@ -5540,10 +5557,11 @@ table th {
 .tour-menu-texto { flex: 1; }
 .tour-menu-duracion { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; }
 
-/* Oscurece alrededor del elemento sin bloquear clics. */
+/* Oscurece alrededor del elemento sin bloquear clics. Va por encima de las
+   ventanas de la app (1250): un recorrido puede señalar algo dentro de una. */
 .tour-resaltado {
     position: fixed;
-    z-index: 1190;
+    z-index: 1270;
     border-radius: 10px;
     box-shadow: 0 0 0 3px var(--primary), 0 0 0 9999px rgba(15, 23, 42, 0.45);
     pointer-events: none;
@@ -5561,6 +5579,7 @@ table th {
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
     padding: 1rem 1rem 0.85rem;
 }
+.tour-tarjeta { z-index: 1280; max-height: calc(100vh - 24px); overflow-y: auto; }
 .tour-progreso { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 0.35rem; padding-right: 1.5rem; }
 .tour-titulo { margin: 0 0 0.35rem; font-size: 1rem; }
 .tour-texto { margin: 0 0 0.8rem; font-size: 0.88rem; line-height: 1.5; color: var(--text-secondary); }
