@@ -1883,6 +1883,8 @@ async function ejecutarArchivar(id) {
         cerrarModal();
         mostrarToast('Expediente archivado', 'success');
         await Promise.all([cargarExpedientes(), cargarExpedientesPJF(), cargarEstadisticas()]);
+        // Si se archivó desde 📊 Estadísticas, sale de "sin movimiento".
+        if (typeof refrescarEstadisticasSiVisible === 'function') await refrescarEstadisticasSiVisible();
         // Sincronizar cambio con otros dispositivos
         if (typeof marcarYSincronizar === 'function') await marcarYSincronizar();
     } catch (err) {
