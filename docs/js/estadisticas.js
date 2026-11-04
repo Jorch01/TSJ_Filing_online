@@ -758,7 +758,8 @@
             tarjeta('sinmov', 'Expedientes sin movimiento', `Activos sin notas, cambios, pendientes ni audiencias en ${DIAS_SIN_MOVIMIENTO} días o más, y sin nada agendado`, 'tabla',
                 [{ clave: 'expediente', titulo: 'Expediente', tipo: 'exp' }, { clave: 'cliente', titulo: 'Cliente', tipo: 'texto' },
                  { clave: 'responsable', titulo: 'Responsable', tipo: 'texto' }, { clave: 'juzgado', titulo: 'Juzgado', tipo: 'texto' },
-                 { clave: 'dias', titulo: 'Días quieto', tipo: 'entero' }, { clave: 'ultimaActividad', titulo: 'Último movimiento', tipo: 'fecha' }],
+                 { clave: 'dias', titulo: 'Días quieto', tipo: 'entero' }, { clave: 'ultimaActividad', titulo: 'Último movimiento', tipo: 'fecha' },
+                 { clave: 'archivar', titulo: '', tipo: 'archivar' }],
                 inf.sinMovimiento, null, '✓ Todos los expedientes activos tienen movimiento reciente o algo agendado.', true));
 
         html += seccion('flujo', '📈 Flujo de trabajo', 'Cuántos asuntos entran y cuántos se cierran cada mes.',
@@ -959,6 +960,7 @@
         const todas = ui.expandidas.has(id);
         const mostrar = todas ? lista : lista.slice(0, FILAS_VISIBLES);
         const cab = columnas.map(c => {
+            if (c.tipo === 'archivar') return '<th scope="col"><span class="est-oculto">Acción</span></th>';
             const activa = o && o.col === c.clave;
             const num = c.tipo !== 'texto' && c.tipo !== 'exp';
             return '<th scope="col" class="' + (num ? 'est-num' : '') + '"' + (activa ? ' aria-sort="' + (o.dir === 'asc' ? 'ascending' : 'descending') + '"' : '') + '>' +
@@ -967,6 +969,11 @@
         }).join('');
         const cuerpo = mostrar.map(f => '<tr>' + columnas.map(c => {
             const num = c.tipo !== 'texto' && c.tipo !== 'exp';
+            // Un asunto quieto que ya terminó se manda al archivo desde aquí.
+            if (c.tipo === 'archivar') {
+                return '<td class="est-accion">' + (f.id != null ? '<button type="button" class="est-boton" data-acc="archivar" data-id="' + esc(f.id) +
+                    '" title="Mandar al archivo (con su motivo y resultado)">📦 Archivar</button>' : '') + '</td>';
+            }
             if (c.tipo === 'exp' && f.id != null) {
                 return '<td><button type="button" class="est-enlace" data-acc="expediente" data-id="' + esc(f.id) + '">' + esc(valorCelda(c, f)) + '</button></td>';
             }
@@ -1147,6 +1154,13 @@
                 if (typeof global.mostrarExpediente === 'function') return global.mostrarExpediente(n);
                 return;
             }
+            case 'archivar': {
+                // El mismo diálogo que en Expedientes: motivo y resultado. Al
+                // archivar, las acciones refrescan esta página.
+                const n = parseInt(b.dataset.id, 10);
+                if (typeof global.mostrarDialogoArchivar === 'function') global.mostrarDialogoArchivar(n);
+                return;
+            }
             case 'csv': return descargar(nombreArchivo(ui.tarjetas.get(id).titulo), csvDeTarjetas([id]));
             case 'csv-todo': return descargar(nombreArchivo('estadisticas'), csvDeTarjetas(Array.from(ui.tarjetas.keys())));
         }
@@ -1182,8 +1196,9 @@
             const t = ui.tarjetas.get(id);
             if (!t) continue;
             lineas.push([], [t.titulo]);
-            lineas.push(t.columnas.map(c => c.titulo + (c.tipo === 'dias' ? ' (días)' : c.tipo === 'pct' ? ' (%)' : '')));
-            for (const fila of filasOrdenadas(id, t.columnas, t.filas)) lineas.push(t.columnas.map(c => valorCSV(c, fila)));
+            const cols = t.columnas.filter(c => c.tipo !== 'archivar');
+            lineas.push(cols.map(c => c.titulo + (c.tipo === 'dias' ? ' (días)' : c.tipo === 'pct' ? ' (%)' : '')));
+            for (const fila of filasOrdenadas(id, t.columnas, t.filas)) lineas.push(cols.map(c => valorCSV(c, fila)));
         }
         return '﻿' + lineas.map(l => l.map(celda).join(',')).join('\r\n');
     }

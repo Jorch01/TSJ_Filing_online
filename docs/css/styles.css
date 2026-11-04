@@ -6105,6 +6105,8 @@ body.cta-abierto #tour-menu, body.cta-abierto #tour-oferta, body.cta-abierto #re
 .est-tabla .est-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .est-enlace { border: none; background: none; padding: 0; font: inherit; color: var(--primary); cursor: pointer; text-align: left; font-weight: 600; }
 .est-enlace:hover { text-decoration: underline; }
+.est-tabla td.est-accion { text-align: right; white-space: nowrap; }
+.est-oculto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* Descripción emergente: el valor manda, el nombre acompaña. */
 .est-tip {

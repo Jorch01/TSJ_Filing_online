@@ -2362,6 +2362,41 @@ async function probarEstadisticas(navegador) {
         await pausa(900);
         igual('estadísticas: se actualiza sola al cambiar los datos', await kpi('Expedientes activos'), '4');
 
+        // Un expediente quieto se manda al archivo desde "sin movimiento".
+        const quieto = await page.evaluate(async () => {
+            const hace = new Date(Date.now() - 120 * 864e5).toISOString();
+            // Directo en la base: el alta normal lo fecha hoy y deja historial de hoy.
+            return new Promise((res, rej) => {
+                const r = db.transaction(['expedientes'], 'readwrite').objectStore('expedientes').add({ numero: '77/2024', institucion: 'TSJ',
+                    juzgado: 'JUZGADO PRIMERO CIVIL CANCUN', activo: true, fechaCreacion: hace, fechaActualizacion: hace });
+                r.onsuccess = () => res(r.result);
+                r.onerror = () => rej(r.error);
+            });
+        });
+        await page.evaluate(() => refrescarEstadisticasSiVisible());
+        await pausa(900);
+        const boton = page.locator('[data-tarjeta="sinmov"] button[data-acc="archivar"][data-id="' + quieto + '"]');
+        igual('estadísticas: "sin movimiento" trae el botón de archivar', await boton.count(), 1);
+        await boton.click();
+        await pausa(300);
+        verificar('estadísticas: abre el diálogo de archivar', /Archivar Expediente/.test(await page.textContent('#modal-titulo')));
+        await page.selectOption('#motivo-archivo', 'abandonado');
+        await page.click('#modal-body .btn-warning');
+        await pausa(1000);
+        igual('estadísticas: queda archivado con su motivo',
+            await page.evaluate(async (id) => { const e = await obtenerExpediente(id); return [!!e.archivado, e.motivoArchivo]; }, quieto), [true, 'abandonado']);
+        igual('estadísticas: y sale de "sin movimiento" sin recargar',
+            await page.locator('[data-tarjeta="sinmov"] button[data-acc="archivar"][data-id="' + quieto + '"]').count(), 0);
+        const csvQuietos = await page.evaluate(() => {
+            let texto = '';
+            const original = window.descargarArchivo;
+            window.descargarArchivo = (n, c) => { texto = c; };
+            document.querySelector('[data-tarjeta="sinmov"] [data-acc="csv"]').click();
+            window.descargarArchivo = original;
+            return texto;
+        });
+        verificar('estadísticas: el CSV no lleva la columna del botón', /Último movimiento\r?\n|Último movimiento$/m.test(csvQuietos) && !/Último movimiento,\r?\n/.test(csvQuietos), csvQuietos.slice(0, 300));
+
         // El asistente sabe llevar aquí.
         await page.evaluate(() => navegarA('inicio'));
         await page.evaluate(() => VOZ.ejecutar('navegar', { pagina: 'estadisticas' }));
