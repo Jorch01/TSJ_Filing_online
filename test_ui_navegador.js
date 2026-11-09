@@ -801,6 +801,73 @@ async function probarSinConexion(navegador) {
 }
 
 /**
+ * Búsqueda global en juzgados específicos.
+ *
+ * Con el filtro "isla" solo se ven los 2 de Isla Mujeres, pero el título
+ * "OTROS MUNICIPIOS (9)" marcaba los 9 del grupo; los 7 ocultos seguían
+ * marcados y cada búsqueda abría 9 ventanas.
+ */
+async function probarBusquedaGlobalEspecificos(navegador) {
+    const contexto = await navegador.newContext({ viewport: { width: 1400, height: 900 } });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => typeof ejecutarBusquedaGlobal === 'function' && typeof db !== 'undefined' && !!db,
+            { timeout: 15000 });
+        await page.waitForTimeout(600);
+        await page.evaluate(() => {
+            try { localStorage.setItem('tour_bienvenida_visto', '1'); } catch (e) {}
+            document.getElementById('tour-oferta')?.remove();
+            window.__abiertas = [];
+            window.open = (u) => { window.__abiertas.push(u); return { focus() {} }; };
+            window.confirm = (m) => { window.__confirmacion = m; return true; };
+            navegarA('busqueda');
+        });
+        await page.waitForTimeout(300);
+        const estado = () => page.evaluate(() => ({
+            marcadas: document.querySelectorAll('.juzgado-global-cb:checked').length,
+            resumen: document.getElementById('juzgados-global-resumen').textContent,
+            boton: document.getElementById('btn-busqueda-global').textContent.trim()
+        }));
+        const buscar = async (valor) => {
+            await page.fill('#busqueda-global-valor', valor);
+            await page.evaluate(() => { window.__abiertas = []; });
+            await page.click('#btn-busqueda-global');
+            await page.waitForFunction(() => /búsqueda/.test(window.__confirmacion || ''), { timeout: 5000 });
+            await page.waitForTimeout(2500);
+            return page.evaluate(() => window.__abiertas.length);
+        };
+
+        await page.check('input[name="tipo-busqueda-global"][value="nombre"]');
+        await page.selectOption('#busqueda-global-ambito', 'especificos');
+        await page.fill('#filtro-juzgados-global', 'isla');
+        await page.click('.juzgado-grupo:has-text("OTROS MUNICIPIOS") .juzgado-grupo-titulo');
+        let e = await estado();
+        igual('búsqueda global: el título del grupo marca solo los que se ven', e.marcadas, 2);
+        igual('búsqueda global: el botón dice cuántos', e.boton, '🌐 Buscar en 2 juzgados');
+        igual('búsqueda global: la primera búsqueda abre 2', await buscar('Juan Pérez'), 2);
+        verificar('búsqueda global: la confirmación nombra los juzgados',
+            /ISLA MUJERES/.test(await page.evaluate(() => window.__confirmacion)));
+        await page.evaluate(() => { window.__confirmacion = ''; });
+        igual('búsqueda global: repetirla con otro nombre sigue abriendo 2', await buscar('María López'), 2);
+
+        // Marcados que el filtro esconde: se avisa y se pueden quitar.
+        await page.fill('#filtro-juzgados-global', '');
+        await page.click('.juzgado-grupo:has-text("OTROS MUNICIPIOS") .juzgado-grupo-titulo');
+        await page.fill('#filtro-juzgados-global', 'isla');
+        e = await estado();
+        verificar('búsqueda global: avisa de los marcados que no se ven', /7 no se ven por el filtro/.test(e.resumen), e.resumen);
+        await page.click('#juzgados-global-resumen a');
+        igual('búsqueda global: "Quitar todos" deja ninguno', (await estado()).marcadas, 0);
+        igual('búsqueda global: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
+/**
  * El calendario y el asistente con el navegador en Cancún (UTC-5).
  *
  * Con el reloj en UTC —el de las máquinas de CI— los fallos de fechas no se
@@ -4284,6 +4351,9 @@ async function main() {
 
         // ---- Estadísticas del despacho ----
         await probarEstadisticas(navegador);
+
+        // ---- Búsqueda global en juzgados específicos ----
+        await probarBusquedaGlobalEspecificos(navegador);
 
         // ---- Seguimiento semanal (indice_asuntos.json) ----
         await probarSeguimientoSemanal(navegador);

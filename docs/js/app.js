@@ -8077,6 +8077,7 @@ function toggleJuzgadosEspecificos() {
     } else {
         container.style.display = 'none';
     }
+    actualizarResumenJuzgadosGlobal();
 }
 
 function poblarCheckboxesJuzgados() {
@@ -8085,33 +8086,85 @@ function poblarCheckboxesJuzgados() {
     let html = '';
     for (const cat of CATEGORIAS_JUZGADOS) {
         html += `<div class="juzgado-grupo" style="margin-bottom:8px;">
-            <div style="font-weight:600; font-size:0.85rem; color:var(--primary-color,#2563eb); margin-bottom:4px; cursor:pointer;" onclick="toggleGrupoJuzgados(this)">
-                ${cat.icono} ${cat.nombre} <span style="font-size:0.75rem; color:#888;">(${cat.juzgados.length})</span>
+            <div class="juzgado-grupo-titulo" style="font-weight:600; font-size:0.85rem; color:var(--primary-color,#2563eb); margin-bottom:4px; cursor:pointer;" onclick="toggleGrupoJuzgados(this)" title="Marcar o desmarcar los que se ven de este grupo">
+                ${cat.icono} ${cat.nombre} <span class="juzgado-grupo-cuenta" style="font-size:0.75rem; color:#888;">(${cat.juzgados.length})</span>
             </div>`;
         for (const juzgado of cat.juzgados) {
             html += `<label class="juzgado-check-item" style="display:flex; align-items:center; gap:5px; font-size:0.8rem; padding:2px 0 2px 16px; cursor:pointer;">
-                <input type="checkbox" class="juzgado-global-cb" value="${juzgado}">
+                <input type="checkbox" class="juzgado-global-cb" value="${juzgado}" onchange="actualizarResumenJuzgadosGlobal()">
                 <span class="juzgado-check-label">${juzgado}</span>
             </label>`;
         }
         html += '</div>';
     }
     container.innerHTML = html;
+    actualizarResumenJuzgadosGlobal();
 }
 
+// Las casillas que el filtro deja a la vista.
+function juzgadosGlobalVisibles(raiz) {
+    return Array.from((raiz || document).querySelectorAll('.juzgado-global-cb'))
+        .filter(cb => cb.closest('.juzgado-check-item').style.display !== 'none');
+}
+
+// El título del grupo solo marca o desmarca lo que se ve: con el filtro
+// "isla", "OTROS MUNICIPIOS" marcaba también Tulum, Bacalar y Carrillo
+// Puerto, que no se veían, y la búsqueda abría los 9.
 function toggleGrupoJuzgados(headerEl) {
-    const grupo = headerEl.closest('.juzgado-grupo');
-    const checkboxes = grupo.querySelectorAll('.juzgado-global-cb');
-    const todosChecked = Array.from(checkboxes).every(cb => cb.checked);
+    const checkboxes = juzgadosGlobalVisibles(headerEl.closest('.juzgado-grupo'));
+    const todosChecked = checkboxes.length > 0 && checkboxes.every(cb => cb.checked);
     checkboxes.forEach(cb => cb.checked = !todosChecked);
+    actualizarResumenJuzgadosGlobal();
 }
 
 function toggleTodosJuzgadosGlobal(checked) {
-    document.querySelectorAll('.juzgado-global-cb').forEach(cb => {
-        if (cb.closest('.juzgado-check-item').style.display !== 'none') {
-            cb.checked = checked;
-        }
+    juzgadosGlobalVisibles().forEach(cb => { cb.checked = checked; });
+    actualizarResumenJuzgadosGlobal();
+}
+
+function limpiarJuzgadosGlobal() {
+    document.querySelectorAll('.juzgado-global-cb').forEach(cb => { cb.checked = false; });
+    actualizarResumenJuzgadosGlobal();
+}
+
+// Cuántos están marcados (y cuántos de esos esconde el filtro), en el
+// resumen, en cada grupo y en el botón: que nada se busque sin verse.
+function actualizarResumenJuzgadosGlobal() {
+    const todas = Array.from(document.querySelectorAll('.juzgado-global-cb'));
+    const marcadas = todas.filter(cb => cb.checked);
+    const ocultas = marcadas.filter(cb => cb.closest('.juzgado-check-item').style.display === 'none');
+
+    document.querySelectorAll('#juzgados-checkboxes .juzgado-grupo').forEach(grupo => {
+        const cbs = Array.from(grupo.querySelectorAll('.juzgado-global-cb'));
+        const visibles = juzgadosGlobalVisibles(grupo).length;
+        const n = cbs.filter(cb => cb.checked).length;
+        const cuenta = grupo.querySelector('.juzgado-grupo-cuenta');
+        if (cuenta) cuenta.textContent = '(' + (n ? n + ' de ' : '') + (visibles < cbs.length ? visibles + ' a la vista de ' + cbs.length : cbs.length) + ')';
     });
+
+    const ambitoSel = document.getElementById('busqueda-global-ambito');
+    const especificos = !!ambitoSel && ambitoSel.value === 'especificos';
+    const resumen = document.getElementById('juzgados-global-resumen');
+    if (resumen) {
+        resumen.style.display = especificos ? '' : 'none';
+        if (!marcadas.length) {
+            resumen.textContent = 'Ningún juzgado seleccionado.';
+        } else {
+            resumen.innerHTML = '<strong>' + marcadas.length + '</strong> seleccionado' + (marcadas.length === 1 ? '' : 's') +
+                (ocultas.length ? ' · <span style="color:#b45309;">⚠️ ' + ocultas.length + ' no se ve' + (ocultas.length === 1 ? '' : 'n') + ' por el filtro</span>' : '') +
+                ' · <a href="#" onclick="limpiarJuzgadosGlobal(); return false;">Quitar todos</a>';
+        }
+    }
+    const visibles = juzgadosGlobalVisibles();
+    const todosCb = document.getElementById('seleccionar-todos-juzgados');
+    if (todosCb) todosCb.checked = visibles.length > 0 && visibles.every(cb => cb.checked);
+
+    const boton = document.getElementById('btn-busqueda-global');
+    if (boton) {
+        boton.textContent = especificos
+            ? '🌐 Buscar en ' + marcadas.length + ' juzgado' + (marcadas.length === 1 ? '' : 's')
+            : '🌐 Buscar en Todos los Juzgados';
+    }
 }
 
 function filtrarJuzgadosGlobal() {
@@ -8125,6 +8178,7 @@ function filtrarJuzgadosGlobal() {
         const visibles = grupo.querySelectorAll('.juzgado-check-item:not([style*="display: none"])');
         grupo.style.display = visibles.length > 0 ? '' : 'none';
     });
+    actualizarResumenJuzgadosGlobal();
 }
 
 async function ejecutarBusquedaGlobal() {
@@ -8158,7 +8212,10 @@ async function ejecutarBusquedaGlobal() {
 
     const totalBusquedas = juzgadosABuscar.length;
 
-    if (!confirm(`Esto abrirá ${totalBusquedas} búsquedas en ventanas popup.\n\n¿Continuar?`)) {
+    const lista = ambito === 'especificos'
+        ? '\n\n' + juzgadosABuscar.slice(0, 15).map(j => '• ' + j).join('\n') + (totalBusquedas > 15 ? `\n… y ${totalBusquedas - 15} más` : '')
+        : '';
+    if (!confirm(`Esto abrirá ${totalBusquedas} ${totalBusquedas === 1 ? "búsqueda" : "búsquedas"} en ventanas popup.${lista}\n\n¿Continuar?`)) {
         return;
     }
 
