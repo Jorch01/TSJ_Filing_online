@@ -202,7 +202,7 @@ const exps = (d) => (d.results || []).map(r => r['Expediente']);
 
     console.log('\nEn el proxy');
     {
-        verificar('el worker anuncia la versión con paginación', /const WORKER_VERSION = '2026-10-28-paginas'/.test(FUENTE));
+        verificar('el worker anuncia una versión con paginación (2026-10-28 o posterior)', (FUENTE.match(/const WORKER_VERSION = '(\d{4}-\d{2}-\d{2})/) || [])[1] >= '2026-10-28');
         const viab = fs.readFileSync(path.join(__dirname, 'docs', 'js', 'impi-viabilidad.js'), 'utf8');
         verificar('el estudio de viabilidad pide más resultados a Marcanet', /maxResultados: MAX_MARCANET/.test(viab));
         const pestaña = fs.readFileSync(path.join(__dirname, 'docs', 'js', 'impi-search.js'), 'utf8');
