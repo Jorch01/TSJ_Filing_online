@@ -28,7 +28,7 @@
 
 // Sirve para confirmar, desde /health, que el worker publicado es el esperado.
 // Actualízala cuando el cambio valga la pena verificar tras desplegar.
-const WORKER_VERSION = '2026-10-28-paginas';
+const WORKER_VERSION = '2026-11-09-enlaces';
 
 const ALLOWED_ORIGINS = [
     'https://jorch01.github.io',
@@ -1627,6 +1627,25 @@ async function handleMarcanetTitular(request) {
     });
 }
 
+// ==================== ENLACES MARCANET (INICIO) ====================
+// El enlace llega del navegador. Solo se sigue si apunta a Marcanet: si no,
+// cualquiera podría usar el proxy para pedir otras páginas a nombre del
+// worker, y de paso mandarles las cookies de la sesión con el IMPI.
+function urlMarcanet(link) {
+    let url;
+    try {
+        url = new URL(/^https?:/i.test(link) ? link : MARCANET_BASE + (link.startsWith('/') ? '' : '/marcanet/') + link);
+    } catch (e) {
+        throw new Error('Enlace no válido');
+    }
+    // Mismo servidor del IMPI; el protocolo y el puerto son siempre los de MARCANET_BASE.
+    if (url.hostname !== new URL(MARCANET_BASE).hostname || url.username || url.password) {
+        throw new Error('El enlace no es de Marcanet');
+    }
+    return MARCANET_BASE + url.pathname + url.search;
+}
+// ==================== ENLACES MARCANET (FIN) ====================
+
 // Handler: seguir un enlace directo de resultados Marcanet
 async function handleMarcanetDetailLink(request) {
     let session;
@@ -1641,8 +1660,10 @@ async function handleMarcanetDetailLink(request) {
         return new Response(JSON.stringify({ error: 'Link requerido' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
 
-    // Construir URL completa si es relativa
-    const url = link.startsWith('http') ? link : MARCANET_BASE + (link.startsWith('/') ? '' : '/marcanet/') + link;
+    let url;
+    try { url = urlMarcanet(link); } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    }
 
     const resp = await fetch(url, {
         headers: marcanetHeaders(session),
@@ -1704,7 +1725,7 @@ async function handleMarcanetFullDetail(request) {
         // === PRIORIDAD 1: Link directo del resultado (tiene URL completa con tipo/anio/expediente) ===
         if (link) {
             try {
-                const url = link.startsWith('http') ? link : MARCANET_BASE + (link.startsWith('/') ? '' : '/marcanet/') + link;
+                const url = urlMarcanet(link);
                 const resp = await fetch(url, { headers: hdrs, redirect: 'follow' });
                 updateSessionCookies(sessionKey, resp);
                 const html = await resp.text();
