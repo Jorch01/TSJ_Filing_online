@@ -95,14 +95,14 @@
             duracion: '1 min',
             pasos: [
                 {
-                    titulo: '👋 Bienvenido a TSJ Filing Online',
+                    titulo: 'Bienvenido a TSJ Filing Online',
                     texto: 'En un minuto: primero dejas la app a un toque en tu celular y luego das de alta tu primer expediente con la IA. Puedes salir cuando quieras con ✕ o Esc.'
                 },
                 {
                     // Lo primero: sin el ícono en la pantalla de inicio, la
                     // app se pierde entre las pestañas del navegador.
                     saltarSi: async () => instalada(),
-                    titulo: '📲 Antes que nada: tenla a un toque',
+                    titulo: 'Antes que nada: tenla a un toque',
                     texto: 'Agrégala a la pantalla de inicio de tu celular: se abre con un toque, a pantalla completa y sin internet.',
                     contenido: instrucciones
                 },
@@ -156,7 +156,7 @@
             duracion: '20 s',
             pasos: [
                 {
-                    titulo: '📲 Tenla a un toque en tu celular',
+                    titulo: 'Tenla a un toque en tu celular',
                     texto: 'Agrega TSJ Filing a tu pantalla de inicio: se abre con un toque, a pantalla completa y funciona aunque no haya señal.',
                     contenido: instrucciones
                 }
@@ -313,12 +313,12 @@
                 {
                     saltarSi: sinNotas,
                     objetivo: '#lista-notas .nota-fijar',
-                    titulo: '📌 Fija lo importante',
+                    titulo: 'Fija lo importante',
                     texto: 'Una nota fijada queda arriba de todas y a mano en "Notas fijadas" del inicio.'
                 },
                 {
                     saltarSi: async () => !(await sinNotas()),
-                    titulo: '📌 Lo importante, siempre arriba',
+                    titulo: 'Lo importante, siempre arriba',
                     texto: 'Cada nota trae una 📌: al fijarla queda arriba de todas y a mano en "Notas fijadas" del inicio.'
                 }
             ]

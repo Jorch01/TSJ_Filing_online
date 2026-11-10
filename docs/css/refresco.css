@@ -427,3 +427,17 @@ textarea:focus { box-shadow: var(--shadow-anillo); }
 @media (prefers-reduced-motion: reduce) {
     .stat-interactiva:hover { transform: none; }
 }
+
+/* ==================== EMOJIS CONVERTIDOS EN ÍCONOS ==================== */
+/* js/iconos.js cambia cada emoji por su ícono; aquí se ajusta al texto. */
+.ico-emoji { width: 1.15em; height: 1.15em; vertical-align: -0.18em; }
+.ico-punto { fill: currentColor; stroke: none; width: 0.9em; height: 0.9em; vertical-align: -0.08em; }
+.ico-punto-rojo { color: var(--danger); }
+.ico-punto-amarillo { color: var(--warning); }
+.ico-punto-naranja { color: var(--cobre-hondo); }
+.ico-punto-verde { color: var(--success); }
+.ico-punto-azul { color: var(--info); }
+.ico-punto-gris { color: var(--text-muted); }
+/* Los estados vacíos llevaban un emoji grande: ahora un ícono tenue. */
+.empty-state > span .ico-emoji,
+.empty-state > .ico-emoji { color: var(--text-muted); }
