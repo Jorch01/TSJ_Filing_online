@@ -1,0 +1,429 @@
+/* TSJ Filing · refresco visual 2026 (Empírica Legal Lab)
+   Se carga después de styles.css y solo cambia la apariencia.
+   Regla de la paleta: superficies pastel; el Bosque (--primary) y el Cobre
+   solo en la acción principal, la sección activa y la estrella. */
+
+/* ==================== LETRA ==================== */
+body { font-family: var(--font-ui); }
+button, input, select, textarea { font-family: inherit; }
+
+.page-header h2,
+.card-header h3,
+.panel-rapido-cabecera h3,
+.modal-header h3,
+.stat-value,
+.marca-filing {
+    font-family: var(--font-display);
+}
+
+.page-header h2 {
+    font-weight: 400;
+    font-size: clamp(1.6rem, 2.4vw, 2.2rem);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+}
+
+.card-header h3,
+.panel-rapido-cabecera h3 { font-weight: 500; font-size: 1.15rem; letter-spacing: -0.01em; }
+.modal-header h3 { font-weight: 500; }
+
+/* Etiqueta espaciada, como el «P R E S E N T E» de un escrito. */
+.eyebrow {
+    display: block;
+    font-family: var(--font-ui);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--cobre-hondo);
+    margin: 0 0 0.35rem;
+}
+
+/* ==================== ÍCONOS ==================== */
+.ico {
+    width: 1.25em;
+    height: 1.25em;
+    flex-shrink: 0;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vertical-align: -0.2em;
+}
+
+/* ==================== LOGO ==================== */
+.header-brand { gap: 0.7rem; }
+.brand-logo { width: 38px; height: 38px; flex-shrink: 0; stroke: none; }
+.brand-text { display: flex; flex-direction: column; gap: 3px; }
+.marca-palabra {
+    display: flex;
+    align-items: baseline;
+    gap: 0.22em;
+    margin: 0;
+    font-size: 1.2rem;
+    line-height: 1;
+    color: var(--text-primary);
+    letter-spacing: 0;
+}
+.marca-tsj { font-weight: 800; letter-spacing: -0.035em; }
+.marca-filing { font-style: italic; font-weight: 400; font-size: 1.12em; letter-spacing: -0.02em; }
+/* La estrella de Empírica sustituye el punto de la «i». */
+.marca-i { position: relative; display: inline-block; }
+.marca-estrella {
+    position: absolute;
+    width: 0.32em;
+    height: 0.32em;
+    left: 50%;
+    top: 0.24em;
+    transform: translateX(-22%);
+    fill: var(--estrella);
+    stroke: none;
+}
+.brand-subtitle {
+    font-size: 0.58rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    white-space: nowrap;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    opacity: 1;
+}
+
+/* ==================== ENCABEZADO Y NAVEGACIÓN ==================== */
+/* Celular y tableta: barra superior clara con menú desplegable. */
+.app-header,
+[data-theme="dark"] .app-header {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: none;
+    height: 64px;
+}
+
+.nav-btn { color: var(--text-secondary); font-weight: 500; }
+.nav-btn:hover { background: var(--niebla); color: var(--text-primary); }
+.nav-btn.active { background: var(--bg-primary); color: var(--text-primary); font-weight: 700; box-shadow: var(--shadow-sm); }
+.nav-btn .ico { width: 20px; height: 20px; }
+.nav-grupo { display: none; }
+
+.menu-toggle {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 1rem;
+    align-items: center;
+    justify-content: center;
+}
+.menu-toggle .ico { width: 22px; height: 22px; }
+
+.mobile-nav,
+[data-theme="dark"] .mobile-nav {
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: var(--shadow-md);
+    padding: 0.75rem;
+    gap: 2px;
+}
+.mobile-nav .nav-btn { min-height: 46px; gap: 0.75rem; border-radius: var(--radius); font-size: 0.95rem; }
+.mobile-nav .nav-btn.active { background: var(--niebla); box-shadow: none; }
+
+.nav-badge,
+[data-theme="dark"] .nav-badge {
+    background: var(--urgente-fondo);
+    color: var(--urgente-tinta);
+    margin-left: auto;
+    min-width: 1.35rem;
+    height: 1.35rem;
+    font-size: 0.72rem;
+}
+
+@media (max-width: 1023px) {
+    .header-nav { display: none; }
+    .menu-toggle { display: inline-flex; }
+}
+
+/* Escritorio: barra lateral pastel con las secciones agrupadas. */
+@media (min-width: 1024px) {
+    .app-header,
+    [data-theme="dark"] .app-header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 248px;
+        height: auto;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        gap: 1.5rem;
+        padding: 1.6rem 1rem 1.25rem;
+        background: var(--niebla);
+        border-bottom: 0;
+        border-right: 1px solid var(--border-color);
+        overflow-y: auto;
+    }
+    .header-brand { padding: 0 0.4rem; }
+    .header-nav { flex-direction: column; gap: 2px; }
+    .nav-grupo {
+        display: block;
+        padding: 0.9rem 0.75rem 0.35rem;
+        font-size: 0.66rem;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--text-secondary);
+    }
+    .nav-grupo:first-child { padding-top: 0; }
+    .header-nav .nav-btn {
+        width: 100%;
+        justify-content: flex-start;
+        gap: 0.75rem;
+        min-height: 42px;
+        padding: 0 0.75rem;
+        border-radius: var(--radius);
+        font-size: 0.9rem;
+    }
+    .header-nav .nav-btn:hover { background: rgba(255, 255, 255, 0.6); }
+    [data-theme="dark"] .header-nav .nav-btn:hover { background: rgba(255, 255, 255, 0.05); }
+    /* La sección activa lleva la estrella cobre. */
+    .header-nav .nav-btn.active::after {
+        content: "";
+        width: 9px;
+        height: 9px;
+        margin-left: auto;
+        background: var(--estrella);
+        -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpolygon points='6,0 6.48,4.85 8.4,3.6 7.15,5.52 12,6 7.15,6.48 8.4,8.4 6.48,7.15 6,12 5.52,7.15 3.6,8.4 4.85,6.48 0,6 4.85,5.52 3.6,3.6 5.52,4.85'/%3E%3C/svg%3E") center / contain no-repeat;
+                mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpolygon points='6,0 6.48,4.85 8.4,3.6 7.15,5.52 12,6 7.15,6.48 8.4,8.4 6.48,7.15 6,12 5.52,7.15 3.6,8.4 4.85,6.48 0,6 4.85,5.52 3.6,3.6 5.52,4.85'/%3E%3C/svg%3E") center / contain no-repeat;
+    }
+    .header-nav .nav-btn.active:has(.nav-badge:not([style*="none"]))::after { display: none; }
+
+    .menu-toggle,
+    .mobile-nav,
+    .mobile-nav.active { display: none; }
+
+    .app-main,
+    .app-footer { margin-left: 248px; }
+    .app-main { max-width: none; padding: 2rem clamp(1.5rem, 3vw, 3rem) 3.5rem; }
+    .app-main > .page { max-width: 1200px; margin-inline: auto; }
+    /* Las cuatro tarjetas de resumen siempre en una fila. */
+    .stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* ==================== PÁGINAS ==================== */
+.page-header-inicio { margin-bottom: 1.75rem; }
+#inicio-fecha:empty { display: none; }
+
+/* Tarjetas de resumen de Inicio: una por pastel. */
+.stat-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 1.2rem 1.3rem;
+    border-radius: 20px;
+    box-shadow: none;
+}
+.stat-interactiva { border: 2px solid transparent; }
+.stat-interactiva:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.stat-interactiva.abierta { border-color: var(--primary); }
+#stat-card-pendientes { background: var(--durazno); }
+#stat-card-eventos { background: var(--lila); }
+#stat-card-expedientes { background: var(--salvia); }
+#stat-card-notas { background: var(--laguna); }
+.stat-icon,
+[data-theme="dark"] .stat-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.7) !important;
+    color: var(--text-primary);
+}
+[data-theme="dark"] .stat-icon { background: rgba(255, 255, 255, 0.08) !important; }
+.stat-icon .ico { width: 19px; height: 19px; }
+.stat-value { font-size: 2.6rem; font-weight: 400; line-height: 1; color: var(--text-primary); }
+.stat-label { font-size: 0.85rem; font-weight: 600; color: var(--text-primary); }
+.stat-detalle { color: var(--text-secondary); font-size: 0.78rem; }
+.stat-interactiva.urgente .stat-value { color: var(--urgente-tinta); }
+
+/* Atajos */
+.quick-actions h3.eyebrow { color: var(--text-secondary); margin-bottom: 0.9rem; font-size: 0.7rem; }
+.action-card,
+.action-card.primary {
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 18px;
+    font-weight: 700;
+    text-align: left;
+}
+.action-card:hover,
+.action-card.primary:hover { border-color: var(--border-fuerte); background: var(--bg-primary); box-shadow: var(--shadow); }
+.action-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--niebla);
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+.action-icon .ico { width: 22px; height: 22px; }
+.actions-grid .action-card:nth-child(1) .action-icon { background: var(--salvia); }
+.actions-grid .action-card:nth-child(2) .action-icon { background: var(--primary); color: #fff; }
+.actions-grid .action-card:nth-child(3) .action-icon { background: var(--laguna); }
+.actions-grid .action-card:nth-child(4) .action-icon { background: var(--lila); }
+.actions-grid .action-card:nth-child(5) .action-icon { background: var(--durazno); }
+.actions-grid .action-card:nth-child(6) .action-icon { background: var(--concha); }
+
+/* Tarjetas generales */
+.card { border-radius: 20px; box-shadow: none; }
+.card-header { padding: 1rem 1.3rem; }
+
+/* ==================== BOTONES Y CAMPOS ==================== */
+.btn {
+    border-radius: var(--radius-full);
+    font-weight: 700;
+    padding: 0.55rem 1.1rem;
+    min-height: 40px;
+}
+.btn-sm { min-height: 32px; padding: 0.3rem 0.8rem; }
+.btn-primary { box-shadow: none; }
+.btn-secondary { border-color: var(--border-fuerte); }
+.btn-outline { border-width: 1.5px; }
+
+input:focus,
+select:focus,
+textarea:focus { box-shadow: var(--shadow-anillo); }
+:focus-visible { outline-color: var(--primary); }
+
+/* Selector de tribunal: la opción activa en blanco, no en color duro. */
+.tribunal-selector { background: var(--niebla); border-color: transparent; }
+.tribunal-opcion.activa { background: var(--bg-primary); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+
+/* ==================== CALENDARIO ==================== */
+.calendario-header { background: var(--niebla); color: var(--text-primary); }
+.calendario-header div { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; }
+.dia-cell.es-hoy,
+[data-theme="dark"] .dia-cell.es-hoy { background: var(--niebla) !important; }
+.dia-cell.es-hoy .dia-numero,
+[data-theme="dark"] .dia-cell.es-hoy .dia-numero { background: var(--primary); color: #fff; }
+/* Días inhábiles en durazno, no en rojo. */
+.dia-cell.dia-inhabil,
+[data-theme="dark"] .dia-cell.dia-inhabil { background: var(--durazno); border-color: var(--concha-borde); }
+.dia-cell.dia-inhabil:hover,
+[data-theme="dark"] .dia-cell.dia-inhabil:hover { background: var(--durazno); filter: brightness(0.97); }
+.dia-inhabil-label,
+[data-theme="dark"] .dia-inhabil-label { color: var(--cobre-hondo); background: transparent; }
+.leyenda-color[style*="ffebee"],
+[data-theme="dark"] .leyenda-inhabiles .leyenda-color[style*="ffebee"] { background: var(--durazno) !important; }
+.leyenda-color[style*="e3f2fd"],
+[data-theme="dark"] .leyenda-inhabiles .leyenda-color[style*="e3f2fd"] { background: var(--niebla) !important; }
+
+/* ==================== ANUNCIOS ==================== */
+/* Tarjeta Concha discreta en lugar del recuadro gris punteado. */
+.ad-banner,
+[data-theme="dark"] .ad-banner {
+    background: var(--concha);
+    border: 1px solid var(--concha-borde);
+    border-radius: 20px;
+}
+.ad-label {
+    background: transparent;
+    color: var(--cobre-hondo);
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    padding: 0;
+}
+.ad-text-link { background: transparent; }
+.ad-detallado .ad-titulo,
+.ad-detallado strong { color: var(--text-primary); }
+/* La llamada del anuncio: contorno Bosque, sin el verde de WhatsApp. */
+.ad-detallado .ad-llamada {
+    background: transparent;
+    color: var(--primary);
+    border: 1.5px solid var(--primary);
+    font-weight: 700;
+    padding: 0.4rem 1rem;
+}
+.ad-text-link.ad-detallado:hover .ad-llamada { filter: none; background: var(--primary); color: #fff; }
+
+/* ==================== BOTONES FLOTANTES ==================== */
+#voz-fab { box-shadow: 0 10px 26px rgba(27, 49, 43, 0.28); }
+#voz-fab .ico { width: 24px; height: 24px; }
+#tour-fab,
+#fab-feedback { color: var(--text-primary); opacity: 0.8; box-shadow: var(--shadow); }
+#tour-fab .ico,
+#fab-feedback .ico { width: 20px; height: 20px; }
+
+/* ==================== PIE ==================== */
+.app-footer,
+[data-theme="dark"] .app-footer {
+    background: var(--niebla);
+    color: var(--text-secondary);
+    border-top: 1px solid var(--border-color);
+}
+.app-footer strong,
+.footer-brand strong { color: var(--text-primary); }
+.footer-brand a,
+.footer-contact a,
+.footer-links a { color: var(--text-primary); text-decoration: underline; text-decoration-color: var(--cobre); text-underline-offset: 3px; }
+.footer-links a:hover,
+.footer-contact a:hover,
+.footer-brand a:hover { color: var(--cobre-hondo); }
+.footer-contact h4,
+.footer-links h4,
+.footer-disclaimer h4 {
+    color: var(--cobre-hondo);
+    font-size: 0.7rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+.footer-contact p,
+.footer-disclaimer p,
+.footer-copyright p { color: var(--text-secondary); }
+.footer-disclaimer { background: rgba(27, 49, 43, 0.04); }
+[data-theme="dark"] .footer-disclaimer { background: rgba(255, 255, 255, 0.03); }
+.footer-copyright { border-top-color: var(--border-color); }
+.footer-logo { display: inline-flex; }
+.footer-logo .brand-logo { width: 40px; height: 40px; }
+
+/* Botón de éxito en pastel: el color duro queda para la acción principal. */
+.btn-success { background: var(--bien-fondo); color: var(--bien-tinta); border-color: transparent; }
+.btn-success:hover { filter: none; background: var(--bien-fondo); box-shadow: inset 0 0 0 1.5px var(--bien-tinta); }
+
+/* ==================== EXPEDIENTES ==================== */
+.expediente-card { border-radius: 18px; box-shadow: none; }
+/* Dentro de cada tarjeta, el botón de estrados va en pastel: con veinte
+   tarjetas, veinte botones Bosque gritarían a la vez. */
+.expediente-card .btn-primary { background: var(--niebla); color: var(--text-primary); }
+.expediente-card .btn-primary:hover { background: var(--salvia); }
+.expediente-categoria,
+.categoria-badge,
+[data-theme="dark"] .expediente-categoria,
+[data-theme="dark"] .categoria-badge { background: var(--niebla); color: var(--text-primary); }
+.institucion-badge.tsj,
+[data-theme="dark"] .institucion-badge.tsj { background: var(--salvia); color: var(--bien-tinta); border-color: transparent; }
+.institucion-badge.pjf,
+[data-theme="dark"] .institucion-badge.pjf { background: var(--laguna); color: var(--laguna-tinta); border-color: transparent; }
+.institucion-badge.otro,
+[data-theme="dark"] .institucion-badge.otro { background: var(--durazno); color: var(--cobre-hondo); border-color: transparent; }
+
+/* El día inhábil ya se distingue por su color y su etiqueta. */
+.dia-inhabil-icon { display: none; }
+
+@media (max-width: 600px) {
+    .ad-content { flex-direction: column; align-items: flex-start; gap: 0.4rem; }
+    .ad-body { min-width: 0; width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .stat-interactiva:hover { transform: none; }
+}

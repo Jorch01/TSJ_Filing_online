@@ -273,7 +273,7 @@
         fab.type = 'button';
         fab.title = 'Asistente de voz';
         fab.setAttribute('aria-label', 'Abrir asistente de voz');
-        fab.innerHTML = '🎤';
+        fab.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-mic"></use></svg>';
         fab.addEventListener('click', alternarPanel);
         document.body.appendChild(fab);
 

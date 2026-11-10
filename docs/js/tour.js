@@ -698,11 +698,13 @@
         return el;
     }
 
-    /** Lo que tapa la barra fija de arriba. */
+    /** Lo que tapa la barra fija de arriba. En escritorio el encabezado es
+     *  una barra lateral: no tapa nada por arriba. */
     function altoEncabezado() {
         const h = document.querySelector('.app-header');
         if (!h) return 0;
         const r = h.getBoundingClientRect();
+        if (r.width < document.documentElement.clientWidth / 2) return 0;
         return getComputedStyle(h).position === 'fixed' || getComputedStyle(h).position === 'sticky' ? Math.max(0, r.bottom) : 0;
     }
 
@@ -903,7 +905,7 @@
         fab.title = 'Recorridos guiados: aprende a usar la app';
         fab.setAttribute('aria-label', 'Recorridos guiados');
         fab.setAttribute('aria-haspopup', 'menu');
-        fab.textContent = '🧭';
+        fab.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-brujula"></use></svg>';
         fab.addEventListener('click', (e) => { e.stopPropagation(); alternarMenuTour(); });
         document.body.appendChild(fab);
     }
