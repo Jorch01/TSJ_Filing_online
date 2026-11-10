@@ -424,6 +424,36 @@ textarea:focus { box-shadow: var(--shadow-anillo); }
     .ad-body { min-width: 0; width: 100%; }
 }
 
+/* ==================== AUDITORÍA: LEGIBILIDAD ==================== */
+/* Enlaces dentro del texto: verde de la marca, no el azul del navegador. */
+a { color: var(--enlace); }
+a:hover { color: var(--text-primary); }
+
+/* Botón «?» de ayuda: era blanco sobre turquesa claro en modo oscuro. */
+.help-btn { background: var(--laguna); color: var(--laguna-tinta); }
+.help-btn:hover { background: var(--primary); color: #fff; }
+.ocr-status { background: var(--laguna); color: var(--laguna-tinta); }
+
+/* Sección Premium: sin el degradado amarillo ni el título naranja. */
+.premium-section,
+[data-theme="dark"] .premium-section {
+    background: var(--concha);
+    border: 1px solid var(--concha-borde);
+}
+.premium-section h3,
+[data-theme="dark"] .premium-section h3 { color: var(--cobre-hondo); }
+.plan-badge.premium,
+[data-theme="dark"] .plan-badge.premium { background: var(--durazno); color: var(--cobre-hondo); }
+
+/* Motivo de archivo: pastel con texto oscuro (eran blanco sobre verde,
+   rojo y naranja brillantes). */
+.motivo-concluido { background: var(--bien-fondo); color: var(--bien-tinta); }
+.motivo-abandonado { background: var(--urgente-fondo); color: var(--urgente-tinta); }
+.motivo-otro { background: var(--aviso-fondo); color: var(--aviso-tinta); }
+
+/* Recomendar por WhatsApp: el verde de WhatsApp con texto blanco no se leía. */
+.rec-whatsapp { background: var(--primary); border-color: var(--primary); color: #fff; }
+
 @media (prefers-reduced-motion: reduce) {
     .stat-interactiva:hover { transform: none; }
 }

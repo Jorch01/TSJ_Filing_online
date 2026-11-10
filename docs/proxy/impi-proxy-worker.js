@@ -28,7 +28,7 @@
 
 // Sirve para confirmar, desde /health, que el worker publicado es el esperado.
 // Actualízala cuando el cambio valga la pena verificar tras desplegar.
-const WORKER_VERSION = '2026-11-09-enlaces';
+const WORKER_VERSION = '2026-11-10-auditoria';
 
 const ALLOWED_ORIGINS = [
     'https://jorch01.github.io',
@@ -394,6 +394,29 @@ export default {
     }
 };
 
+// ==================== RESPUESTAS DEL IMPI (INICIO) ====================
+// Cuando un servicio del IMPI se cae responde con error y el cuerpo vacío
+// (MARCia daba 500 sin nada). Leerlo como JSON tronaba con "Unexpected end of
+// JSON input" y ese texto técnico llegaba tal cual a la pantalla. Aquí se
+// devuelve un mensaje que se entiende.
+async function jsonDelIMPI(resp, servicio) {
+    const texto = await resp.text();
+    try {
+        return { data: JSON.parse(texto) };
+    } catch (e) {
+        const mensaje = servicio + ' (IMPI) no está respondiendo' +
+            (resp.status >= 400 ? ' (error ' + resp.status + ' de su servidor)' : '') +
+            '. Suele ser temporal: intenta de nuevo más tarde.';
+        return {
+            respuesta: new Response(JSON.stringify({ error: mensaje, servicio, status: resp.status }), {
+                status: 502,
+                headers: { 'Content-Type': 'application/json' }
+            })
+        };
+    }
+}
+// ==================== RESPUESTAS DEL IMPI (FIN) ====================
+
 // ==================== MARCia HANDLERS ====================
 
 async function handleMarciaCsrf(request) {
@@ -453,8 +476,9 @@ async function handleMarciaSearch(request) {
         body: JSON.stringify(body)
     });
 
-    const data = await resp.json();
-    return respuestaConSesion(data, resp.status, conCookiesActualizadas(session, resp), request);
+    const leido = await jsonDelIMPI(resp, 'MARCia');
+    if (leido.respuesta) return leido.respuesta;
+    return respuestaConSesion(leido.data, resp.status, conCookiesActualizadas(session, resp), request);
 }
 
 async function handleMarciaResults(request) {
@@ -477,8 +501,9 @@ async function handleMarciaResults(request) {
         body: JSON.stringify(body)
     });
 
-    const data = await resp.json();
-    return respuestaConSesion(data, resp.status, conCookiesActualizadas(session, resp), request);
+    const leido = await jsonDelIMPI(resp, 'MARCia');
+    if (leido.respuesta) return leido.respuesta;
+    return respuestaConSesion(leido.data, resp.status, conCookiesActualizadas(session, resp), request);
 }
 
 async function handleMarciaView(request, markId) {
@@ -496,8 +521,9 @@ async function handleMarciaView(request, markId) {
         }
     });
 
-    const data = await resp.json();
-    return respuestaConSesion(data, resp.status, conCookiesActualizadas(session, resp), request);
+    const leido = await jsonDelIMPI(resp, 'MARCia');
+    if (leido.respuesta) return leido.respuesta;
+    return respuestaConSesion(leido.data, resp.status, conCookiesActualizadas(session, resp), request);
 }
 
 // ==================== SIGA HANDLERS ====================
@@ -597,7 +623,8 @@ async function handleSigaSearch(request) {
 
     const sigaPayload = {
         Busqueda: body.Busqueda || '',
-        IdArea: body.IdArea || '2',
+        // Como texto: SIGA rechaza el área numérica con un 400.
+        IdArea: String(body.IdArea || '2'),
         IdGaceta: body.IdGaceta || [],
         FechaDesde: body.FechaDesde || '',
         FechaHasta: body.FechaHasta || '',

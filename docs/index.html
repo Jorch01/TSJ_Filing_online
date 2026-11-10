@@ -673,9 +673,9 @@
             <div class="filters-section">
                 <div class="search-box">
                     <span class="search-icon">🔍</span>
-                    <input type="text" id="buscar-expediente" placeholder="Buscar expedientes..." oninput="filtrarExpedientesDebounced()">
+                    <input type="text" id="buscar-expediente" aria-label="Buscar expedientes" placeholder="Buscar expedientes..." oninput="filtrarExpedientesDebounced()">
                 </div>
-                <select id="filtro-categoria" onchange="filtrarExpedientes()">
+                <select id="filtro-categoria" aria-label="Filtrar por categoría" onchange="filtrarExpedientes()">
                     <option value="">Todas las categorías</option>
                 </select>
                 <select id="filtro-carpeta" onchange="filtrarExpedientes()" title="Filtrar por carpeta">
@@ -877,17 +877,17 @@
             <div class="filters-section">
                 <div class="search-box">
                     <span class="search-icon">🔍</span>
-                    <input type="text" id="buscar-pendiente" placeholder="Buscar pendientes..." oninput="renderizarPendientesDebounced()">
+                    <input type="text" id="buscar-pendiente" aria-label="Buscar pendientes" placeholder="Buscar pendientes..." oninput="renderizarPendientesDebounced()">
                 </div>
-                <select id="filtro-expediente-pendiente" onchange="renderizarPendientes()">
+                <select id="filtro-expediente-pendiente" aria-label="Filtrar pendientes por expediente" onchange="renderizarPendientes()">
                     <option value="">Todos los expedientes</option>
                 </select>
-                <select id="filtro-estado-pendiente" onchange="renderizarPendientes()">
+                <select id="filtro-estado-pendiente" aria-label="Filtrar pendientes por estado" onchange="renderizarPendientes()">
                     <option value="abiertos">Por hacer</option>
                     <option value="completados">Terminados</option>
                     <option value="todos">Todos</option>
                 </select>
-                <select id="filtro-prioridad-pendiente" onchange="renderizarPendientes()">
+                <select id="filtro-prioridad-pendiente" aria-label="Filtrar pendientes por prioridad" onchange="renderizarPendientes()">
                     <option value="">Cualquier prioridad</option>
                     <option value="alta">🔴 Alta</option>
                     <option value="media">🟡 Media</option>
@@ -944,9 +944,9 @@
             <div class="filters-section">
                 <div class="search-box">
                     <span class="search-icon">🔍</span>
-                    <input type="text" id="buscar-nota" placeholder="Buscar notas..." oninput="filtrarNotas()">
+                    <input type="text" id="buscar-nota" aria-label="Buscar notas" placeholder="Buscar notas..." oninput="filtrarNotas()">
                 </div>
-                <select id="filtro-expediente-nota" onchange="filtrarNotas()">
+                <select id="filtro-expediente-nota" aria-label="Filtrar notas por expediente" onchange="filtrarNotas()">
                     <option value="">Todos los expedientes</option>
                 </select>
                 <span class="results-count" id="count-notas">0 notas</span>
@@ -1011,7 +1011,7 @@
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="tsj-juzgado">Juzgado o Sala *</label>
-                                <input type="text" id="tsj-juzgado-search" class="catalog-search-input"
+                                <input type="text" id="tsj-juzgado-search" aria-label="Filtrar juzgados por texto" class="catalog-search-input"
                                     placeholder="Filtrar juzgados por texto..."
                                     oninput="filtrarJuzgadosSelect('tsj-juzgado-search','tsj-juzgado')"
                                     autocomplete="off" style="margin-bottom:0.35rem;">
@@ -1097,13 +1097,13 @@
                             </div>
                             <div class="form-group">
                                 <label>Valor a buscar</label>
-                                <input type="text" id="busqueda-global-valor" placeholder="Ej: 1234/2025 o Juan Pérez">
+                                <input type="text" id="busqueda-global-valor" aria-label="Valor a buscar" placeholder="Ej: 1234/2025 o Juan Pérez">
                             </div>
                         </div>
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Buscar en</label>
-                                <select id="busqueda-global-ambito" onchange="toggleJuzgadosEspecificos()">
+                                <select id="busqueda-global-ambito" aria-label="Buscar en" onchange="toggleJuzgadosEspecificos()">
                                     <option value="todos">Todos (Primera + Segunda Instancia)</option>
                                     <option value="primera">Solo Primera Instancia</option>
                                     <option value="segunda">Solo Segunda Instancia (Salas)</option>
@@ -1715,7 +1715,7 @@
             <div class="card" style="margin-bottom: 12px;">
                 <div class="card-body" style="padding: 12px 16px;">
                     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                        <input type="text" id="impi-unified-query" placeholder="Buscar en MARCia + Marcanet + SIGA a la vez..." style="flex: 1; min-width: 200px;" autocomplete="off">
+                        <input type="text" id="impi-unified-query" aria-label="Buscar en MARCia, Marcanet y SIGA" placeholder="Buscar en MARCia + Marcanet + SIGA a la vez..." style="flex: 1; min-width: 200px;" autocomplete="off">
                         <button class="btn btn-primary" onclick="buscarEnLas3()">
                             🔍 Buscar en las 3
                         </button>
@@ -2604,11 +2604,11 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>API Key de Gemini</label>
-                            <input type="password" id="ia-api-key" placeholder="AIza...">
+                            <input type="password" id="ia-api-key" aria-label="API Key de Gemini" placeholder="AIza...">
                         </div>
                         <div class="form-group">
                             <label>Modelo</label>
-                            <select id="ia-modelo">
+                            <select id="ia-modelo" aria-label="Modelo de Gemini">
                                 <option value="gemini-2.5-flash">gemini-2.5-flash</option>
                             </select>
                             <p class="text-muted" style="font-size: 0.72rem; margin-top: 0.3rem;">
@@ -2651,7 +2651,7 @@
                 </div>
                 <div class="form-group">
                     <label>Velocidad de la voz: <span id="voz-cfg-rate-valor">1.05x</span></label>
-                    <input type="range" id="voz-cfg-rate" min="0.7" max="1.4" step="0.05" value="1.05" style="width:100%; max-width:320px; display:block;">
+                    <input type="range" id="voz-cfg-rate" aria-label="Velocidad de la voz" min="0.7" max="1.4" step="0.05" value="1.05" style="width:100%; max-width:320px; display:block;">
                 </div>
             </div>
 
@@ -2739,21 +2739,21 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Service ID</label>
-                            <input type="text" id="email-service-id" placeholder="service_xxxxxxx">
+                            <input type="text" id="email-service-id" aria-label="Service ID de EmailJS" placeholder="service_xxxxxxx">
                         </div>
                         <div class="form-group">
                             <label>Public Key</label>
-                            <input type="text" id="email-public-key" placeholder="Tu clave pública">
+                            <input type="text" id="email-public-key" aria-label="Public Key de EmailJS" placeholder="Tu clave pública">
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
                             <label>Template ID</label>
-                            <input type="text" id="email-template-id" placeholder="template_xxxxxxx">
+                            <input type="text" id="email-template-id" aria-label="Template ID de EmailJS" placeholder="template_xxxxxxx">
                         </div>
                         <div class="form-group">
                             <label>Tu Email</label>
-                            <input type="email" id="email-destino" placeholder="tu@email.com">
+                            <input type="email" id="email-destino" aria-label="Correo de destino" placeholder="tu@email.com">
                         </div>
                     </div>
                     <div class="form-actions">
@@ -2857,13 +2857,13 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Tu nombre o identificador</label>
-                            <input type="text" id="premium-username" placeholder="Ej: Juan Pérez o Despacho ABC">
+                            <input type="text" id="premium-username" aria-label="Tu nombre o el de tu despacho" placeholder="Ej: Juan Pérez o Despacho ABC">
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
                             <label>Código de activación</label>
-                            <input type="text" id="premium-code" placeholder="Ingresa tu código...">
+                            <input type="text" id="premium-code" aria-label="Código de activación" placeholder="Ingresa tu código...">
                         </div>
                         <button class="btn btn-success" onclick="activarPremium()">⭐ Activar</button>
                     </div>
@@ -2892,7 +2892,7 @@
                             <p>4. Te damos de alta y te mandamos tu código de activación: ingrésalo arriba con tu nombre.</p>
                         </div>
                     </div>
-                    <div class="info-banner" style="margin-top: 0.75rem; background: #f5f5f5; border-left-color: #6c757d;">
+                    <div class="info-banner" style="margin-top: 0.75rem; background: var(--bg-secondary); border-left-color: var(--border-fuerte);">
                         <div class="info-icon">🧾</div>
                         <div class="info-content">
                             <h4>¿Necesitas factura?</h4>
@@ -3169,7 +3169,11 @@
             title="Sugerir una mejora o reportar un problema"
             aria-label="Sugerir una mejora o reportar un problema"><svg class="ico" aria-hidden="true"><use href="#i-foco"></use></svg></button>
 
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+    <!-- DOMPurify fijado a una versión y con su huella (integrity): si la CDN
+         entregara otro archivo, el navegador no lo ejecuta. Al cambiar de
+         versión, actualiza también la huella, sw.js y test_ui_navegador.js. -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.17/dist/purify.min.js"
+            integrity="sha384-P0JNneQf81HOl9VwNXK76cQ9VMD6Nfsnepxb0cCOg8+UzEdzgPHAPV4wVQrvYQSx" crossorigin="anonymous"></script>
     <!-- Tesseract.js (OCR) no va aquí: se carga al usarse (cargarTesseract en
          app.js). Como <script> normal, con señal débil la página se quedaba
          esperándolo y la app abría sin mostrar ningún dato. -->

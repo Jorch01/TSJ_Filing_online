@@ -1016,7 +1016,7 @@ function renderizarResultadosSIGA() {
                                 }).join('') +
                             '</table>' +
                         '</div>' +
-                        (ficha.imagen ? '<div class="siga-detail-section"><div class="siga-detail-heading">Imagen</div><div class="siga-detail-img-wrap" id="siga-img-' + idx + '"><button class="btn-sm" onclick="cargarImagenSIGA(' + ficha.fichaId + ', ' + idx + ')">Cargar imagen</button></div></div>' : '') +
+                        (ficha.imagen ? '<div class="siga-detail-section"><div class="siga-detail-heading">Imagen</div><div class="siga-detail-img-wrap" id="siga-img-' + idx + '"><button class="btn-sm" onclick="cargarImagenSIGA(' + (Number(ficha.fichaId) || 0) + ', ' + idx + ')">Cargar imagen</button></div></div>' : '') +
                     '</div>' +
                 '</div>' +
             '</div>' +
@@ -1043,8 +1043,11 @@ async function cargarImagenSIGA(fichaId, idx) {
             method: 'POST',
             body: JSON.stringify({ id: fichaId, reCaptchaToken: '' })
         });
-        if (data && data.data && data.data.imagen) {
-            wrap.innerHTML = '<img src="data:image/png;base64,' + data.data.imagen + '" alt="Imagen de marca" class="siga-detail-img" />';
+        // La imagen llega del IMPI en base64: solo se usa si de verdad lo es,
+        // para que una respuesta rara no pueda romper el atributo src.
+        var b64 = data && data.data && typeof data.data.imagen === 'string' ? data.data.imagen.replace(/\s+/g, '') : '';
+        if (b64 && /^[A-Za-z0-9+/]+=*$/.test(b64)) {
+            wrap.innerHTML = '<img src="data:image/png;base64,' + b64 + '" alt="Imagen de marca" class="siga-detail-img" />';
         } else {
             wrap.innerHTML = '<span class="siga-detail-no-img">Imagen no disponible</span>';
         }
