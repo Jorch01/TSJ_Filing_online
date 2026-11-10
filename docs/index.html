@@ -395,6 +395,28 @@
                 </button>
             </div>
             <div class="panel-rapido card" id="panel-rapido" role="region" aria-live="polite" hidden></div>
+
+            <!-- Sesiones de los Tribunales Colegiados: al abrir la app se
+                 revisa si algún amparo directo registrado está listado para
+                 sesión (js/sesiones-pjf.js). Oculta para quien no lleva
+                 asuntos en tribunales colegiados. -->
+            <div class="card sesiones-pjf" id="sesiones-pjf" role="region" aria-labelledby="sesiones-pjf-titulo" hidden>
+                <div class="card-header">
+                    <h3 id="sesiones-pjf-titulo">Sesiones de Tribunales Colegiados</h3>
+                    <div class="sesiones-pjf-controles">
+                        <select id="sesiones-pjf-semanas" aria-label="Periodo que se revisa">
+                            <option value="1">Esta semana</option>
+                            <option value="2" selected>2 semanas</option>
+                            <option value="3">3 semanas</option>
+                            <option value="4">4 semanas</option>
+                        </select>
+                        <button type="button" class="btn btn-sm btn-secondary" id="sesiones-pjf-actualizar"
+                                title="Volver a consultar las listas ahora">Actualizar</button>
+                    </div>
+                </div>
+                <div class="card-body" id="sesiones-pjf-cuerpo" aria-live="polite"></div>
+            </div>
+
             <div class="quick-actions">
                 <h3 class="eyebrow">Atajos</h3>
                 <div class="actions-grid">
@@ -3196,6 +3218,7 @@
     <script src="js/estadisticas.js"></script>
     <script src="js/seguimiento.js"></script>
     <script src="js/estrados-laborales.js"></script>
+    <script src="js/sesiones-pjf.js"></script>
     <script src="js/tour.js"></script>
     <script src="js/recomendar.js"></script>
     <script src="js/analitica.js"></script>

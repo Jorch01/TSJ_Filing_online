@@ -2288,6 +2288,147 @@ async function probarEstradosLaborales(navegador) {
     }
 }
 
+// Sesiones de los Tribunales Colegiados (sesiones-pjf.js): la tarjeta de
+// Inicio que avisa si un amparo directo registrado está listado para sesión.
+// El proxy se simula —test_sesiones.js prueba lo que hace con SISE—; aquí se
+// mira lo que la app hace con su respuesta, en la pantalla.
+async function probarSesionesPJF(navegador) {
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, locale: 'es-MX', timezoneId: 'America/Cancun' });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    const pausa = (ms) => page.waitForTimeout(ms);
+    const S = require('./docs/js/sesiones-pjf.js');
+    const TCC1 = 'Primer Tribunal Colegiado del Vigésimo Séptimo Circuito';
+    const TCC3 = 'Tercer Tribunal Colegiado del Vigésimo Séptimo Circuito, con residencia en Cancún, Quintana Roo';
+
+    // El proxy simulado: el 677/2023 del primer tribunal sesiona el jueves de
+    // la primera semana; el tercero no tiene nada (o falla, según el modo).
+    const pedidas = [];
+    let modo = 'listado';
+    await contexto.route('**/api/sesiones**', async (r) => {
+        const u = new URL(r.request().url());
+        const exp = u.searchParams.get('exp') || '';
+        pedidas.push({ desde: u.searchParams.get('desde'), hasta: u.searchParams.get('hasta'), filtro: u.searchParams.get('filtro'), exp, refresh: u.searchParams.get('refresh') });
+        const cabeceras = { 'Access-Control-Allow-Origin': '*' };
+        if (modo === 'caido' && exp.startsWith('1319:')) {
+            return r.fulfill({ status: 502, contentType: 'application/json', headers: cabeceras, body: JSON.stringify({ error: 'SISE no respondió' }) });
+        }
+        const sesiones = [];
+        if (modo !== 'vacio' && exp.includes('462:677/2023')) {
+            sesiones.push({
+                expediente: '677/2023', tipoAsunto: 'Amparo Directo', organismoId: '462', neun: '33638865',
+                fechaSesion: S.sumarDias(u.searchParams.get('desde'), 3), tipoSesion: 'Ordinaria',
+                ponente: 'Maria Teresa <b>Rodriguez</b>', secretario: 'Carlos Hernández García',
+                resultado: '', sentencia: '', autoridad: 'Junta Especial', coincidencia: 'expediente'
+            });
+        }
+        return r.fulfill({
+            status: 200, contentType: 'application/json; charset=utf-8', headers: cabeceras,
+            body: JSON.stringify({ desde: u.searchParams.get('desde'), hasta: u.searchParams.get('hasta'), filtro: 'sesion', cache: false, completo: true, sesiones, errores: [], resumen: {} })
+        });
+    });
+
+    const abrir = async () => {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => window.SESIONES_PJF && typeof crearExpedienteCore === 'function' && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+        await pausa(1500);
+    };
+    const tarjeta = () => page.evaluate(() => {
+        const t = document.getElementById('sesiones-pjf');
+        const cuerpo = document.getElementById('sesiones-pjf-cuerpo');
+        return {
+            visible: !t.hidden && t.offsetHeight > 0,
+            texto: cuerpo.innerText.replace(/\s+/g, ' ').trim(),
+            filas: cuerpo.querySelectorAll('.sesiones-pjf-fila').length,
+            html: cuerpo.innerHTML
+        };
+    });
+    // Lo que la app debe pedir hoy, calculado con su propio motor.
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Cancun' });
+    const dosSemanas = S.rangoDeSemanas(hoy, 2);
+    const cuatroSemanas = S.rangoDeSemanas(hoy, 4);
+
+    try {
+        await abrir();
+        await page.evaluate(() => crearExpedienteCore({ numero: '5/2025', institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' }));
+        await abrir();
+        let t = await tarjeta();
+        igual('sesiones PJF: sin amparos directos, la tarjeta no aparece ni se consulta nada', [t.visible, pedidas.length], [false, 0]);
+
+        await page.evaluate(async ([a, b]) => {
+            await crearExpedienteCore({ numero: '677/2023', institucion: 'PJF', juzgado: a, pjfOrgId: '462', pjfTipoAsunto: '10' });
+            await crearExpedienteCore({ numero: '88/2026', institucion: 'PJF', juzgado: b, pjfOrgId: '1319', pjfTipoAsunto: '10' });
+            await crearExpedienteCore({ numero: '90/2026', institucion: 'PJF', juzgado: b, pjfOrgId: '1319', pjfTipoAsunto: '11' });
+        }, [TCC1, TCC3]);
+        await abrir();
+        t = await tarjeta();
+        verificar('sesiones PJF: con amparos directos, la tarjeta aparece sola al abrir', t.visible);
+        igual('sesiones PJF: se consulta una vez por tribunal, del lunes de esta semana al viernes de la siguiente, solo los amparos directos',
+            pedidas, [
+                { desde: dosSemanas.desde, hasta: dosSemanas.hasta, filtro: 'sesion', exp: '462:677/2023', refresh: null },
+                { desde: dosSemanas.desde, hasta: dosSemanas.hasta, filtro: 'sesion', exp: '1319:88/2026', refresh: null }
+            ]);
+        igual('sesiones PJF: el asunto listado sale en una fila', t.filas, 1);
+        verificar('sesiones PJF: con su fecha, tipo de sesión, expediente, tribunal y ponente',
+            t.texto.includes(S.fechaLarga(S.sumarDias(dosSemanas.desde, 3), hoy)) && /Sesión ordinaria/.test(t.texto) &&
+            t.texto.includes('Amparo Directo 677/2023') && t.texto.includes(TCC1) && /Ponente: Maria Teresa/.test(t.texto), t.texto);
+        verificar('sesiones PJF: lo que viene de fuera se pinta como texto, no como HTML', t.html.includes('&lt;b&gt;Rodriguez&lt;/b&gt;') && !/<b>Rodriguez/.test(t.html));
+        verificar('sesiones PJF: dice cuántos revisó y en qué periodo', t.texto.includes('Se revisaron 2 amparos directos en 2 tribunales, sesiones ' + S.periodoTexto(dosSemanas)), t.texto);
+        igual('sesiones PJF: el selector marca 2 semanas', await page.inputValue('#sesiones-pjf-semanas'), '2');
+
+        await page.click('#sesiones-pjf-cuerpo [data-sesiones-expediente]');
+        await pausa(500);
+        igual('sesiones PJF: tocar la fila abre el expediente',
+            await page.evaluate(() => [document.getElementById('modal-overlay').classList.contains('active'), document.getElementById('modal-titulo').textContent]), [true, '677/2023']);
+        await page.evaluate(() => cerrarModal());
+
+        let antes = pedidas.length;
+        await abrir();
+        t = await tarjeta();
+        igual('sesiones PJF: al reabrir la app el resultado se recuerda y no se vuelve a consultar', [pedidas.length - antes, t.filas], [0, 1]);
+
+        await page.selectOption('#sesiones-pjf-semanas', '4');
+        await pausa(1200);
+        igual('sesiones PJF: cambiar a 4 semanas consulta el periodo nuevo',
+            pedidas.slice(antes).map(p => [p.desde, p.hasta, p.refresh]), [[cuatroSemanas.desde, cuatroSemanas.hasta, null], [cuatroSemanas.desde, cuatroSemanas.hasta, null]]);
+
+        antes = pedidas.length;
+        await abrir();
+        igual('sesiones PJF: y el periodo elegido se conserva al reabrir', [await page.inputValue('#sesiones-pjf-semanas'), pedidas.length - antes], ['4', 0]);
+
+        modo = 'vacio';
+        await page.click('#sesiones-pjf-actualizar');
+        await pausa(1200);
+        t = await tarjeta();
+        igual('sesiones PJF: "Actualizar" vuelve a consultar con refresh=1', pedidas.slice(antes).map(p => p.refresh), ['1', '1']);
+        verificar('sesiones PJF: sin coincidencias dice "Sin asuntos listados en el periodo"', t.filas === 0 && t.texto.startsWith('Sin asuntos listados en el periodo'), t.texto);
+
+        modo = 'caido';
+        await page.click('#sesiones-pjf-actualizar');
+        await pausa(1200);
+        t = await tarjeta();
+        verificar('sesiones PJF: si un tribunal no se pudo revisar, se avisa cuál y por qué',
+            /No se pudieron revisar todas las listas/.test(t.texto) && t.texto.includes(TCC3) && /SISE no respondió/.test(t.texto), t.texto);
+        verificar('sesiones PJF: y lo que sí se revisó se muestra igual', t.filas === 1 && t.texto.includes('Amparo Directo 677/2023'));
+        verificar('sesiones PJF: sin afirmar que no hay asuntos listados', !/Sin asuntos listados/.test(t.texto));
+
+        modo = 'listado';
+        antes = pedidas.length;
+        await abrir();
+        t = await tarjeta();
+        verificar('sesiones PJF: un resultado incompleto no se recuerda: al reabrir se vuelve a consultar', pedidas.length - antes === 2 && !/No se pudieron/.test(t.texto), t.texto);
+
+        await page.setViewportSize({ width: 390, height: 844 });
+        await pausa(300);
+        igual('sesiones PJF: en un teléfono la tarjeta cabe en la pantalla',
+            await page.evaluate(() => { const c = document.getElementById('sesiones-pjf'); return c.scrollWidth - c.clientWidth <= 1 && document.documentElement.scrollWidth <= document.documentElement.clientWidth; }), true);
+        igual('sesiones PJF: sin errores', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
 // Límites del plan gratuito en el IMPI (cuotas-impi.js): 5 búsquedas al mes y
 // 2 estudios de viabilidad. Primero sin cuotas en el proxy (cuenta local que
 // no se borra), luego con un proxy que lleva la cuenta (otro navegador del
@@ -4494,6 +4635,9 @@ async function main() {
 
         // ---- Estrados laborales (TCA y Juntas) ----
         await probarEstradosLaborales(navegador);
+
+        // ---- Sesiones de los Tribunales Colegiados ----
+        await probarSesionesPJF(navegador);
 
         // ---- Estudio de viabilidad de marca (IMPI) ----
         await probarViabilidadMarca(navegador);
