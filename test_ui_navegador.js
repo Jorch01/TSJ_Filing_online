@@ -149,7 +149,7 @@ async function probarBotonTemplate(page, zona, indice) {
 // los 30 s y la prueba falla sin que la app tenga nada mal: pasó en CI. CI
 // instala la misma versión desde npm y aquí se sirve esa copia; si no está
 // instalada, las páginas la piden a la CDN como antes.
-const URL_DOMPURIFY = 'https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js';
+const URL_DOMPURIFY = 'https://cdn.jsdelivr.net/npm/dompurify@3.4.17/dist/purify.min.js';
 
 function copiaLocalDOMPurify() {
     try {
@@ -174,7 +174,8 @@ function servirDOMPurifyLocal(navegador) {
     const nuevoContexto = navegador.newContext.bind(navegador);
     navegador.newContext = async (opciones) => {
         const contexto = await nuevoContexto(opciones);
-        await contexto.route(URL_DOMPURIFY, r => r.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body: copia }));
+        // El <script> lleva crossorigin: la respuesta necesita su encabezado CORS.
+        await contexto.route(URL_DOMPURIFY, r => r.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', headers: { 'Access-Control-Allow-Origin': '*' }, body: copia }));
         return contexto;
     };
     return navegador;
@@ -795,6 +796,75 @@ async function probarSinConexion(navegador) {
         igual('sin conexión: el aviso se quita al volver la red',
             await page.evaluate(() => document.getElementById('aviso-sin-conexion').hidden), true);
         igual('sin conexión: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
+/**
+ * Datos con HTML malicioso (de una importación, de la sincronización o de la
+ * IA que lee un acuerdo) se muestran como texto y no se ejecutan: título y
+ * descripción de un evento, su color, el expediente escrito a mano en una
+ * nota y el historial de cambios de un expediente.
+ */
+async function probarSinXSS(navegador) {
+    const contexto = await navegador.newContext({ viewport: { width: 1400, height: 900 } });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    page.on('dialog', d => d.dismiss().catch(() => {}));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => typeof crearEventoCore === 'function' && typeof db !== 'undefined' && !!db,
+            { timeout: 15000 });
+        await page.waitForTimeout(600);
+        const r = await page.evaluate(async () => {
+            const pausa = (ms) => new Promise(res => setTimeout(res, ms));
+            document.getElementById('tour-oferta')?.remove();
+            window.__xss = [];
+            const carga = (n) => `<img src=x onerror="window.__xss.push(${n})">`;
+            const manana = new Date(); manana.setDate(manana.getDate() + 1); manana.setHours(10, 0, 0, 0);
+
+            const id = await crearExpedienteCore({ numero: '777/2026', nombre: 'Prueba', institucion: 'TSJ',
+                juzgado: 'JUZGADO PRIMERO CIVIL CANCUN', comentario: 'limpio' });
+            await actualizarExpedienteCore(id, { comentario: carga(1) });
+            await crearEventoCore({ titulo: 'Audiencia ' + carga(2), fechaInicio: manana.toISOString(), tipo: 'audiencia',
+                descripcion: carga(3), expedienteTexto: carga(4), color: 'red;" onmouseover="window.__xss.push(5)' });
+            await crearNotaCore({ titulo: 'Nota', contenido: 'x', expedienteTexto: carga(6), color: '#fff; background-image:url(x)' });
+
+            const out = {};
+            navegarA('inicio');
+            await pausa(500);
+            if (typeof cargarDashboard === 'function') await cargarDashboard();
+            await pausa(300);
+            const titulo = document.querySelector('#eventos-hoy .list-item-title');
+            out.tituloEvento = titulo ? titulo.textContent : null;
+            const item = document.querySelector('#eventos-hoy .list-item-with-tooltip');
+            out.estiloEvento = item ? item.getAttribute('style') : null;
+            item && item.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            navegarA('calendario');
+            await pausa(500);
+            navegarA('notas');
+            await pausa(500);
+            const nota = document.querySelector('#page-notas .nota-card');
+            out.expedienteNota = nota ? (nota.querySelector('.nota-expediente') || {}).textContent : null;
+            out.fondoNota = nota ? nota.getAttribute('style') : null;
+            await verHistorialExpediente(id);
+            await pausa(500);
+            out.historial = (document.querySelector('.cambio-nuevo') || {}).textContent || null;
+            await pausa(300);
+            out.ejecutados = window.__xss.slice();
+            out.imagenesInyectadas = document.querySelectorAll('img[src="x"]').length;
+            return out;
+        });
+        igual('sin XSS: ningún código inyectado se ejecutó', r.ejecutados, []);
+        igual('sin XSS: ninguna etiqueta inyectada llegó al documento', r.imagenesInyectadas, 0);
+        verificar('sin XSS: el título del evento se ve como texto', /Audiencia <img src=x onerror=/.test(r.tituloEvento || ''), r.tituloEvento);
+        verificar('sin XSS: un color raro del evento no entra al atributo style', !/onmouseover|red;/.test(r.estiloEvento || '') && /#3788d8/i.test(r.estiloEvento || ''), r.estiloEvento);
+        verificar('sin XSS: el expediente escrito a mano en la nota se ve como texto', /<img src=x onerror=/.test(r.expedienteNota || ''), r.expedienteNota);
+        verificar('sin XSS: el color de la nota no admite CSS de más', !/url\(/.test(r.fondoNota || '') && /#fff3cd/i.test(r.fondoNota || ''), r.fondoNota);
+        verificar('sin XSS: el historial muestra el valor como texto', /<img src=x onerror=/.test(r.historial || ''), r.historial);
+        igual('sin XSS: sin errores de JavaScript', errores, []);
     } finally {
         await contexto.close();
     }
@@ -2816,7 +2886,7 @@ async function probarViabilidadMarca(navegador) {
 
 async function main() {
     verificar('la copia local de DOMPurify es la que pide la página',
-        fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8').includes(`<script src="${URL_DOMPURIFY}"></script>`),
+        fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8').includes(`<script src="${URL_DOMPURIFY}"`),
         'index.html cambió la versión de DOMPurify: actualiza URL_DOMPURIFY y el workflow');
     const servidor = await servidorEstatico(PUERTO);
     const navegador = await abrirChromium();
@@ -4414,6 +4484,9 @@ async function main() {
 
         // ---- Íconos propios en lugar de emojis ----
         await probarIconosSinEmojis(navegador);
+
+        // ---- Datos maliciosos se muestran como texto (XSS) ----
+        await probarSinXSS(navegador);
 
         // ---- Seguimiento semanal (indice_asuntos.json) ----
         await probarSeguimientoSemanal(navegador);

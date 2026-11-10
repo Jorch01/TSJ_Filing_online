@@ -74,6 +74,13 @@ function escapeText(text) {
     return String(text || '').replace(/[&<>"']/g, m => map[m]);
 }
 
+// Un color que viene de los datos (eventos, carpetas) solo se usa en un
+// atributo style si es un #RGB / #RRGGBB válido. Un evento importado o
+// sincronizado podría traer otra cosa y romper el atributo.
+function colorSeguro(color, predeterminado = '#3788d8') {
+    return /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(String(color || '').trim()) ? String(color).trim() : predeterminado;
+}
+
 // ==================== ESTADO GLOBAL ====================
 
 // Estado global
@@ -2530,10 +2537,10 @@ function generarDetallesCambios(anteriores, nuevos) {
 
         html += `
             <div class="cambio-item">
-                <span class="cambio-campo">${nombreCampo}:</span>
-                <span class="cambio-anterior">${valorAnterior}</span>
+                <span class="cambio-campo">${escapeText(nombreCampo)}:</span>
+                <span class="cambio-anterior">${escapeText(valorAnterior)}</span>
                 <span class="cambio-flecha">→</span>
-                <span class="cambio-nuevo">${valorNuevo}</span>
+                <span class="cambio-nuevo">${escapeText(valorNuevo)}</span>
             </div>
         `;
     }
@@ -2623,7 +2630,7 @@ async function cargarNotas() {
             ? '<span class="institucion-badge otro" style="font-size: 0.65rem;">📋 Varios</span>'
             : '';
         return `
-            <div class="nota-card${nota.fijada ? ' fijada' : ''}" style="background-color: ${escapeText(nota.color || '#fff3cd')}" onclick="editarNota(${nota.id})">
+            <div class="nota-card${nota.fijada ? ' fijada' : ''}" style="background-color: ${colorSeguro(nota.color, '#fff3cd')}" onclick="editarNota(${nota.id})">
                 <div class="nota-header">
                     <h3 class="nota-titulo">${escapeText(nota.titulo)}</h3>
                     ${instBadge}
@@ -2632,7 +2639,7 @@ async function cargarNotas() {
                 </div>
                 <p class="nota-contenido">${escapeText(nota.contenido || 'Sin contenido')}</p>
                 <div class="nota-footer">
-                    <span class="nota-expediente">📁 ${exp ? escapeText(exp.numero || exp.nombre) : (nota.expedienteTexto || 'Sin expediente')}</span>
+                    <span class="nota-expediente">📁 ${exp ? escapeText(exp.numero || exp.nombre) : escapeText(nota.expedienteTexto || 'Sin expediente')}</span>
                     <span class="nota-fecha">${formatearFecha(nota.fechaCreacion)}</span>
                 </div>
             </div>
@@ -3970,7 +3977,7 @@ function mostrarFormularioNota() {
         const selectHtml = '<option value="">General (sin expediente)</option>' +
             '<option value="__custom__">✏️ Otro (escribir manualmente)</option>' +
             exps.map(e =>
-                `<option value="${e.id}">${e.numero || e.nombre} - ${e.juzgado}</option>`
+                `<option value="${escapeText(e.id)}">${escapeText(e.numero || e.nombre)} - ${escapeText(e.juzgado)}</option>`
             ).join('');
 
         const colores = [
@@ -4194,7 +4201,7 @@ async function filtrarNotas() {
                 expedienteLabel = '📋 General';
             }
             return `
-                <div class="nota-card${nota.fijada ? ' fijada' : ''}" style="background-color: ${escapeText(nota.color || '#fff3cd')}" onclick="editarNota(${nota.id})">
+                <div class="nota-card${nota.fijada ? ' fijada' : ''}" style="background-color: ${colorSeguro(nota.color, '#fff3cd')}" onclick="editarNota(${nota.id})">
                     <div class="nota-header">
                         <h3 class="nota-titulo">${escapeText(nota.titulo)}</h3>
                         ${_botonFijarNotaHTML(nota)}
@@ -4293,17 +4300,17 @@ function actualizarEventosHoy(eventos) {
             ` : '';
 
             return `
-                <div class="list-item list-item-with-tooltip" style="border-left: 3px solid ${e.color || '#3788d8'}">
+                <div class="list-item list-item-with-tooltip" style="border-left: 3px solid ${colorSeguro(e.color)}">
                     <div class="list-item-info">
-                        <span class="list-item-title">${e.titulo}${e.origenIA ? ' <span style="background:#e0e7ff;color:#3730a3;font-size:0.65rem;padding:1px 6px;border-radius:8px;margin-left:4px;">🤖 IA</span>' : ''}</span>
+                        <span class="list-item-title">${escapeText(e.titulo)}${e.origenIA ? ' <span style="background:#e0e7ff;color:#3730a3;font-size:0.65rem;padding:1px 6px;border-radius:8px;margin-left:4px;">🤖 IA</span>' : ''}</span>
                         <span class="list-item-subtitle">${fechaTexto} • ${horaTexto}</span>
                     </div>
                     <div class="event-tooltip">
-                        <div class="event-tooltip-title">${e.titulo}</div>
+                        <div class="event-tooltip-title">${escapeText(e.titulo)}</div>
                         <div class="event-tooltip-row">
                             <span class="event-tooltip-label">Tipo:</span>
                             <span class="event-tooltip-value">
-                                <span class="event-tooltip-badge" style="background: ${e.color || '#3788d8'}; color: white;">
+                                <span class="event-tooltip-badge" style="background: ${colorSeguro(e.color)}; color: white;">
                                     ${tipoLabel}
                                 </span>
                             </span>
@@ -4318,12 +4325,12 @@ function actualizarEventosHoy(eventos) {
                         </div>
                         <div class="event-tooltip-row">
                             <span class="event-tooltip-label">Expediente:</span>
-                            <span class="event-tooltip-value">${expedienteInfo}</span>
+                            <span class="event-tooltip-value">${escapeText(expedienteInfo)}</span>
                         </div>
                         ${filasContextoIA}
                         <div class="event-tooltip-row">
                             <span class="event-tooltip-label">Detalles:</span>
-                            <span class="event-tooltip-value">${descripcionCorta}</span>
+                            <span class="event-tooltip-value">${escapeText(descripcionCorta)}</span>
                         </div>
                         ${e.alerta ? '<div class="event-tooltip-row"><span class="event-tooltip-label">🔔</span><span class="event-tooltip-value">Tiene recordatorio</span></div>' : ''}
                     </div>
@@ -4525,7 +4532,7 @@ function generarDiasDelMes(fecha, eventos) {
         let dotsHtml = '';
         if (eventosDelDia.length > 0) {
             dotsHtml = `<div class="dia-eventos">
-                ${eventosDelDia.slice(0, 3).map(e => `<span class="evento-dot" style="background:${e.color || '#3788d8'}"></span>`).join('')}
+                ${eventosDelDia.slice(0, 3).map(e => `<span class="evento-dot" style="background:${colorSeguro(e.color)}"></span>`).join('')}
                 ${eventosDelDia.length > 3 ? `<span class="eventos-mas">+${eventosDelDia.length - 3}</span>` : ''}
             </div>`;
         }
@@ -4617,7 +4624,7 @@ async function actualizarPanelEventos(eventos) {
                 ? 'Todo el día'
                 : new Date(e.fechaInicio).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
             return `
-            <div class="evento-item" onclick="editarEvento(${e.id})" style="border-left: 3px solid ${escapeText(e.color || '#3788d8')}">
+            <div class="evento-item" onclick="editarEvento(${e.id})" style="border-left: 3px solid ${colorSeguro(e.color)}">
                 <div class="evento-info">
                     <span class="evento-titulo">${escapeText(e.titulo)}${instBadgeEvt}${iaBadge}</span>
                     <span class="evento-hora">${horaTexto}</span>
@@ -7950,7 +7957,7 @@ async function actualizarSelectExpedientesIA() {
     if (select) {
         select.innerHTML = '<option value="">Sin expediente específico</option>' +
             '<option value="__custom__">✏️ Otro (escribir manualmente)</option>' +
-            expedientes.map(e => `<option value="${e.id}">${e.numero || e.nombre} - ${e.juzgado}</option>`).join('');
+            expedientes.map(e => `<option value="${escapeText(e.id)}">${escapeText(e.numero || e.nombre)} - ${escapeText(e.juzgado)}</option>`).join('');
     }
 }
 
@@ -8286,9 +8293,9 @@ const PREMIUM_CONFIG = {
     limiteExpedientes: 10,
     limiteBusquedasGlobales: 10,
 
-    // URL del Google Sheet publicado como CSV (solo lectura - fallback)
-    // Formato columnas: codigo, fecha_expiracion, dispositivo_id, usuario, estado
-    googleSheetUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRxXuxjhz56UvZcCZTnCJcmSCpkEm-CZAap4lW3RweeSqSuMVRU4Dp-2NLVeYu9fev2kh7tr1d5wB_y/pub?output=csv',
+    // Las licencias se verifican solo con la API. Antes había un respaldo que
+    // leía la hoja publicada como CSV: publicarla dejaba a la vista de
+    // cualquiera todos los códigos, y con ellos los datos sincronizados.
 
     // ============ API DE LICENCIAS ============
     // URL de la API de Google Apps Script (permite lectura Y escritura)
@@ -8807,12 +8814,7 @@ async function verificarCodigoPremium(codigo, deviceId, usuario) {
         return await verificarConAPI(codigo, deviceId, usuario);
     }
 
-    // Fallback a CSV (solo lectura, no puede registrar dispositivos)
-    if (PREMIUM_CONFIG.googleSheetUrl) {
-        return await verificarConCSV(codigo, deviceId);
-    }
-
-    // Sin API ni CSV configurado
+    // Sin API configurada
     return { valido: false, mensaje: 'Sistema de licencias no configurado' };
 }
 
@@ -8841,8 +8843,7 @@ async function verificarConAPI(codigo, deviceId, usuario) {
         return resultado;
     } catch (error) {
         Logger.error('Error al verificar con API:', error);
-        // Fallback a CSV si la API falla
-        return await verificarConCSV(codigo, deviceId);
+        return { valido: false, mensaje: 'No se pudo verificar el código. Revisa tu conexión e intenta de nuevo.' };
     }
 }
 
@@ -8965,69 +8966,9 @@ async function desactivarPremium(mostrarMensaje = true) {
     }
 }
 
-// Verificar usando CSV (solo lectura - fallback)
-async function verificarConCSV(codigo, deviceId) {
-    try {
-        const response = await fetch(PREMIUM_CONFIG.googleSheetUrl);
-        const csvText = await response.text();
-
-        const lineas = csvText.split('\n').slice(1);
-
-        for (const linea of lineas) {
-            const campos = linea.split(',').map(s => s.trim());
-            const [codigoSheet, fechaExp, dispositivoRegistrado, usuarioRegistrado, estado] = campos;
-
-            if (codigoSheet && codigoSheet.toUpperCase() === codigo.toUpperCase()) {
-                const fechaExpiracion = parsearFechaSegura(fechaExp);
-                if (!fechaExpiracion || fechaExpiracion < new Date()) {
-                    return { valido: false, mensaje: 'Este código ha expirado' };
-                }
-
-                if (dispositivoRegistrado && dispositivoRegistrado !== '' && dispositivoRegistrado !== deviceId) {
-                    return {
-                        valido: false,
-                        mensaje: 'Este código ya está vinculado a otro dispositivo. Contacta soporte para transferir tu licencia.',
-                        puedeTransferir: true
-                    };
-                }
-
-                if (estado && estado.toLowerCase() === 'revocado') {
-                    return { valido: false, mensaje: 'Este código ha sido revocado' };
-                }
-
-                // Código válido - Advertir que sin API no se puede registrar
-                if (!dispositivoRegistrado || dispositivoRegistrado === '') {
-                    Logger.warn('Advertencia: Sin API configurada, no se puede vincular el dispositivo');
-                }
-
-                return { valido: true };
-            }
-        }
-
-        return { valido: false, mensaje: 'Código no encontrado' };
-    } catch (error) {
-        Logger.error('Error al verificar con Google Sheets:', error);
-        return { valido: false, mensaje: 'Error de conexión. Intenta de nuevo.' };
-    }
-}
-
-// Configurar URL de Google Sheets (llamar desde consola para configurar)
-function configurarGoogleSheet(url) {
-    PREMIUM_CONFIG.googleSheetUrl = url;
-    localStorage.setItem('_tsjgs', _encode(url));
-    Logger.log('URL de Google Sheet configurada');
-}
-
-// Cargar URL de Google Sheets
-function cargarConfigGoogleSheet() {
-    const urlGuardada = localStorage.getItem('_tsjgs');
-    if (urlGuardada) {
-        const url = _decode(urlGuardada);
-        if (url) {
-            PREMIUM_CONFIG.googleSheetUrl = url;
-        }
-    }
-}
+// Quien tuviera guardada la dirección del CSV de licencias de una versión
+// anterior: se borra, ya no se usa.
+try { localStorage.removeItem('_tsjgs'); } catch (e) { /* sin almacenamiento */ }
 
 // Modificar ejecutarBusquedaGlobal para verificar límite y contar uso
 const ejecutarBusquedaGlobalOriginal = ejecutarBusquedaGlobal;
@@ -9042,7 +8983,6 @@ ejecutarBusquedaGlobal = async function() {
 // Extender inicialización para cargar premium
 const inicializarAppConPremium = inicializarApp;
 inicializarApp = async function() {
-    cargarConfigGoogleSheet();
     await inicializarAppConPremium();
     await cargarEstadoPremium();
     await cargarConfigAutoBackup();
@@ -9058,7 +8998,7 @@ function mostrarModalTransferencia() {
     document.getElementById('modal-body').innerHTML = `
         <div class="transfer-form">
             <p>Si cambiaste de dispositivo, puedes solicitar una transferencia de licencia.</p>
-            <p style="color: #ff9800; font-size: 13px;"><strong>Nota:</strong> Solo puedes transferir cada 30 días.</p>
+            <p style="color: var(--cobre-hondo); font-size: 13px;"><strong>Nota:</strong> Solo puedes transferir cada 30 días.</p>
 
             <div class="form-group" style="margin-top: 15px;">
                 <label>Código de licencia:</label>
@@ -11087,7 +11027,7 @@ async function cargarNotasPJF() {
     lista.innerHTML = ordenarNotasFijadas(notasPJF).map(nota => {
         const exp = expMap[nota.expedienteId];
         return `
-            <div class="nota-card${nota.fijada ? ' fijada' : ''}" style="background-color: ${escapeText(nota.color || '#fff3cd')}" onclick="editarNota(${nota.id})">
+            <div class="nota-card${nota.fijada ? ' fijada' : ''}" style="background-color: ${colorSeguro(nota.color, '#fff3cd')}" onclick="editarNota(${nota.id})">
                 <div class="nota-header">
                     <h3 class="nota-titulo">${escapeText(nota.titulo)}</h3>
                     <span class="institucion-badge pjf" style="font-size: 0.7rem;">🏛️ PJF</span>
@@ -11095,7 +11035,7 @@ async function cargarNotasPJF() {
                 </div>
                 <p class="nota-contenido">${escapeText(nota.contenido || 'Sin contenido')}</p>
                 <div class="nota-footer">
-                    <span class="nota-expediente">📁 ${exp ? escapeText(exp.numero || exp.nombre) : (nota.expedienteTexto || 'Sin expediente')}</span>
+                    <span class="nota-expediente">📁 ${exp ? escapeText(exp.numero || exp.nombre) : escapeText(nota.expedienteTexto || 'Sin expediente')}</span>
                     <span class="nota-fecha">${formatearFecha(nota.fechaCreacion)}</span>
                 </div>
             </div>
@@ -11153,7 +11093,7 @@ async function cargarEventosPJF() {
             : '';
 
         return `
-            <div class="evento-item" onclick="editarEvento(${e.id})" style="border-left: 3px solid ${escapeText(e.color || '#3788d8')}">
+            <div class="evento-item" onclick="editarEvento(${e.id})" style="border-left: 3px solid ${colorSeguro(e.color)}">
                 <div class="evento-info">
                     <span class="evento-titulo">${escapeText(e.titulo)}${iaBadge}</span>
                     <span class="evento-hora">${fechaTexto} - ${horaTexto}</span>
@@ -11210,7 +11150,7 @@ async function actualizarSelectExpedientesIAPJF() {
     if (select) {
         select.innerHTML = '<option value="">Sin expediente específico</option>' +
             '<option value="__custom__">✏️ Otro (escribir manualmente)</option>' +
-            pjfExps.map(e => `<option value="${e.id}">${e.numero || e.nombre} - ${e.juzgado}</option>`).join('');
+            pjfExps.map(e => `<option value="${escapeText(e.id)}">${escapeText(e.numero || e.nombre)} - ${escapeText(e.juzgado)}</option>`).join('');
     }
 }
 

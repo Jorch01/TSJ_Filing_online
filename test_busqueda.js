@@ -61,6 +61,7 @@ function crearEntorno(datos) {
         setTimeout: (fn) => { fn(); return 0; },
         clearTimeout: () => {},
         escapeText: (t) => String(t == null ? '' : t),
+        colorSeguro: (c, d) => c || d,
         formatearFecha: (f) => String(f || ''),
         mostrarToast: () => {},
         Logger: { log: () => {}, warn: () => {}, error: () => {} },

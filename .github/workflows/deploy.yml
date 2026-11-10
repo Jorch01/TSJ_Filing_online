@@ -52,7 +52,7 @@ jobs:
       # local en vez de esperar a jsdelivr, que al atascarse dejaba la página
       # sin cargar y tumbaba la ejecución sin que la app tuviera nada mal.
       - name: Instalar Chromium
-        run: npm install --no-save playwright dompurify@3.0.6 && npx playwright install --with-deps chromium
+        run: npm install --no-save playwright dompurify@3.4.17 && npx playwright install --with-deps chromium
 
       - name: Pruebas de interfaz
         env:

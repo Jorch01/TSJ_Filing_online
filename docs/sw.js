@@ -10,8 +10,8 @@
  * Lo que no es de la app —sincronización, IA, tribunales, IMPI— pasa directo
  * a la red: sin conexión falla como siempre y la app lo avisa.
  */
-const CACHE = 'tsj-app-v4';
-const CACHE_CDN = 'tsj-cdn-v1';
+const CACHE = 'tsj-app-v5';
+const CACHE_CDN = 'tsj-cdn-v2';
 // Pasado este tiempo sin respuesta de la red se usa la copia guardada.
 const ESPERA_RED_MS = 4000;
 
@@ -56,7 +56,7 @@ const ARCHIVOS_APP = [
 // Librerías de CDN que la app necesita para arrancar. Tesseract (OCR) no se
 // guarda por adelantado: pesa varios MB y sin internet no hay OCR que hacer.
 const CDN_ESENCIALES = [
-    'https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js'
+    'https://cdn.jsdelivr.net/npm/dompurify@3.4.17/dist/purify.min.js'
 ];
 
 self.addEventListener('install', (event) => {

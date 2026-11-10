@@ -27,6 +27,7 @@
     /* Acentos de la marca. */
     --cobre: #d0a589;
     --cobre-hondo: #7f5236;      /* cobre para texto chico */
+    --enlace: #2f6b57;           /* enlaces dentro del texto */
     --estrella: #b98563;         /* la estrella sobre fondos claros */
 
     /* Pasteles de superficie y su tinta (texto legible encima). */
@@ -87,6 +88,7 @@
 
     --cobre: #d6ae93;
     --cobre-hondo: #e2bfa6;
+    --enlace: #8fc2aa;
     --estrella: #d0a589;
 
     --niebla: #1e2b27;
@@ -263,12 +265,12 @@
 }
 
 /* Dark theme - Links in dark sections */
-[data-theme="dark"] .premium-section a {
-    color: #64b5f6;
+[data-theme="dark"] .premium-section a:not(.btn) {
+    color: var(--enlace);
 }
 
-[data-theme="dark"] .premium-section a:hover {
-    color: #90caf9;
+[data-theme="dark"] .premium-section a:not(.btn):hover {
+    color: var(--text-primary);
 }
 
 /* Dark theme - Warning info banner (cream/yellow background) */
@@ -355,8 +357,8 @@
 }
 
 /* Dark theme - All remaining cream/yellow text elements */
-[data-theme="dark"] .premium-buy a {
-    color: #64b5f6;
+[data-theme="dark"] .premium-buy a:not(.btn) {
+    color: var(--enlace);
 }
 
 [data-theme="dark"] .premium-active {
