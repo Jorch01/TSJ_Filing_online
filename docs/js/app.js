@@ -216,6 +216,7 @@ async function inicializarApp() {
 
     // Configurar eventos de navegación
     configurarNavegacion();
+    pintarSaludoInicio();
     configurarFormularios();
 
     // Configurar tooltips de ayuda
@@ -300,6 +301,20 @@ function configurarTooltips() {
 }
 
 // ==================== NAVEGACIÓN ====================
+
+// Inicio abre con la fecha de hoy y un saludo según la hora.
+function pintarSaludoInicio(ahora = new Date()) {
+    const fecha = document.getElementById('inicio-fecha');
+    const saludo = document.getElementById('inicio-saludo');
+    if (fecha) {
+        fecha.textContent = ahora.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+    }
+    if (saludo) {
+        const h = ahora.getHours();
+        saludo.textContent = h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches';
+    }
+}
+
 
 function configurarNavegacion() {
     // Botones de navegación
@@ -837,7 +852,7 @@ function pintarPanelRapido() {
             : 'No tienes pendientes por hacer. 🎉';
         if (lista.length > MAX) filas.push(`<li class="panel-rapido-mas">y ${lista.length - MAX} más…</li>`);
     } else if (panelRapidoAbierto === 'eventos') {
-        titulo = '📅 Hoy y próximos 7 días';
+        titulo = 'Hoy y próximos 7 días';
         verTodo = `navegarA('calendario')`;
         extraCabecera = `<button type="button" class="btn btn-sm btn-secondary" onclick="cerrarPanelRapido(); navegarA('calendario'); mostrarFormularioEvento()">➕ Nuevo</button>`;
         filas = d.proximos.slice(0, MAX).map(e => _filaPanelHTML({
@@ -849,7 +864,7 @@ function pintarPanelRapido() {
         vacio = 'No hay eventos en los próximos días.';
         if (d.proximos.length > MAX) filas.push(`<li class="panel-rapido-mas">y ${d.proximos.length - MAX} más…</li>`);
     } else if (panelRapidoAbierto === 'expedientes') {
-        titulo = '📁 Expedientes recientes';
+        titulo = 'Expedientes recientes';
         verTodo = `navegarA('expedientes')`;
         extraCabecera = `<button type="button" class="btn btn-sm btn-secondary" onclick="cerrarPanelRapido(); navegarA('expedientes'); mostrarFormularioExpediente()">➕ Nuevo</button>`;
         const fecha = (e) => e.fechaModificacion || e.fechaActualizacion || e.fechaCreacion || '';
@@ -9553,13 +9568,13 @@ const ANUNCIOS_CONFIG = [
     {
         id: 'edictos',
         tipo: 'texto',
-        titulo: '📰 Publicación de Edictos en Quintana Roo y Yucatán',
+        titulo: 'Publicación de Edictos en Quintana Roo y Yucatán',
         contenido: 'Judiciales, sucesorios, de remate, notariales y corporativos en periódico de ' +
                    'circulación estatal. Revisamos que el texto coincida con el acuerdo, controlamos ' +
                    'las fechas y los intervalos entre publicaciones, y te entregamos los ejemplares ' +
                    'originales donde aparece tu edicto. Cancún, Chetumal, Playa del Carmen, Cozumel, ' +
                    'Tulum y el resto de Quintana Roo, y también en el estado de Yucatán.',
-        llamada: '💬 Consultar por WhatsApp',
+        llamada: 'Consultar por WhatsApp',
         enlace: `https://wa.me/${WHATSAPP_EDICTOS}?text=` + encodeURIComponent(
             'Hola, necesito publicar un edicto en Quintana Roo o Yucatán. ¿Me pueden dar informes?'),
         activo: true
@@ -9568,12 +9583,12 @@ const ANUNCIOS_CONFIG = [
         // Se alterna con el de edictos: uno en cada cambio de pantalla.
         id: 'socio-desarrollador',
         tipo: 'texto',
-        titulo: '🤝 ¿Te interesa asociarte con el desarrollador?',
+        titulo: '¿Te interesa asociarte con el desarrollador?',
         contenido: 'TSJ Filing Online es un proyecto independiente, en desarrollo constante y pensado ' +
                    'para litigantes de Quintana Roo. Busco socios —abogados, despachos o inversionistas— ' +
                    'que aporten experiencia, clientes o capital y compartan lo que resulte. Sin promesas ' +
                    'infladas: platiquemos y vemos si nos conviene a los dos.',
-        llamada: '💬 Platicarlo por WhatsApp',
+        llamada: 'Platicarlo por WhatsApp',
         enlace: `https://wa.me/${WHATSAPP_DESARROLLADOR}?text=` + encodeURIComponent(
             'Hola, uso TSJ Filing Online y me interesa platicar sobre asociarme con el desarrollador.'),
         activo: true

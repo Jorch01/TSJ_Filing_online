@@ -801,6 +801,62 @@ async function probarSinConexion(navegador) {
 }
 
 /**
+ * Íconos propios en lugar de emojis (js/iconos.js). Recorre cada sección y
+ * revisa que no quede un emoji a la vista, ni en títulos o etiquetas.
+ */
+async function probarIconosSinEmojis(navegador) {
+    const contexto = await navegador.newContext({ viewport: { width: 1400, height: 900 } });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => typeof crearExpedienteCore === 'function' && typeof db !== 'undefined' && !!db && window.IconosEmoji,
+            { timeout: 15000 });
+        await page.waitForTimeout(600);
+        const r = await page.evaluate(async () => {
+            const pausa = (ms) => new Promise(res => setTimeout(res, ms));
+            document.getElementById('tour-oferta')?.remove();
+            await crearExpedienteCore({ numero: '1234/2026', nombre: 'Rosa Canul Pech', institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' });
+            if (typeof cargarExpedientes === 'function') await cargarExpedientes();
+            const emoji = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
+            const out = { visibles: [], atributos: [] };
+            for (const pg of ['inicio', 'expedientes', 'calendario', 'pendientes', 'notas', 'busqueda', 'pjf', 'laboral', 'impi', 'estadisticas', 'config']) {
+                navegarA(pg);
+                await pausa(400);
+                const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                let n;
+                while ((n = w.nextNode())) {
+                    const el = n.parentElement;
+                    if (emoji.test(n.nodeValue) && el && el.offsetParent !== null && !el.closest('script, style')) out.visibles.push(`${pg}: ${n.nodeValue.trim().slice(0, 30)}`);
+                }
+                document.querySelectorAll('[title], [aria-label], [placeholder]').forEach(el => {
+                    ['title', 'aria-label', 'placeholder'].forEach(a => { const v = el.getAttribute(a); if (v && emoji.test(v)) out.atributos.push(`${pg}: ${a}="${v.slice(0, 30)}"`); });
+                });
+            }
+            // Lo que se agrega después también se convierte.
+            const caja = document.createElement('div');
+            caja.innerHTML = '<button type="button" title="📋 Copiar">📋 Copiar</button><select><option>⚖️ Juzgado</option></select>';
+            document.body.appendChild(caja);
+            await pausa(50);
+            out.nuevoIcono = caja.querySelector('button use')?.getAttribute('href');
+            out.nuevoTexto = caja.querySelector('button').textContent.trim();
+            out.nuevoTitulo = caja.querySelector('button').title;
+            out.opcion = caja.querySelector('option').textContent;
+            caja.remove();
+            return out;
+        });
+        igual('íconos: ningún emoji a la vista en las secciones', [...new Set(r.visibles)], []);
+        igual('íconos: ni en títulos, etiquetas o textos de ayuda', [...new Set(r.atributos)], []);
+        igual('íconos: lo que se pinta después también lleva su ícono', [r.nuevoIcono, r.nuevoTexto, r.nuevoTitulo], ['#i-portapapeles', 'Copiar', 'Copiar']);
+        igual('íconos: en una opción de lista el emoji solo se quita', r.opcion, 'Juzgado');
+        igual('íconos: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
+/**
  * Búsqueda global en juzgados específicos.
  *
  * Con el filtro "isla" solo se ven los 2 de Isla Mujeres, pero el título
@@ -846,7 +902,7 @@ async function probarBusquedaGlobalEspecificos(navegador) {
         await page.click('.juzgado-grupo:has-text("OTROS MUNICIPIOS") .juzgado-grupo-titulo');
         let e = await estado();
         igual('búsqueda global: el título del grupo marca solo los que se ven', e.marcadas, 2);
-        igual('búsqueda global: el botón dice cuántos', e.boton, '🌐 Buscar en 2 juzgados');
+        igual('búsqueda global: el botón dice cuántos', e.boton, 'Buscar en 2 juzgados');
         igual('búsqueda global: la primera búsqueda abre 2', await buscar('Juan Pérez'), 2);
         verificar('búsqueda global: la confirmación nombra los juzgados',
             /ISLA MUJERES/.test(await page.evaluate(() => window.__confirmacion)));
@@ -1048,7 +1104,7 @@ async function probarCalendarioEnCancun(navegador) {
             try {
                 await VOZ.abrir();
                 const tts = document.getElementById('voz-tts-toggle');
-                if (tts && tts.textContent === '🔊') tts.click();
+                if (tts && tts.querySelector('use[href="#i-sonido"]')) tts.click();
 
                 // 1) La queja y el amparo directo: se confirma viendo la lista exacta.
                 await decir('busca la queja y el amparo directo 486/2026 en el primer colegiado del 27', {
@@ -1706,7 +1762,8 @@ async function probarCuentasCompartidas(navegador) {
         await aporteDe('Jorge').fill('50');
         await pausa(150);
         igual('cuentas: con dos que pagaron, lo del otro se completa solo', await aporteDe('Frida').inputValue(), '140.00');
-        verificar('cuentas: y dice que cuadra con el monto', /Suman \$190\.00 ✓/.test(await page.textContent('#cta-aportes-suma')));
+        verificar('cuentas: y dice que cuadra con el monto', /Suman \$190\.00/.test(await page.textContent('#cta-aportes-suma')) &&
+            await page.locator('#cta-aportes-suma use[href="#i-check"]').count() === 1);
         igual('cuentas: antes de guardar dice cómo queda el gasto', (await page.textContent('#cta-efecto')).trim(), 'Con este gasto, Jorge te debe $45.00.');
         await aporteDe('Frida').fill('130');
         await pausa(150);
@@ -1954,7 +2011,7 @@ async function probarSeguimientoSemanal(navegador) {
         await elegirArchivo(indice);
         igual('seguimiento: "actualiza mis pendientes" lleva a Pendientes y abre la importación',
             [await page.evaluate(() => document.getElementById('page-pendientes').classList.contains('active')), (await page.textContent('#modal-titulo')).trim()],
-            [true, '📥 Seguimiento semanal']);
+            [true, 'Seguimiento semanal']);
         igual('seguimiento: la vista previa dice qué va a pasar', await cifras(), ['5 nuevos', '0 se actualizan', '0 sin cambios', '0 ya no aparecen']);
         verificar('seguimiento: avisa que el concluido no se importa', /1 concluidos no se importan/.test(await page.textContent('.seg-resumen')));
         const porAsignar = await page.$$eval('.seg-asignar strong', s => s.map(x => x.textContent));
@@ -2635,8 +2692,8 @@ async function probarViabilidadMarca(navegador) {
         verificar('viabilidad: el dictamen es "baja" por la idéntica en la misma clase', /Viabilidad baja/.test(dictamen), dictamen);
         const filas = await page.$$eval('.vb-tabla tbody tr', trs => trs.map(tr => tr.innerText.replace(/\s+/g, ' ')));
         verificar('viabilidad: la marca que vieron MARCia y Marcanet sale una vez, con las dos fuentes',
-            filas.filter(f => /^⛔ Alto LUNA AZUL/.test(f)).length === 1 && filas.some(f => /LUNA AZUL.*MARCia, Marcanet/.test(f)), filas.join('\n'));
-        const azul = filas.find(f => /^⛔ Alto LUNA AZUL/.test(f)) || '';
+            filas.filter(f => /^\s*Alto LUNA AZUL/.test(f)).length === 1 && filas.some(f => /LUNA AZUL.*MARCia, Marcanet/.test(f)), filas.join('\n'));
+        const azul = filas.find(f => /^\s*Alto LUNA AZUL/.test(f)) || '';
         verificar('viabilidad: los dos expedientes de LUNA AZUL de un mismo titular van en una fila', /Reg\. 911111 y 1 más/.test(azul) && /Sus 2 expedientes/.test(azul) && /30, 43/.test(azul), azul);
         verificar('viabilidad: con lo que ampara, según su ficha en MARCia', /Ampara: 30: CAFÉ EN GRANO; CAFÉ MOLIDO\./.test(azul) && /Misma clase, según MARCia/.test(azul), azul);
         await page.click('.vb-miembros summary');
@@ -3038,13 +3095,13 @@ async function main() {
         await page.click('#fab-feedback');
         await page.waitForTimeout(500);
         igual('feedback: abre como sugerencia de mejora',
-            (await page.locator('#modal-titulo').textContent()).trim(), '💡 Sugerir una mejora');
+            (await page.locator('#modal-titulo').textContent()).trim(), 'Sugerir una mejora');
 
         await page.fill('#reporte-descripcion', 'texto que no se debe perder');
         await page.click('.reporte-tipo-btn[data-tipo="problema"]');
         await page.waitForTimeout(300);
         igual('feedback: cambia a reporte de problema',
-            (await page.locator('#modal-titulo').textContent()).trim(), '🐞 Reportar un problema');
+            (await page.locator('#modal-titulo').textContent()).trim(), 'Reportar un problema');
         igual('feedback: cambiar de tipo no borra lo escrito',
             await page.inputValue('#reporte-descripcion'), 'texto que no se debe perder');
 
@@ -3265,7 +3322,7 @@ async function main() {
         // ---- Reporte de errores ----
         await page.evaluate(() => navegarA('config'));
         await page.waitForTimeout(500);
-        await page.click('button:has-text("🐞 Reportar")');
+        await page.click('#page-config button:has-text("Reportar")');
         await page.waitForTimeout(600);
 
         const formulario = await page.evaluate(() => {
@@ -4028,7 +4085,7 @@ async function main() {
             try {
                 navegarA('busqueda');
                 await pausa(200);
-                const pestanas = (sel) => [...document.querySelectorAll(sel)].map(t => t.textContent.trim().split(' ')[0]);
+                const pestanas = (sel) => [...document.querySelectorAll(sel)].map(t => t.querySelector('use')?.getAttribute('href'));
                 r.pestanasTSJ = [...document.querySelectorAll('#page-busqueda .pjf-tab')].map(t => t.textContent.trim());
                 r.mismosIconos = JSON.stringify(pestanas('#page-busqueda .pjf-tab')) === JSON.stringify(pestanas('#page-pjf .pjf-tab'));
 
@@ -4124,12 +4181,12 @@ async function main() {
             return r;
         });
         igual('tribunales TSJ: tres pestañas como el PJF', tsj.pestanasTSJ,
-            ['🔍 Búsqueda', '📁 Expedientes TSJ', '🤖 Análisis IA']);
+            ['Búsqueda', 'Expedientes TSJ', 'Análisis IA']);
         igual('tribunales TSJ: con los mismos iconos y orden que las del PJF', tsj.mismosIconos, true);
         igual('tribunales TSJ: la consulta trae el catálogo de juzgados', tsj.juzgadosCargados, true);
         igual('tribunales TSJ: y se filtra escribiendo', tsj.filtraJuzgados, true);
         igual('tribunales TSJ: los botones de la consulta son los del PJF', tsj.botonesPie,
-            ['🗑️ Limpiar', '📁 Buscar y Guardar Expediente', '🔍 Buscar en TSJ']);
+            ['Limpiar', 'Buscar y Guardar Expediente', 'Buscar en TSJ']);
         igual('tribunales TSJ: "Buscar en TSJ" abre los estrados', tsj.abreEstrados, true);
         igual('tribunales TSJ: "Buscar y Guardar" lo guarda una sola vez', tsj.guardaUnaVez, true);
         igual('tribunales TSJ: "Limpiar" vacía la consulta', tsj.limpia, true);
@@ -4218,7 +4275,7 @@ async function main() {
         igual('tarjetas: el menú ⋯ empieza cerrado', ajustes.cerradoOculto, true);
         igual('tarjetas: y se abre al tocarlo', ajustes.abierto, true);
         igual('tarjetas: con las acciones de uso ocasional', ajustes.opciones,
-            ['📜 Historial', '📅 Timeline', '📦 Archivar', '🗑️ Eliminar']);
+            ['Historial', 'Timeline', 'Archivar', 'Eliminar']);
         igual('tarjetas: abrir el menú no abre el detalle del expediente', ajustes.noAbreDetalle, true);
         igual('tarjetas: el menú se cierra al tocar fuera', ajustes.cierraFuera, true);
         igual('tarjetas: y con Esc', ajustes.cierraEsc, true);
@@ -4354,6 +4411,9 @@ async function main() {
 
         // ---- Búsqueda global en juzgados específicos ----
         await probarBusquedaGlobalEspecificos(navegador);
+
+        // ---- Íconos propios en lugar de emojis ----
+        await probarIconosSinEmojis(navegador);
 
         // ---- Seguimiento semanal (indice_asuntos.json) ----
         await probarSeguimientoSemanal(navegador);

@@ -10,7 +10,7 @@
     <meta name="keywords" content="TSJ Quintana Roo, expedientes TSJ, TSJQROO, estrados TSJ, PJF federal, poder judicial federal, Tribunal de Conciliación y Arbitraje Quintana Roo, TCA Quintana Roo, Junta Local de Conciliación y Arbitraje, Junta Especial Cancún, estrados laborales, gestión de expedientes, juzgados Quintana Roo, IMPI, estudio de viabilidad de marca, registro de marca, búsqueda fonética, MARCia, Marcanet, SIGA, gacetas IMPI, clase Niza, monitoreo de marcas, calculadora de finiquito, abogados Quintana Roo, Cancún, Playa del Carmen, Chetumal, Cozumel">
     <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
     <meta name="author" content="Empírica Legal Lab">
-    <meta name="theme-color" content="#366092">
+    <meta name="theme-color" content="#eaf0ee">
     <link rel="canonical" href="https://tsjia.empirica.mx/docs/">
 
     <!-- Open Graph / Facebook -->
@@ -171,7 +171,13 @@
     }
     </script>
 
+    <!-- Letra de la marca: Fraunces para títulos y cifras, Plus Jakarta Sans
+         para todo lo demás. Sin conexión, la app usa la letra del sistema. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..600;1,9..144,400..600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
     <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/refresco.css">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icons/icono.svg" type="image/svg+xml">
     <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
@@ -185,53 +191,125 @@
     <script src="js/instalar.js"></script>
 </head>
 <body>
-    <!-- Header -->
+    <!-- Íconos de línea de la app (sustituyen a los emojis). Se usan con
+         <svg class="ico"><use href="#i-..."></use></svg>. -->
+    <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false">
+        <symbol id="i-inicio" viewBox="0 0 24 24"><path d="M4 11.2 12 4.8l8 6.4"/><path d="M6.5 9.6V19h11V9.6"/><path d="M10.2 19v-4.6h3.6V19"/></symbol>
+        <symbol id="i-expedientes" viewBox="0 0 24 24"><path d="M3.5 7.4a1.9 1.9 0 0 1 1.9-1.9h3.9l2.1 2.2h7.2a1.9 1.9 0 0 1 1.9 1.9v7.5a1.9 1.9 0 0 1-1.9 1.9H5.4a1.9 1.9 0 0 1-1.9-1.9Z"/><path d="M3.5 10.6h17"/></symbol>
+        <symbol id="i-calendario" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2.6"/><path d="M4 10h16"/><path d="M8.5 3.5v4"/><path d="M15.5 3.5v4"/><path d="M8 14h2.5"/></symbol>
+        <symbol id="i-pendientes" viewBox="0 0 24 24"><rect x="4.5" y="4.5" width="15" height="15" rx="3.2"/><path d="m8.6 12.2 2.4 2.4 4.5-4.9"/></symbol>
+        <symbol id="i-notas" viewBox="0 0 24 24"><path d="M6.2 4.5h8.3l4 4V18.8a.7.7 0 0 1-.7.7H6.2a.7.7 0 0 1-.7-.7V5.2a.7.7 0 0 1 .7-.7Z"/><path d="M14.3 4.6V8.8h4.1"/><path d="M8.6 13h6.8"/><path d="M8.6 16h4.4"/></symbol>
+        <symbol id="i-tribunales" viewBox="0 0 24 24"><path d="M4 9.2 12 4.8l8 4.4"/><path d="M5.2 9.6h13.6"/><path d="M7 9.8v7"/><path d="M10.3 9.8v7"/><path d="M13.7 9.8v7"/><path d="M17 9.8v7"/><path d="M4.6 17.4h14.8"/><path d="M3.8 20h16.4"/></symbol>
+        <symbol id="i-pjf" viewBox="0 0 24 24"><path d="M12 4.5v15"/><path d="M8.2 19.5h7.6"/><path d="M5 7.8h14"/><path d="m5 7.8-2.6 6.2h5.2Z"/><path d="m19 7.8-2.6 6.2h5.2Z"/></symbol>
+        <symbol id="i-laboral" viewBox="0 0 24 24"><rect x="5.5" y="3.5" width="13" height="17" rx="2.6"/><path d="M8.6 7.2h6.8v2.6H8.6Z"/><path d="M9 13.6h.01M12 13.6h.01M15 13.6h.01M9 16.8h.01M12 16.8h.01M15 16.8h.01" stroke-width="2.4"/></symbol>
+        <symbol id="i-impi" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M10 16.2V7.8h2.9a2.2 2.2 0 0 1 0 4.4H10"/><path d="m12.9 12.3 2.2 3.9"/></symbol>
+        <symbol id="i-estadisticas" viewBox="0 0 24 24"><path d="M4.5 19.5h15"/><path d="M7.8 16.5V12"/><path d="M12 16.5v-9"/><path d="M16.2 16.5V10"/></symbol>
+        <symbol id="i-ajustes" viewBox="0 0 24 24"><path d="M4.5 7h8"/><path d="M17.5 7h2"/><circle cx="15" cy="7" r="2.2"/><path d="M4.5 12h2"/><path d="M11.5 12h8"/><circle cx="9" cy="12" r="2.2"/><path d="M4.5 17h9"/><path d="M18.5 17h1"/><circle cx="16" cy="17" r="2.2"/></symbol>
+        <symbol id="i-buscar" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m15.6 15.6 4.4 4.4"/></symbol>
+        <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="10.5" rx="3"/><path d="M6 11.2a6 6 0 0 0 12 0"/><path d="M12 17.2v3.3"/><path d="M9.2 20.5h5.6"/></symbol>
+        <symbol id="i-estrados" viewBox="0 0 24 24"><rect x="4" y="4.5" width="16" height="11.5" rx="2.2"/><path d="M7.8 8.6h8.4"/><path d="M7.8 11.8h5.2"/><path d="m8.5 20.2 3.5-4.2 3.5 4.2"/></symbol>
+        <symbol id="i-audiencia" viewBox="0 0 24 24"><path d="m10.3 7.2 4.4-4.4 4.4 4.4-4.4 4.4Z"/><path d="m12.5 9.4-7.8 7.8"/><path d="M12.8 20.2h7.2"/></symbol>
+        <symbol id="i-avisos" viewBox="0 0 24 24"><path d="M7 16.2V11a5 5 0 0 1 10 0v5.2l1.6 2.1H5.4Z"/><path d="M10.4 20.6h3.2"/></symbol>
+        <symbol id="i-chat" viewBox="0 0 24 24"><path d="M5.6 6h12.8A1.6 1.6 0 0 1 20 7.6v7.8a1.6 1.6 0 0 1-1.6 1.6h-7.1L7 20.2V17H5.6A1.6 1.6 0 0 1 4 15.4V7.6A1.6 1.6 0 0 1 5.6 6Z"/></symbol>
+        <symbol id="i-archivar" viewBox="0 0 24 24"><path d="M4 6.2h16v3.6H4Z"/><path d="M5.4 9.8v8.6a1.1 1.1 0 0 0 1.1 1.1h11a1.1 1.1 0 0 0 1.1-1.1V9.8"/><path d="M10 13.4h4"/></symbol>
+        <symbol id="i-brujula" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m14.9 9.1-1.8 4-4 1.8 1.8-4Z"/></symbol>
+        <symbol id="i-foco" viewBox="0 0 24 24"><path d="M9.2 17.6h5.6"/><path d="M10.2 20.4h3.6"/><path d="M8.7 14.6a5.4 5.4 0 1 1 6.6 0c-.6.5-.9 1.2-.9 1.9v1.1H9.6v-1.1c0-.7-.3-1.4-.9-1.9Z"/></symbol>
+        <symbol id="i-ia" viewBox="0 0 24 24"><path d="M11 4.5c.6 3.4 2.6 5.4 6 6-3.4.6-5.4 2.6-6 6-.6-3.4-2.6-5.4-6-6 3.4-.6 5.4-2.6 6-6Z"/><path d="M18 15.5c.3 1.4 1.1 2.2 2.5 2.5-1.4.3-2.2 1.1-2.5 2.5-.3-1.4-1.1-2.2-2.5-2.5 1.4-.3 2.2-1.1 2.5-2.5Z"/></symbol>
+        <symbol id="i-mas" viewBox="0 0 24 24"><path d="M12 5.5v13"/><path d="M5.5 12h13"/></symbol>
+        <symbol id="i-instalar" viewBox="0 0 24 24"><rect x="7" y="3.5" width="10" height="17" rx="2.4"/><path d="M12 8v6"/><path d="m9.6 11.8 2.4 2.4 2.4-2.4"/><path d="M11 17.8h2"/></symbol>
+        <symbol id="i-recomendar" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.2"/><path d="M3.8 19a5.2 5.2 0 0 1 10.4 0"/><path d="M17 8.5v6"/><path d="M14 11.5h6"/></symbol>
+        <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4.5 7h15"/><path d="M4.5 12h15"/><path d="M4.5 17h15"/></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+        <symbol id="i-alerta" viewBox="0 0 24 24"><path d="M12 4.5 20.5 19h-17Z"/><path d="M12 10v4"/><path d="M12 16.6h.01" stroke-width="2.4"/></symbol>
+        <symbol id="i-portapapeles" viewBox="0 0 24 24"><rect x="5.5" y="5" width="13" height="15.5" rx="2.2"/><path d="M9 5V3.8h6V5"/><path d="M9 11h6"/><path d="M9 14.5h4"/></symbol>
+        <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 4.5h6"/><path d="M10 4.5v5l-3 3.5h10l-3-3.5v-5"/><path d="M12 13v7"/></symbol>
+        <symbol id="i-editar" viewBox="0 0 24 24"><path d="M15.6 4.8a2.1 2.1 0 0 1 3 3L8.4 18l-4 1 1-4Z"/><path d="m13.8 6.6 3 3"/></symbol>
+        <symbol id="i-guardar" viewBox="0 0 24 24"><path d="M5.5 4.5h10l3 3v11a1 1 0 0 1-1 1h-12a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1Z"/><path d="M8 4.5v4h7v-4"/><rect x="8" y="12.5" width="8" height="7" rx=".8"/></symbol>
+        <symbol id="i-globo" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.6 2.4 2.6 14.6 0 17"/><path d="M12 3.5c-2.6 2.4-2.6 14.6 0 17"/></symbol>
+        <symbol id="i-basura" viewBox="0 0 24 24"><path d="M4.5 7h15"/><path d="M9.5 7V4.8h5V7"/><path d="m6.5 7 .9 12.2a1 1 0 0 0 1 .8h7.2a1 1 0 0 0 1-.8L17.5 7"/><path d="M10.2 10.8v5.4"/><path d="M13.8 10.8v5.4"/></symbol>
+        <symbol id="i-subir" viewBox="0 0 24 24"><path d="M12 15V4.5"/><path d="m7.8 8.7 4.2-4.2 4.2 4.2"/><path d="M5 19.5h14"/></symbol>
+        <symbol id="i-sincronizar" viewBox="0 0 24 24"><path d="M19 9a7.5 7.5 0 0 0-13.4-2.4"/><path d="M5 4v3.6h3.6"/><path d="M5 15a7.5 7.5 0 0 0 13.4 2.4"/><path d="M19 20v-3.6h-3.6"/></symbol>
+        <symbol id="i-reloj" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.6V12l3 2"/></symbol>
+        <symbol id="i-usuario" viewBox="0 0 24 24"><circle cx="12" cy="8.6" r="3.6"/><path d="M5.2 19.5a6.8 6.8 0 0 1 13.6 0"/></symbol>
+        <symbol id="i-candado" viewBox="0 0 24 24"><rect x="5.5" y="10.5" width="13" height="9.5" rx="2.2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></symbol>
+        <symbol id="i-dinero" viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="11" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.5 9.5h.01M17.5 14.5h.01" stroke-width="2.4"/></symbol>
+        <symbol id="i-ojo" viewBox="0 0 24 24"><path d="M2.8 12S6.2 5.8 12 5.8 21.2 12 21.2 12 17.8 18.2 12 18.2 2.8 12 2.8 12Z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+        <symbol id="i-hash" viewBox="0 0 24 24"><path d="M9.5 4.5 8 19.5"/><path d="m16 4.5-1.5 15"/><path d="M5 9h15"/><path d="M4 15h15"/></symbol>
+        <symbol id="i-trabajo" viewBox="0 0 24 24"><rect x="3.5" y="7.5" width="17" height="12" rx="2.2"/><path d="M9 7.5V5.8a1.3 1.3 0 0 1 1.3-1.3h3.4A1.3 1.3 0 0 1 15 5.8v1.7"/><path d="M3.5 12.5h17"/></symbol>
+        <symbol id="i-casco" viewBox="0 0 24 24"><path d="M5.5 16.5a6.5 6.5 0 0 1 13 0"/><path d="M10.5 10.3V7.5h3v2.8"/><path d="M4 16.5h16v1.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z"/></symbol>
+        <symbol id="i-enlace" viewBox="0 0 24 24"><path d="M10 14a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1 1"/><path d="M14 10a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1-1"/></symbol>
+        <symbol id="i-prohibido" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/></symbol>
+        <symbol id="i-imagen" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2.2"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 5-4.5 4 3.5 3-2.5 4 3.5"/></symbol>
+        <symbol id="i-sonido" viewBox="0 0 24 24"><path d="M4.5 9.5h3l4-3.5v12l-4-3.5h-3Z"/><path d="M15 9a4 4 0 0 1 0 6"/><path d="M17.5 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+        <symbol id="i-silencio" viewBox="0 0 24 24"><path d="M4.5 9.5h3l4-3.5v12l-4-3.5h-3Z"/><path d="m15.5 9.5 5 5"/><path d="m20.5 9.5-5 5"/></symbol>
+        <symbol id="i-correo" viewBox="0 0 24 24"><rect x="3.5" y="6" width="17" height="12" rx="2"/><path d="m4.5 7.5 7.5 5.5 7.5-5.5"/></symbol>
+        <symbol id="i-etiqueta" viewBox="0 0 24 24"><path d="M4 4.5h7.5l8.5 8.5-7 7-8.5-8.5Z"/><path d="M8.3 8.3h.01" stroke-width="2.6"/></symbol>
+        <symbol id="i-imprimir" viewBox="0 0 24 24"><path d="M7 9V4.5h10V9"/><rect x="4" y="9" width="16" height="7.5" rx="1.8"/><path d="M7 14h10v5.5H7Z"/></symbol>
+        <symbol id="i-bandera" viewBox="0 0 24 24"><path d="M6 20.5V4.5"/><path d="M6 5h11l-2.5 4 2.5 4H6"/></symbol>
+        <symbol id="i-ayuda" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.6a2.5 2.5 0 1 1 3.4 2.3c-.7.3-1 .9-1 1.6v.5"/><path d="M12 16.8h.01" stroke-width="2.4"/></symbol>
+        <symbol id="i-sin-red" viewBox="0 0 24 24"><path d="M3.5 9a13 13 0 0 1 4-2.2"/><path d="M11 6.1A13 13 0 0 1 20.5 9"/><path d="M6.5 12.3a8.5 8.5 0 0 1 2.5-1.4"/><path d="M14 10.9a8.5 8.5 0 0 1 3.5 1.4"/><path d="M12 17.5h.01" stroke-width="2.6"/><path d="m4 4 16 16"/></symbol>
+        <symbol id="i-sol" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.8"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></symbol>
+        <symbol id="i-ubicacion" viewBox="0 0 24 24"><path d="M12 20.5s6.5-5.9 6.5-11a6.5 6.5 0 0 0-13 0c0 5.1 6.5 11 6.5 11Z"/><circle cx="12" cy="9.5" r="2.3"/></symbol>
+        <symbol id="i-rayo" viewBox="0 0 24 24"><path d="M13 3.5 5.5 13.5h6L11 20.5l7.5-10h-6Z"/></symbol>
+        <symbol id="i-cerrar" viewBox="0 0 24 24"><path d="m7 7 10 10"/><path d="M17 7 7 17"/></symbol>
+        <symbol id="i-punto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5.5"/></symbol>
+        <symbol id="i-estrella" viewBox="0 0 12 12"><polygon points="6,0 6.48,4.85 8.4,3.6 7.15,5.52 12,6 7.15,6.48 8.4,8.4 6.48,7.15 6,12 5.52,7.15 3.6,8.4 4.85,6.48 0,6 4.85,5.52 3.6,3.6 5.52,4.85"/></symbol>
+        <symbol id="i-logo" viewBox="0 0 64 64"><rect width="64" height="64" rx="15" fill="#1b312b"/><path d="M13 30.5a3 3 0 0 1 3-3h9.5l3 3.4H48a3 3 0 0 1 3 3V51a3 3 0 0 1-3 3H16a3 3 0 0 1-3-3Z" fill="#8fae9f"/><rect x="19" y="31" width="26" height="12" rx="1.6" fill="#fff"/><path d="M11.6 37h40.8a1.5 1.5 0 0 1 1.48 1.74L52 51.4a3 3 0 0 1-2.96 2.6H14.96A3 3 0 0 1 12 51.4l-1.88-12.66A1.5 1.5 0 0 1 11.6 37Z" fill="#eaf0ee"/><polygon points="32,9 32.65,15.93 35.39,14.11 33.57,16.85 40.5,17.5 33.57,18.15 35.39,20.89 32.65,19.07 32,26 31.35,19.07 28.61,20.89 30.43,18.15 23.5,17.5 30.43,16.85 28.61,14.11 31.35,15.93" fill="#d0a589"/></symbol>
+    </svg>
+    <!-- Cambia los emojis por los íconos de arriba en todo lo que se pinta. -->
+    <script src="js/iconos.js"></script>
+    <!-- Header: barra lateral en escritorio, barra superior en el celular -->
     <header class="app-header">
         <div class="header-brand">
-            <span class="brand-icon">⚖️</span>
+            <svg class="brand-logo" aria-hidden="true"><use href="#i-logo"></use></svg>
             <div class="brand-text">
-                <h1>TSJ Filing Online</h1>
-                <span class="brand-subtitle">TSJ QRoo + PJF Federal - v8.0</span>
+                <h1 class="marca-palabra" aria-label="TSJ Filing"><span class="marca-tsj">TSJ</span> <span class="marca-filing">F<span class="marca-i">ı<svg class="marca-estrella" aria-hidden="true"><use href="#i-estrella"></use></svg></span>ling</span></h1>
+                <span class="brand-subtitle">de Empírica Legal Lab</span>
             </div>
         </div>
-        <nav class="header-nav">
-            <button class="nav-btn active" data-page="inicio">🏠 Inicio</button>
-            <button class="nav-btn" data-page="expedientes">📁 Expedientes</button>
-            <button class="nav-btn" data-page="calendario">📅 Calendario</button>
-            <button class="nav-btn" data-page="pendientes">✅ Pendientes<span class="nav-badge" id="nav-badge-pendientes" style="display:none;">0</span></button>
-            <button class="nav-btn" data-page="notas">📝 Notas</button>
-            <button class="nav-btn" data-page="tribunales">⚖️ Tribunales</button>
-            <button class="nav-btn" data-page="laboral">🧮 Laboral</button>
-            <button class="nav-btn" data-page="impi">🔰 IMPI Marcas</button>
-            <button class="nav-btn" data-page="estadisticas" title="Estadísticas">📊</button>
-            <button class="nav-btn" data-page="config">⚙️</button>
+        <nav class="header-nav" aria-label="Secciones">
+            <span class="nav-grupo">Trabajo diario</span>
+            <button class="nav-btn active" data-page="inicio"><svg class="ico" aria-hidden="true"><use href="#i-inicio"></use></svg><span class="nav-texto">Inicio</span></button>
+            <button class="nav-btn" data-page="expedientes"><svg class="ico" aria-hidden="true"><use href="#i-expedientes"></use></svg><span class="nav-texto">Expedientes</span></button>
+            <button class="nav-btn" data-page="calendario"><svg class="ico" aria-hidden="true"><use href="#i-calendario"></use></svg><span class="nav-texto">Calendario</span></button>
+            <button class="nav-btn" data-page="pendientes"><svg class="ico" aria-hidden="true"><use href="#i-pendientes"></use></svg><span class="nav-texto">Pendientes</span><span class="nav-badge" id="nav-badge-pendientes" style="display:none;">0</span></button>
+            <button class="nav-btn" data-page="notas"><svg class="ico" aria-hidden="true"><use href="#i-notas"></use></svg><span class="nav-texto">Notas</span></button>
+            <span class="nav-grupo">Consultas</span>
+            <button class="nav-btn" data-page="tribunales"><svg class="ico" aria-hidden="true"><use href="#i-tribunales"></use></svg><span class="nav-texto">Tribunales</span></button>
+            <button class="nav-btn" data-page="laboral"><svg class="ico" aria-hidden="true"><use href="#i-laboral"></use></svg><span class="nav-texto">Calculadora laboral</span></button>
+            <button class="nav-btn" data-page="impi"><svg class="ico" aria-hidden="true"><use href="#i-impi"></use></svg><span class="nav-texto">IMPI Marcas</span></button>
+            <span class="nav-grupo">Despacho</span>
+            <button class="nav-btn" data-page="estadisticas"><svg class="ico" aria-hidden="true"><use href="#i-estadisticas"></use></svg><span class="nav-texto">Estadísticas</span></button>
+            <button class="nav-btn" data-page="config"><svg class="ico" aria-hidden="true"><use href="#i-ajustes"></use></svg><span class="nav-texto">Configuración</span></button>
         </nav>
-        <button class="menu-toggle" id="menuToggle">☰</button>
+        <button class="menu-toggle" id="menuToggle" aria-label="Abrir el menú" aria-controls="mobileNav"><svg class="ico" aria-hidden="true"><use href="#i-menu"></use></svg></button>
     </header>
 
     <!-- Mobile Navigation -->
     <nav class="mobile-nav" id="mobileNav">
-        <button class="nav-btn active" data-page="inicio">🏠 Inicio</button>
-        <button class="nav-btn" data-page="expedientes">📁 Expedientes</button>
-        <button class="nav-btn" data-page="calendario">📅 Calendario</button>
-        <button class="nav-btn" data-page="pendientes">✅ Pendientes<span class="nav-badge" id="nav-badge-pendientes-movil" style="display:none;">0</span></button>
-        <button class="nav-btn" data-page="notas">📝 Notas</button>
-        <button class="nav-btn" data-page="tribunales">⚖️ Tribunales</button>
-        <button class="nav-btn" data-page="laboral">🧮 Calculadora Laboral</button>
-        <button class="nav-btn" data-page="impi">🔰 IMPI Marcas</button>
-        <button class="nav-btn" data-page="estadisticas">📊 Estadísticas</button>
-        <button class="nav-btn" data-page="config">⚙️ Configuración</button>
-        <button class="nav-btn nav-instalar" type="button" onclick="instalarApp()">📲 Instalar en mi celular</button>
-        <button class="nav-btn nav-recomendar" type="button" onclick="recomendarApp('menu')">🤝 Recomendar a un colega</button>
+        <button class="nav-btn active" data-page="inicio"><svg class="ico" aria-hidden="true"><use href="#i-inicio"></use></svg><span class="nav-texto">Inicio</span></button>
+        <button class="nav-btn" data-page="expedientes"><svg class="ico" aria-hidden="true"><use href="#i-expedientes"></use></svg><span class="nav-texto">Expedientes</span></button>
+        <button class="nav-btn" data-page="calendario"><svg class="ico" aria-hidden="true"><use href="#i-calendario"></use></svg><span class="nav-texto">Calendario</span></button>
+        <button class="nav-btn" data-page="pendientes"><svg class="ico" aria-hidden="true"><use href="#i-pendientes"></use></svg><span class="nav-texto">Pendientes</span><span class="nav-badge" id="nav-badge-pendientes-movil" style="display:none;">0</span></button>
+        <button class="nav-btn" data-page="notas"><svg class="ico" aria-hidden="true"><use href="#i-notas"></use></svg><span class="nav-texto">Notas</span></button>
+        <button class="nav-btn" data-page="tribunales"><svg class="ico" aria-hidden="true"><use href="#i-tribunales"></use></svg><span class="nav-texto">Tribunales</span></button>
+        <button class="nav-btn" data-page="laboral"><svg class="ico" aria-hidden="true"><use href="#i-laboral"></use></svg><span class="nav-texto">Calculadora laboral</span></button>
+        <button class="nav-btn" data-page="impi"><svg class="ico" aria-hidden="true"><use href="#i-impi"></use></svg><span class="nav-texto">IMPI Marcas</span></button>
+        <button class="nav-btn" data-page="estadisticas"><svg class="ico" aria-hidden="true"><use href="#i-estadisticas"></use></svg><span class="nav-texto">Estadísticas</span></button>
+        <button class="nav-btn" data-page="config"><svg class="ico" aria-hidden="true"><use href="#i-ajustes"></use></svg><span class="nav-texto">Configuración</span></button>
+        <button class="nav-btn nav-instalar" type="button" onclick="instalarApp()"><svg class="ico" aria-hidden="true"><use href="#i-instalar"></use></svg><span class="nav-texto">Instalar en mi celular</span></button>
+        <button class="nav-btn nav-recomendar" type="button" onclick="recomendarApp('menu')"><svg class="ico" aria-hidden="true"><use href="#i-recomendar"></use></svg><span class="nav-texto">Recomendar a un colega</span></button>
     </nav>
 
     <!-- Main Content -->
     <main class="app-main">
         <!-- Página Inicio -->
         <section class="page active" id="page-inicio">
-            <div class="page-header">
-                <h2>Panel de Control</h2>
-                <p class="subtitle">Bienvenido al Sistema de Gestión de Expedientes</p>
+            <div class="page-header page-header-inicio">
+                <div>
+                    <span class="eyebrow" id="inicio-fecha"></span>
+                    <h2 id="inicio-saludo">Panel de Control</h2>
+                </div>
             </div>
 
             <!-- Búsqueda rápida de expedientes. SOLO SE VE EN MÓVIL: el CSS la
@@ -242,7 +320,7 @@
                  Ctrl+K. -->
             <div class="busqueda-rapida" id="busqueda-rapida">
                 <div class="busqueda-rapida-campo">
-                    <span class="busqueda-rapida-icono" aria-hidden="true">🔍</span>
+                    <span class="busqueda-rapida-icono" aria-hidden="true"><svg class="ico"><use href="#i-buscar"></use></svg></span>
                     <input type="text" id="busqueda-rapida-input"
                            placeholder="Buscar expediente…"
                            autocomplete="off" autocorrect="off" autocapitalize="off"
@@ -278,7 +356,7 @@
                 <button type="button" class="stat-card stat-interactiva" id="stat-card-pendientes"
                         data-panel="pendientes" aria-expanded="false" aria-controls="panel-rapido"
                         onclick="alternarPanelRapido('pendientes')">
-                    <div class="stat-icon" style="background: #fdecea;">✅</div>
+                    <div class="stat-icon"><svg class="ico" aria-hidden="true"><use href="#i-pendientes"></use></svg></div>
                     <div class="stat-content">
                         <span class="stat-value" id="stat-pendientes">0</span>
                         <span class="stat-label">Pendientes urgentes</span>
@@ -288,7 +366,7 @@
                 <button type="button" class="stat-card stat-interactiva" id="stat-card-eventos"
                         data-panel="eventos" aria-expanded="false" aria-controls="panel-rapido"
                         onclick="alternarPanelRapido('eventos')">
-                    <div class="stat-icon" style="background: #e8f5e9;">📅</div>
+                    <div class="stat-icon"><svg class="ico" aria-hidden="true"><use href="#i-audiencia"></use></svg></div>
                     <div class="stat-content">
                         <span class="stat-value" id="stat-eventos">0</span>
                         <span class="stat-label">Eventos próximos</span>
@@ -298,7 +376,7 @@
                 <button type="button" class="stat-card stat-interactiva" id="stat-card-expedientes"
                         data-panel="expedientes" aria-expanded="false" aria-controls="panel-rapido"
                         onclick="alternarPanelRapido('expedientes')">
-                    <div class="stat-icon" style="background: #e3f2fd;">📁</div>
+                    <div class="stat-icon"><svg class="ico" aria-hidden="true"><use href="#i-expedientes"></use></svg></div>
                     <div class="stat-content">
                         <span class="stat-value" id="stat-expedientes">0</span>
                         <span class="stat-label">Expedientes</span>
@@ -308,7 +386,7 @@
                 <button type="button" class="stat-card stat-interactiva" id="stat-card-notas"
                         data-panel="notas" aria-expanded="false" aria-controls="panel-rapido"
                         onclick="alternarPanelRapido('notas')">
-                    <div class="stat-icon" style="background: #fff3e0;">📌</div>
+                    <div class="stat-icon"><svg class="ico" aria-hidden="true"><use href="#i-notas"></use></svg></div>
                     <div class="stat-content">
                         <span class="stat-value" id="stat-notas">0</span>
                         <span class="stat-label">Notas fijadas</span>
@@ -318,30 +396,30 @@
             </div>
             <div class="panel-rapido card" id="panel-rapido" role="region" aria-live="polite" hidden></div>
             <div class="quick-actions">
-                <h3>Acciones Rápidas</h3>
+                <h3 class="eyebrow">Atajos</h3>
                 <div class="actions-grid">
                     <button class="action-card" onclick="navegarA('expedientes'); mostrarFormularioExpediente()">
-                        <span class="action-icon">➕</span>
+                        <span class="action-icon"><svg class="ico" aria-hidden="true"><use href="#i-mas"></use></svg></span>
                         <span>Nuevo Expediente</span>
                     </button>
                     <button class="action-card primary" onclick="navegarA('busqueda')">
-                        <span class="action-icon">🔍</span>
+                        <span class="action-icon"><svg class="ico" aria-hidden="true"><use href="#i-buscar"></use></svg></span>
                         <span>Buscar en TSJ</span>
                     </button>
                     <button class="action-card" onclick="navegarA('pjf')">
-                        <span class="action-icon">🏛️</span>
+                        <span class="action-icon"><svg class="ico" aria-hidden="true"><use href="#i-pjf"></use></svg></span>
                         <span>PJF Federal</span>
                     </button>
                     <button class="action-card" onclick="navegarA('impi')">
-                        <span class="action-icon">🔰</span>
+                        <span class="action-icon"><svg class="ico" aria-hidden="true"><use href="#i-impi"></use></svg></span>
                         <span>IMPI Marcas</span>
                     </button>
                     <button class="action-card" onclick="navegarA('calendario')">
-                        <span class="action-icon">📅</span>
+                        <span class="action-icon"><svg class="ico" aria-hidden="true"><use href="#i-calendario"></use></svg></span>
                         <span>Ver Calendario</span>
                     </button>
                     <button class="action-card" onclick="navegarA('notas'); mostrarFormularioNota()">
-                        <span class="action-icon">📝</span>
+                        <span class="action-icon"><svg class="ico" aria-hidden="true"><use href="#i-notas"></use></svg></span>
                         <span>Nueva Nota</span>
                     </button>
                 </div>
@@ -350,7 +428,7 @@
             <div class="dashboard-grid">
                 <div class="card">
                     <div class="card-header">
-                        <h3>📅 Hoy y próximos 7 días</h3>
+                        <h3>Hoy y próximos 7 días</h3>
                     </div>
                     <div class="card-body" id="eventos-hoy" style="max-height: 300px; overflow-y: auto;">
                         <div class="empty-state small">
@@ -361,7 +439,7 @@
                 </div>
                 <div class="card">
                     <div class="card-header">
-                        <h3>📁 Expedientes Recientes</h3>
+                        <h3>Expedientes recientes</h3>
                     </div>
                     <div class="card-body" id="expedientes-recientes">
                         <div class="empty-state small">
@@ -378,7 +456,7 @@
         <section class="page" id="page-expedientes">
             <div class="page-header">
                 <div>
-                    <h2>📁 Expedientes</h2>
+                    <h2>Expedientes</h2>
                     <p class="subtitle">Gestiona tus expedientes del TSJ y PJF</p>
                 </div>
                 <div class="header-buttons">
@@ -685,7 +763,7 @@
         <section class="page" id="page-calendario">
             <div class="page-header">
                 <div>
-                    <h2>📅 Calendario</h2>
+                    <h2>Calendario</h2>
                     <p class="subtitle">Gestiona tus eventos y recordatorios</p>
                 </div>
                 <button class="btn btn-primary" onclick="mostrarFormularioEvento()">
@@ -768,7 +846,7 @@
         <section class="page" id="page-pendientes">
             <div class="page-header">
                 <div>
-                    <h2>✅ Pendientes</h2>
+                    <h2>Pendientes</h2>
                     <p class="subtitle">Tareas por expediente. Ponles fecha para verlas en el calendario.</p>
                 </div>
                 <div class="header-buttons">
@@ -843,7 +921,7 @@
         <section class="page" id="page-notas">
             <div class="page-header">
                 <div>
-                    <h2>📝 Notas</h2>
+                    <h2>Notas</h2>
                     <p class="subtitle">Organiza tus notas por expediente</p>
                 </div>
                 <button class="btn btn-primary" onclick="mostrarFormularioNota()">
@@ -891,7 +969,7 @@
         <section class="page" id="page-busqueda">
             <div class="page-header">
                 <div>
-                    <h2>⚖️ Tribunales</h2>
+                    <h2>Tribunales</h2>
                     <p class="subtitle">Estrados, expedientes y análisis de acuerdos del TSJ de Quintana Roo</p>
                 </div>
             </div>
@@ -1293,7 +1371,7 @@
         <section class="page" id="page-pjf">
             <div class="page-header">
                 <div>
-                    <h2>⚖️ Tribunales</h2>
+                    <h2>Tribunales</h2>
                     <p class="subtitle">Estrados, expedientes y análisis de acuerdos del Poder Judicial de la Federación</p>
                 </div>
             </div>
@@ -1624,7 +1702,7 @@
         <section class="page" id="page-impi">
             <div class="page-header">
                 <div>
-                    <h2>🔰 IMPI - Propiedad Industrial</h2>
+                    <h2>IMPI - Propiedad Industrial</h2>
                     <p class="subtitle">Búsqueda de marcas registradas y gacetas del Instituto Mexicano de la Propiedad Industrial</p>
                 </div>
             </div>
@@ -2166,7 +2244,7 @@
         <section class="page" id="page-laboral">
             <div class="page-header">
                 <div>
-                    <h2>🧮 Calculadora Laboral</h2>
+                    <h2>Calculadora Laboral</h2>
                     <p class="subtitle">Finiquito, liquidación e indemnizaciones conforme a la Ley Federal del Trabajo</p>
                 </div>
             </div>
@@ -2390,7 +2468,7 @@
              responsables, pendientes y agenda. La pinta js/estadisticas.js. -->
         <section class="page" id="page-estadisticas">
             <div class="page-header">
-                <h2>📊 Estadísticas</h2>
+                <h2>Estadísticas</h2>
                 <p class="subtitle">Tiempos, resultados, tipos de asunto, clientes y pendientes del despacho</p>
             </div>
             <div id="est-raiz" class="est-raiz"></div>
@@ -2399,7 +2477,7 @@
         <!-- Página Configuración -->
         <section class="page" id="page-config">
             <div class="page-header">
-                <h2>⚙️ Configuración</h2>
+                <h2>Configuración</h2>
                 <p class="subtitle">Personaliza tu experiencia</p>
             </div>
 
@@ -3034,7 +3112,7 @@
     <footer class="app-footer">
         <div class="footer-content">
             <div class="footer-brand">
-                <span class="footer-logo">⚖️</span>
+                <span class="footer-logo"><svg class="brand-logo" aria-hidden="true"><use href="#i-logo"></use></svg></span>
                 <div>
                     <strong>TSJ Filing Online v8.0</strong>
                     <p>Desarrollado por <a href="https://www.empirica.mx" target="_blank">Empírica Legal Lab</a></p>
@@ -3089,7 +3167,7 @@
          las secciones, para estar disponible en cualquier parte del sitio. -->
     <button id="fab-feedback" type="button" onclick="mostrarModalReporteBug('mejora')"
             title="Sugerir una mejora o reportar un problema"
-            aria-label="Sugerir una mejora o reportar un problema">💡</button>
+            aria-label="Sugerir una mejora o reportar un problema"><svg class="ico" aria-hidden="true"><use href="#i-foco"></use></svg></button>
 
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
     <!-- Tesseract.js (OCR) no va aquí: se carga al usarse (cargarTesseract en

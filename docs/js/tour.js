@@ -95,14 +95,14 @@
             duracion: '1 min',
             pasos: [
                 {
-                    titulo: '👋 Bienvenido a TSJ Filing Online',
+                    titulo: 'Bienvenido a TSJ Filing Online',
                     texto: 'En un minuto: primero dejas la app a un toque en tu celular y luego das de alta tu primer expediente con la IA. Puedes salir cuando quieras con ✕ o Esc.'
                 },
                 {
                     // Lo primero: sin el ícono en la pantalla de inicio, la
                     // app se pierde entre las pestañas del navegador.
                     saltarSi: async () => instalada(),
-                    titulo: '📲 Antes que nada: tenla a un toque',
+                    titulo: 'Antes que nada: tenla a un toque',
                     texto: 'Agrégala a la pantalla de inicio de tu celular: se abre con un toque, a pantalla completa y sin internet.',
                     contenido: instrucciones
                 },
@@ -156,7 +156,7 @@
             duracion: '20 s',
             pasos: [
                 {
-                    titulo: '📲 Tenla a un toque en tu celular',
+                    titulo: 'Tenla a un toque en tu celular',
                     texto: 'Agrega TSJ Filing a tu pantalla de inicio: se abre con un toque, a pantalla completa y funciona aunque no haya señal.',
                     contenido: instrucciones
                 }
@@ -313,12 +313,12 @@
                 {
                     saltarSi: sinNotas,
                     objetivo: '#lista-notas .nota-fijar',
-                    titulo: '📌 Fija lo importante',
+                    titulo: 'Fija lo importante',
                     texto: 'Una nota fijada queda arriba de todas y a mano en "Notas fijadas" del inicio.'
                 },
                 {
                     saltarSi: async () => !(await sinNotas()),
-                    titulo: '📌 Lo importante, siempre arriba',
+                    titulo: 'Lo importante, siempre arriba',
                     texto: 'Cada nota trae una 📌: al fijarla queda arriba de todas y a mano en "Notas fijadas" del inicio.'
                 }
             ]
@@ -698,11 +698,13 @@
         return el;
     }
 
-    /** Lo que tapa la barra fija de arriba. */
+    /** Lo que tapa la barra fija de arriba. En escritorio el encabezado es
+     *  una barra lateral: no tapa nada por arriba. */
     function altoEncabezado() {
         const h = document.querySelector('.app-header');
         if (!h) return 0;
         const r = h.getBoundingClientRect();
+        if (r.width < document.documentElement.clientWidth / 2) return 0;
         return getComputedStyle(h).position === 'fixed' || getComputedStyle(h).position === 'sticky' ? Math.max(0, r.bottom) : 0;
     }
 
@@ -903,7 +905,7 @@
         fab.title = 'Recorridos guiados: aprende a usar la app';
         fab.setAttribute('aria-label', 'Recorridos guiados');
         fab.setAttribute('aria-haspopup', 'menu');
-        fab.textContent = '🧭';
+        fab.innerHTML = '<svg class="ico" aria-hidden="true"><use href="#i-brujula"></use></svg>';
         fab.addEventListener('click', (e) => { e.stopPropagation(); alternarMenuTour(); });
         document.body.appendChild(fab);
     }

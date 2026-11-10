@@ -10,7 +10,7 @@
  * Lo que no es de la app —sincronización, IA, tribunales, IMPI— pasa directo
  * a la red: sin conexión falla como siempre y la app lo avisa.
  */
-const CACHE = 'tsj-app-v2';
+const CACHE = 'tsj-app-v4';
 const CACHE_CDN = 'tsj-cdn-v1';
 // Pasado este tiempo sin respuesta de la red se usa la copia guardada.
 const ESPERA_RED_MS = 4000;
@@ -22,6 +22,8 @@ const ARCHIVOS_APP = [
     'index.html',
     'manifest.json',
     'css/styles.css',
+    'css/refresco.css',
+    'js/iconos.js',
     'js/juzgados.js',
     'js/database.js',
     'js/acciones-core.js',
