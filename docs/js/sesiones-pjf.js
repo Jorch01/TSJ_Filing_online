@@ -1,20 +1,24 @@
 /**
  * Sesiones de los Tribunales Colegiados de Circuito.
  *
- * Al abrir la app se revisa si alguno de los amparos directos registrados
- * está listado para sesión en las próximas semanas, y se avisa en Inicio.
+ * Al abrir la app se revisa si alguno de los asuntos registrados en un
+ * tribunal colegiado (amparos directos, amparos en revisión, quejas…) está
+ * listado para sesión en las próximas semanas, y se avisa en Inicio.
  *
  * Las listas son las del buscador oficial del PJF (SISE). El navegador no
  * puede pedirlas directamente (no mandan cabeceras CORS), así que la consulta
  * la hace el proxy: docs/proxy/impi-proxy-worker.js, sección SESIONES SISE,
  * ruta /api/sesiones. Como los expedientes viven aquí, en el navegador, la
- * app le dice cuáles buscar: solo el tribunal y el número/año, nada más.
+ * app le dice cuáles buscar: solo el tribunal, el número/año y el tipo de
+ * asunto, nada más.
  *
- * Qué expedientes se revisan: los del PJF con tipo de asunto "Amparo Directo"
- * que tengan órgano del catálogo. El id de ese órgano (pjfOrgId) es el mismo
+ * Qué expedientes se revisan: los del PJF cuyo órgano es un Tribunal Colegiado
+ * de Circuito del catálogo. El id de ese órgano (pjfOrgId) es el mismo
  * OrganismoId que usa SISE, así que no hay tabla de equivalencias que
  * mantener: sale de data/pjf_catalogos_completos.json al dar de alta el
- * expediente.
+ * expediente. En una misma lista hay quejas, revisiones y amparos directos
+ * con el mismo número, así que cada expediente se busca con su tipo de
+ * asunto; el que no lo tiene se busca solo por número, y se avisa.
  *
  * Dos partes: el motor (puro, se prueba en Node) y lo del navegador.
  */
@@ -24,10 +28,17 @@
     // ==================== CONFIGURACIÓN ====================
 
     const CONFIG = {
-        // Tipo de asunto que se vigila, como id del catálogo del PJF y como
-        // texto (el asistente y la importación a veces guardan el nombre).
-        tipoAsuntoId: '10',
-        tipoAsuntoNombre: 'Amparo Directo',
+        // Se vigilan los asuntos de los Tribunales Colegiados de Circuito: el
+        // tipo de órgano 4 del catálogo del PJF. (Los Colegiados de Apelación
+        // son otro tipo, el 340, y quedan fuera.)
+        tipoOrganismoId: 4,
+        // El tipo de asunto que el proxy da por supuesto si no se le dice
+        // otro, con su id en el catálogo por si el catálogo no carga.
+        tipoPorDefecto: 'Amparo Directo',
+        tipoPorDefectoId: '10',
+        // Desde esta versión el proxy entiende otros tipos de asunto. El
+        // anterior solo revisaba amparos directos, y callaba lo demás.
+        versionProxy: 2,
         // "sesion": por el día de la sesión. "lista": por el día en que se
         // publicó la lista. Con "sesion" el periodo elegido es el de las
         // sesiones, que es lo que se quiere saber.
@@ -69,7 +80,7 @@
     }
 
     function sinAcentos(texto) {
-        return String(texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+        return String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
     }
 
     /** "AD 0677/2023-II" → "677/2023". Sin número y año, null. */
@@ -79,59 +90,101 @@
         return parseInt(m[1], 10) + '/' + (m[2].length === 2 ? '20' + m[2] : m[2]);
     }
 
+    /**
+     * El nombre de un tipo de asunto, para compararlo: sin acentos, en
+     * minúsculas y sin signos. (La misma regla que aplica el proxy.)
+     */
+    function tipoNormal(texto) {
+        return sinAcentos(texto).replace(/[^a-z0-9]+/g, ' ').trim();
+    }
+
     function esColegiado(nombre) {
         return sinAcentos(nombre).includes('tribunal colegiado');
     }
 
-    // Los Tribunales Colegiados de Apelación no conocen de amparo directo.
     function esDeApelacion(nombre) {
         return sinAcentos(nombre).includes('apelacion');
     }
 
     /**
-     * De todos los expedientes, los amparos directos que se pueden buscar,
-     * agrupados por tribunal.
-     * → { grupos: [{ organismoId, tribunal, expedientes: [{ id, clave, numero, neun }] }],
-     *     total, sinTribunal, sinTipo }
-     * sinTribunal: amparos directos sin órgano del catálogo (no se pueden buscar).
-     * sinTipo: expedientes de un colegiado sin tipo de asunto (no se sabe si lo son).
+     * De todos los expedientes, los que están en un Tribunal Colegiado de
+     * Circuito y se pueden buscar, agrupados por tribunal.
+     *
+     * catalogo: { organos: Map(id → { tipoOrganismoId, nombre }), tipos: Map(id → nombre) },
+     * del catálogo del PJF. Sin él, el órgano se reconoce por su nombre.
+     *
+     * → { grupos: [{ organismoId, tribunal, expedientes: [{ id, clave, numero, neun, tipo }] }],
+     *     total, sinTribunal }
+     * tipo: el nombre del tipo de asunto, o '' si el expediente no lo dice (se
+     *       busca entonces solo por número).
+     * sinTribunal: los que son de un colegiado pero no tienen órgano del
+     *       catálogo, así que no hay a quién preguntar.
      */
-    function seleccionarAmparos(expedientes) {
+    function seleccionarAsuntos(expedientes, catalogo) {
+        const organos = (catalogo && catalogo.organos) || new Map();
+        const tipos = (catalogo && catalogo.tipos) || new Map();
+        const nombres = new Map([[tipoNormal(CONFIG.tipoPorDefecto), CONFIG.tipoPorDefecto]]);
+        tipos.forEach((nombre) => nombres.set(tipoNormal(nombre), nombre));
+
+        // El tipo de asunto llega como id del catálogo o como texto (el
+        // asistente y la importación a veces guardan el nombre).
+        const tipoDe = (valor) => {
+            const crudo = String(valor == null ? '' : valor).trim();
+            if (/^\d+$/.test(crudo)) return tipos.get(crudo) || (crudo === CONFIG.tipoPorDefectoId ? CONFIG.tipoPorDefecto : '');
+            return nombres.get(tipoNormal(crudo)) || '';
+        };
+
+        // Un expediente que trae el nombre exacto del órgano pero no su id
+        // (importado, o de una versión anterior) se resuelve por el nombre.
+        const idPorNombre = new Map();
+        organos.forEach((o, id) => { if (o && o.nombre) idPorNombre.set(sinAcentos(o.nombre), id); });
+
         const porOrganismo = new Map();
-        let total = 0, sinTribunal = 0, sinTipo = 0;
+        let total = 0, sinTribunal = 0;
 
         for (const e of expedientes || []) {
             if (!e || e.institucion !== 'PJF' || e.archivado || e.activo === false) continue;
             const clave = claveExpediente(e.numero);
-            if (!clave || esDeApelacion(e.juzgado)) continue;
+            if (!clave) continue;
 
-            const tipo = String(e.pjfTipoAsunto == null ? '' : e.pjfTipoAsunto).trim();
-            if (!tipo) {
-                if (esColegiado(e.juzgado)) sinTipo++;
-                continue;
-            }
-            if (tipo !== CONFIG.tipoAsuntoId && sinAcentos(tipo) !== sinAcentos(CONFIG.tipoAsuntoNombre)) continue;
-
-            const organismoId = String(e.pjfOrgId == null ? '' : e.pjfOrgId).trim();
+            const organismoId = String(e.pjfOrgId == null ? '' : e.pjfOrgId).trim() || idPorNombre.get(sinAcentos(e.juzgado)) || '';
+            const organo = organos.get(organismoId);
+            const tipo = tipoDe(e.pjfTipoAsunto);
+            const deColegiado = organo
+                ? Number(organo.tipoOrganismoId) === CONFIG.tipoOrganismoId
+                : !esDeApelacion(e.juzgado) && (esColegiado(e.juzgado) || tipo === CONFIG.tipoPorDefecto);
+            if (!deColegiado) continue;
             if (!/^\d{1,6}$/.test(organismoId)) { sinTribunal++; continue; }
 
             if (!porOrganismo.has(organismoId)) {
                 porOrganismo.set(organismoId, { organismoId, tribunal: e.juzgado || ('Organismo ' + organismoId), expedientes: [] });
             }
             const neun = String(e.neun || e.pjfNeun || '').replace(/\D/g, '').slice(0, 12);
-            porOrganismo.get(organismoId).expedientes.push({ id: e.id, clave, numero: e.numero, neun });
+            porOrganismo.get(organismoId).expedientes.push({ id: e.id, clave, numero: e.numero, neun, tipo });
             total++;
         }
 
         const grupos = [...porOrganismo.values()].sort((a, b) => Number(a.organismoId) - Number(b.organismoId));
-        return { grupos, total, sinTribunal, sinTipo };
+        return { grupos, total, sinTribunal };
     }
 
-    /** La dirección de la consulta de un tribunal. */
+    const esTipoPorDefecto = (tipo) => tipoNormal(tipo) === tipoNormal(CONFIG.tipoPorDefecto);
+
+    /** ¿Algún asunto del grupo necesita un proxy que entienda tipos de asunto? */
+    function pideOtrosTipos(grupo) {
+        return grupo.expedientes.some(e => !esTipoPorDefecto(e.tipo));
+    }
+
+    /**
+     * La dirección de la consulta de un tribunal. Cada expediente va como
+     * "organismo:número/año[:NEUN][~tipo]"; el tipo por defecto no se
+     * escribe, y "~*" es "de cualquier tipo".
+     */
     function urlConsulta(base, grupo, rango, filtro, refrescar) {
         const vistos = new Set();
         for (const e of grupo.expedientes) {
-            vistos.add(grupo.organismoId + ':' + e.clave + (e.neun ? ':' + e.neun : ''));
+            vistos.add(grupo.organismoId + ':' + e.clave + (e.neun ? ':' + e.neun : '') +
+                (!e.tipo ? '~*' : esTipoPorDefecto(e.tipo) ? '' : '~' + tipoNormal(e.tipo)));
         }
         return String(base || '').replace(/\/+$/, '') + CONFIG.ruta +
             '?desde=' + rango.desde + '&hasta=' + rango.hasta +
@@ -143,7 +196,7 @@
     /** Lo que identifica una consulta: el periodo y la lista de expedientes. */
     function claveConsulta(grupos, rango, filtro) {
         const lista = [];
-        for (const g of grupos) for (const e of g.expedientes) lista.push(g.organismoId + ':' + e.clave + ':' + e.neun);
+        for (const g of grupos) for (const e of g.expedientes) lista.push(g.organismoId + ':' + e.clave + ':' + e.neun + '~' + tipoNormal(e.tipo));
         return [rango.desde, rango.hasta, filtro, lista.sort().join(',')].join('|');
     }
 
@@ -153,8 +206,13 @@
      */
     function completar(sesiones, grupo) {
         return (sesiones || []).map(s => {
+            const tipo = tipoNormal(s.tipoAsunto);
+            const mismos = grupo.expedientes.filter(e => e.clave === s.expediente);
+            // Con el mismo número puedo tener una queja y una revisión: se
+            // empareja con la del mismo tipo antes que con la que no lo dice.
             const mio = grupo.expedientes.find(e => e.neun && e.neun === s.neun) ||
-                grupo.expedientes.find(e => e.clave === s.expediente);
+                mismos.find(e => e.tipo && tipoNormal(e.tipo) === tipo) ||
+                mismos.find(e => !e.tipo) || mismos[0];
             return Object.assign({}, s, {
                 tribunal: grupo.tribunal,
                 expedienteId: mio ? mio.id : null
@@ -190,8 +248,8 @@
     }
 
     const Motor = {
-        CONFIG, isoLocal, sumarDias, rangoDeSemanas, claveExpediente, seleccionarAmparos,
-        urlConsulta, claveConsulta, completar, ordenar, fechaLarga, periodoTexto
+        CONFIG, isoLocal, sumarDias, rangoDeSemanas, claveExpediente, tipoNormal, seleccionarAsuntos,
+        pideOtrosTipos, urlConsulta, claveConsulta, completar, ordenar, fechaLarga, periodoTexto
     };
 
     if (typeof module !== 'undefined' && module.exports) { module.exports = Motor; return; }
@@ -209,7 +267,7 @@
     // Si el usuario cambia el periodo a media consulta, la consulta vieja no
     // debe pintar encima de la nueva.
     let turno = 0;
-    let seleccion = { grupos: [], total: 0, sinTribunal: 0, sinTipo: 0 };
+    let seleccion = { grupos: [], total: 0, sinTribunal: 0 };
 
     /**
      * El proxy. Para probar en la computadora propia con un worker local
@@ -274,6 +332,11 @@
                 throw new Error((datos && datos.error) || (resp.status === 404
                     ? 'El servicio de consulta todavía no está disponible'
                     : 'El servicio de consulta respondió con error ' + resp.status));
+            }
+            // Un proxy anterior ignora el tipo de asunto y solo mira los
+            // amparos directos: diría "nada listado" sin haber buscado.
+            if (pideOtrosTipos(grupo) && !(datos.version >= CONFIG.versionProxy)) {
+                throw new Error('El servicio de consulta publicado es anterior y solo revisa amparos directos; hay que publicarlo de nuevo');
             }
             return datos;
         } catch (e) {
@@ -356,10 +419,11 @@
         const contenido =
             '<span class="sesiones-pjf-fecha"><strong>' + esc(fechaLarga(s.fechaSesion, hoy)) + '</strong>' +
                 '<small>Sesión ' + esc(String(s.tipoSesion || '').toLowerCase()) + '</small></span>' +
-            '<span class="sesiones-pjf-texto"><strong>' + esc((s.tipoAsunto || CONFIG.tipoAsuntoNombre) + ' ' + s.expediente) + '</strong>' +
+            '<span class="sesiones-pjf-texto"><strong>' + esc((s.tipoAsunto ? s.tipoAsunto + ' ' : '') + s.expediente) + '</strong>' +
                 '<small>' + esc(detalle) + '</small>' +
                 (s.secretario ? '<small>Secretario: ' + esc(s.secretario) + '</small>' : '') +
                 (resultado ? '<small class="sesiones-pjf-resultado">Resultado: ' + esc(resultado) + '</small>' : '') +
+                (s.coincidencia === 'numero' ? '<small class="sesiones-pjf-duda">Coincide por número: tu expediente no indica el tipo de asunto. Confirma que es el tuyo.</small>' : '') +
             '</span>';
         return '<li class="sesiones-pjf-fila' + (pasada ? ' pasada' : '') + '">' +
             (s.expedienteId != null
@@ -386,17 +450,13 @@
 
         const notas = [];
         if (seleccion.total) {
-            notas.push('Se ' + (seleccion.total === 1 ? 'revisó 1 amparo directo' : 'revisaron ' + seleccion.total + ' amparos directos') +
-                ' en ' + (seleccion.grupos.length === 1 ? '1 tribunal' : seleccion.grupos.length + ' tribunales') +
+            notas.push('Se ' + (seleccion.total === 1 ? 'revisó 1 asunto' : 'revisaron ' + seleccion.total + ' asuntos') +
+                ' en ' + (seleccion.grupos.length === 1 ? '1 tribunal colegiado' : seleccion.grupos.length + ' tribunales colegiados') +
                 ', sesiones ' + periodoTexto(r.rango) + '.');
         }
         if (seleccion.sinTribunal) {
-            notas.push((seleccion.sinTribunal === 1 ? '1 amparo directo no tiene' : seleccion.sinTribunal + ' amparos directos no tienen') +
-                ' tribunal del catálogo y no se pudo revisar: edítalo y elige el órgano.');
-        }
-        if (seleccion.sinTipo) {
-            notas.push((seleccion.sinTipo === 1 ? '1 expediente de tribunal colegiado no tiene' : seleccion.sinTipo + ' expedientes de tribunales colegiados no tienen') +
-                ' tipo de asunto: si es amparo directo, indícalo para que se revise.');
+            notas.push((seleccion.sinTribunal === 1 ? '1 asunto de tribunal colegiado no tiene' : seleccion.sinTribunal + ' asuntos de tribunales colegiados no tienen') +
+                ' órgano del catálogo y no se pudo revisar: edítalo y elige el órgano.');
         }
         // Sin punto final: la hora ya termina en "p.m.".
         notas.push('Fuente: listas de sesión del PJF (SISE) · consulta del ' +
@@ -432,6 +492,28 @@
     }
 
     /**
+     * Del catálogo del PJF, lo que hace falta para saber qué órganos son
+     * Tribunales Colegiados de Circuito y cómo se llama cada tipo de asunto.
+     * Solo se carga si hay expedientes federales.
+     */
+    async function leerCatalogo(expedientes) {
+        const catalogo = { organos: new Map(), tipos: new Map() };
+        if (!expedientes.some(e => e && e.institucion === 'PJF')) return catalogo;
+        try {
+            if (typeof asegurarCatalogosPJF === 'function') await asegurarCatalogosPJF();
+            const organos = typeof pjfOrganismos !== 'undefined' ? pjfOrganismos : [];
+            organos.forEach(o => catalogo.organos.set(String(o.id), { tipoOrganismoId: o.tipoOrganismoId, nombre: o.nombre }));
+            const delTipo = typeof pjfTiposOrgano !== 'undefined' ? pjfTiposOrgano[CONFIG.tipoOrganismoId] : null;
+            ((delTipo && delTipo.tiposAsuntoArr) || []).forEach(t => catalogo.tipos.set(String(t.id), t.nombre));
+        } catch (e) {
+            // Sin catálogo el órgano se reconoce por su nombre y los asuntos se
+            // buscan por número.
+            console.warn('No se pudo leer el catálogo del PJF para las sesiones:', e);
+        }
+        return catalogo;
+    }
+
+    /**
      * Lo llama la app al terminar de abrir. Quien no lleva asuntos en
      * tribunales colegiados no ve la tarjeta, y no se consulta nada.
      */
@@ -439,8 +521,9 @@
         const tarjeta = $('sesiones-pjf');
         if (!tarjeta || !$('sesiones-pjf-cuerpo')) return;
         try {
-            seleccion = seleccionarAmparos(await obtenerExpedientes());
-            if (!seleccion.total && !seleccion.sinTribunal && !seleccion.sinTipo) { tarjeta.hidden = true; return; }
+            const expedientes = await obtenerExpedientes();
+            seleccion = seleccionarAsuntos(expedientes, await leerCatalogo(expedientes));
+            if (!seleccion.total && !seleccion.sinTribunal) { tarjeta.hidden = true; return; }
             tarjeta.hidden = false;
             enlazar();
             await consultar(false);

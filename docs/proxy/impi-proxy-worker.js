@@ -33,7 +33,7 @@
 
 // Sirve para confirmar, desde /health, que el worker publicado es el esperado.
 // Actualízala cuando el cambio valga la pena verificar tras desplegar.
-const WORKER_VERSION = '2026-11-10-sesiones';
+const WORKER_VERSION = '2026-11-11-sesiones-tipos';
 
 const ALLOWED_ORIGINS = [
     'https://jorch01.github.io',
@@ -2043,11 +2043,17 @@ async function handleMarcanetFullDetail(request) {
 // Judicial de la Federación): ¿alguno de estos expedientes está listado?
 //
 //   GET /api/sesiones?desde=AAAA-MM-DD&hasta=AAAA-MM-DD
-//                    &exp=462:677/2023,944:15/2025
+//                    &exp=462:677/2023,944:15/2025~queja
 //                    [&filtro=sesion|lista] [&refresh=1]
 //
 // La app guarda los expedientes en el navegador, así que es ella quien dice
-// cuáles buscar: "organismo:número/año" (y ":NEUN" al final si lo tiene).
+// cuáles buscar, separados por comas:
+//
+//   organismo:número/año            un amparo directo
+//   organismo:número/año~queja      otro tipo de asunto, por su nombre
+//   organismo:número/año~*          de cualquier tipo (solo por número)
+//   organismo:número/año:NEUN       con su NEUN, que manda sobre lo demás
+//
 // Aquí no hay ningún id de tribunal escrito: el OrganismoId de SISE es el que
 // la app ya guarda en cada expediente (pjfOrgId, del catálogo del PJF).
 // Sin "desde" y "hasta" se revisa del lunes de esta semana al viernes de la
@@ -2073,8 +2079,9 @@ const SESIONES = {
     // publicó la lista (la del 04/11/2026 traía las sesiones del 12/11/2026).
     filtros: ['sesion', 'lista'],
     filtroPorDefecto: 'sesion',
-    // Sin NEUN, un número de expediente solo coincide con este tipo de
-    // asunto: en la misma lista hay quejas y revisiones con el mismo número.
+    // El tipo de asunto de un expediente que llega sin decirlo. En la misma
+    // lista hay quejas, revisiones y amparos directos con el mismo número:
+    // por eso el número/año solo cuenta junto con el tipo.
     tipoAsunto: 'Amparo Directo',
     zonaHoraria: 'America/Cancun',
     maxDias: 28,
@@ -2190,7 +2197,7 @@ function sesTexto(html) {
 }
 
 function sesSinAcentos(texto) {
-    return String(texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+    return String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
 /** "AD 0677/2023-II" → "677/2023". Sin número y año, null. */
@@ -2287,46 +2294,64 @@ function sesParsearCalendario(html, anio, mes) {
 // ---------- Qué expedientes se buscan ----------
 
 /**
- * "462:677/2023,944:15/2025:33638865" →
- * { porOrganismo: Map(organismo → [{ clave, neun }]), total, canon } o { error }.
+ * El nombre de un tipo de asunto, para compararlo: sin acentos, en minúsculas
+ * y sin signos ("Amparo en revisión" → "amparo en revision").
+ */
+function sesTipoNormal(texto) {
+    return sesSinAcentos(texto).replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/**
+ * "462:677/2023,944:15/2025:33638865~queja,944:8/2026~*" →
+ * { porOrganismo: Map(organismo → [{ clave, neun, tipo }]), total, canon } o { error }.
+ * tipo: el nombre normalizado del tipo de asunto, o '*' si vale cualquiera.
  */
 function sesLeerExpedientes(parametro) {
     const porOrganismo = new Map();
+    const porDefecto = sesTipoNormal(SESIONES.tipoAsunto);
     let total = 0;
     for (const trozo of String(parametro || '').split(',')) {
         const t = trozo.trim();
         if (!t) continue;
-        const m = /^(\d{1,6}):([^:]{1,40})(?::(\d{1,12}))?$/.exec(t);
+        const m = /^(\d{1,6}):([^:~]{1,40})(?::(\d{1,12}))?(?:~([^~]{1,80}))?$/.exec(t);
         const clave = m && sesClaveExpediente(m[2]);
         if (!clave) return { error: 'Expediente no reconocido: "' + t.slice(0, 40) + '". Se esperaba organismo:número/año' };
+        const tipo = m[4] === undefined ? porDefecto : (m[4].trim() === '*' ? '*' : sesTipoNormal(m[4]));
+        if (!tipo) return { error: 'Tipo de asunto no reconocido en "' + t.slice(0, 40) + '"' };
         if (!porOrganismo.has(m[1])) porOrganismo.set(m[1], []);
         const lista = porOrganismo.get(m[1]);
         const neun = m[3] || '';
-        if (lista.some(e => e.clave === clave && e.neun === neun)) continue;
-        lista.push({ clave, neun });
+        if (lista.some(e => e.clave === clave && e.neun === neun && e.tipo === tipo)) continue;
+        lista.push({ clave, neun, tipo });
         total++;
     }
     if (!total) return { error: 'Falta "exp": los expedientes por buscar, como organismo:número/año separados por comas' };
     if (total > SESIONES.maxExpedientes) return { error: 'Demasiados expedientes en una consulta (máximo ' + SESIONES.maxExpedientes + ')' };
     if (porOrganismo.size > SESIONES.maxOrganismos) return { error: 'Demasiados tribunales en una consulta (máximo ' + SESIONES.maxOrganismos + ')' };
     const canon = [...porOrganismo.entries()]
-        .map(([org, lista]) => lista.map(e => org + ':' + e.clave + ':' + e.neun))
+        .map(([org, lista]) => lista.map(e => org + ':' + e.clave + ':' + e.neun + '~' + e.tipo))
         .flat().sort().join(',');
     return { porOrganismo, total, canon };
 }
 
 /**
  * Los registros de una lista que son de estos expedientes. El NEUN manda: es
- * único. Sin él, cuentan el número/año y que sea del tipo de asunto vigilado.
+ * único. Sin él, cuentan el número/año y el tipo de asunto ("expediente"); un
+ * expediente que no dice su tipo coincide solo por el número ("numero").
  */
 function sesCoincidencias(registros, expedientes) {
-    const tipo = sesSinAcentos(SESIONES.tipoAsunto);
     const salida = [];
     for (const r of registros) {
         const porNeun = r.neun ? expedientes.find(e => e.neun && e.neun === r.neun) : null;
         if (porNeun) { salida.push({ registro: r, coincidencia: 'neun' }); continue; }
-        if (!r.expediente || !sesSinAcentos(r.tipoAsunto).startsWith(tipo)) continue;
-        if (expedientes.some(e => e.clave === r.expediente)) salida.push({ registro: r, coincidencia: 'expediente' });
+        if (!r.expediente) continue;
+        const tipo = sesTipoNormal(r.tipoAsunto);
+        const mismos = expedientes.filter(e => e.clave === r.expediente);
+        if (mismos.some(e => e.tipo !== '*' && (tipo === e.tipo || tipo.startsWith(e.tipo + ' ')))) {
+            salida.push({ registro: r, coincidencia: 'expediente' });
+        } else if (mismos.some(e => e.tipo === '*')) {
+            salida.push({ registro: r, coincidencia: 'numero' });
+        }
     }
     return salida;
 }
@@ -2557,7 +2582,7 @@ async function atenderSesiones(url, env, deps) {
     const pedidos = sesLeerExpedientes(p.get('exp'));
     if (pedidos.error) return mal(pedidos.error);
 
-    const clave = 'ses:1:' + await sha256Hex([desde, hasta, filtro, pedidos.canon].join('|'));
+    const clave = 'ses:2:' + await sha256Hex([desde, hasta, filtro, pedidos.canon].join('|'));
     if (p.get('refresh') !== '1') {
         const guardado = await sesRecordar(env, clave, ahora);
         if (guardado) return { status: 200, datos: Object.assign({}, guardado, { cache: true }) };
@@ -2571,6 +2596,9 @@ async function atenderSesiones(url, env, deps) {
         { porOrganismo: pedidos.porOrganismo, desde, hasta, filtro },
         { fetch: deps.fetch, esperar: deps.esperar, cuenta: { hechas: 0 } });
     const datos = {
+        // La app mira esto para saber si el proxy publicado ya entiende
+        // "~tipo de asunto"; el anterior solo revisaba amparos directos.
+        version: 2,
         desde, hasta, filtro,
         generado: new Date(ahora).toISOString(),
         cache: false,

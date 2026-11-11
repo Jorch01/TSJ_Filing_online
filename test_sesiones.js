@@ -16,8 +16,10 @@
  *     sesión, ordinaria y extraordinaria; de pocas en pocas, con un reintento,
  *     y que una llamada caída va a "errores" sin tumbar lo demás;
  *   - que el resultado se recuerda 6 horas y ?refresh=1 lo salta;
- *   - en la app (docs/js/sesiones-pjf.js): qué expedientes son amparos
- *     directos que se pueden buscar, y que la tarjeta está conectada.
+ *   - que cada expediente se busca con su tipo de asunto (en una misma lista
+ *     hay quejas, revisiones y amparos directos con el mismo número);
+ *   - en la app (docs/js/sesiones-pjf.js): qué expedientes son de un tribunal
+ *     colegiado y se pueden buscar, y que la tarjeta está conectada.
  *
  * En los fixtures, el __VIEWSTATE y el token del video están recortados; el
  * resto es la respuesta de SISE tal cual.
@@ -59,7 +61,7 @@ const W = {
 vm.createContext(W);
 vm.runInContext(seccion + `
 Object.assign(this, { SESIONES, sesMemoria, sesVisitas, sesFechaValida, sesSumarDias, sesHoy, sesRangoPorDefecto, sesDiasHabiles,
-    sesMeses, sesFechaAISO, sesFechaSise, sesTexto, sesClaveExpediente, sesSepararExpediente, sesParsearReporte,
+    sesMeses, sesFechaAISO, sesFechaSise, sesTexto, sesTipoNormal, sesClaveExpediente, sesSepararExpediente, sesParsearReporte,
     sesParsearCalendario, sesLeerExpedientes, sesCoincidencias, sesPedir, sesConsultar, atenderSesiones });`, W);
 
 // ---------- Un SISE de mentira ----------
@@ -241,8 +243,10 @@ const reportes = (sise) => sise.llamadas.filter(l => !l.esCalendario);
             ['677/2023', '677/2023', '677/2023', '677/2023', '15/2025', null, null, null]);
         const pedidos = W.sesLeerExpedientes('462:677/2023, 462:AD 0325/2024,944:15/2025:33638865,462:677/2023,');
         igual('se agrupan por tribunal, sin repetidos', [...pedidos.porOrganismo.entries()],
-            [['462', [{ clave: '677/2023', neun: '' }, { clave: '325/2024', neun: '' }]], ['944', [{ clave: '15/2025', neun: '33638865' }]]]);
-        igual('el total y la forma canónica (para recordar el resultado)', [pedidos.total, pedidos.canon], [3, '462:325/2024:,462:677/2023:,944:15/2025:33638865']);
+            [['462', [{ clave: '677/2023', neun: '', tipo: 'amparo directo' }, { clave: '325/2024', neun: '', tipo: 'amparo directo' }]],
+             ['944', [{ clave: '15/2025', neun: '33638865', tipo: 'amparo directo' }]]]);
+        igual('el total y la forma canónica (para recordar el resultado)', [pedidos.total, pedidos.canon],
+            [3, '462:325/2024:~amparo directo,462:677/2023:~amparo directo,944:15/2025:33638865~amparo directo']);
         igual('el orden en que llegan no cambia la forma canónica',
             W.sesLeerExpedientes('944:15/2025:33638865,462:325/2024,462:677/2023').canon, pedidos.canon);
         verificar('sin expedientes, error que dice qué falta', /Falta "exp"/.test(W.sesLeerExpedientes('').error));
@@ -257,11 +261,32 @@ const reportes = (sise) => sise.llamadas.filter(l => !l.esCalendario);
         const filas = W.sesParsearReporte(LISTA);
         const queja = filas.find(f => f.tipoAsunto === 'Queja');
         const hallados = (texto) => W.sesCoincidencias(filas, expedientes(texto).get('462')).map(c => [c.registro.tipoAsunto, c.registro.expediente, c.coincidencia]);
-        igual('por número/año solo coinciden los amparos directos', hallados('462:677/2023,462:325/2024,462:9999/2020'),
+        igual('un expediente que no dice su tipo es un amparo directo', hallados('462:677/2023,462:325/2024,462:9999/2020'),
             [['Amparo Directo', '677/2023', 'expediente'], ['Amparo Directo', '325/2024', 'expediente']]);
         igual('una queja con ese número no es mi amparo directo', hallados('462:' + queja.expediente).filter(h => h[0] === 'Queja'), []);
         igual('con NEUN coincide aunque el número esté mal capturado', hallados('462:1/2020:33638865'), [['Amparo Directo', '677/2023', 'neun']]);
         igual('y el NEUN manda sobre el tipo de asunto', hallados('462:1/2020:' + queja.neun), [['Queja', queja.expediente, 'neun']]);
+
+        // Cada expediente con su tipo de asunto.
+        const revision = filas.find(f => f.tipoAsunto === 'Amparo en revisión');
+        igual('el tipo de asunto se compara sin acentos, mayúsculas ni signos',
+            ['Amparo en revisión', 'AMPARO EN REVISION', ' amparo  en-revisión. ', 'Amp Ind, Proc Fed Penales en 2a Instancia'].map(x => W.sesTipoNormal(x)),
+            ['amparo en revision', 'amparo en revision', 'amparo en revision', 'amp ind proc fed penales en 2a instancia']);
+        const conTipos = W.sesLeerExpedientes('1535:557/2026~Amparo en revisión,1535:8/2026~*,1535:9/2026:123~queja,1535:557/2026~queja');
+        igual('"~tipo" dice el tipo de asunto, "~*" cualquiera, y el NEUN va antes', [...conTipos.porOrganismo.get('1535')], [
+            { clave: '557/2026', neun: '', tipo: 'amparo en revision' }, { clave: '8/2026', neun: '', tipo: '*' },
+            { clave: '9/2026', neun: '123', tipo: 'queja' }, { clave: '557/2026', neun: '', tipo: 'queja' }
+        ]);
+        verificar('el mismo número con otro tipo de asunto es otro expediente (y otra consulta)',
+            conTipos.total === 4 && W.sesLeerExpedientes('462:1/2026~queja').canon !== W.sesLeerExpedientes('462:1/2026').canon);
+        verificar('un tipo vacío es un error, no "cualquiera"', !!W.sesLeerExpedientes('462:1/2026~').error && !!W.sesLeerExpedientes('462:1/2026~ . ').error);
+        igual('un amparo en revisión se encuentra como tal', hallados('462:' + revision.expediente + '~Amparo en revisión'),
+            [['Amparo en revisión', revision.expediente, 'expediente']]);
+        igual('una queja, también', hallados('462:' + queja.expediente + '~QUEJA'), [['Queja', queja.expediente, 'expediente']]);
+        igual('pero mi queja no es el amparo directo que lleva su número', hallados('462:677/2023~queja'), []);
+        igual('ni mi amparo en revisión, la queja con su número', hallados('462:' + queja.expediente + '~amparo en revision').filter(h => h[0] === 'Queja'), []);
+        igual('sin tipo ("~*") coincide por número, y lo dice', hallados('462:677/2023~*'), [['Amparo Directo', '677/2023', 'numero']]);
+        igual('con tipo y sin tipo a la vez, gana la coincidencia segura', hallados('462:677/2023~*,462:677/2023'), [['Amparo Directo', '677/2023', 'expediente']]);
     }
 
     console.log('\nLa consulta a SISE (con un SISE de mentira)');
@@ -383,7 +408,8 @@ const reportes = (sise) => sise.llamadas.filter(l => !l.esCalendario);
         const r = await pedir(sise, 'exp=462:677/2023');
         igual('sin fechas: del lunes de esta semana al viernes de la siguiente', [r.status, r.datos.desde, r.datos.hasta, r.datos.filtro], [200, '2026-11-09', '2026-11-20', 'sesion']);
         igual('la respuesta trae sesiones, errores y resumen',
-            Object.keys(r.datos), ['desde', 'hasta', 'filtro', 'generado', 'cache', 'completo', 'sesiones', 'errores', 'resumen']);
+            Object.keys(r.datos), ['version', 'desde', 'hasta', 'filtro', 'generado', 'cache', 'completo', 'sesiones', 'errores', 'resumen']);
+        igual('y la versión, para que la app sepa que este proxy entiende tipos de asunto', r.datos.version, 2);
         igual('cada sesión, con los campos acordados', Object.keys(r.datos.sesiones[0]),
             ['expediente', 'tipoAsunto', 'organismoId', 'neun', 'fechaSesion', 'tipoSesion', 'ponente', 'secretario', 'resultado', 'sentencia', 'autoridad', 'coincidencia']);
         igual('y dice cuándo se generó', r.datos.generado, '2026-11-10T18:00:00.000Z');
@@ -400,6 +426,12 @@ const reportes = (sise) => sise.llamadas.filter(l => !l.esCalendario);
         const ninguna = siseFalso();
         await pedir(ninguna, 'desde=2026-11-09&hasta=2026-12-07&exp=462:1/2026');
         igual('una consulta rechazada no llama a SISE', ninguna.llamadas.length, 0);
+        const revisiones = siseFalso();
+        const unaRevision = W.sesParsearReporte(SESION).find(f => f.tipoAsunto === 'Amparo en revisión').expediente;
+        const rr = await pedir(revisiones, 'desde=2026-11-09&hasta=2026-11-20&exp=' + encodeURIComponent('462:' + unaRevision + '~amparo en revision,462:677/2023~queja,462:325/2024'));
+        igual('de punta a punta: cada asunto con su tipo, y nada de otro tipo con el mismo número',
+            rr.datos.sesiones.map(s => [s.tipoAsunto, s.expediente, s.coincidencia]).sort(),
+            [['Amparo Directo', '325/2024', 'expediente'], ['Amparo en revisión', unaRevision, 'expediente']]);
         const conFiltro = siseFalso();
         const rf = await pedir(conFiltro, 'filtro=LISTA&exp=462:677/2023');
         igual('el filtro se puede elegir en la consulta', [rf.datos.filtro, conFiltro.llamadas.every(l => l.cuerpo.TipoFiltro === 'lista')], ['lista', true]);
@@ -417,7 +449,7 @@ const reportes = (sise) => sise.llamadas.filter(l => !l.esCalendario);
         const r1 = await pedir(s1, consulta, env);
         igual('la primera vez se consulta a SISE', [r1.datos.cache, s1.llamadas.length > 0], [false, true]);
         igual('y se guarda en el KV del proyecto, con caducidad de 6 horas',
-            [guardado.size, [...guardado.keys()][0].slice(0, 6), opciones[0]], [1, 'ses:1:', { expirationTtl: 21600 }]);
+            [guardado.size, [...guardado.keys()][0].slice(0, 6), opciones[0]], [1, 'ses:2:', { expirationTtl: 21600 }]);
 
         const s2 = siseFalso();
         const r2 = await pedir(s2, consulta, env);
@@ -496,52 +528,107 @@ const reportes = (sise) => sise.llamadas.filter(l => !l.esCalendario);
     {
         const TCC1 = 'Primer Tribunal Colegiado del Vigésimo Séptimo Circuito';
         const TCC3 = 'Tercer Tribunal Colegiado del Vigésimo Séptimo Circuito, con residencia en Cancún, Quintana Roo';
+        const TCA20 = 'Tribunal Colegiado en Materia Administrativa del Vigésimo Circuito, con residencia en Tuxtla Gutiérrez, Chiapas';
+        const APELACION = 'Tribunal Colegiado de Apelación del Vigésimo Séptimo Circuito, con residencia en Cancún, Quintana Roo';
+        // El catálogo del PJF, lo que la app lee de él: tipo de cada órgano
+        // (4 = Tribunal Colegiado de Circuito) y nombre de cada tipo de asunto.
+        const real = JSON.parse(fs.readFileSync(path.join(__dirname, 'docs', 'data', 'pjf_catalogos_completos.json'), 'utf8'));
+        const catalogo = { organos: new Map(), tipos: new Map() };
+        real.organos.forEach(o => catalogo.organos.set(String(o.id), { tipoOrganismoId: o.tipoOrganismoId, nombre: o.nombre }));
+        real.tiposOrgano.filter(x => x.TipoOrganismoId === App.CONFIG.tipoOrganismoId).forEach(x => x.tiposAsunto.forEach(a => catalogo.tipos.set(String(a.id), a.nombre)));
+        igual('el catálogo conoce los órganos de las pruebas y sus tipos de asunto',
+            [['462', '1319', '1535', '4372'].map(id => catalogo.organos.get(id).tipoOrganismoId), ['10', '11', '15'].map(id => catalogo.tipos.get(id))],
+            [[4, 4, 4, 340], ['Amparo Directo', 'Amparo en revisión', 'Queja']]);
+
+        const juzgadoDistrito = real.organos.find(o => o.tipoOrganismoId === 2 && /Juzgado .* de Distrito .*Quintana Roo/.test(o.nombre));
         const lista = [
             { id: 1, institucion: 'PJF', numero: '677/2023', juzgado: TCC1, pjfOrgId: '462', pjfTipoAsunto: '10' },
             { id: 2, institucion: 'PJF', numero: 'AD 0325/2024', juzgado: TCC1, pjfOrgId: 462, pjfTipoAsunto: 10, neun: '35845337' },
             { id: 3, institucion: 'PJF', numero: '88/2026', juzgado: TCC3, pjfOrgId: '1319', pjfTipoAsunto: 'Amparo Directo' },
-            { id: 4, institucion: 'PJF', numero: '90/2026', juzgado: TCC3, pjfOrgId: '1319', pjfTipoAsunto: '11' },
-            { id: 5, institucion: 'PJF', numero: '50/2026', juzgado: 'Juzgado Segundo de Distrito en el Estado de Quintana Roo', pjfOrgId: '500', pjfTipoAsunto: 'Amparo Indirecto' },
+            { id: 4, institucion: 'PJF', numero: '90/2026', juzgado: TCC3, pjfOrgId: '1319', pjfTipoAsunto: 'queja' },
+            { id: 5, institucion: 'PJF', numero: '50/2026', juzgado: juzgadoDistrito.nombre, pjfOrgId: String(juzgadoDistrito.id), pjfTipoAsunto: 'Amparo Indirecto' },
             { id: 6, institucion: 'TSJ', numero: '677/2023', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' },
-            { id: 7, institucion: 'PJF', numero: '12/2026', juzgado: 'Tribunal Colegiado de Apelación del Vigésimo Séptimo Circuito, con residencia en Cancún, Quintana Roo', pjfOrgId: '4372', pjfTipoAsunto: '10' },
+            { id: 7, institucion: 'PJF', numero: '12/2026', juzgado: APELACION, pjfOrgId: '4372', pjfTipoAsunto: '10' },
             { id: 8, institucion: 'PJF', numero: '13/2026', juzgado: 'PJF - Por determinar', pjfTipoAsunto: '10' },
             { id: 9, institucion: 'PJF', numero: '14/2026', juzgado: TCC1, pjfOrgId: '462' },
             { id: 10, institucion: 'PJF', nombre: 'Juan Pérez', juzgado: TCC1, pjfOrgId: '462', pjfTipoAsunto: '10' },
-            { id: 11, institucion: 'PJF', numero: '15/2026', juzgado: TCC1, pjfOrgId: '462', pjfTipoAsunto: '10', archivado: true }
+            { id: 11, institucion: 'PJF', numero: '15/2026', juzgado: TCC1, pjfOrgId: '462', pjfTipoAsunto: '10', archivado: true },
+            // El asunto que no aparecía: un amparo en revisión en un colegiado de Chiapas.
+            { id: 12, institucion: 'PJF', numero: '557/2026', juzgado: TCA20, pjfOrgId: '1535', pjfTipoAsunto: '11' },
+            { id: 13, institucion: 'PJF', numero: '16/2026', juzgado: TCC3, pjfOrgId: '1319', pjfTipoAsunto: 'Revisión incidental' },
+            { id: 14, institucion: 'PJF', numero: '17/2026', juzgado: 'Tribunal Colegiado del Vigésimo Séptimo Circuito' }
         ];
-        const s = App.seleccionarAmparos(lista);
-        igual('los amparos directos con tribunal del catálogo, por tribunal', s.grupos, [
-            { organismoId: '462', tribunal: TCC1, expedientes: [{ id: 1, clave: '677/2023', numero: '677/2023', neun: '' }, { id: 2, clave: '325/2024', numero: 'AD 0325/2024', neun: '35845337' }] },
-            { organismoId: '1319', tribunal: TCC3, expedientes: [{ id: 3, clave: '88/2026', numero: '88/2026', neun: '' }] }
+        verificar('(la prueba incluye un juzgado de distrito del catálogo)', !!juzgadoDistrito && catalogo.organos.get(String(juzgadoDistrito.id)).tipoOrganismoId === 2);
+        const s = App.seleccionarAsuntos(lista, catalogo);
+        igual('todos los asuntos de tribunales colegiados de circuito, por tribunal y con su tipo de asunto', s.grupos, [
+            { organismoId: '462', tribunal: TCC1, expedientes: [
+                { id: 1, clave: '677/2023', numero: '677/2023', neun: '', tipo: 'Amparo Directo' },
+                { id: 2, clave: '325/2024', numero: 'AD 0325/2024', neun: '35845337', tipo: 'Amparo Directo' },
+                { id: 9, clave: '14/2026', numero: '14/2026', neun: '', tipo: '' }] },
+            { organismoId: '1319', tribunal: TCC3, expedientes: [
+                { id: 3, clave: '88/2026', numero: '88/2026', neun: '', tipo: 'Amparo Directo' },
+                { id: 4, clave: '90/2026', numero: '90/2026', neun: '', tipo: 'Queja' },
+                { id: 13, clave: '16/2026', numero: '16/2026', neun: '', tipo: '' }] },
+            { organismoId: '1535', tribunal: TCA20, expedientes: [
+                { id: 12, clave: '557/2026', numero: '557/2026', neun: '', tipo: 'Amparo en revisión' }] }
         ]);
-        igual('fuera: otros tipos de asunto, el TSJ, los juzgados, el Colegiado de Apelación, los archivados y los que no tienen número', s.total, 3);
-        igual('un amparo directo sin órgano del catálogo se cuenta aparte', s.sinTribunal, 1);
-        igual('y un expediente de colegiado sin tipo de asunto, también', s.sinTipo, 1);
-        igual('sin expedientes, nada que revisar', App.seleccionarAmparos([]), { grupos: [], total: 0, sinTribunal: 0, sinTipo: 0 });
+        igual('fuera: el TSJ, los juzgados, el Colegiado de Apelación, los archivados y los que no tienen número', s.total, 7);
+        igual('los de un colegiado sin órgano del catálogo se cuentan aparte (el amparo directo "por determinar" y el colegiado escrito a mano)', s.sinTribunal, 2);
+        igual('sin expedientes, nada que revisar', App.seleccionarAsuntos([], catalogo), { grupos: [], total: 0, sinTribunal: 0 });
+
+        const porNombre = App.seleccionarAsuntos([
+            { id: 30, institucion: 'PJF', numero: '557/2026', juzgado: TCA20.toUpperCase(), pjfTipoAsunto: '11' },
+            { id: 31, institucion: 'PJF', numero: '9/2026', juzgado: APELACION }
+        ], catalogo);
+        igual('un expediente con el nombre exacto del órgano pero sin su id se resuelve por el catálogo (y el de Apelación sigue fuera)',
+            [porNombre.grupos.map(g => [g.organismoId, g.expedientes.map(e => e.id)]), porNombre.sinTribunal], [[['1535', [30]]], 0]);
+
+        const sinCatalogo = App.seleccionarAsuntos(lista);
+        igual('si el catálogo no carga, el órgano se reconoce por su nombre y lo que no se sabe se busca por número',
+            sinCatalogo.grupos.map(g => [g.organismoId, g.expedientes.map(e => e.id + ':' + (e.tipo || '*'))]),
+            [['462', ['1:Amparo Directo', '2:Amparo Directo', '9:*']], ['1319', ['3:Amparo Directo', '4:*', '13:*']], ['1535', ['12:*']]]);
+        igual('y el Colegiado de Apelación sigue fuera', sinCatalogo.grupos.some(g => g.organismoId === '4372'), false);
 
         const rango = { desde: '2026-11-09', hasta: '2026-11-20' };
-        igual('la consulta de un tribunal: su organismo y sus números, con NEUN si lo hay',
+        const exp = (grupo) => new URL(App.urlConsulta('https://proxy.test/', grupo, rango, 'sesion', false)).searchParams.get('exp');
+        igual('la consulta de un tribunal: organismo, número/año, NEUN si lo hay y el tipo si no es amparo directo',
             App.urlConsulta('https://proxy.test/', s.grupos[0], rango, 'sesion', false),
-            'https://proxy.test/api/sesiones?desde=2026-11-09&hasta=2026-11-20&filtro=sesion&exp=' + encodeURIComponent('462:677/2023,462:325/2024:35845337'));
+            'https://proxy.test/api/sesiones?desde=2026-11-09&hasta=2026-11-20&filtro=sesion&exp=' + encodeURIComponent('462:677/2023,462:325/2024:35845337,462:14/2026~*'));
+        igual('el asunto de Chiapas va como amparo en revisión', exp(s.grupos[2]), '1535:557/2026~amparo en revision');
+        igual('una queja, como queja; el de tipo desconocido, por número', exp(s.grupos[1]), '1319:88/2026,1319:90/2026~queja,1319:16/2026~*');
         verificar('con refresh=1 al actualizar a mano', /&refresh=1$/.test(App.urlConsulta('https://proxy.test', s.grupos[1], rango, 'sesion', true)));
-        const leida = W.sesLeerExpedientes(new URL(App.urlConsulta('https://proxy.test', s.grupos[0], rango, 'sesion', false)).searchParams.get('exp'));
-        igual('y el proxy la entiende', [...leida.porOrganismo.get('462')], [{ clave: '677/2023', neun: '' }, { clave: '325/2024', neun: '35845337' }]);
+        igual('y el proxy la entiende', [...W.sesLeerExpedientes(exp(s.grupos[1])).porOrganismo.get('1319')],
+            [{ clave: '88/2026', neun: '', tipo: 'amparo directo' }, { clave: '90/2026', neun: '', tipo: 'queja' }, { clave: '16/2026', neun: '', tipo: '*' }]);
+        const nombresRaros = [...catalogo.tipos.values()].filter(n => /[,:~]/.test(App.tipoNormal(n)) || W.sesTipoNormal(n) !== App.tipoNormal(n));
+        igual('la app y el proxy normalizan igual todos los tipos de asunto del catálogo', nombresRaros, []);
+        igual('solo los grupos con otros tipos de asunto necesitan el proxy nuevo',
+            [App.pideOtrosTipos({ expedientes: s.grupos[0].expedientes.slice(0, 2) }), App.pideOtrosTipos(s.grupos[0]), App.pideOtrosTipos(s.grupos[2])], [false, true, true]);
 
         const completas = App.completar([
-            { expediente: '677/2023', neun: '33638865', fechaSesion: '2026-11-12' },
-            { expediente: '999/2024', neun: '35845337', fechaSesion: '2026-11-12' }
+            { expediente: '677/2023', tipoAsunto: 'Amparo Directo', neun: '33638865', fechaSesion: '2026-11-12' },
+            { expediente: '999/2024', tipoAsunto: 'Amparo Directo', neun: '35845337', fechaSesion: '2026-11-12' }
         ], s.grupos[0]);
         igual('a cada sesión se le pone su tribunal y su expediente (por NEUN antes que por número)',
             completas.map(c => [c.tribunal, c.expedienteId]), [[TCC1, 1], [TCC1, 2]]);
-        igual('la consulta se identifica por periodo y expedientes, en cualquier orden',
+        const gemelos = { organismoId: '1535', tribunal: TCA20, expedientes: [
+            { id: 20, clave: '557/2026', numero: '557/2026', neun: '', tipo: 'Queja' },
+            { id: 21, clave: '557/2026', numero: '557/2026', neun: '', tipo: 'Amparo en revisión' },
+            { id: 22, clave: '8/2026', numero: '8/2026', neun: '', tipo: '' }] };
+        igual('con el mismo número en dos tipos de asunto, cada sesión va a su expediente',
+            App.completar([{ expediente: '557/2026', tipoAsunto: 'Amparo en revisión' }, { expediente: '557/2026', tipoAsunto: 'Queja' }, { expediente: '8/2026', tipoAsunto: 'Queja', coincidencia: 'numero' }], gemelos)
+                .map(c => c.expedienteId), [21, 20, 22]);
+        igual('la consulta se identifica por periodo, expedientes y tipo de asunto, en cualquier orden',
             App.claveConsulta(s.grupos, rango, 'sesion') === App.claveConsulta(s.grupos.slice().reverse(), rango, 'sesion') &&
             App.claveConsulta(s.grupos, rango, 'sesion') !== App.claveConsulta(s.grupos, { desde: '2026-11-09', hasta: '2026-11-13' }, 'sesion') &&
-            App.claveConsulta(s.grupos, rango, 'sesion') !== App.claveConsulta(s.grupos.slice(0, 1), rango, 'sesion'), true);
+            App.claveConsulta(s.grupos, rango, 'sesion') !== App.claveConsulta(s.grupos.slice(0, 1), rango, 'sesion') &&
+            App.claveConsulta([gemelos], rango, 'sesion') !== App.claveConsulta([{ organismoId: '1535', expedientes: gemelos.expedientes.map(e => Object.assign({}, e, { tipo: '' })) }], rango, 'sesion'), true);
         igual('las fechas se leen de corrido', [App.fechaLarga('2026-11-12', '2026-11-10'), App.fechaLarga('2026-11-10', '2026-11-10'), App.fechaLarga('2026-11-11', '2026-11-10')],
             ['Jueves 12 de noviembre', 'Hoy, martes 10 de noviembre', 'Mañana, miércoles 11 de noviembre']);
         igual('y el periodo', [App.periodoTexto(rango), App.periodoTexto({ desde: '2026-11-30', hasta: '2026-12-11' })],
             ['del 9 al 20 de noviembre', 'del 30 de noviembre al 11 de diciembre']);
-        igual('el filtro por defecto es por fecha de sesión, y se revisa el tipo de asunto 10', [App.CONFIG.filtro, App.CONFIG.tipoAsuntoId, W.SESIONES.filtroPorDefecto], ['sesion', '10', 'sesion']);
+        igual('el filtro por defecto es por fecha de sesión; el tipo por defecto, el mismo en la app y en el proxy',
+            [App.CONFIG.filtro, W.SESIONES.filtroPorDefecto, App.CONFIG.tipoPorDefecto, W.SESIONES.tipoAsunto, catalogo.tipos.get(App.CONFIG.tipoPorDefectoId)],
+            ['sesion', 'sesion', 'Amparo Directo', 'Amparo Directo', 'Amparo Directo']);
     }
 
     console.log('\nEn la app: la tarjeta de Inicio');
@@ -550,7 +637,7 @@ const reportes = (sise) => sise.llamadas.filter(l => !l.esCalendario);
         const app = fs.readFileSync(path.join(__dirname, 'docs', 'js', 'app.js'), 'utf8');
         const modulo = fs.readFileSync(path.join(__dirname, 'docs', 'js', 'sesiones-pjf.js'), 'utf8');
         verificar('index.html carga el módulo', /<script src="js\/sesiones-pjf\.js"><\/script>/.test(html));
-        verificar('la tarjeta está en Inicio, oculta hasta saber si hay amparos directos',
+        verificar('la tarjeta está en Inicio, oculta hasta saber si hay asuntos en tribunales colegiados',
             /<section class="page active" id="page-inicio">[\s\S]*id="sesiones-pjf"[^>]*hidden[\s\S]*<section class="page" id="page-expedientes">/.test(html));
         igual('con su selector de 1 a 4 semanas',
             [...(/<select id="sesiones-pjf-semanas"[\s\S]*?<\/select>/.exec(html) || [''])[0].matchAll(/<option value="(\d)"/g)].map(m => m[1]), ['1', '2', '3', '4']);
@@ -558,6 +645,9 @@ const reportes = (sise) => sise.llamadas.filter(l => !l.esCalendario);
         verificar('la app la arranca sola al abrir, sin esperarla',
             /async function inicializarApp\(\) \{[\s\S]*?\n    if \(typeof SESIONES_PJF !== 'undefined'\) SESIONES_PJF\.iniciar\(\);\n\}/.test(app));
         verificar('sin coincidencias dice "Sin asuntos listados en el periodo"', modulo.includes('Sin asuntos listados en el periodo'));
+        verificar('un proxy anterior (sin "version") no se da por bueno para otros tipos de asunto',
+            /pideOtrosTipos\(grupo\) && !\(datos\.version >= CONFIG\.versionProxy\)/.test(modulo) && App.CONFIG.versionProxy === 2);
+        verificar('el catálogo del PJF solo se carga si hay expedientes federales', /if \(!expedientes\.some\(e => e && e\.institucion === 'PJF'\)\) return catalogo;/.test(modulo));
         verificar('la consulta va al proxy, nunca directo a SISE desde el navegador', !/dgej\.cjf\.gob\.mx/.test(modulo.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')));
     }
 

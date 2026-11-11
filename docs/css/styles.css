@@ -709,6 +709,7 @@ button.sesiones-pjf-abrir:hover, button.sesiones-pjf-abrir:focus-visible { backg
 .sesiones-pjf-texto { flex: 1 1 16rem; }
 .sesiones-pjf-abrir small { color: var(--text-secondary); font-size: 0.78rem; overflow-wrap: anywhere; }
 .sesiones-pjf-abrir small.sesiones-pjf-resultado { color: var(--text-primary); font-weight: 500; }
+.sesiones-pjf-abrir small.sesiones-pjf-duda { color: var(--warning, #a96c12); }
 .sesiones-pjf-error {
     margin-bottom: 0.75rem; padding: 0.6rem 0.8rem; font-size: 0.85rem;
     border-left: 3px solid var(--danger, #dc3545); background: var(--bg-secondary);
