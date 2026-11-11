@@ -55,6 +55,9 @@ async function _coreRefrescarUI() {
         if (typeof renderizarCalendario === 'function') renderizarCalendario();
         // La página 📊 Estadísticas, solo si está a la vista.
         if (typeof refrescarEstadisticasSiVisible === 'function') await refrescarEstadisticasSiVisible();
+        // Sesiones de los Tribunales Colegiados: un expediente nuevo o editado
+        // puede cambiar lo que hay que buscar. No se espera: consulta a la red.
+        if (typeof SESIONES_PJF !== 'undefined') SESIONES_PJF.revisar();
     } catch (e) {
         console.error('[CORE] Error refrescando UI:', e);
     }

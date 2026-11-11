@@ -270,5 +270,7 @@
         if (typeof actualizarLimitesIMPIEnPantalla === 'function') actualizarLimitesIMPIEnPantalla();
     }
 
-    global.CUOTAS_IMPI = { ...Motor, autorizar, agotado, resumen, huella, pase: () => pase, vencePase, premium };
+    // pedirPase: la respuesta de /cuota tal cual, para lo que es solo de
+    // Premium y lleva su propio pase (las sesiones del PJF, sesiones-pjf.js).
+    global.CUOTAS_IMPI = { ...Motor, autorizar, agotado, resumen, huella, pase: () => pase, vencePase, premium, pedirPase: pedirAlServidor };
 })(typeof window !== 'undefined' ? window : globalThis);

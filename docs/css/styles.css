@@ -686,6 +686,9 @@ h1, h2, h3, h4 {
 .sesiones-pjf[hidden] { display: none; }
 .sesiones-pjf .card-header { flex-wrap: wrap; }
 .sesiones-pjf-controles { display: flex; align-items: center; gap: 0.5rem; }
+.sesiones-pjf-controles[hidden] { display: none; }
+.sesiones-pjf-premium p { margin: 0 0 0.75rem; }
+.sesiones-pjf-premium p:last-child { margin-bottom: 0; }
 .sesiones-pjf-controles select {
     font: inherit; font-size: 0.85rem; padding: 0.3rem 0.5rem; min-height: 32px;
     border: 1px solid var(--border-color); border-radius: var(--radius-sm);
