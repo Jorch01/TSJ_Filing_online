@@ -2289,7 +2289,8 @@ async function probarEstradosLaborales(navegador) {
 }
 
 // Sesiones de los Tribunales Colegiados (sesiones-pjf.js): la tarjeta de
-// Inicio que avisa si un amparo directo registrado está listado para sesión.
+// Inicio que avisa si un asunto registrado en un tribunal colegiado (amparo
+// directo, amparo en revisión, queja…) está listado para sesión.
 // El proxy se simula —test_sesiones.js prueba lo que hace con SISE—; aquí se
 // mira lo que la app hace con su respuesta, en la pantalla.
 async function probarSesionesPJF(navegador) {
@@ -2304,6 +2305,8 @@ async function probarSesionesPJF(navegador) {
 
     // El proxy simulado: el 677/2023 del primer tribunal sesiona el jueves de
     // la primera semana; el tercero no tiene nada (o falla, según el modo).
+    // En modo 'anterior' responde como el proxy que solo revisaba amparos
+    // directos: sin "version".
     const pedidas = [];
     let modo = 'listado';
     await contexto.route('**/api/sesiones**', async (r) => {
@@ -2315,6 +2318,14 @@ async function probarSesionesPJF(navegador) {
             return r.fulfill({ status: 502, contentType: 'application/json', headers: cabeceras, body: JSON.stringify({ error: 'SISE no respondió' }) });
         }
         const sesiones = [];
+        if (modo !== 'vacio' && exp.includes('1319:16/2026~*')) {
+            // Un expediente sin tipo de asunto: el proxy lo encuentra por número.
+            sesiones.push({
+                expediente: '16/2026', tipoAsunto: 'Queja', organismoId: '1319', neun: '5',
+                fechaSesion: S.sumarDias(u.searchParams.get('desde'), 4), tipoSesion: 'Extraordinaria',
+                ponente: 'Lina Victoria Bolio Pasos', secretario: '', resultado: '', sentencia: '', autoridad: 'Juzgado', coincidencia: 'numero'
+            });
+        }
         if (modo !== 'vacio' && exp.includes('462:677/2023')) {
             sesiones.push({
                 expediente: '677/2023', tipoAsunto: 'Amparo Directo', organismoId: '462', neun: '33638865',
@@ -2325,7 +2336,8 @@ async function probarSesionesPJF(navegador) {
         }
         return r.fulfill({
             status: 200, contentType: 'application/json; charset=utf-8', headers: cabeceras,
-            body: JSON.stringify({ desde: u.searchParams.get('desde'), hasta: u.searchParams.get('hasta'), filtro: 'sesion', cache: false, completo: true, sesiones, errores: [], resumen: {} })
+            body: JSON.stringify(Object.assign(modo === 'anterior' ? {} : { version: 2 },
+                { desde: u.searchParams.get('desde'), hasta: u.searchParams.get('hasta'), filtro: 'sesion', cache: false, completo: true, sesiones, errores: [], resumen: {} }))
         });
     });
 
@@ -2354,27 +2366,30 @@ async function probarSesionesPJF(navegador) {
         await page.evaluate(() => crearExpedienteCore({ numero: '5/2025', institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' }));
         await abrir();
         let t = await tarjeta();
-        igual('sesiones PJF: sin amparos directos, la tarjeta no aparece ni se consulta nada', [t.visible, pedidas.length], [false, 0]);
+        igual('sesiones PJF: sin asuntos en tribunales colegiados, la tarjeta no aparece ni se consulta nada', [t.visible, pedidas.length], [false, 0]);
 
         await page.evaluate(async ([a, b]) => {
             await crearExpedienteCore({ numero: '677/2023', institucion: 'PJF', juzgado: a, pjfOrgId: '462', pjfTipoAsunto: '10' });
             await crearExpedienteCore({ numero: '88/2026', institucion: 'PJF', juzgado: b, pjfOrgId: '1319', pjfTipoAsunto: '10' });
             await crearExpedienteCore({ numero: '90/2026', institucion: 'PJF', juzgado: b, pjfOrgId: '1319', pjfTipoAsunto: '11' });
+            // Fuera: un juzgado de distrito y un Colegiado de Apelación.
+            await crearExpedienteCore({ numero: '50/2026', institucion: 'PJF', juzgado: 'Juzgado Segundo de Distrito en el Estado de Quintana Roo', pjfTipoAsunto: 'Amparo Indirecto' });
+            await crearExpedienteCore({ numero: '12/2026', institucion: 'PJF', juzgado: 'Tribunal Colegiado de Apelación del Vigésimo Séptimo Circuito, con residencia en Cancún, Quintana Roo', pjfOrgId: '4372', pjfTipoAsunto: '10' });
         }, [TCC1, TCC3]);
         await abrir();
         t = await tarjeta();
-        verificar('sesiones PJF: con amparos directos, la tarjeta aparece sola al abrir', t.visible);
-        igual('sesiones PJF: se consulta una vez por tribunal, del lunes de esta semana al viernes de la siguiente, solo los amparos directos',
+        verificar('sesiones PJF: con asuntos en tribunales colegiados, la tarjeta aparece sola al abrir', t.visible);
+        igual('sesiones PJF: se consulta una vez por tribunal, del lunes de esta semana al viernes de la siguiente, cada asunto con su tipo (el amparo en revisión también)',
             pedidas, [
                 { desde: dosSemanas.desde, hasta: dosSemanas.hasta, filtro: 'sesion', exp: '462:677/2023', refresh: null },
-                { desde: dosSemanas.desde, hasta: dosSemanas.hasta, filtro: 'sesion', exp: '1319:88/2026', refresh: null }
+                { desde: dosSemanas.desde, hasta: dosSemanas.hasta, filtro: 'sesion', exp: '1319:88/2026,1319:90/2026~amparo en revision', refresh: null }
             ]);
         igual('sesiones PJF: el asunto listado sale en una fila', t.filas, 1);
         verificar('sesiones PJF: con su fecha, tipo de sesión, expediente, tribunal y ponente',
             t.texto.includes(S.fechaLarga(S.sumarDias(dosSemanas.desde, 3), hoy)) && /Sesión ordinaria/.test(t.texto) &&
             t.texto.includes('Amparo Directo 677/2023') && t.texto.includes(TCC1) && /Ponente: Maria Teresa/.test(t.texto), t.texto);
         verificar('sesiones PJF: lo que viene de fuera se pinta como texto, no como HTML', t.html.includes('&lt;b&gt;Rodriguez&lt;/b&gt;') && !/<b>Rodriguez/.test(t.html));
-        verificar('sesiones PJF: dice cuántos revisó y en qué periodo', t.texto.includes('Se revisaron 2 amparos directos en 2 tribunales, sesiones ' + S.periodoTexto(dosSemanas)), t.texto);
+        verificar('sesiones PJF: dice cuántos revisó y en qué periodo', t.texto.includes('Se revisaron 3 asuntos en 2 tribunales colegiados, sesiones ' + S.periodoTexto(dosSemanas)), t.texto);
         igual('sesiones PJF: el selector marca 2 semanas', await page.inputValue('#sesiones-pjf-semanas'), '2');
 
         await page.click('#sesiones-pjf-cuerpo [data-sesiones-expediente]');
@@ -2418,6 +2433,26 @@ async function probarSesionesPJF(navegador) {
         await abrir();
         t = await tarjeta();
         verificar('sesiones PJF: un resultado incompleto no se recuerda: al reabrir se vuelve a consultar', pedidas.length - antes === 2 && !/No se pudieron/.test(t.texto), t.texto);
+
+        // Con el proxy anterior publicado (solo amparos directos, sin "version").
+        modo = 'anterior';
+        await page.click('#sesiones-pjf-actualizar');
+        await pausa(1200);
+        t = await tarjeta();
+        verificar('sesiones PJF: un proxy anterior no se da por bueno para un amparo en revisión: se avisa que hay que publicarlo',
+            /No se pudieron revisar todas las listas/.test(t.texto) && t.texto.includes(TCC3) && /publicarlo de nuevo/.test(t.texto) && !/Sin asuntos listados/.test(t.texto), t.texto);
+        verificar('sesiones PJF: y el tribunal que solo tiene amparos directos sí se revisa con él', t.filas === 1 && t.texto.includes('Amparo Directo 677/2023'));
+
+        // Un expediente de colegiado sin tipo de asunto: se busca por número.
+        modo = 'listado';
+        await page.evaluate((b) => crearExpedienteCore({ numero: '16/2026', institucion: 'PJF', juzgado: b, pjfOrgId: '1319' }), TCC3);
+        antes = pedidas.length;
+        await abrir();
+        t = await tarjeta();
+        igual('sesiones PJF: un expediente sin tipo de asunto se pregunta por número ("~*")',
+            pedidas.slice(antes).map(p => p.exp), ['462:677/2023', '1319:88/2026,1319:90/2026~amparo en revision,1319:16/2026~*']);
+        verificar('sesiones PJF: y si aparece, se muestra con el tipo que dice la lista y el aviso de que coincide solo por número',
+            t.filas === 2 && t.texto.includes('Queja 16/2026') && /Coincide por número/.test(t.texto), t.texto);
 
         await page.setViewportSize({ width: 390, height: 844 });
         await pausa(300);
