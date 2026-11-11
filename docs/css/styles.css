@@ -681,6 +681,42 @@ h1, h2, h3, h4 {
 .panel-rapido-hecho:hover, .panel-rapido-hecho:focus-visible { background: var(--success, #28a745); color: #fff; }
 .panel-rapido-mas, .panel-rapido-vacio { color: var(--text-secondary); font-size: 0.85rem; padding: 0.6rem 0.5rem; margin: 0; }
 
+/* Sesiones de los Tribunales Colegiados (js/sesiones-pjf.js) */
+.sesiones-pjf { margin-bottom: 2rem; }
+.sesiones-pjf[hidden] { display: none; }
+.sesiones-pjf .card-header { flex-wrap: wrap; }
+.sesiones-pjf-controles { display: flex; align-items: center; gap: 0.5rem; }
+.sesiones-pjf-controles select {
+    font: inherit; font-size: 0.85rem; padding: 0.3rem 0.5rem; min-height: 32px;
+    border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+    background: var(--bg-primary); color: var(--text-primary);
+}
+.sesiones-pjf-estado, .sesiones-pjf-vacio { margin: 0; color: var(--text-secondary); }
+.sesiones-pjf-vacio { font-weight: 500; }
+.sesiones-pjf-lista { list-style: none; margin: 0; padding: 0; }
+.sesiones-pjf-fila { border-left: 3px solid var(--warning, #ffc107); margin-bottom: 0.5rem; }
+.sesiones-pjf-fila.pasada { border-left-color: var(--border-color); }
+.sesiones-pjf-abrir {
+    width: 100%; display: flex; align-items: flex-start; gap: 1rem; flex-wrap: wrap;
+    background: var(--bg-secondary); border: none; font: inherit; color: inherit; text-align: left;
+    padding: 0.7rem 0.9rem; min-height: 44px;
+    border-radius: 0 var(--radius) var(--radius) 0;
+}
+button.sesiones-pjf-abrir { cursor: pointer; }
+button.sesiones-pjf-abrir:hover, button.sesiones-pjf-abrir:focus-visible { background: var(--bg-tertiary, var(--border-color)); }
+.sesiones-pjf-fecha, .sesiones-pjf-texto { display: flex; flex-direction: column; min-width: 0; }
+.sesiones-pjf-fecha { flex: 0 0 13.5rem; }
+.sesiones-pjf-texto { flex: 1 1 16rem; }
+.sesiones-pjf-abrir small { color: var(--text-secondary); font-size: 0.78rem; overflow-wrap: anywhere; }
+.sesiones-pjf-abrir small.sesiones-pjf-resultado { color: var(--text-primary); font-weight: 500; }
+.sesiones-pjf-error {
+    margin-bottom: 0.75rem; padding: 0.6rem 0.8rem; font-size: 0.85rem;
+    border-left: 3px solid var(--danger, #dc3545); background: var(--bg-secondary);
+    border-radius: 0 var(--radius) var(--radius) 0;
+}
+.sesiones-pjf-pie { margin: 0.75rem 0 0; color: var(--text-muted); font-size: 0.78rem; }
+.sesiones-pjf-estado + .sesiones-pjf-pie, .sesiones-pjf-vacio + .sesiones-pjf-pie { margin-top: 0.4rem; }
+
 /* Quick Actions */
 .quick-actions { margin-bottom: 2rem; }
 .quick-actions h3 { margin-bottom: 1rem; font-size: 1rem; }

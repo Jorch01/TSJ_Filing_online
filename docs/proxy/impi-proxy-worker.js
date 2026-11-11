@@ -24,11 +24,16 @@
 // Las sesiones no necesitan recursos extra. Los límites del plan gratuito sí:
 // un KV namespace enlazado como CUOTAS y el secreto CUOTA_SECRETO (ver la
 // sección CUOTAS). Ambos caben en el plan gratuito de Cloudflare.
+//
+// ADEMÁS DEL IMPI: la ruta /api/sesiones consulta las listas de sesión de los
+// Tribunales Colegiados en SISE (ver la sección SESIONES SISE). No pide
+// configurar nada; si existe el KV de las cuotas, lo usa para recordar
+// resultados.
 // ============================================================
 
 // Sirve para confirmar, desde /health, que el worker publicado es el esperado.
 // Actualízala cuando el cambio valga la pena verificar tras desplegar.
-const WORKER_VERSION = '2026-11-10-auditoria';
+const WORKER_VERSION = '2026-11-10-sesiones';
 
 const ALLOWED_ORIGINS = [
     'https://jorch01.github.io',
@@ -364,12 +369,29 @@ export default {
             } else if (path === '/marcanet/full-detail') {
                 response = await handleMarcanetFullDetail(request);
             }
+            // ===== Sesiones de los Tribunales Colegiados (SISE) =====
+            else if (path === '/api/sesiones') {
+                if (request.method !== 'GET') {
+                    response = new Response(JSON.stringify({ error: 'Solo GET' }), { status: 405, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
+                } else {
+                    const r = await atenderSesiones(url, env, {
+                        fetch: (destino, opciones) => fetch(destino, opciones),
+                        esperar: (ms) => new Promise(listo => setTimeout(listo, ms)),
+                        ahora: () => Date.now(),
+                        ip: request.headers.get('CF-Connecting-IP') || ''
+                    });
+                    response = new Response(JSON.stringify(r.datos), {
+                        status: r.status,
+                        headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }
+                    });
+                }
+            }
             // ===== Health check =====
             else if (path === '/health') {
                 response = new Response(JSON.stringify({
                     status: 'ok',
                     version: WORKER_VERSION,
-                    services: ['marcia', 'siga', 'marcanet'],
+                    services: ['marcia', 'siga', 'marcanet', 'sesiones'],
                     cuotas: cuotasActivas(env),
                     timestamp: new Date().toISOString()
                 }), { headers: { 'Content-Type': 'application/json' } });
@@ -2015,6 +2037,552 @@ async function handleMarcanetFullDetail(request) {
         headers: { 'Content-Type': 'application/json' }
     });
 }
+
+// ==================== SESIONES SISE (INICIO) ====================
+// Listas de sesión de los Tribunales Colegiados de Circuito (SISE, Poder
+// Judicial de la Federación): ¿alguno de estos expedientes está listado?
+//
+//   GET /api/sesiones?desde=AAAA-MM-DD&hasta=AAAA-MM-DD
+//                    &exp=462:677/2023,944:15/2025
+//                    [&filtro=sesion|lista] [&refresh=1]
+//
+// La app guarda los expedientes en el navegador, así que es ella quien dice
+// cuáles buscar: "organismo:número/año" (y ":NEUN" al final si lo tiene).
+// Aquí no hay ningún id de tribunal escrito: el OrganismoId de SISE es el que
+// la app ya guarda en cada expediente (pjfOrgId, del catálogo del PJF).
+// Sin "desde" y "hasta" se revisa del lunes de esta semana al viernes de la
+// siguiente; como mucho, 4 semanas.
+//
+// El buscador oficial no busca por rango: su listado se pide con un POST por
+// día, por tribunal y por tipo de sesión, y no manda cabeceras CORS (por eso
+// se consulta desde aquí y no desde el navegador). Para no pedir todos los
+// días se pregunta antes al calendario del mes qué días tienen sesión; si el
+// calendario falla, se piden todos los días hábiles.
+//
+// Una llamada que falla no tumba la respuesta: va en "errores", y "completo"
+// dice si se pudo revisar todo. Solo una respuesta completa se recuerda.
+//
+// No necesita nada en Cloudflare. Si el worker tiene el KV de las cuotas
+// (enlace CUOTAS), el resultado se recuerda ahí 6 horas; si no, en memoria.
+const SESIONES = {
+    base: 'https://www.dgej.cjf.gob.mx/SiseInternet/',
+    reporte: 'Reportes/ListaSesion/ReporteSesion.aspx',
+    calendario: 'Controles/ucCalendario.aspx',
+    tiposSesion: { '20651': 'Ordinaria', '20652': 'Extraordinaria' },
+    // "sesion": por el día de la sesión. "lista": por el día en que se
+    // publicó la lista (la del 04/11/2026 traía las sesiones del 12/11/2026).
+    filtros: ['sesion', 'lista'],
+    filtroPorDefecto: 'sesion',
+    // Sin NEUN, un número de expediente solo coincide con este tipo de
+    // asunto: en la misma lista hay quejas y revisiones con el mismo número.
+    tipoAsunto: 'Amparo Directo',
+    zonaHoraria: 'America/Cancun',
+    maxDias: 28,
+    concurrencia: 3,
+    pausaMs: 250,
+    timeoutMs: 20000,
+    reintentos: 1,
+    // El plan gratuito de Cloudflare permite 50 subpeticiones por consulta, y
+    // leer y guardar en el KV también cuentan. Por eso la app pregunta
+    // tribunal por tribunal.
+    maxLlamadas: 44,
+    maxExpedientes: 300,
+    maxOrganismos: 12,
+    cacheSegundos: 6 * 3600,
+    // Cada consulta nueva le cuesta a SISE decenas de llamadas: un mismo
+    // visitante no puede lanzar más de estas cada 10 minutos. (Lo recordado
+    // no cuenta. Con 6 tribunales, abrir la app son 6.)
+    topeConsultas: 40,
+    topeVentanaMs: 10 * 60 * 1000,
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+};
+
+// ---------- Fechas (siempre AAAA-MM-DD, sin horas ni husos) ----------
+
+function sesFechaValida(iso) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ''))) return false;
+    const d = new Date(iso + 'T00:00:00Z');
+    return !isNaN(d) && d.toISOString().slice(0, 10) === iso;
+}
+
+function sesSumarDias(iso, n) {
+    const d = new Date(iso + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+}
+
+/** 0 = domingo … 6 = sábado. */
+function sesDiaSemana(iso) {
+    return new Date(iso + 'T00:00:00Z').getUTCDay();
+}
+
+/** El día que es "hoy" en la zona de los tribunales, no en la del servidor. */
+function sesHoy(ahora, zona) {
+    const partes = {};
+    new Intl.DateTimeFormat('en-US', { timeZone: zona, year: 'numeric', month: '2-digit', day: '2-digit' })
+        .formatToParts(new Date(ahora)).forEach(p => { partes[p.type] = p.value; });
+    return partes.year + '-' + partes.month + '-' + partes.day;
+}
+
+/**
+ * Del lunes de esta semana al viernes de la siguiente. Las semanas van de
+ * domingo a sábado, como en el calendario de SISE: en domingo, "esta semana"
+ * es la que empieza mañana.
+ */
+function sesRangoPorDefecto(hoy) {
+    const lunes = sesSumarDias(hoy, 1 - sesDiaSemana(hoy));
+    return { desde: lunes, hasta: sesSumarDias(lunes, 11) };
+}
+
+/** Los días de lunes a viernes entre dos fechas, ambas incluidas. */
+function sesDiasHabiles(desde, hasta) {
+    const dias = [];
+    for (let d = desde; d <= hasta; d = sesSumarDias(d, 1)) {
+        const n = sesDiaSemana(d);
+        if (n >= 1 && n <= 5) dias.push(d);
+    }
+    return dias;
+}
+
+/** Los meses que toca un rango: [{ anio, mes, clave: 'AAAA-MM' }]. */
+function sesMeses(desde, hasta) {
+    const meses = [];
+    let anio = +desde.slice(0, 4), mes = +desde.slice(5, 7);
+    const fin = hasta.slice(0, 7);
+    for (;;) {
+        const clave = anio + '-' + String(mes).padStart(2, '0');
+        if (clave > fin) break;
+        meses.push({ anio, mes, clave });
+        if (++mes > 12) { mes = 1; anio++; }
+    }
+    return meses;
+}
+
+/** "12/11/2026" → "2026-11-12" (o '' si no es una fecha). */
+function sesFechaAISO(texto) {
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(texto || '').trim());
+    return m ? m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0') : '';
+}
+
+/** "2026-11-12" → "12/11/2026", que es como lo pide SISE. */
+function sesFechaSise(iso) {
+    return iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);
+}
+
+// ---------- Lectura del HTML de SISE ----------
+
+const SES_ENTIDADES = {
+    nbsp: ' ', lt: '<', gt: '>', quot: '"', apos: "'",
+    aacute: 'á', eacute: 'é', iacute: 'í', oacute: 'ó', uacute: 'ú', ntilde: 'ñ', uuml: 'ü',
+    Aacute: 'Á', Eacute: 'É', Iacute: 'Í', Oacute: 'Ó', Uacute: 'Ú', Ntilde: 'Ñ', Uuml: 'Ü'
+};
+
+/** El texto de una celda: sin etiquetas, sin entidades y con los espacios y saltos de línea en uno. */
+function sesTexto(html) {
+    return String(html || '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&([A-Za-z]+);/g, (m, n) => (SES_ENTIDADES[n] !== undefined ? SES_ENTIDADES[n] : m))
+        .replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n))
+        // "&amp;" al final: así "&amp;lt;" queda en "&lt;" y no en "<".
+        .replace(/&amp;/g, '&')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function sesSinAcentos(texto) {
+    return String(texto || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** "AD 0677/2023-II" → "677/2023". Sin número y año, null. */
+function sesClaveExpediente(texto) {
+    const m = /(\d{1,7})\s*\/\s*(\d{4}|\d{2})(?!\d)/.exec(String(texto || ''));
+    if (!m) return null;
+    return parseInt(m[1], 10) + '/' + (m[2].length === 2 ? '20' + m[2] : m[2]);
+}
+
+/** La celda "No. Expediente" ("Amparo Directo\n677/2023") separada en tipo de asunto y número/año. */
+function sesSepararExpediente(celda) {
+    const texto = sesTexto(celda);
+    const m = /^(.*?)\s*(\d+)\s*\/\s*(\d{4})(?!\d)/.exec(texto);
+    if (!m) return { tipoAsunto: texto, expediente: '' };
+    return { tipoAsunto: m[1].trim(), expediente: parseInt(m[2], 10) + '/' + m[3] };
+}
+
+const SES_COLUMNAS = {
+    'neun': 'neun',
+    'no. expediente': 'expediente',
+    'autoridad': 'autoridad',
+    'magistrado ponente': 'ponente',
+    'secretario proyectista': 'secretario',
+    'fecha de sesion': 'fechaSesion',
+    'resultado': 'resultado',
+    'sentencia': 'sentencia'
+};
+
+/**
+ * Las filas de la lista de sesión. Un día sin sesión da []. Si lo que llegó
+ * no es la lista (una página de error, otro formato), lanza un error: darlo
+ * por "sin asuntos" sería decir que no hay nada listado sin haberlo visto.
+ */
+function sesParsearReporte(html) {
+    const texto = String(html || '');
+    // Se parte de la fila de títulos para no pasar las expresiones regulares
+    // por el __VIEWSTATE, que pesa más que la propia tabla.
+    const inicio = texto.search(/<tr[^>]*class\s*=\s*["']?trtitulo/i);
+    if (inicio < 0) throw new Error('SISE respondió con una página que no es la lista de sesión');
+    const resto = texto.slice(inicio);
+    const fin = resto.search(/<\/table>/i);
+    const filas = (fin < 0 ? resto : resto.slice(0, fin)).match(/<tr[\s\S]*?<\/tr>/gi) || [];
+    const celdas = (fila) => fila.match(/<td[^>]*>[\s\S]*?<\/td>/gi) || [];
+
+    const titulos = celdas(filas[0] || '').map(c => sesSinAcentos(sesTexto(c)));
+    const columna = {};
+    titulos.forEach((t, i) => { if (SES_COLUMNAS[t]) columna[SES_COLUMNAS[t]] = i; });
+    for (const necesaria of ['neun', 'expediente', 'fechaSesion']) {
+        if (columna[necesaria] === undefined) throw new Error('La lista de sesión de SISE cambió de columnas (falta "' + necesaria + '")');
+    }
+
+    const registros = [];
+    for (const fila of filas.slice(1)) {
+        const c = celdas(fila);
+        // Una sola celda: la fila en blanco o "No se localizaron registros".
+        if (c.length <= 1) continue;
+        if (c.length !== titulos.length) throw new Error('La lista de sesión de SISE trae filas con otro número de columnas');
+        const de = (nombre) => (columna[nombre] === undefined ? '' : sesTexto(c[columna[nombre]]));
+        const exp = sesSepararExpediente(c[columna.expediente]);
+        registros.push({
+            neun: de('neun'),
+            tipoAsunto: exp.tipoAsunto,
+            expediente: exp.expediente,
+            autoridad: de('autoridad'),
+            ponente: de('ponente'),
+            secretario: de('secretario'),
+            fechaSesion: sesFechaAISO(de('fechaSesion')),
+            resultado: de('resultado'),
+            sentencia: de('sentencia')
+        });
+    }
+    return registros;
+}
+
+/**
+ * Los días con sesión que marca el calendario de un mes. Comprueba que sea el
+ * mes pedido: el calendario lo dice en su flecha de "mes siguiente".
+ */
+function sesParsearCalendario(html, anio, mes) {
+    const texto = String(html || '');
+    const flecha = /irAdelante\(\s*'[^']*'\s*,\s*(\d{4})\s*,\s*(\d{1,2})\s*\)/.exec(texto);
+    if (!flecha) throw new Error('SISE respondió con una página que no es el calendario de sesiones');
+    const siguiente = mes === 12 ? [anio + 1, 1] : [anio, mes + 1];
+    if (+flecha[1] !== siguiente[0] || +flecha[2] !== siguiente[1]) throw new Error('SISE devolvió el calendario de otro mes');
+    const dias = [];
+    const enlace = /ObtenerReporte\(\s*'(\d{1,2}\/\d{1,2}\/\d{4})'\s*\)/g;
+    for (let m = enlace.exec(texto); m; m = enlace.exec(texto)) {
+        const iso = sesFechaAISO(m[1]);
+        if (iso && !dias.includes(iso)) dias.push(iso);
+    }
+    return dias;
+}
+
+// ---------- Qué expedientes se buscan ----------
+
+/**
+ * "462:677/2023,944:15/2025:33638865" →
+ * { porOrganismo: Map(organismo → [{ clave, neun }]), total, canon } o { error }.
+ */
+function sesLeerExpedientes(parametro) {
+    const porOrganismo = new Map();
+    let total = 0;
+    for (const trozo of String(parametro || '').split(',')) {
+        const t = trozo.trim();
+        if (!t) continue;
+        const m = /^(\d{1,6}):([^:]{1,40})(?::(\d{1,12}))?$/.exec(t);
+        const clave = m && sesClaveExpediente(m[2]);
+        if (!clave) return { error: 'Expediente no reconocido: "' + t.slice(0, 40) + '". Se esperaba organismo:número/año' };
+        if (!porOrganismo.has(m[1])) porOrganismo.set(m[1], []);
+        const lista = porOrganismo.get(m[1]);
+        const neun = m[3] || '';
+        if (lista.some(e => e.clave === clave && e.neun === neun)) continue;
+        lista.push({ clave, neun });
+        total++;
+    }
+    if (!total) return { error: 'Falta "exp": los expedientes por buscar, como organismo:número/año separados por comas' };
+    if (total > SESIONES.maxExpedientes) return { error: 'Demasiados expedientes en una consulta (máximo ' + SESIONES.maxExpedientes + ')' };
+    if (porOrganismo.size > SESIONES.maxOrganismos) return { error: 'Demasiados tribunales en una consulta (máximo ' + SESIONES.maxOrganismos + ')' };
+    const canon = [...porOrganismo.entries()]
+        .map(([org, lista]) => lista.map(e => org + ':' + e.clave + ':' + e.neun))
+        .flat().sort().join(',');
+    return { porOrganismo, total, canon };
+}
+
+/**
+ * Los registros de una lista que son de estos expedientes. El NEUN manda: es
+ * único. Sin él, cuentan el número/año y que sea del tipo de asunto vigilado.
+ */
+function sesCoincidencias(registros, expedientes) {
+    const tipo = sesSinAcentos(SESIONES.tipoAsunto);
+    const salida = [];
+    for (const r of registros) {
+        const porNeun = r.neun ? expedientes.find(e => e.neun && e.neun === r.neun) : null;
+        if (porNeun) { salida.push({ registro: r, coincidencia: 'neun' }); continue; }
+        if (!r.expediente || !sesSinAcentos(r.tipoAsunto).startsWith(tipo)) continue;
+        if (expedientes.some(e => e.clave === r.expediente)) salida.push({ registro: r, coincidencia: 'expediente' });
+    }
+    return salida;
+}
+
+// ---------- Llamadas a SISE ----------
+
+/**
+ * Un POST a SISE con su tiempo de espera y su reintento. `pares` son los
+ * [Item, Valor] del cuerpo, en el orden en que los manda el portal.
+ */
+async function sesPedir(ruta, pares, deps) {
+    const cuerpo = JSON.stringify(pares.map(([item, valor]) => ({ Item: item, Valor: String(valor) })));
+    let ultimo;
+    for (let intento = 0; intento <= SESIONES.reintentos; intento++) {
+        if (deps.cuenta.hechas >= SESIONES.maxLlamadas) {
+            throw new Error('No se consultó: se alcanzó el máximo de llamadas a SISE por consulta');
+        }
+        deps.cuenta.hechas++;
+        if (intento > 0) await deps.esperar(SESIONES.pausaMs * 2);
+        const control = new AbortController();
+        const reloj = setTimeout(() => control.abort(), SESIONES.timeoutMs);
+        try {
+            const resp = await deps.fetch(SESIONES.base + ruta, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'Accept': 'text/html, */*; q=0.01',
+                    'Accept-Language': 'es-MX,es;q=0.9',
+                    'User-Agent': SESIONES.userAgent
+                },
+                body: cuerpo,
+                signal: control.signal
+            });
+            if (!resp.ok) {
+                throw new Error(resp.status === 525 || resp.status === 526
+                    ? 'Cloudflare no pudo validar el certificado de SISE (HTTP ' + resp.status + ')'
+                    : 'SISE respondió con error ' + resp.status);
+            }
+            return await resp.text();
+        } catch (e) {
+            ultimo = control.signal.aborted
+                ? new Error('SISE no respondió en ' + (SESIONES.timeoutMs / 1000) + ' segundos')
+                : e;
+        } finally {
+            clearTimeout(reloj);
+        }
+    }
+    throw ultimo;
+}
+
+/** Corre las tareas de pocas en pocas, con una pausa entre una y la siguiente. */
+async function sesEnTandas(tareas, deps) {
+    let siguiente = 0;
+    const obrero = async () => {
+        while (siguiente < tareas.length) {
+            await tareas[siguiente++]();
+            if (siguiente < tareas.length) await deps.esperar(SESIONES.pausaMs);
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(SESIONES.concurrencia, tareas.length) }, obrero));
+}
+
+/**
+ * Busca los expedientes en las listas del rango.
+ * → { sesiones, errores, completo, resumen }
+ */
+async function sesConsultar(consulta, deps) {
+    const { porOrganismo, desde, hasta, filtro } = consulta;
+    const sesiones = [];
+    const errores = [];
+    const habiles = sesDiasHabiles(desde, hasta);
+
+    // 1. El calendario de cada mes dice qué días hay sesión.
+    const diasDe = new Map();
+    const delCalendario = [];
+    for (const org of porOrganismo.keys()) {
+        diasDe.set(org, new Set());
+        for (const mes of sesMeses(desde, hasta)) {
+            delCalendario.push(async () => {
+                try {
+                    const html = await sesPedir(SESIONES.calendario,
+                        [['AnioSiguiente', mes.anio], ['MesSiguiente', mes.mes], ['OrganismoId', org], ['TipoFiltro', filtro]], deps);
+                    sesParsearCalendario(html, mes.anio, mes.mes)
+                        .filter(d => d >= desde && d <= hasta)
+                        .forEach(d => diasDe.get(org).add(d));
+                } catch (e) {
+                    // Sin calendario no se sabe qué días hay sesión: se piden
+                    // todos los hábiles de ese mes.
+                    habiles.filter(d => d.slice(0, 7) === mes.clave).forEach(d => diasDe.get(org).add(d));
+                    errores.push({
+                        etapa: 'calendario', organismoId: org, mes: mes.clave,
+                        mensaje: (e && e.message) || String(e),
+                        nota: 'Se consultaron todos los días hábiles del mes'
+                    });
+                }
+            });
+        }
+    }
+    await sesEnTandas(delCalendario, deps);
+
+    // 2. La lista de cada día con sesión, ordinaria y extraordinaria. Primero
+    //    los días más cercanos: si se acaban las llamadas, que falten los lejanos.
+    const pendientes = [];
+    for (const [org, dias] of diasDe) {
+        for (const dia of dias) {
+            for (const tipo of Object.keys(SESIONES.tiposSesion)) pendientes.push({ org, dia, tipo });
+        }
+    }
+    pendientes.sort((a, b) => (a.dia < b.dia ? -1 : a.dia > b.dia ? 1 : 0));
+
+    const vistas = new Set();
+    await sesEnTandas(pendientes.map(({ org, dia, tipo }) => async () => {
+        try {
+            const html = await sesPedir(SESIONES.reporte,
+                [['Fecha', sesFechaSise(dia)], ['OrganismoId', org], ['TipoFiltro', filtro], ['TipoSesion', tipo]], deps);
+            for (const { registro, coincidencia } of sesCoincidencias(sesParsearReporte(html), porOrganismo.get(org))) {
+                const fecha = registro.fechaSesion || dia;
+                // Con el filtro "lista" un mismo asunto puede salir en dos listas.
+                const unica = [org, registro.neun || registro.expediente, fecha, tipo].join('|');
+                if (vistas.has(unica)) continue;
+                vistas.add(unica);
+                sesiones.push({
+                    expediente: registro.expediente,
+                    tipoAsunto: registro.tipoAsunto,
+                    organismoId: org,
+                    neun: registro.neun,
+                    fechaSesion: fecha,
+                    tipoSesion: SESIONES.tiposSesion[tipo],
+                    ponente: registro.ponente,
+                    secretario: registro.secretario,
+                    resultado: registro.resultado,
+                    sentencia: registro.sentencia,
+                    autoridad: registro.autoridad,
+                    coincidencia
+                });
+            }
+        } catch (e) {
+            errores.push({
+                etapa: 'reporte', organismoId: org, fecha: dia, tipoSesion: SESIONES.tiposSesion[tipo],
+                mensaje: (e && e.message) || String(e)
+            });
+        }
+    }), deps);
+
+    sesiones.sort((a, b) => (a.fechaSesion + '|' + a.organismoId + '|' + a.expediente)
+        .localeCompare(b.fechaSesion + '|' + b.organismoId + '|' + b.expediente));
+
+    const fallidas = errores.filter(e => e.etapa === 'reporte').length;
+    return {
+        sesiones,
+        errores,
+        // El calendario caído no deja huecos (se piden todos los días); una
+        // lista que no se pudo leer, sí.
+        completo: fallidas === 0,
+        resumen: {
+            organismos: porOrganismo.size,
+            expedientes: [...porOrganismo.values()].reduce((n, lista) => n + lista.length, 0),
+            listasConsultadas: pendientes.length,
+            listasFallidas: fallidas,
+            llamadas: deps.cuenta.hechas
+        }
+    };
+}
+
+// ---------- Memoria de resultados ----------
+
+// Respaldo cuando el worker no tiene KV: dura lo que viva el isolate.
+const sesMemoria = new Map();
+
+async function sesRecordar(env, clave, ahora) {
+    const local = sesMemoria.get(clave);
+    if (local && local.vence > ahora) return local.datos;
+    if (env && env.CUOTAS) {
+        try {
+            const guardado = await env.CUOTAS.get(clave);
+            if (guardado) return JSON.parse(guardado);
+        } catch (e) { /* sin memoria se consulta de nuevo */ }
+    }
+    return null;
+}
+
+async function sesGuardar(env, clave, datos, ahora) {
+    if (sesMemoria.size >= 200) sesMemoria.clear();
+    sesMemoria.set(clave, { vence: ahora + SESIONES.cacheSegundos * 1000, datos });
+    if (env && env.CUOTAS) {
+        try {
+            await env.CUOTAS.put(clave, JSON.stringify(datos), { expirationTtl: SESIONES.cacheSegundos });
+        } catch (e) { /* se queda solo en memoria */ }
+    }
+}
+
+// ---------- Tope por visitante ----------
+
+// Vive en la memoria del isolate: no es una cuenta exacta (Cloudflare reparte
+// las peticiones entre varios), pero impide usar este worker para bombardear
+// a SISE desde una sola dirección.
+const sesVisitas = new Map();
+
+function sesDentroDelTope(ip, ahora) {
+    const quien = ip || 'sin-ip';
+    const recientes = (sesVisitas.get(quien) || []).filter(t => t > ahora - SESIONES.topeVentanaMs);
+    const cabe = recientes.length < SESIONES.topeConsultas;
+    if (cabe) recientes.push(ahora);
+    if (sesVisitas.size >= 2000 && !sesVisitas.has(quien)) sesVisitas.clear();
+    sesVisitas.set(quien, recientes);
+    return cabe;
+}
+
+/**
+ * GET /api/sesiones → { status, datos }.
+ * deps: { fetch, esperar(ms), ahora(), ip } — se inyectan para poder probarlo.
+ */
+async function atenderSesiones(url, env, deps) {
+    const p = url.searchParams;
+    const mal = (error) => ({ status: 400, datos: { error } });
+
+    const filtro = (p.get('filtro') || SESIONES.filtroPorDefecto).toLowerCase();
+    if (!SESIONES.filtros.includes(filtro)) return mal('Filtro desconocido: usa "sesion" o "lista"');
+
+    const ahora = deps.ahora();
+    let desde = p.get('desde') || '';
+    let hasta = p.get('hasta') || '';
+    if (!desde && !hasta) ({ desde, hasta } = sesRangoPorDefecto(sesHoy(ahora, SESIONES.zonaHoraria)));
+    if (!sesFechaValida(desde) || !sesFechaValida(hasta)) return mal('Indica "desde" y "hasta" como AAAA-MM-DD (o ninguno de los dos)');
+    if (hasta < desde) return mal('"hasta" no puede ser anterior a "desde"');
+    if (sesSumarDias(desde, SESIONES.maxDias - 1) < hasta) return mal('El rango máximo es de 4 semanas');
+
+    const pedidos = sesLeerExpedientes(p.get('exp'));
+    if (pedidos.error) return mal(pedidos.error);
+
+    const clave = 'ses:1:' + await sha256Hex([desde, hasta, filtro, pedidos.canon].join('|'));
+    if (p.get('refresh') !== '1') {
+        const guardado = await sesRecordar(env, clave, ahora);
+        if (guardado) return { status: 200, datos: Object.assign({}, guardado, { cache: true }) };
+    }
+
+    if (!sesDentroDelTope(deps.ip, ahora)) {
+        return { status: 429, datos: { error: 'Demasiadas consultas seguidas. Espera unos minutos y vuelve a intentarlo.' } };
+    }
+
+    const resultado = await sesConsultar(
+        { porOrganismo: pedidos.porOrganismo, desde, hasta, filtro },
+        { fetch: deps.fetch, esperar: deps.esperar, cuenta: { hechas: 0 } });
+    const datos = {
+        desde, hasta, filtro,
+        generado: new Date(ahora).toISOString(),
+        cache: false,
+        completo: resultado.completo,
+        sesiones: resultado.sesiones,
+        errores: resultado.errores,
+        resumen: resultado.resumen
+    };
+    if (datos.completo) await sesGuardar(env, clave, datos, ahora);
+    return { status: 200, datos };
+}
+// ==================== SESIONES SISE (FIN) ====================
 
 // ==================== HELPERS ====================
 
