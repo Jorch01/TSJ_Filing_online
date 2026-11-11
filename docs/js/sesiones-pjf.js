@@ -6,10 +6,17 @@
  * listado para sesión en las próximas semanas, y se avisa en Inicio. Se
  * vuelve a mirar cada vez que cambian los expedientes o se regresa a Inicio.
  *
- * Es una función de Premium. Sin licencia, quien lleva asuntos en tribunales
- * colegiados ve la tarjeta con la invitación a Premium, y no se consulta
- * nada. Con licencia, el proxy da un pase tras comprobarla y sin él no
- * responde (ver la sección CUOTAS del proxy, tipo "sesiones").
+ * Es una función de Premium, con 2 consultas de prueba para quien no lo
+ * tiene y lleva asuntos en tribunales colegiados. Con licencia, la tarjeta
+ * consulta sola. Sin ella nada se consulta solo: la tarjeta ofrece
+ * "Consultar ahora" mientras queden consultas de prueba y, después, invita a
+ * Premium. En los dos casos el proxy exige un pase, que da tras comprobar la
+ * licencia o descontar una consulta de prueba (sección CUOTAS del proxy, tipo
+ * "sesiones"; la cuenta local la lleva cuotas-impi.js).
+ *
+ * Además de los asuntos listados, la tarjeta dice cuáles se revisaron y no
+ * están en ninguna lista: "sin asuntos listados" a secas no deja saber qué se
+ * buscó.
  *
  * Las listas son las del buscador oficial del PJF (SISE). El navegador no
  * puede pedirlas directamente (no mandan cabeceras CORS), así que la consulta
@@ -45,9 +52,13 @@
         // Desde esta versión el proxy entiende otros tipos de asunto. El
         // anterior solo revisaba amparos directos, y callaba lo demás.
         versionProxy: 2,
-        // El pase que se pide al proxy (su /cuota): solo lo da con Premium.
+        // El pase que se pide al proxy (su /cuota): lo da con Premium o, sin
+        // él, mientras queden consultas de prueba.
         tipoCuota: 'sesiones',
         cabeceraPase: 'X-TSJ-Cuota',
+        // Un permiso sirve para varias consultas seguidas (reintentar, cambiar
+        // de periodo): así un tropiezo no gasta otra consulta de prueba.
+        minutosPermiso: 9,
         // "sesion": por el día de la sesión. "lista": por el día en que se
         // publicó la lista. Con "sesion" el periodo elegido es el de las
         // sesiones, que es lo que se quiere saber.
@@ -229,6 +240,27 @@
         });
     }
 
+    /**
+     * Los asuntos revisados que no salieron en ninguna lista.
+     * fallidos: los organismoId de los tribunales que no se pudieron revisar
+     * completos; de sus asuntos no se puede afirmar nada, así que no entran.
+     * → [{ id, asunto, tribunal, sinTipo }]
+     */
+    function sinSesion(grupos, sesiones, fallidos) {
+        const fuera = new Set(fallidos || []);
+        const lista = [];
+        for (const g of grupos || []) {
+            if (fuera.has(g.organismoId)) continue;
+            const delTribunal = (sesiones || []).filter(s => String(s.organismoId) === g.organismoId);
+            for (const e of g.expedientes) {
+                const listado = delTribunal.some(s => (e.neun && e.neun === s.neun) ||
+                    (s.expediente === e.clave && (!e.tipo || tipoNormal(e.tipo) === tipoNormal(s.tipoAsunto))));
+                if (!listado) lista.push({ id: e.id, asunto: (e.tipo ? e.tipo + ' ' : '') + e.clave, tribunal: g.tribunal, sinTipo: !e.tipo });
+            }
+        }
+        return lista;
+    }
+
     function ordenar(sesiones) {
         const llave = (s) => [s.fechaSesion, s.tribunal, s.expediente].join('|');
         return sesiones.slice().sort((a, b) => llave(a).localeCompare(llave(b), 'es'));
@@ -258,14 +290,16 @@
 
     const Motor = {
         CONFIG, isoLocal, sumarDias, rangoDeSemanas, claveExpediente, tipoNormal, seleccionarAsuntos,
-        pideOtrosTipos, urlConsulta, claveConsulta, completar, ordenar, fechaLarga, periodoTexto
+        pideOtrosTipos, urlConsulta, claveConsulta, completar, sinSesion, ordenar, fechaLarga, periodoTexto
     };
 
     if (typeof module !== 'undefined' && module.exports) { module.exports = Motor; return; }
 
     // ==================== NAVEGADOR ====================
 
-    const CLAVE_MEMORIA = 'sesiones_pjf_memoria_v1';
+    const CLAVE_MEMORIA = 'sesiones_pjf_memoria_v2';
+    // (La v1 no guardaba los asuntos sin sesión listada.)
+    try { localStorage.removeItem('sesiones_pjf_memoria_v1'); } catch (e) { /* sin almacén */ }
     const CLAVE_SEMANAS = 'sesiones_pjf_semanas';
     const CLAVE_PROXY_LOCAL = 'sesiones_pjf_proxy_local';
     const LOCAL_RE = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
@@ -283,17 +317,41 @@
         return typeof estadoPremium !== 'undefined' && !!(estadoPremium && estadoPremium.activo);
     }
 
+    const hayCuotas = () => typeof CUOTAS_IMPI !== 'undefined' && typeof CUOTAS_IMPI.autorizar === 'function';
+
+    /** De cuántas consultas de prueba se dispone sin Premium, en total. */
+    function totalDePrueba() {
+        const l = hayCuotas() && CUOTAS_IMPI.LIMITES && CUOTAS_IMPI.LIMITES[CONFIG.tipoCuota];
+        return l ? l.limite : 0;
+    }
+
+    /** Cuántas consultas de prueba quedan, según la cuenta de este equipo. */
+    async function quedanDePrueba() {
+        try {
+            const r = hayCuotas() ? await CUOTAS_IMPI.resumen() : null;
+            return r && r[CONFIG.tipoCuota] ? r[CONFIG.tipoCuota].restantes : 0;
+        } catch (e) { return 0; }
+    }
+
+    // El permiso en curso: { pase, hasta, premium }.
+    let permiso = null;
+
     /**
-     * El pase que el proxy exige para esta función; lo da su /cuota tras
-     * comprobar la licencia. → { pase }, o { rechazada: true } si el servidor
-     * no reconoce la licencia. null si el proxy no lleva esa cuenta (o es uno
-     * anterior): entonces tampoco pide pase.
+     * El permiso para consultar: con Premium lo da la licencia; sin él,
+     * descuenta una consulta de prueba. → { ok, pase }. El pase es lo que el
+     * proxy exige en cada consulta; viene vacío si el proxy no lleva cuenta.
      */
-    async function pedirPase() {
-        if (typeof CUOTAS_IMPI === 'undefined' || typeof CUOTAS_IMPI.pedirPase !== 'function') return null;
-        const r = await CUOTAS_IMPI.pedirPase(CONFIG.tipoCuota);
-        if (!r || !r.servidor) return null;
-        return r.permitido && r.pase ? { pase: r.pase } : { rechazada: true };
+    async function pedirPermiso() {
+        const premium = esPremium();
+        if (permiso && permiso.premium === premium && Date.now() < permiso.hasta) return { ok: true, pase: permiso.pase };
+        permiso = null;
+        // Sin el módulo de cuotas no hay cómo contar las consultas de prueba.
+        if (!hayCuotas()) return { ok: premium, pase: null };
+        if (!await CUOTAS_IMPI.autorizar(CONFIG.tipoCuota, { silencioso: true })) return { ok: false, pase: null };
+        const pase = CUOTAS_IMPI.pase();
+        const vence = CUOTAS_IMPI.vencePase();
+        permiso = { pase, premium, hasta: Math.min(vence ? vence - 20000 : Infinity, Date.now() + CONFIG.minutosPermiso * 60000) };
+        return { ok: true, pase };
     }
 
     /**
@@ -357,6 +415,9 @@
                 { headers: cabeceras, signal: control.signal });
             let datos = null;
             try { datos = await resp.json(); } catch (e) { /* respuesta que no es JSON */ }
+            // El proxy ya no acepta el pase (venció, o la licencia dejó de
+            // valer): el permiso guardado no sirve para la siguiente.
+            if (resp.status === 402) permiso = null;
             if (!resp.ok || !datos || !Array.isArray(datos.sesiones)) {
                 throw new Error((datos && datos.error) || (resp.status === 404
                     ? 'El servicio de consulta todavía no está disponible'
@@ -387,7 +448,7 @@
         const rango = rangoDeSemanas(new Date(), semanasElegidas());
         const clave = claveConsulta(seleccion.grupos, rango, CONFIG.filtro);
 
-        if (!seleccion.grupos.length) { pintar({ rango, sesiones: [], errores: [], completo: true, consultado: Date.now() }); return; }
+        if (!seleccion.grupos.length) { await pintarResultado({ rango, sesiones: [], sinSesion: [], errores: [], completo: true, consultado: Date.now() }, miTurno); return; }
 
         if (refrescar) {
             // Quien pide actualizar ya no se fía de lo recordado: si esta
@@ -396,22 +457,24 @@
             olvidarMemoria(clave);
         } else {
             const recordado = leerMemoria(clave);
-            if (recordado) { pintar(recordado); return; }
+            if (recordado) { await pintarResultado(recordado, miTurno); return; }
         }
         if (!proxy()) { pintarAviso('La consulta de sesiones no está disponible en esta instalación.'); return; }
         if (navigator.onLine === false) { pintarAviso('Sin conexión: no se pudieron consultar las listas de sesión.', true); return; }
 
         pintarCargando(1, seleccion.grupos.length);
-        const permiso = await pedirPase();
+        const dado = await pedirPermiso();
         if (miTurno !== turno) return;
-        if (permiso && permiso.rechazada) {
-            pintarAviso('El servidor no reconoció tu licencia Premium, y esta consulta es solo para Premium. Revísala en Configuración y vuelve a intentarlo.', true);
+        if (!dado.ok) {
+            if (esPremium()) pintarAviso('El servidor no reconoció tu licencia Premium, y esta consulta es de Premium. Revísala en Configuración y vuelve a intentarlo.', true);
+            else pintarOferta(0);
             return;
         }
-        const pase = permiso ? permiso.pase : null;
+        const pase = dado.pase;
 
         const sesiones = [];
         const errores = [];
+        const fallidos = [];
         for (let i = 0; i < seleccion.grupos.length; i++) {
             if (miTurno !== turno) return;
             pintarCargando(i + 1, seleccion.grupos.length);
@@ -424,17 +487,29 @@
                 if (datos.completo === false) {
                     const fallidas = (datos.errores || []).filter(e => e.etapa === 'reporte');
                     errores.push({ tribunal: grupo.tribunal, mensaje: (fallidas[0] && fallidas[0].mensaje) || 'No se pudieron leer todas las listas', listas: fallidas.length });
+                    fallidos.push(grupo.organismoId);
                 }
             } catch (e) {
                 errores.push({ tribunal: grupo.tribunal, mensaje: (e && e.message) || 'No se pudo consultar' });
+                fallidos.push(grupo.organismoId);
             }
         }
         if (miTurno !== turno) return;
 
-        const resultado = { rango, sesiones: ordenar(sesiones), errores, completo: errores.length === 0, consultado: Date.now() };
+        const resultado = {
+            rango, sesiones: ordenar(sesiones), sinSesion: sinSesion(seleccion.grupos, sesiones, fallidos),
+            errores, completo: errores.length === 0, consultado: Date.now()
+        };
         // Lo incompleto no se recuerda: la próxima vez se vuelve a intentar.
         if (resultado.completo) guardarMemoria(clave, resultado);
-        pintar(resultado);
+        await pintarResultado(resultado, miTurno);
+    }
+
+    /** Pinta un resultado; sin Premium, con lo que queda de la prueba. */
+    async function pintarResultado(resultado, miTurno) {
+        const prueba = esPremium() ? null : { restantes: await quedanDePrueba(), total: totalDePrueba() };
+        if (miTurno !== undefined && miTurno !== turno) return;
+        pintar(resultado, prueba);
     }
 
     // ---------- Pintado ----------
@@ -450,16 +525,62 @@
             (conReintento ? '<p><button type="button" class="btn btn-sm btn-secondary" data-sesiones-reintentar>Reintentar</button></p>' : '');
     }
 
-    /** Sin Premium: qué haría la tarjeta, y cómo activarla. No se consulta nada. */
-    function pintarPremium() {
+    const BOTON_PREMIUM = '<button type="button" class="btn btn-sm btn-success" data-sesiones-premium>⭐ Ver planes Premium</button>';
+    const cuantas = (n) => (n === 1 ? '1 consulta' : n + ' consultas');
+
+    /**
+     * Sin Premium y sin nada consultado: qué hace la tarjeta y, si quedan
+     * consultas de prueba, el botón para usar una. Nada se consulta solo.
+     */
+    function pintarOferta(restantes) {
         const n = seleccion.total + seleccion.sinTribunal;
+        const total = totalDePrueba();
+        const queEs = 'La app revisa por ti las listas de sesión del Poder Judicial de la Federación y te dice si ' +
+            (n === 1 ? 'tu asunto en un tribunal colegiado' : 'alguno de tus ' + n + ' asuntos en tribunales colegiados') +
+            ' está listado: fecha, tipo de sesión, ponente y secretario.';
+        const hayPrueba = restantes > 0 && seleccion.total > 0;
         $('sesiones-pjf-cuerpo').innerHTML =
             '<div class="sesiones-pjf-premium">' +
-                '<p><strong>Función exclusiva de Premium.</strong> La app revisa por ti las listas de sesión del Poder Judicial de la Federación ' +
-                'y te avisa aquí cuando ' + (n === 1 ? 'tu asunto en un tribunal colegiado' : 'alguno de tus ' + n + ' asuntos en tribunales colegiados') +
-                ' está listado: fecha, tipo de sesión, ponente y secretario.</p>' +
-                '<p><button type="button" class="btn btn-sm btn-success" data-sesiones-premium>⭐ Ver planes Premium</button></p>' +
+                (hayPrueba
+                    ? '<p><strong>Función de Premium, con ' + cuantas(total) + ' de prueba.</strong> ' + esc(queEs) +
+                        ' Con Premium lo revisa sola cada vez que abres la app.</p>' +
+                        '<p class="sesiones-pjf-botones"><button type="button" class="btn btn-sm btn-primary" data-sesiones-prueba>Consultar ahora</button> ' +
+                        BOTON_PREMIUM + ' <span class="text-muted">Te ' + (restantes === 1 ? 'queda' : 'quedan') + ' ' + restantes + ' de ' + total + ' consultas de prueba.</span></p>'
+                    : '<p><strong>Función exclusiva de Premium.</strong> ' + esc(queEs) +
+                        (total && seleccion.total ? ' Ya usaste tus ' + cuantas(total) + ' de prueba.' : '') + '</p>' +
+                        '<p class="sesiones-pjf-botones">' + BOTON_PREMIUM + '</p>') +
             '</div>';
+    }
+
+    /**
+     * Bajo un resultado que se enseña sin Premium (una consulta de prueba, o
+     * lo último que se consultó antes de vencer la licencia): lo que queda
+     * de la prueba.
+     */
+    function pruebaHTML(prueba) {
+        const quedan = prueba.restantes > 0;
+        return '<div class="sesiones-pjf-premium sesiones-pjf-prueba">' +
+            '<p>' + (quedan
+                ? '<strong>Sin Premium la app no lo revisa sola.</strong> Te ' + (prueba.restantes === 1 ? 'queda' : 'quedan') + ' ' +
+                    prueba.restantes + ' de ' + prueba.total + ' consultas de prueba. Con Premium lo hace cada vez que la abres y te avisa aquí.'
+                : '<strong>Ya usaste tus ' + cuantas(prueba.total) + ' de prueba.</strong> Con Premium la app lo revisa sola cada vez que la abres y te avisa aquí.') +
+            '</p>' +
+            '<p class="sesiones-pjf-botones">' + (quedan ? '<button type="button" class="btn btn-sm btn-secondary" data-sesiones-prueba="otra">Consultar de nuevo</button> ' : '') +
+            BOTON_PREMIUM + '</p></div>';
+    }
+
+    /** Los asuntos que se revisaron y no están en ninguna lista. */
+    function sinSesionHTML(lista, abierta) {
+        if (!lista || !lista.length) return '';
+        const titulo = lista.length === 1 ? '1 asunto revisado sin sesión listada' : lista.length + ' asuntos revisados sin sesión listada';
+        return '<details class="sesiones-pjf-sin"' + (abierta ? ' open' : '') + '><summary>' + titulo + '</summary><ul>' +
+            lista.map(a => {
+                const contenido = '<strong>' + esc(a.asunto) + '</strong><small>' + esc(a.tribunal) +
+                    (a.sinTipo ? ' · sin tipo de asunto: se buscó por número' : '') + '</small>';
+                return '<li>' + (a.id != null
+                    ? '<button type="button" class="sesiones-pjf-sin-fila" data-sesiones-expediente="' + esc(a.id) + '" title="Abrir el expediente">' + contenido + '</button>'
+                    : '<div class="sesiones-pjf-sin-fila">' + contenido + '</div>') + '</li>';
+            }).join('') + '</ul></details>';
     }
 
     function filaHTML(s, hoy) {
@@ -482,7 +603,7 @@
             '</li>';
     }
 
-    function pintar(r) {
+    function pintar(r, prueba) {
         const hoy = isoLocal(new Date());
         const partes = [];
 
@@ -497,6 +618,9 @@
         } else if (seleccion.grupos.length && (!r.errores || !r.errores.length)) {
             partes.push('<p class="sesiones-pjf-vacio">Sin asuntos listados en el periodo</p>');
         }
+        // Cuáles se buscaron y no están. A la vista si no hubo ninguno listado
+        // o son pocos; plegados si son muchos y hay resultados que ver.
+        partes.push(sinSesionHTML(r.sinSesion, !r.sesiones.length || (r.sinSesion || []).length <= 5));
 
         const notas = [];
         if (seleccion.total) {
@@ -512,6 +636,7 @@
         notas.push('Fuente: listas de sesión del PJF (SISE) · consulta del ' +
             new Date(r.consultado).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
         partes.push('<p class="sesiones-pjf-pie">' + notas.map(esc).join('<br>') + '</p>');
+        if (prueba) partes.push(pruebaHTML(prueba));
 
         $('sesiones-pjf-cuerpo').innerHTML = partes.join('');
     }
@@ -533,7 +658,11 @@
         const actualizar = $('sesiones-pjf-actualizar');
         if (actualizar) actualizar.addEventListener('click', () => ponerAlDia({ forzar: true, refrescar: true }));
         $('sesiones-pjf-cuerpo').addEventListener('click', (ev) => {
-            if (ev.target.closest('[data-sesiones-reintentar]')) { ponerAlDia({ forzar: true, refrescar: true }); return; }
+            if (ev.target.closest('[data-sesiones-reintentar]')) { ponerAlDia({ forzar: true, refrescar: true, consultar: true }); return; }
+            // Sin Premium nada se consulta solo: lo pide este botón. "De
+            // nuevo" además deja de lado lo que se recordaba.
+            const prueba = ev.target.closest('[data-sesiones-prueba]');
+            if (prueba) { ponerAlDia({ forzar: true, consultar: true, refrescar: prueba.getAttribute('data-sesiones-prueba') === 'otra' }); return; }
             if (ev.target.closest('[data-sesiones-premium]')) {
                 if (typeof navegarA === 'function') navegarA('config');
                 setTimeout(() => { const s = $('premium-section'); if (s) s.scrollIntoView({ behavior: 'smooth' }); }, 300);
@@ -575,34 +704,40 @@
     // Varias llamadas pueden cruzarse (al abrir, al guardar un expediente, al
     // pulsar "Actualizar"): solo sigue la última, con lo pedido por todas.
     let generacion = 0;
-    let pedido = { forzar: false, refrescar: false };
+    let pedido = { forzar: false, refrescar: false, consultar: false };
 
     /**
      * Pone la tarjeta al día: vuelve a leer qué asuntos hay en tribunales
-     * colegiados y, si cambiaron (o cambió el periodo o la licencia), consulta.
+     * colegiados y, si cambiaron (o cambió el periodo o la licencia), actúa.
+     * Con Premium, consulta. Sin Premium nada se consulta solo: se enseña lo
+     * último consultado, si se recuerda, o la oferta de prueba.
      * Quien no lleva asuntos en tribunales colegiados no ve la tarjeta.
      *
-     * opciones.forzar: consultar aunque nada haya cambiado.
+     * opciones.forzar: actuar aunque nada haya cambiado.
      * opciones.refrescar: no usar lo recordado (ni aquí ni en el proxy).
+     * opciones.consultar: sin Premium, gastar una consulta de prueba (lo pide
+     *     el usuario con su botón).
      */
     async function ponerAlDia(opciones) {
         const tarjeta = $('sesiones-pjf');
         if (!tarjeta || !$('sesiones-pjf-cuerpo')) return;
-        pedido.forzar = pedido.forzar || !!(opciones && opciones.forzar);
-        pedido.refrescar = pedido.refrescar || !!(opciones && opciones.refrescar);
+        for (const k of Object.keys(pedido)) pedido[k] = pedido[k] || !!(opciones && opciones[k]);
         const yo = ++generacion;
         try {
             const premium = esPremium();
             const expedientes = await obtenerExpedientes();
-            // El catálogo (medio mega) solo hace falta para consultar: para la
-            // invitación a Premium basta reconocer el órgano por su nombre.
-            const nueva = seleccionarAsuntos(expedientes, premium ? await leerCatalogo(expedientes) : null);
+            // Primero por el nombre del órgano. El catálogo (medio mega) solo se
+            // carga para quien sí lleva asuntos en tribunales colegiados.
+            let nueva = seleccionarAsuntos(expedientes, null);
+            if (nueva.total || nueva.sinTribunal) nueva = seleccionarAsuntos(expedientes, await leerCatalogo(expedientes));
+            const restantes = premium ? 0 : await quedanDePrueba();
             if (yo !== generacion) return;
             const o = pedido;
-            pedido = { forzar: false, refrescar: false };
+            pedido = { forzar: false, refrescar: false, consultar: false };
 
             const rango = rangoDeSemanas(new Date(), semanasElegidas());
-            const clave = [premium ? 'premium' : 'gratis', nueva.sinTribunal, claveConsulta(nueva.grupos, rango, CONFIG.filtro)].join('#');
+            const consulta = claveConsulta(nueva.grupos, rango, CONFIG.filtro);
+            const clave = [premium ? 'premium' : 'prueba', nueva.sinTribunal, consulta].join('#');
             const vigente = clave === ultimaClave && Date.now() - ultimaVez < CONFIG.horasEnMemoria * 3600 * 1000;
             if (vigente && !o.forzar) return;
             ultimaClave = clave;
@@ -614,8 +749,12 @@
             enlazar();
             const controles = tarjeta.querySelector('.sesiones-pjf-controles');
             if (controles) controles.hidden = !premium;
-            if (!premium) { turno++; pintarPremium(); return; }
-            await consultar(o.refrescar);
+            if (premium || o.consultar) { await consultar(o.refrescar); return; }
+
+            turno++;
+            const recordado = leerMemoria(consulta);
+            if (recordado) pintar(recordado, { restantes, total: totalDePrueba() });
+            else pintarOferta(restantes);
         } catch (e) {
             console.warn('No se pudieron revisar las sesiones del PJF:', e);
         }

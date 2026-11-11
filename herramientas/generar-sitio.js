@@ -32,7 +32,7 @@ const APP = '/docs/';
 const WHATSAPP_RECOMENDAR = 'https://wa.me/?text=' + encodeURIComponent(
     'Te recomiendo TSJ Filing Online: estrados del TSJ de Quintana Roo, del PJF y del TCA, agenda de audiencias, IA que lee los acuerdos, calculadora de finiquito y estudio de viabilidad de marca en el IMPI. Gratis y sin registro. ' +
     'https://tsjia.empirica.mx/?utm_source=recomendacion&utm_medium=whatsapp&utm_campaign=colega');
-const ACTUALIZADO = '2026-10-27';
+const ACTUALIZADO = '2026-11-11';
 
 // ==================== DATOS DE LOS CATÁLOGOS ====================
 
@@ -64,7 +64,8 @@ function unidadesLaborales() {
     return require(path.join(RAIZ, 'docs/js/estrados-laborales.js')).UNIDADES;
 }
 
-// Los límites del plan gratuito en el IMPI, los mismos que aplica la app.
+// Los límites del plan gratuito (IMPI y consultas de sesiones de colegiados),
+// los mismos que aplica la app.
 function limitesIMPI() {
     return require(path.join(RAIZ, 'docs/js/cuotas-impi.js')).LIMITES;
 }
@@ -85,6 +86,9 @@ function planesPremium() {
 }
 
 const pesos = (n) => '$' + n.toLocaleString('en-US') + ' MXN';
+
+// La página pública de las listas de sesión de los Tribunales Colegiados.
+const RUTA_SESIONES = '/sesiones-tribunales-colegiados-quintana-roo/';
 
 // Los términos de los planes, los mismos que la app pide aceptar.
 const TERMINOS = require(path.join(RAIZ, 'docs/js/terminos.js'));
@@ -193,7 +197,7 @@ function pie() {
         <div class="sitio-ancho sitio-footer-grid">
             <div>
                 <strong>⚖️ TSJ Filing Online</strong>
-                <p>Herramienta para abogados y despachos de Quintana Roo: expedientes del TSJ y del PJF, estrados del TCA y las Juntas, agenda, IA, calculadora laboral y estudio de viabilidad de marca.</p>
+                <p>Herramienta para abogados y despachos de Quintana Roo: expedientes del TSJ y del PJF, listas de sesión de los Tribunales Colegiados, estrados del TCA y las Juntas, agenda, IA, calculadora laboral y estudio de viabilidad de marca.</p>
                 <p>Desarrollado por <a href="https://www.empirica.mx" rel="noopener">Empírica Legal Lab</a>.</p>
             </div>
             <div>
@@ -202,6 +206,7 @@ function pie() {
                     <li><a href="${APP}">Abrir la app</a></li>
                     <li><a href="/estrados-tsj-quintana-roo/">Estrados del TSJ de Quintana Roo</a></li>
                     <li><a href="/expedientes-pjf-quintana-roo/">Expedientes federales en Quintana Roo</a></li>
+                    <li><a href="${RUTA_SESIONES}">Listas de sesión de Tribunales Colegiados</a></li>
                     <li><a href="/estrados-laborales-quintana-roo/">Estrados del TCA y las Juntas de Quintana Roo</a></li>
                     <li><a href="/calculadora-finiquito-liquidacion/">Calculadora de finiquito y liquidación</a></li>
                     <li><a href="/estudio-viabilidad-marca-impi/">Estudio de viabilidad de marca (IMPI)</a></li>
@@ -288,6 +293,8 @@ const PREGUNTAS_INICIO = (lim, planes) => [
         'Tus datos viven en tu navegador, no en un servidor nuestro. Puedes exportar respaldos cuando quieras y, si activas la sincronización, viajan cifrados.'],
     ['¿Sirve para asuntos federales?',
         'Sí. Consultas expedientes del Poder Judicial de la Federación de todo el país, con acceso directo a los órganos de Quintana Roo, y los llevas en la misma agenda que los del TSJ.'],
+    ['¿Me dice si mi asunto está listado para sesión en un Tribunal Colegiado?',
+        `Sí. La app revisa las listas de sesión que publica el Poder Judicial de la Federación y te dice si tu amparo directo, amparo en revisión o queja está listado, con la fecha, el tipo de sesión, el magistrado ponente y el secretario. Con Premium lo revisa sola cada vez que la abres; el plan gratuito incluye ${lim.sesiones.limite} consultas de prueba.`],
     ['¿Puedo revisar los estrados del Tribunal de Conciliación y Arbitraje y de las Juntas?',
         'Sí. La app arma un marcador para tu navegador que, en la página oficial de estrados de la Secretaría del Trabajo, revisa el periodo que elijas en tramos de 15 días (el máximo que permite el sitio) y deja solo lo publicado de tus expedientes. Funciona en computadora, iPhone y Android.'],
     ['¿Qué es el estudio de viabilidad de marca?',
@@ -304,6 +311,7 @@ function paginaInicio(cat, pjf, lim, planes) {
         ['🏢', 'Estrados del TSJ en un clic', `Los ${totalJuzgados} juzgados y salas del TSJ de Quintana Roo. Busca por número o por nombre y revisa varios expedientes a la vez.`, '/estrados-tsj-quintana-roo/'],
         ['🤖', 'La IA lee los acuerdos por ti', 'Pega o fotografía un acuerdo: detecta expediente, juzgado, audiencias y plazos, y los guarda en tu agenda.'],
         ['🏛️', 'Expedientes federales (PJF)', `Consulta en el portal del PJF, con los ${totalPJF} órganos federales de Quintana Roo a la mano.`, '/expedientes-pjf-quintana-roo/'],
+        ['📋', 'Sesiones de Tribunales Colegiados', 'La app revisa las listas de sesión del PJF y te dice si tu amparo directo, revisión o queja está listado: fecha, ponente y secretario.', RUTA_SESIONES],
         ['👷', 'Estrados del TCA y las Juntas', 'Revisa los estrados del Tribunal de Conciliación y Arbitraje y de las Juntas de Quintana Roo por periodos de 15 días, solo con lo de tus expedientes.', '/estrados-laborales-quintana-roo/'],
         ['📅', 'Agenda de audiencias y pendientes', 'Calendario con los días inhábiles del TSJ, pendientes con fecha límite y vista rápida de tu día.'],
         ['🧮', 'Calculadora de finiquito y liquidación', 'Finiquito, liquidación, 20 días, prima de antigüedad, salarios vencidos e ISR, con su artículo de la LFT.', '/calculadora-finiquito-liquidacion/'],
@@ -325,13 +333,13 @@ function paginaInicio(cat, pjf, lim, planes) {
             applicationSubCategory: 'Gestión de expedientes jurídicos',
             operatingSystem: 'Web, Android, iOS, Windows, macOS',
             inLanguage: 'es-MX',
-            description: 'Gestión de expedientes del TSJ de Quintana Roo y del PJF: estrados, agenda de audiencias, análisis de acuerdos con IA, calculadora laboral y búsqueda de marcas del IMPI.',
+            description: 'Gestión de expedientes del TSJ de Quintana Roo y del PJF: estrados, listas de sesión de los Tribunales Colegiados, agenda de audiencias, análisis de acuerdos con IA, calculadora laboral y búsqueda de marcas del IMPI.',
             image: SITIO + '/og-image.png',
             offers: [
                 { '@type': 'Offer', name: 'Plan gratuito', price: '0', priceCurrency: 'MXN',
-                    description: `Hasta 10 expedientes, ${lim.busqueda.limite} búsquedas al mes en el IMPI y ${lim.viabilidad.limite} estudios de viabilidad de marca` },
+                    description: `Hasta 10 expedientes, ${lim.busqueda.limite} búsquedas al mes en el IMPI, ${lim.viabilidad.limite} estudios de viabilidad de marca y ${lim.sesiones.limite} consultas de sesiones de Tribunales Colegiados` },
                 ...planes.map(p => ({ '@type': 'Offer', name: `Premium ${p.nombre}`, price: String(p.precio), priceCurrency: 'MXN',
-                    description: `Premium por ${p.nombre}: expedientes, búsquedas en el IMPI y estudios de viabilidad sin límite, y sincronización entre dispositivos` }))
+                    description: `Premium por ${p.nombre}: expedientes, búsquedas en el IMPI y estudios de viabilidad sin límite, aviso automático de sesiones de Tribunales Colegiados y sincronización entre dispositivos` }))
             ],
             areaServed: quintanaRoo,
             audience: { '@type': 'Audience', audienceType: 'Abogados y despachos jurídicos' },
@@ -345,7 +353,7 @@ function paginaInicio(cat, pjf, lim, planes) {
     return cabeza({
         ruta: '/',
         tituloPagina: 'TSJ Filing Online | Expedientes y estrados del TSJ Quintana Roo',
-        descripcion: 'Expedientes del TSJ de Quintana Roo y del PJF, estrados del TCA y las Juntas, agenda de audiencias, IA que lee acuerdos y viabilidad de marca en el IMPI. Gratis.',
+        descripcion: 'Expedientes del TSJ de Quintana Roo y del PJF, listas de sesión de Tribunales Colegiados, estrados del TCA, agenda de audiencias, IA que lee acuerdos y marcas del IMPI. Gratis.',
         jsonld
     }) + `
         <section class="sitio-hero">
@@ -428,6 +436,7 @@ ${funciones.map(([ico, t, d, enlace]) => `                    <article class="si
                             <li>Hasta 10 expedientes</li>
                             <li>${lim.busqueda.limite} búsquedas al mes en el IMPI</li>
                             <li>${lim.viabilidad.limite} estudios de viabilidad de marca</li>
+                            <li>${lim.sesiones.limite} consultas de sesiones de Tribunales Colegiados</li>
                             <li>Estrados, agenda, IA y calculadora laboral</li>
                         </ul>
                         <a href="${APP}?tour=1">Empezar →</a>
@@ -439,6 +448,7 @@ ${planes.map(p => `                    <article class="sitio-funcion">
                         <ul class="sitio-lista">
                             <li>Expedientes ilimitados</li>
                             <li>Búsquedas en el IMPI y estudios de viabilidad sin límite</li>
+                            <li>Aviso automático de sesiones de Tribunales Colegiados</li>
                             <li>Sincronización entre dispositivos</li>
                         </ul>
                         <a href="${esc(p.whatsapp)}" target="_blank" rel="noopener">💬 Contratar por WhatsApp →</a>
@@ -565,7 +575,9 @@ const PREGUNTAS_PJF = [
     ['¿Cómo consulto un expediente federal?',
         'Eliges el circuito, el órgano jurisdiccional y el tipo de asunto (amparo indirecto, juicio de amparo directo, etc.) y escribes el número de expediente. La consulta se abre en el portal oficial del PJF.'],
     ['¿Puedo llevar los asuntos federales junto con los del TSJ?',
-        'Sí. En TSJ Filing Online los expedientes federales y los del TSJ comparten agenda, pendientes y notas, y puedes filtrarlos por tribunal.']
+        'Sí. En TSJ Filing Online los expedientes federales y los del TSJ comparten agenda, pendientes y notas, y puedes filtrarlos por tribunal.'],
+    ['¿Puedo saber si mi asunto está listado para sesión en un Tribunal Colegiado?',
+        'Sí. La app revisa las listas de sesión que publica el PJF y te dice si tu amparo directo, amparo en revisión o queja está listado, con la fecha de la sesión, el magistrado ponente y el secretario.']
 ];
 
 function paginaPJF(grupos) {
@@ -606,9 +618,137 @@ ${g.organos.map(o => `                            <li>${esc(o)}</li>`).join('\n'
         </section>
 
         <section class="sitio-seccion sitio-alterna">
+            <div class="sitio-ancho">
+                <h2>📋 ¿Tu asunto ya está listado para sesión?</h2>
+                <p class="sitio-sub">Si llevas amparos directos, amparos en revisión o quejas en un Tribunal Colegiado, la app revisa las listas de sesión del PJF y te dice cuáles están listados, con la fecha, el ponente y el secretario.</p>
+                <a class="btn btn-primary" href="${RUTA_SESIONES}">Ver cómo funciona →</a>
+            </div>
+        </section>
+
+        <section class="sitio-seccion">
             <div class="sitio-ancho sitio-angosto">
                 <h2>Preguntas frecuentes</h2>
 ${faqHTML(PREGUNTAS_PJF)}
+            </div>
+        </section>
+` + pie();
+}
+
+// ==================== SESIONES DE TRIBUNALES COLEGIADOS ====================
+
+const PREGUNTAS_SESIONES = (lim, planes) => [
+    ['¿Qué es la lista de sesión de un Tribunal Colegiado?',
+        'Es la relación de asuntos que el tribunal verá en una sesión, ordinaria o extraordinaria. El Poder Judicial de la Federación la publica en su portal con el número de expediente, la autoridad, el magistrado ponente y el secretario proyectista de cada asunto.'],
+    ['¿Cómo sé si mi amparo directo ya está listado para sesión?',
+        'Registra el asunto en TSJ Filing Online con su tribunal colegiado, su tipo de asunto y su número. La app revisa las listas de sesión publicadas de ese tribunal y te dice si está listado, en qué fecha, en qué tipo de sesión y con qué ponente y secretario.'],
+    ['¿Qué asuntos revisa?',
+        'Los que se llevan en un Tribunal Colegiado de Circuito: amparo directo, amparo en revisión, queja, revisión fiscal, conflictos competenciales, inconformidades y los demás. Cada asunto se busca con su tipo, porque en una misma lista puede haber una queja y un amparo en revisión con el mismo número.'],
+    ['¿De qué tribunales?',
+        'De los Tribunales Colegiados del Vigésimo Séptimo Circuito, en Quintana Roo, y de cualquier otro Tribunal Colegiado de Circuito del país: la app trae el catálogo completo del PJF.'],
+    ['¿Con cuánta anticipación aparece un asunto?',
+        'La app ve las listas que el tribunal ya publicó. Las de las sesiones ordinarias suelen publicarse con varios días de anticipación; las de las extraordinarias pueden publicarse el mismo día. Puedes revisar de una a cuatro semanas.'],
+    ['¿También me dice qué asuntos no están listados?',
+        'Sí. Además de los que aparecen en una lista, la app enumera los asuntos que revisó y no encontró, para que sepas exactamente qué se buscó.'],
+    ['¿Tiene costo?',
+        `El plan gratuito incluye ${lim.sesiones.limite} consultas de prueba. Con Premium la revisión es automática cada vez que abres la app, sin límite: ${textoPlanes(planes)}.`],
+    ['¿De dónde salen los datos?',
+        'De las listas de sesión que publica el propio Poder Judicial de la Federación en su portal de servicios en línea. TSJ Filing Online es una herramienta independiente: conviene confirmar la fecha en la lista oficial antes de la sesión.']
+];
+
+function paginaSesiones(pjf, lim, planes) {
+    const preguntas = PREGUNTAS_SESIONES(lim, planes);
+    // Los de Apelación no ven amparo directo y la app no los revisa.
+    const colegiados = (pjf.find(g => /Colegiados/.test(g.nombre)) || { organos: [] }).organos.filter(o => !/Apelaci/.test(o));
+    return cabeza({
+        ruta: RUTA_SESIONES,
+        tituloPagina: 'Lista de sesión de Tribunales Colegiados en Quintana Roo | PJF',
+        descripcion: 'Revisa si tu amparo directo, amparo en revisión o queja está listado para sesión en los Tribunales Colegiados del 27º Circuito: fecha, ponente y secretario.',
+        jsonld: [
+            {
+                '@context': 'https://schema.org',
+                '@type': 'WebApplication',
+                name: 'Aviso de sesiones de Tribunales Colegiados',
+                url: SITIO + RUTA_SESIONES,
+                applicationCategory: 'BusinessApplication',
+                operatingSystem: 'Web',
+                inLanguage: 'es-MX',
+                offers: [
+                    { '@type': 'Offer', name: 'Plan gratuito', price: '0', priceCurrency: 'MXN', description: `${lim.sesiones.limite} consultas de prueba` },
+                    ...planes.map(p => ({ '@type': 'Offer', name: `Premium ${p.nombre}`, price: String(p.precio), priceCurrency: 'MXN', description: 'Revisión automática de las listas de sesión, sin límite' }))
+                ],
+                areaServed: quintanaRoo,
+                publisher: organizacion,
+                description: 'Revisa las listas de sesión de los Tribunales Colegiados de Circuito del Poder Judicial de la Federación y avisa si un amparo directo, amparo en revisión o queja registrado está listado, con fecha, ponente y secretario.'
+            },
+            migas({ nombre: 'Listas de sesión de Tribunales Colegiados', ruta: RUTA_SESIONES }),
+            faq(preguntas)
+        ]
+    }) + `
+        <section class="sitio-hero sitio-hero-chico">
+            <div class="sitio-ancho">
+                <nav class="sitio-migas" aria-label="Ruta"><a href="/">Inicio</a> › Listas de sesión de Tribunales Colegiados</nav>
+                <h1>Listas de sesión de los Tribunales Colegiados en Quintana Roo</h1>
+                <p class="sitio-lead">¿Tu amparo directo, tu revisión o tu queja ya están listados para sesión? Registra tus asuntos y la app revisa por ti las listas que publica el Poder Judicial de la Federación: fecha, tipo de sesión, magistrado ponente y secretario.</p>
+                <div class="sitio-hero-botones">
+                    <a class="btn btn-primary btn-lg" href="${APP}?tour=1">Revisar mis asuntos →</a>
+                </div>
+            </div>
+        </section>
+
+        <section class="sitio-seccion">
+            <div class="sitio-ancho">
+                <h2>Cómo funciona</h2>
+                <ol class="sitio-pasos">
+                    <li><strong>Registra tu asunto.</strong> En la app eliges PJF, el circuito, el tribunal colegiado y el tipo de asunto, y escribes el número con su año.</li>
+                    <li><strong>La app revisa las listas de sesión.</strong> Consulta las que el tribunal ya publicó, ordinarias y extraordinarias, para el periodo que elijas: de una a cuatro semanas.</li>
+                    <li><strong>Ves el resultado en tu pantalla de inicio.</strong> Los asuntos listados, con su sesión, y los que se revisaron y no están en ninguna lista.</li>
+                </ol>
+            </div>
+        </section>
+
+        <section class="sitio-seccion sitio-alterna">
+            <div class="sitio-ancho">
+                <h2>Lo que te dice de cada asunto listado</h2>
+                <ul class="sitio-lista">
+                    <li><strong>La fecha de la sesión</strong> y si es ordinaria o extraordinaria.</li>
+                    <li><strong>El magistrado ponente y el secretario proyectista.</strong></li>
+                    <li><strong>El resultado</strong>, cuando el tribunal lo publica después de la sesión.</li>
+                    <li><strong>Los que no están listados:</strong> la app enumera los asuntos que revisó y no encontró en ninguna lista.</li>
+                </ul>
+                <p>Sirve para amparos directos, amparos en revisión, quejas, revisiones fiscales y los demás asuntos de un Tribunal Colegiado de Circuito. Cada uno se busca con su tipo de asunto, porque en una misma lista puede haber dos con el mismo número.</p>
+            </div>
+        </section>
+
+        <section class="sitio-seccion">
+            <div class="sitio-ancho">
+                <h2>Tribunales Colegiados del Vigésimo Séptimo Circuito</h2>
+                <p class="sitio-sub">Y cualquier otro Tribunal Colegiado de Circuito del país: la app trae el catálogo completo del PJF.</p>
+                <div class="sitio-directorio">
+                    <section>
+                        <h3>🏛️ Quintana Roo</h3>
+                        <ul>
+${colegiados.map(o => `                            <li>${esc(o)}</li>`).join('\n')}
+                        </ul>
+                    </section>
+                </div>
+            </div>
+        </section>
+
+        <section class="sitio-seccion sitio-alterna">
+            <div class="sitio-ancho">
+                <h2>Gratis para probar, automático con Premium</h2>
+                <ul class="sitio-lista">
+                    <li><strong>Plan gratuito:</strong> ${lim.sesiones.limite} consultas de prueba, cuando tú las pidas.</li>
+                    <li><strong>Premium:</strong> la app revisa sola cada vez que la abres y cuando cambias tus expedientes, sin límite. <a href="/#planes">Ver planes Premium</a>.</li>
+                    <li><strong>En el mismo lugar que lo demás:</strong> tus asuntos federales comparten agenda, pendientes y notas con los del TSJ. <a href="/expedientes-pjf-quintana-roo/">Expedientes federales en Quintana Roo</a>.</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="sitio-seccion">
+            <div class="sitio-ancho sitio-angosto">
+                <h2>Preguntas frecuentes</h2>
+${faqHTML(preguntas)}
             </div>
         </section>
 ` + pie();
@@ -878,6 +1018,7 @@ function sitemap() {
         ['/estrados-laborales-quintana-roo/', '0.8'],
         ['/estudio-viabilidad-marca-impi/', '0.8'],
         ['/expedientes-pjf-quintana-roo/', '0.8'],
+        [RUTA_SESIONES, '0.8'],
         ['/terminos-y-condiciones/', '0.3'],
         ['/docs/', '0.7']
     ];
@@ -904,6 +1045,7 @@ function generar() {
         'index.html': paginaInicio(cat, pjf, lim, planes),
         'estrados-tsj-quintana-roo/index.html': paginaEstrados(cat),
         'expedientes-pjf-quintana-roo/index.html': paginaPJF(pjf),
+        [RUTA_SESIONES.slice(1) + 'index.html']: paginaSesiones(pjf, lim, planes),
         'calculadora-finiquito-liquidacion/index.html': paginaCalculadora(),
         'estrados-laborales-quintana-roo/index.html': paginaLaborales(unidadesLaborales()),
         'estudio-viabilidad-marca-impi/index.html': paginaViabilidad(lim, planes),

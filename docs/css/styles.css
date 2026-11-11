@@ -689,6 +689,23 @@ h1, h2, h3, h4 {
 .sesiones-pjf-controles[hidden] { display: none; }
 .sesiones-pjf-premium p { margin: 0 0 0.75rem; }
 .sesiones-pjf-premium p:last-child { margin-bottom: 0; }
+.sesiones-pjf-botones { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.sesiones-pjf-botones .text-muted { font-size: 0.8rem; }
+.sesiones-pjf-prueba { margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--border-color); font-size: 0.9rem; }
+/* Los asuntos revisados que no están en ninguna lista */
+.sesiones-pjf-sin { margin-top: 0.75rem; }
+.sesiones-pjf-sin summary { cursor: pointer; font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); padding: 0.25rem 0; }
+.sesiones-pjf-sin ul { list-style: none; margin: 0.4rem 0 0; padding: 0; max-height: 17rem; overflow-y: auto; }
+.sesiones-pjf-sin li { border-top: 1px solid var(--border-color); }
+.sesiones-pjf-sin-fila {
+    width: 100%; display: flex; flex-direction: column; gap: 0.1rem; background: none; border: none;
+    font: inherit; color: inherit; text-align: left; padding: 0.5rem 0.4rem; min-height: 44px;
+    border-radius: var(--radius-sm);
+}
+button.sesiones-pjf-sin-fila { cursor: pointer; }
+button.sesiones-pjf-sin-fila:hover, button.sesiones-pjf-sin-fila:focus-visible { background: var(--bg-secondary); }
+.sesiones-pjf-sin-fila strong { font-weight: 500; }
+.sesiones-pjf-sin-fila small { color: var(--text-secondary); font-size: 0.78rem; overflow-wrap: anywhere; }
 .sesiones-pjf-controles select {
     font: inherit; font-size: 0.85rem; padding: 0.3rem 0.5rem; min-height: 32px;
     border: 1px solid var(--border-color); border-radius: var(--radius-sm);
