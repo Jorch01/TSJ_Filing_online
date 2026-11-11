@@ -231,10 +231,6 @@ async function inicializarApp() {
 
     // Cargar configuración
     await cargarConfiguracion();
-
-    // Sesiones de los Tribunales Colegiados: ¿algún asunto registrado está
-    // listado? Consulta a la red, así que no se espera: la app ya está lista.
-    if (typeof SESIONES_PJF !== 'undefined') SESIONES_PJF.iniciar();
 }
 
 // ==================== TOOLTIPS DE AYUDA ====================
@@ -410,6 +406,9 @@ function navegarA(pagina) {
         if (typeof prepararEstadisticas === 'function') prepararEstadisticas();
     } else if (pagina === 'impi') {
         // IMPI page - no initialization needed
+    } else if (pagina === 'inicio') {
+        // La tarjeta de sesiones se pone al día si cambiaron los expedientes.
+        if (typeof SESIONES_PJF !== 'undefined') SESIONES_PJF.revisar();
     }
 }
 
@@ -8627,6 +8626,9 @@ async function actualizarUIPremium() {
         actualizarLimitesIMPIEnPantalla();
     }
     renderizarPlanesPremium();
+    // Las sesiones de los Tribunales Colegiados son solo de Premium: al
+    // activar o vencer la licencia, su tarjeta cambia.
+    if (typeof SESIONES_PJF !== 'undefined') SESIONES_PJF.revisar();
 }
 
 // Las búsquedas del IMPI y los estudios de viabilidad que van (cuotas-impi.js).
@@ -8989,6 +8991,10 @@ const inicializarAppConPremium = inicializarApp;
 inicializarApp = async function() {
     await inicializarAppConPremium();
     await cargarEstadoPremium();
+    // Sesiones de los Tribunales Colegiados (función Premium): ¿algún asunto
+    // registrado está listado? Va después de cargar la licencia, y no se
+    // espera: consulta a la red y la app ya está lista.
+    if (typeof SESIONES_PJF !== 'undefined') SESIONES_PJF.iniciar();
     await cargarConfigAutoBackup();
     // Verificar licencia periódicamente
     await verificarLicenciaPeriodica();

@@ -18,8 +18,11 @@
  *   - que el resultado se recuerda 6 horas y ?refresh=1 lo salta;
  *   - que cada expediente se busca con su tipo de asunto (en una misma lista
  *     hay quejas, revisiones y amparos directos con el mismo número);
+ *   - que es solo de Premium: con las cuotas activas, el worker no responde
+ *     sin el pase que da únicamente a una licencia vigente;
  *   - en la app (docs/js/sesiones-pjf.js): qué expedientes son de un tribunal
- *     colegiado y se pueden buscar, y que la tarjeta está conectada.
+ *     colegiado y se pueden buscar, que la tarjeta está conectada y que se
+ *     pone al día cuando cambian los expedientes o la licencia.
  *
  * En los fixtures, el __VIEWSTATE y el token del video están recortados; el
  * resto es la respuesta de SISE tal cual.
@@ -29,6 +32,8 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const crypto = require('crypto');
+const os = require('os');
+const { pathToFileURL } = require('url');
 const App = require('./docs/js/sesiones-pjf.js');
 
 let pasadas = 0;
@@ -519,9 +524,79 @@ const reportes = (sise) => sise.llamadas.filter(l => !l.esCalendario);
     console.log('\nLa ruta en el worker');
     {
         verificar('/api/sesiones está en el enrutador', /path === '\/api\/sesiones'/.test(WORKER) && /await atenderSesiones\(url, env,/.test(WORKER));
-        verificar('solo acepta GET', /path === '\/api\/sesiones'\) \{\s*if \(request\.method !== 'GET'\)/.test(WORKER));
-        verificar('no pide pase de cuota (no es una búsqueda del IMPI)', !/RUTAS_CON_PASE = \[[^\]]*sesiones/.test(WORKER));
+        verificar('no hay ids de tribunales en el enrutador tampoco', !/api\/sesiones[^\n]*\b(462|944|1319)\b/.test(WORKER.replace(/\/\/.*$/gm, '')));
         verificar('en el worker no hay ids de tribunales escritos: los manda la app', !/\b(462|944|1319|4372)\b/.test(seccion.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')));
+    }
+
+    console.log('\nSolo con Premium (el worker entero, con la red simulada)');
+    {
+        // El worker como módulo ES, tal como corre en Cloudflare. La red se
+        // simula: SISE con los fixtures y la API de licencias, que da por
+        // buena solo la licencia BUENA.
+        const copia = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'worker-sesiones-')), 'worker.mjs');
+        fs.copyFileSync(path.join(__dirname, 'docs', 'proxy', 'impi-proxy-worker.js'), copia);
+        const worker = (await import(pathToFileURL(copia).href)).default;
+        const fetchReal = globalThis.fetch;
+        const sise = siseFalso();
+        const licenciasVistas = [];
+        globalThis.fetch = async (destino, opciones) => {
+            const u = String(destino);
+            if (u.startsWith('https://script.google.com/')) { licenciasVistas.push(u); return { json: async () => ({ valido: /codigo=BUENA(&|$)/.test(u) }) }; }
+            if (u.startsWith('https://www.dgej.cjf.gob.mx/')) return sise.fetch(u, opciones);
+            throw new Error('petición que la prueba no esperaba: ' + u);
+        };
+        const guardado = new Map();
+        const conCuotas = { CUOTAS: { get: async (k) => (guardado.has(k) ? guardado.get(k) : null), put: async (k, v) => { guardado.set(k, v); } }, CUOTA_SECRETO: 'secreto-de-prueba-largo' };
+        const ORIGEN = 'https://tsjia.empirica.mx';
+        const CONSULTA = '/api/sesiones?desde=2026-11-09&hasta=2026-11-20&exp=462:677/2023';
+        const llamar = async (ruta, env, opciones) => {
+            const o = opciones || {};
+            const cabeceras = Object.assign({ Origin: ORIGEN, 'CF-Connecting-IP': '9.9.9.9' }, o.pase ? { 'X-TSJ-Cuota': o.pase } : {}, o.cuerpo ? { 'Content-Type': 'application/json' } : {});
+            const r = await worker.fetch(new Request('https://proxy.test' + ruta, { method: o.cuerpo ? 'POST' : (o.metodo || 'GET'), headers: cabeceras, body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined }), env);
+            let datos = null;
+            try { datos = await r.json(); } catch (e) { /* sin cuerpo */ }
+            return { status: r.status, datos, cors: r.headers.get('Access-Control-Allow-Origin'), permitidas: r.headers.get('Access-Control-Allow-Headers') || '' };
+        };
+        const pedirCuota = (tipo, licencia, env) => llamar('/cuota', env || conCuotas, { cuerpo: { tipo, huella: { amplia: 'equipo', fina: 'navegador' }, dispositivo: 'disp-1', licencia } });
+        try {
+            const sinPase = await llamar(CONSULTA, conCuotas);
+            igual('sin pase, el worker no responde: 402 y avisa que es de Premium', [sinPase.status, sinPase.datos.premium, /Premium/.test(sinPase.datos.error)], [402, true, true]);
+            igual('y no llegó a preguntar a SISE', sise.llamadas.length, 0);
+            igual('la app puede leer ese rechazo (CORS)', sinPase.cors, ORIGEN);
+
+            const gratis = await pedirCuota('sesiones', null);
+            igual('sin licencia no hay pase para las sesiones, ni contando', [gratis.status, gratis.datos.permitido, gratis.datos.soloPremium, gratis.datos.pase], [200, false, true, undefined]);
+            const mala = await pedirCuota('sesiones', { codigo: 'MALA', dispositivoId: 'D' });
+            igual('con una licencia que el servidor no reconoce, tampoco', [mala.datos.permitido, mala.datos.pase], [false, undefined]);
+            verificar('la licencia se comprobó con la API de licencias', licenciasVistas.some(u => /action=verificar&codigo=MALA&dispositivo_id=D/.test(u)));
+
+            const buena = await pedirCuota('sesiones', { codigo: 'BUENA', dispositivoId: 'D' });
+            igual('con licencia vigente, sí: pase de Premium', [buena.datos.permitido, buena.datos.premium, typeof buena.datos.pase], [true, true, 'string']);
+            const conPase = await llamar(CONSULTA, conCuotas, { pase: buena.datos.pase });
+            igual('y con ese pase la consulta sale', [conPase.status, conPase.datos.sesiones.map(s => s.expediente)], [200, ['677/2023']]);
+
+            const deBusqueda = await pedirCuota('busqueda', null);
+            verificar('(una búsqueda gratuita del IMPI sí da pase)', deBusqueda.datos.permitido === true && typeof deBusqueda.datos.pase === 'string');
+            const colado = await llamar(CONSULTA + '&refresh=1', conCuotas, { pase: deBusqueda.datos.pase });
+            igual('pero el pase de una búsqueda gratuita no abre las sesiones', [colado.status, colado.datos.premium], [402, true]);
+            const alterado = await llamar(CONSULTA, conCuotas, { pase: buena.datos.pase.slice(0, -3) + 'abc' });
+            igual('ni un pase alterado', alterado.status, 402);
+            const inventado = await llamar(CONSULTA, conCuotas, { pase: Buffer.from(JSON.stringify({ t: 'sesiones', p: true, e: Date.now() + 60000 })).toString('base64url') + '.firma' });
+            igual('ni uno inventado sin la firma del worker', inventado.status, 402);
+            const dePremium = await pedirCuota('busqueda', { codigo: 'BUENA', dispositivoId: 'D' });
+            igual('cualquier pase dado a una licencia vigente sirve', (await llamar(CONSULTA, conCuotas, { pase: dePremium.datos.pase })).status, 200);
+
+            const preflight = await llamar(CONSULTA, conCuotas, { metodo: 'OPTIONS' });
+            verificar('el navegador puede mandar la cabecera del pase (preflight)', preflight.status === 204 && /X-TSJ-Cuota/.test(preflight.permitidas), preflight.permitidas);
+            igual('un POST sigue sin aceptarse', (await llamar(CONSULTA, conCuotas, { metodo: 'DELETE' })).status, 405);
+
+            const abierto = await llamar(CONSULTA + ',462:325/2024', {});
+            igual('sin cuotas en Cloudflare el worker no puede comprobar licencias: la ruta responde (ahí decide la app)', abierto.status, 200);
+            igual('y /cuota lo dice: no lleva cuenta', (await pedirCuota('sesiones', null, {})).datos, { servidor: false, permitido: true });
+        } finally {
+            globalThis.fetch = fetchReal;
+        }
+        verificar('la ruta comprueba el pase antes de consultar', /path === '\/api\/sesiones'\) \{\s*const sinPremium = request\.method === 'GET' \? await revisarPasePremium\(env, request, Date\.now\(\)\) : null;/.test(WORKER));
     }
 
     console.log('\nEn la app: qué expedientes se revisan');
@@ -642,8 +717,24 @@ const reportes = (sise) => sise.llamadas.filter(l => !l.esCalendario);
         igual('con su selector de 1 a 4 semanas',
             [...(/<select id="sesiones-pjf-semanas"[\s\S]*?<\/select>/.exec(html) || [''])[0].matchAll(/<option value="(\d)"/g)].map(m => m[1]), ['1', '2', '3', '4']);
         verificar('y su botón para volver a consultar', /id="sesiones-pjf-actualizar"/.test(html));
-        verificar('la app la arranca sola al abrir, sin esperarla',
-            /async function inicializarApp\(\) \{[\s\S]*?\n    if \(typeof SESIONES_PJF !== 'undefined'\) SESIONES_PJF\.iniciar\(\);\n\}/.test(app));
+        verificar('la app la arranca sola al abrir, ya con la licencia cargada y sin esperarla',
+            /inicializarApp = async function\(\) \{\s*await inicializarAppConPremium\(\);\s*await cargarEstadoPremium\(\);[\s\S]{0,400}?\n    if \(typeof SESIONES_PJF !== 'undefined'\) SESIONES_PJF\.iniciar\(\);/.test(app));
+        const core = fs.readFileSync(path.join(__dirname, 'docs', 'js', 'acciones-core.js'), 'utf8');
+        const cuerpoDe = (fuente, cabecera) => { const i = fuente.indexOf(cabecera); return i < 0 ? '' : fuente.slice(i, fuente.indexOf('\n}\n', i)); };
+        verificar('al guardar, editar o borrar un expediente la tarjeta se pone al día (sin recargar la página)',
+            /SESIONES_PJF\.revisar\(\)/.test(cuerpoDe(core, 'async function _coreRefrescarUI() {')));
+        verificar('al volver a Inicio, también', /pagina === 'inicio'\) \{[\s\S]{0,200}SESIONES_PJF\.revisar\(\)/.test(cuerpoDe(app, 'function navegarA(pagina) {')));
+        verificar('y al activar o vencer la licencia', /SESIONES_PJF\.revisar\(\)/.test(cuerpoDe(app, 'async function actualizarUIPremium() {')));
+        verificar('"Actualizar" y el selector vuelven a leer los expedientes',
+            /addEventListener\('click', \(\) => ponerAlDia\(\{ forzar: true, refrescar: true \}\)\)/.test(modulo) && /ponerAlDia\(\{ forzar: true \}\);/.test(modulo));
+        verificar('sin Premium no se consulta nada: se pinta la invitación y se sale',
+            /if \(!premium\) \{ turno\+\+; pintarPremium\(\); return; \}\s*await consultar\(o\.refrescar\);/.test(modulo));
+        verificar('con Premium se pide el pase al proxy y viaja en cada consulta',
+            /CUOTAS_IMPI\.pedirPase\(CONFIG\.tipoCuota\)/.test(modulo) && /if \(pase\) cabeceras\[CONFIG\.cabeceraPase\] = pase;/.test(modulo) &&
+            App.CONFIG.tipoCuota === 'sesiones' && App.CONFIG.cabeceraPase === 'X-TSJ-Cuota');
+        verificar('el tipo de pase existe en el proxy y es solo de Premium', /sesiones: \{ soloPremium: true, vidaPase: /.test(WORKER));
+        verificar('cuotas-impi.js ofrece pedir ese pase', /pedirPase: pedirAlServidor/.test(fs.readFileSync(path.join(__dirname, 'docs', 'js', 'cuotas-impi.js'), 'utf8')));
+        verificar('la lista de lo que incluye Premium la menciona', /Exclusivo: aviso de tus asuntos listados para sesión en Tribunales Colegiados/.test(html));
         verificar('sin coincidencias dice "Sin asuntos listados en el periodo"', modulo.includes('Sin asuntos listados en el periodo'));
         verificar('un proxy anterior (sin "version") no se da por bueno para otros tipos de asunto',
             /pideOtrosTipos\(grupo\) && !\(datos\.version >= CONFIG\.versionProxy\)/.test(modulo) && App.CONFIG.versionProxy === 2);

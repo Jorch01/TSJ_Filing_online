@@ -182,7 +182,24 @@ function servirDOMPurifyLocal(navegador) {
 }
 
 async function abrirChromium() {
-    return servirDOMPurifyLocal(await lanzarChromium());
+    return sinSesionesReales(servirDOMPurifyLocal(await lanzarChromium()));
+}
+
+// La tarjeta de sesiones de los Tribunales Colegiados consulta al proxy en
+// cuanto hay Premium y un asunto en un colegiado. Para que ninguna sección
+// llegue por eso al proxy publicado (y a SISE), cada contexto nace con una
+// respuesta vacía; la sección de sesiones pone encima la suya.
+function sinSesionesReales(navegador) {
+    const nuevoContexto = navegador.newContext.bind(navegador);
+    navegador.newContext = async (opciones) => {
+        const contexto = await nuevoContexto(opciones);
+        await contexto.route('**/api/sesiones**', r => r.fulfill({
+            status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' },
+            body: JSON.stringify({ version: 2, cache: false, completo: true, sesiones: [], errores: [], resumen: {} })
+        }));
+        return contexto;
+    };
+    return navegador;
 }
 
 /**
@@ -2290,9 +2307,9 @@ async function probarEstradosLaborales(navegador) {
 
 // Sesiones de los Tribunales Colegiados (sesiones-pjf.js): la tarjeta de
 // Inicio que avisa si un asunto registrado en un tribunal colegiado (amparo
-// directo, amparo en revisión, queja…) está listado para sesión.
-// El proxy se simula —test_sesiones.js prueba lo que hace con SISE—; aquí se
-// mira lo que la app hace con su respuesta, en la pantalla.
+// directo, amparo en revisión, queja…) está listado para sesión. Es una
+// función de Premium. El proxy se simula —test_sesiones.js prueba lo que hace
+// con SISE y con las licencias—; aquí se mira lo que la app hace en pantalla.
 async function probarSesionesPJF(navegador) {
     const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, locale: 'es-MX', timezoneId: 'America/Cancun' });
     const page = await contexto.newPage();
@@ -2302,18 +2319,31 @@ async function probarSesionesPJF(navegador) {
     const S = require('./docs/js/sesiones-pjf.js');
     const TCC1 = 'Primer Tribunal Colegiado del Vigésimo Séptimo Circuito';
     const TCC3 = 'Tercer Tribunal Colegiado del Vigésimo Séptimo Circuito, con residencia en Cancún, Quintana Roo';
+    const PASE = 'pase-de-prueba.firma';
 
-    // El proxy simulado: el 677/2023 del primer tribunal sesiona el jueves de
-    // la primera semana; el tercero no tiene nada (o falla, según el modo).
-    // En modo 'anterior' responde como el proxy que solo revisaba amparos
-    // directos: sin "version".
+    // El proxy simulado. /cuota da el pase de Premium (o lo niega, según
+    // `licencia`). /api/sesiones: el 677/2023 del primer tribunal sesiona el
+    // jueves de la primera semana; el tercero no tiene nada (o falla, según
+    // el modo). En modo 'anterior' responde como el proxy que solo revisaba
+    // amparos directos: sin "version".
     const pedidas = [];
+    const cuotas = [];
     let modo = 'listado';
+    let licencia = 'reconocida';
+    await contexto.route('**/cuota', async (r) => {
+        const cuerpo = JSON.parse(r.request().postData() || '{}');
+        cuotas.push({ tipo: cuerpo.tipo, codigo: cuerpo.licencia && cuerpo.licencia.codigo });
+        const datos = cuerpo.tipo !== 'sesiones' ? { servidor: false, permitido: true }
+            : licencia === 'reconocida' ? { servidor: true, permitido: true, premium: true, pase: PASE }
+            : { servidor: true, permitido: false, premium: false, soloPremium: true };
+        return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(datos) });
+    });
     await contexto.route('**/api/sesiones**', async (r) => {
+        const cabeceras = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' };
+        if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: cabeceras });
         const u = new URL(r.request().url());
         const exp = u.searchParams.get('exp') || '';
-        pedidas.push({ desde: u.searchParams.get('desde'), hasta: u.searchParams.get('hasta'), filtro: u.searchParams.get('filtro'), exp, refresh: u.searchParams.get('refresh') });
-        const cabeceras = { 'Access-Control-Allow-Origin': '*' };
+        pedidas.push({ desde: u.searchParams.get('desde'), hasta: u.searchParams.get('hasta'), filtro: u.searchParams.get('filtro'), exp, refresh: u.searchParams.get('refresh'), pase: r.request().headers()['x-tsj-cuota'] || null });
         if (modo === 'caido' && exp.startsWith('1319:')) {
             return r.fulfill({ status: 502, contentType: 'application/json', headers: cabeceras, body: JSON.stringify({ error: 'SISE no respondió' }) });
         }
@@ -2344,46 +2374,86 @@ async function probarSesionesPJF(navegador) {
     const abrir = async () => {
         await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
         await page.waitForFunction(() => window.SESIONES_PJF && typeof crearExpedienteCore === 'function' && typeof db !== 'undefined' && !!db, { timeout: 15000 });
-        await pausa(1500);
+        await pausa(1800);
     };
     const tarjeta = () => page.evaluate(() => {
         const t = document.getElementById('sesiones-pjf');
         const cuerpo = document.getElementById('sesiones-pjf-cuerpo');
+        const controles = t.querySelector('.sesiones-pjf-controles');
         return {
             visible: !t.hidden && t.offsetHeight > 0,
+            controles: !!controles && controles.offsetHeight > 0,
             texto: cuerpo.innerText.replace(/\s+/g, ' ').trim(),
             filas: cuerpo.querySelectorAll('.sesiones-pjf-fila').length,
             html: cuerpo.innerHTML
         };
     });
+    // La licencia, como la deja activar Premium (y guardada, para que
+    // sobreviva a recargar). La verificación periódica se da por hecha hoy.
+    const ponerPremium = (activo) => page.evaluate((a) => {
+        estadoPremium.activo = a;
+        estadoPremium.codigo = a ? 'LIC-PRUEBA' : null;
+        estadoPremium.dispositivoId = a ? obtenerDeviceId() : null;
+        guardarEstadoPremium();
+        localStorage.setItem('_tsjLastVerif', String(Date.now()));
+        return actualizarUIPremium();
+    }, activo);
     // Lo que la app debe pedir hoy, calculado con su propio motor.
     const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Cancun' });
     const dosSemanas = S.rangoDeSemanas(hoy, 2);
     const cuatroSemanas = S.rangoDeSemanas(hoy, 4);
 
     try {
+        // ---- Sin Premium ----
         await abrir();
         await page.evaluate(() => crearExpedienteCore({ numero: '5/2025', institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' }));
-        await abrir();
+        await pausa(2200);
         let t = await tarjeta();
         igual('sesiones PJF: sin asuntos en tribunales colegiados, la tarjeta no aparece ni se consulta nada', [t.visible, pedidas.length], [false, 0]);
 
-        await page.evaluate(async ([a, b]) => {
-            await crearExpedienteCore({ numero: '677/2023', institucion: 'PJF', juzgado: a, pjfOrgId: '462', pjfTipoAsunto: '10' });
+        await page.evaluate((a) => crearExpedienteCore({ numero: '677/2023', institucion: 'PJF', juzgado: a, pjfOrgId: '462', pjfTipoAsunto: '10' }), TCC1);
+        await pausa(2500);
+        t = await tarjeta();
+        verificar('sesiones PJF: sin Premium, quien lleva asuntos en colegiados ve la invitación a Premium',
+            t.visible && /Función exclusiva de Premium/.test(t.texto) && /tu asunto en un tribunal colegiado/.test(t.texto), t.texto);
+        igual('sesiones PJF: sin Premium no se consulta nada, ni se pide pase, ni hay controles',
+            [pedidas.length, cuotas.filter(c => c.tipo === 'sesiones').length, t.controles, t.filas], [0, 0, false, 0]);
+        await page.click('#sesiones-pjf-cuerpo [data-sesiones-premium]');
+        await pausa(600);
+        igual('sesiones PJF: el botón lleva a los planes Premium', await page.evaluate(() => document.querySelector('.page.active').id), 'page-config');
+
+        // ---- Se activa Premium (sin recargar) ----
+        await page.evaluate(() => navegarA('inicio'));
+        await ponerPremium(true);
+        await pausa(3000);
+        t = await tarjeta();
+        verificar('sesiones PJF: al activar Premium la tarjeta consulta sola y muestra el asunto listado', t.visible && t.filas === 1 && t.controles, t.texto);
+        igual('sesiones PJF: antes pide su pase al proxy, con la licencia', cuotas.filter(c => c.tipo === 'sesiones'), [{ tipo: 'sesiones', codigo: 'LIC-PRUEBA' }]);
+        igual('sesiones PJF: y la consulta viaja con ese pase, del lunes de esta semana al viernes de la siguiente',
+            pedidas, [{ desde: dosSemanas.desde, hasta: dosSemanas.hasta, filtro: 'sesion', exp: '462:677/2023', refresh: null, pase: PASE }]);
+
+        // ---- Un asunto nuevo se revisa sin recargar la página ----
+        // (El fallo: se daba de alta, se volvía a Inicio y la tarjeta no se enteraba.)
+        let antes = pedidas.length;
+        await page.evaluate(async (b) => {
+            navegarA('expedientes');
             await crearExpedienteCore({ numero: '88/2026', institucion: 'PJF', juzgado: b, pjfOrgId: '1319', pjfTipoAsunto: '10' });
             await crearExpedienteCore({ numero: '90/2026', institucion: 'PJF', juzgado: b, pjfOrgId: '1319', pjfTipoAsunto: '11' });
             // Fuera: un juzgado de distrito y un Colegiado de Apelación.
             await crearExpedienteCore({ numero: '50/2026', institucion: 'PJF', juzgado: 'Juzgado Segundo de Distrito en el Estado de Quintana Roo', pjfTipoAsunto: 'Amparo Indirecto' });
             await crearExpedienteCore({ numero: '12/2026', institucion: 'PJF', juzgado: 'Tribunal Colegiado de Apelación del Vigésimo Séptimo Circuito, con residencia en Cancún, Quintana Roo', pjfOrgId: '4372', pjfTipoAsunto: '10' });
-        }, [TCC1, TCC3]);
-        await abrir();
+            navegarA('inicio');
+        }, TCC3);
+        await pausa(3000);
         t = await tarjeta();
-        verificar('sesiones PJF: con asuntos en tribunales colegiados, la tarjeta aparece sola al abrir', t.visible);
-        igual('sesiones PJF: se consulta una vez por tribunal, del lunes de esta semana al viernes de la siguiente, cada asunto con su tipo (el amparo en revisión también)',
-            pedidas, [
-                { desde: dosSemanas.desde, hasta: dosSemanas.hasta, filtro: 'sesion', exp: '462:677/2023', refresh: null },
-                { desde: dosSemanas.desde, hasta: dosSemanas.hasta, filtro: 'sesion', exp: '1319:88/2026,1319:90/2026~amparo en revision', refresh: null }
+        // (Si entre un alta y la siguiente pasa más de un segundo hay una
+        // consulta intermedia; lo que cuenta es cómo queda al final.)
+        igual('sesiones PJF: al dar de alta asuntos y volver a Inicio se consulta de nuevo, sin recargar: una vez por tribunal, cada asunto con su tipo',
+            pedidas.slice(antes).slice(-2).map(p => [p.exp, p.refresh, p.pase]), [
+                ['462:677/2023', null, PASE],
+                ['1319:88/2026,1319:90/2026~amparo en revision', null, PASE]
             ]);
+        verificar('sesiones PJF: (y sí hubo consulta nueva)', pedidas.length > antes);
         igual('sesiones PJF: el asunto listado sale en una fila', t.filas, 1);
         verificar('sesiones PJF: con su fecha, tipo de sesión, expediente, tribunal y ponente',
             t.texto.includes(S.fechaLarga(S.sumarDias(dosSemanas.desde, 3), hoy)) && /Sesión ordinaria/.test(t.texto) &&
@@ -2398,13 +2468,17 @@ async function probarSesionesPJF(navegador) {
             await page.evaluate(() => [document.getElementById('modal-overlay').classList.contains('active'), document.getElementById('modal-titulo').textContent]), [true, '677/2023']);
         await page.evaluate(() => cerrarModal());
 
-        let antes = pedidas.length;
+        antes = pedidas.length;
+        await page.evaluate(async () => { await crearNotaCore({ titulo: 'Una nota cualquiera' }); navegarA('notas'); navegarA('inicio'); });
+        await pausa(2500);
+        igual('sesiones PJF: si los asuntos no cambiaron (una nota nueva, ir y volver a Inicio) no se vuelve a consultar', pedidas.length - antes, 0);
+
         await abrir();
         t = await tarjeta();
         igual('sesiones PJF: al reabrir la app el resultado se recuerda y no se vuelve a consultar', [pedidas.length - antes, t.filas], [0, 1]);
 
         await page.selectOption('#sesiones-pjf-semanas', '4');
-        await pausa(1200);
+        await pausa(1500);
         igual('sesiones PJF: cambiar a 4 semanas consulta el periodo nuevo',
             pedidas.slice(antes).map(p => [p.desde, p.hasta, p.refresh]), [[cuatroSemanas.desde, cuatroSemanas.hasta, null], [cuatroSemanas.desde, cuatroSemanas.hasta, null]]);
 
@@ -2414,14 +2488,14 @@ async function probarSesionesPJF(navegador) {
 
         modo = 'vacio';
         await page.click('#sesiones-pjf-actualizar');
-        await pausa(1200);
+        await pausa(1500);
         t = await tarjeta();
         igual('sesiones PJF: "Actualizar" vuelve a consultar con refresh=1', pedidas.slice(antes).map(p => p.refresh), ['1', '1']);
         verificar('sesiones PJF: sin coincidencias dice "Sin asuntos listados en el periodo"', t.filas === 0 && t.texto.startsWith('Sin asuntos listados en el periodo'), t.texto);
 
         modo = 'caido';
         await page.click('#sesiones-pjf-actualizar');
-        await pausa(1200);
+        await pausa(1500);
         t = await tarjeta();
         verificar('sesiones PJF: si un tribunal no se pudo revisar, se avisa cuál y por qué',
             /No se pudieron revisar todas las listas/.test(t.texto) && t.texto.includes(TCC3) && /SISE no respondió/.test(t.texto), t.texto);
@@ -2437,27 +2511,63 @@ async function probarSesionesPJF(navegador) {
         // Con el proxy anterior publicado (solo amparos directos, sin "version").
         modo = 'anterior';
         await page.click('#sesiones-pjf-actualizar');
-        await pausa(1200);
+        await pausa(1500);
         t = await tarjeta();
         verificar('sesiones PJF: un proxy anterior no se da por bueno para un amparo en revisión: se avisa que hay que publicarlo',
             /No se pudieron revisar todas las listas/.test(t.texto) && t.texto.includes(TCC3) && /publicarlo de nuevo/.test(t.texto) && !/Sin asuntos listados/.test(t.texto), t.texto);
         verificar('sesiones PJF: y el tribunal que solo tiene amparos directos sí se revisa con él', t.filas === 1 && t.texto.includes('Amparo Directo 677/2023'));
 
         // Un expediente de colegiado sin tipo de asunto: se busca por número.
+        // Y se revisa en cuanto se guarda, sin salir de Inicio ni recargar.
         modo = 'listado';
-        await page.evaluate((b) => crearExpedienteCore({ numero: '16/2026', institucion: 'PJF', juzgado: b, pjfOrgId: '1319' }), TCC3);
         antes = pedidas.length;
-        await abrir();
+        const idSinTipo = await page.evaluate((b) => crearExpedienteCore({ numero: '16/2026', institucion: 'PJF', juzgado: b, pjfOrgId: '1319' }), TCC3);
+        await pausa(3000);
         t = await tarjeta();
-        igual('sesiones PJF: un expediente sin tipo de asunto se pregunta por número ("~*")',
+        igual('sesiones PJF: un expediente sin tipo de asunto se pregunta por número ("~*"), nada más guardarlo',
             pedidas.slice(antes).map(p => p.exp), ['462:677/2023', '1319:88/2026,1319:90/2026~amparo en revision,1319:16/2026~*']);
         verificar('sesiones PJF: y si aparece, se muestra con el tipo que dice la lista y el aviso de que coincide solo por número',
             t.filas === 2 && t.texto.includes('Queja 16/2026') && /Coincide por número/.test(t.texto), t.texto);
+
+        antes = pedidas.length;
+        await page.evaluate((id) => actualizarExpedienteCore(id, { pjfTipoAsunto: '15' }), idSinTipo);
+        await pausa(3000);
+        igual('sesiones PJF: al corregirle el tipo de asunto se vuelve a buscar, ya como queja',
+            pedidas.slice(antes).map(p => p.exp), ['462:677/2023', '1319:88/2026,1319:90/2026~amparo en revision,1319:16/2026~queja']);
+
+        // ---- El servidor no reconoce la licencia ----
+        licencia = 'desconocida';
+        antes = pedidas.length;
+        await page.click('#sesiones-pjf-actualizar');
+        await pausa(1500);
+        t = await tarjeta();
+        verificar('sesiones PJF: si el servidor no reconoce la licencia, se dice y no se consulta',
+            pedidas.length === antes && /no reconoció tu licencia Premium/.test(t.texto) && !/Sin asuntos listados/.test(t.texto), t.texto);
+        licencia = 'reconocida';
+
+        // ---- La licencia vence ----
+        await ponerPremium(false);
+        await pausa(2500);
+        t = await tarjeta();
+        antes = pedidas.length;
+        verificar('sesiones PJF: al vencer la licencia, vuelve la invitación a Premium y desaparecen los resultados',
+            t.visible && /Función exclusiva de Premium/.test(t.texto) && /alguno de tus 4 asuntos en tribunales colegiados/.test(t.texto) && t.filas === 0 && !t.controles, t.texto);
+        await abrir();
+        t = await tarjeta();
+        igual('sesiones PJF: y al reabrir sin Premium sigue sin consultarse nada', [pedidas.length - antes, /Función exclusiva de Premium/.test(t.texto)], [0, true]);
 
         await page.setViewportSize({ width: 390, height: 844 });
         await pausa(300);
         igual('sesiones PJF: en un teléfono la tarjeta cabe en la pantalla',
             await page.evaluate(() => { const c = document.getElementById('sesiones-pjf'); return c.scrollWidth - c.clientWidth <= 1 && document.documentElement.scrollWidth <= document.documentElement.clientWidth; }), true);
+        await page.setViewportSize({ width: 1280, height: 900 });
+
+        // ---- Sin asuntos en colegiados, la tarjeta se va ----
+        await page.evaluate(async () => {
+            for (const e of await obtenerExpedientes()) if (e.institucion === 'PJF') await eliminarExpedienteCore(e.id, true);
+        });
+        await pausa(2500);
+        igual('sesiones PJF: al borrar los asuntos de colegiados la tarjeta desaparece', (await tarjeta()).visible, false);
         igual('sesiones PJF: sin errores', errores, []);
     } finally {
         await contexto.close();
