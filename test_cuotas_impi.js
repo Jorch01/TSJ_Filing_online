@@ -119,12 +119,14 @@ const peticion = (pase) => ({ headers: { get: (h) => (h === 'X-TSJ-Cuota' ? pase
         igual('límites: 2 estudios para siempre y 5 búsquedas al mes',
             [Q.LIMITES.viabilidad.limite, Q.LIMITES.viabilidad.periodo, Q.LIMITES.busqueda.limite, Q.LIMITES.busqueda.periodo], [2, 'siempre', 5, 'mes']);
         const a = { busqueda: { mes: '2026-10', n: 2 }, viabilidad: { n: 1 } };
-        const b = { busqueda: { mes: '2026-10', n: 4 } };
+        const b = { busqueda: { mes: '2026-10', n: 4 }, sesiones: { n: 1 } };
         const c = { busqueda: { mes: '2026-09', n: 5 }, viabilidad: { n: 2 } };
-        igual('de varias copias manda la mayor del mes en curso', Q.combinar([a, b, c], MES1), { viabilidad: { n: 2 }, busqueda: { mes: '2026-10', n: 4 } });
+        igual('de varias copias manda la mayor del mes en curso', Q.combinar([a, b, c], MES1), { viabilidad: { n: 2 }, busqueda: { mes: '2026-10', n: 4 }, sesiones: { n: 1 } });
         igual('lo de un mes anterior no cuenta', Q.usadosEn(c, 'busqueda', MES1), 0);
         igual('el estado dice cuántas quedan', Q.estado(Q.combinar([a, b], MES1), MES1),
-            { viabilidad: { usados: 1, limite: 2, restantes: 1 }, busqueda: { usados: 4, limite: 5, restantes: 1 } });
+            { viabilidad: { usados: 1, limite: 2, restantes: 1 }, busqueda: { usados: 4, limite: 5, restantes: 1 }, sesiones: { usados: 1, limite: 2, restantes: 1 } });
+        igual('las consultas de prueba de las sesiones de colegiados: 2 en total, las mismas en la app y en el proxy',
+            [Q.LIMITES.sesiones.limite, Q.LIMITES.sesiones.periodo, W.CUOTAS.sesiones.limite, W.CUOTAS.sesiones.periodo], [2, 'siempre', 2, 'siempre']);
     }
 
     console.log('\nEn la app');

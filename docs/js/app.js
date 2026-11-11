@@ -8626,8 +8626,8 @@ async function actualizarUIPremium() {
         actualizarLimitesIMPIEnPantalla();
     }
     renderizarPlanesPremium();
-    // Las sesiones de los Tribunales Colegiados son solo de Premium: al
-    // activar o vencer la licencia, su tarjeta cambia.
+    // Las sesiones de los Tribunales Colegiados son de Premium: al activar
+    // o vencer la licencia, su tarjeta cambia.
     if (typeof SESIONES_PJF !== 'undefined') SESIONES_PJF.revisar();
 }
 
@@ -8650,6 +8650,8 @@ async function actualizarLimitesIMPIEnPantalla() {
     };
     pintar('limit-impi', 'limit-fill-impi', r.busqueda);
     pintar('limit-viabilidad', 'limit-fill-viabilidad', r.viabilidad);
+    // Las consultas de prueba de las sesiones de los Tribunales Colegiados.
+    if (r.sesiones) pintar('limit-sesiones', 'limit-fill-sesiones', r.sesiones);
 }
 
 // Actualizar barras de límite
@@ -8991,9 +8993,10 @@ const inicializarAppConPremium = inicializarApp;
 inicializarApp = async function() {
     await inicializarAppConPremium();
     await cargarEstadoPremium();
-    // Sesiones de los Tribunales Colegiados (función Premium): ¿algún asunto
-    // registrado está listado? Va después de cargar la licencia, y no se
-    // espera: consulta a la red y la app ya está lista.
+    // Sesiones de los Tribunales Colegiados (función Premium, con consultas
+    // de prueba): ¿algún asunto registrado está listado? Va después de
+    // cargar la licencia, y no se espera: consulta a la red y la app ya
+    // está lista.
     if (typeof SESIONES_PJF !== 'undefined') SESIONES_PJF.iniciar();
     await cargarConfigAutoBackup();
     // Verificar licencia periódicamente

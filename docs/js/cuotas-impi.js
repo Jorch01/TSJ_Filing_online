@@ -24,7 +24,11 @@
 
     const LIMITES = {
         viabilidad: { limite: 2, periodo: 'siempre', nombre: 'estudios de viabilidad' },
-        busqueda: { limite: 5, periodo: 'mes', nombre: 'búsquedas en el IMPI este mes' }
+        busqueda: { limite: 5, periodo: 'mes', nombre: 'búsquedas en el IMPI este mes' },
+        // No es del IMPI, pero se cuenta igual: las consultas de prueba de las
+        // sesiones de los Tribunales Colegiados (sesiones-pjf.js), que con
+        // Premium son automáticas y sin límite.
+        sesiones: { limite: 2, periodo: 'siempre', nombre: 'consultas de sesiones de tribunales colegiados' }
     };
 
     function mesDe(ahora) {

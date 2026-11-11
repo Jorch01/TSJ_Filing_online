@@ -33,7 +33,7 @@
 
 // Sirve para confirmar, desde /health, que el worker publicado es el esperado.
 // Actualízala cuando el cambio valga la pena verificar tras desplegar.
-const WORKER_VERSION = '2026-11-11-sesiones-premium';
+const WORKER_VERSION = '2026-11-11-sesiones-prueba';
 
 const ALLOWED_ORIGINS = [
     'https://jorch01.github.io',
@@ -101,9 +101,9 @@ const CUOTAS = {
     // no gasta búsquedas, pero tiene un tope diario por si alguien lo usa
     // para buscar sin límite.
     vigilancia: { limite: 60, periodo: 'dia', vidaPase: 10 * 60 * 1000 },
-    // Sesiones de los Tribunales Colegiados (/api/sesiones): solo con Premium.
-    // Sin licencia vigente no hay pase, ni contando.
-    sesiones: { soloPremium: true, vidaPase: 30 * 60 * 1000 }
+    // Sesiones de los Tribunales Colegiados (/api/sesiones): es de Premium,
+    // con 2 consultas de prueba, en total, para quien no lo tiene.
+    sesiones: { limite: 2, periodo: 'siempre', vidaPase: 10 * 60 * 1000 }
 };
 // Las rutas que hacen una búsqueda nueva necesitan pase; paginar, ver un
 // detalle o pedir la sesión, no.
@@ -195,9 +195,6 @@ async function atenderCuota(env, ip, cuerpo, ahora, consultar) {
     if (await esPremium(env, cuerpo.licencia, consultar)) {
         return { status: 200, datos: { servidor: true, permitido: true, premium: true, limite: null, usados: null, pase: await crearPase(env.CUOTA_SECRETO, tipo, true, ahora) } };
     }
-    if (CUOTAS[tipo].soloPremium) {
-        return { status: 200, datos: { servidor: true, permitido: false, premium: false, soloPremium: true } };
-    }
     const periodo = periodoDe(tipo, ahora);
     const claves = (await identidades(ip, cuerpo)).map(id => 'c:' + tipo + ':' + periodo + ':' + id);
     if (!claves.length) return { status: 400, datos: { error: 'Sin datos para contar' } };
@@ -218,14 +215,16 @@ async function revisarPase(env, path, request, ahora) {
 }
 
 /**
- * Para lo que es solo de Premium: null si puede seguir; si no, el motivo para
- * responder 402. Solo vale un pase que se dio con licencia vigente: el de una
- * búsqueda gratuita no abre esta puerta.
+ * Para las sesiones, que son de Premium con unas consultas de prueba: null si
+ * puede seguir; si no, el motivo para responder 402. Vale el pase dado a una
+ * licencia vigente o el de una consulta de prueba de sesiones; el de una
+ * búsqueda gratuita del IMPI no abre esta puerta.
  */
-async function revisarPasePremium(env, request, ahora) {
+async function revisarPaseSesiones(env, request, ahora) {
     if (!cuotasActivas(env)) return null;
     const pase = await leerPase(env.CUOTA_SECRETO, request.headers.get(CUOTA_HEADER), ahora);
-    return pase && pase.p === true ? null : 'La consulta de sesiones de los Tribunales Colegiados es una función Premium.';
+    return pase && (pase.p === true || pase.t === 'sesiones') ? null
+        : 'La consulta de sesiones de los Tribunales Colegiados es de Premium: las consultas de prueba se agotaron o el permiso venció.';
 }
 // ==================== CUOTAS (FIN) ====================
 const SESSION_TTL_MS = 30 * 60 * 1000;
@@ -388,7 +387,7 @@ export default {
             }
             // ===== Sesiones de los Tribunales Colegiados (SISE) =====
             else if (path === '/api/sesiones') {
-                const sinPremium = request.method === 'GET' ? await revisarPasePremium(env, request, Date.now()) : null;
+                const sinPremium = request.method === 'GET' ? await revisarPaseSesiones(env, request, Date.now()) : null;
                 if (request.method !== 'GET') {
                     response = new Response(JSON.stringify({ error: 'Solo GET' }), { status: 405, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
                 } else if (sinPremium) {
@@ -2088,10 +2087,11 @@ async function handleMarcanetFullDetail(request) {
 // Una llamada que falla no tumba la respuesta: va en "errores", y "completo"
 // dice si se pudo revisar todo. Solo una respuesta completa se recuerda.
 //
-// Es una función de Premium: con las cuotas activas (KV CUOTAS y el secreto
-// CUOTA_SECRETO) la ruta exige el pase que /cuota da solo a una licencia
-// vigente (tipo "sesiones", ver la sección CUOTAS). Sin cuotas el worker no
-// puede comprobar licencias y la ruta queda abierta: ahí solo la app decide.
+// Es una función de Premium, con 2 consultas de prueba para quien no lo
+// tiene: con las cuotas activas (KV CUOTAS y el secreto CUOTA_SECRETO) la ruta
+// exige el pase que /cuota da a una licencia vigente o, sin ella, las dos
+// primeras veces (tipo "sesiones", ver la sección CUOTAS). Sin cuotas el
+// worker no puede comprobar nada y la ruta queda abierta: ahí decide la app.
 //
 // No necesita nada más en Cloudflare. Si existe el KV de las cuotas, el
 // resultado se recuerda ahí 6 horas; si no, en memoria.

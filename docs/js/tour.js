@@ -71,7 +71,14 @@
     const sinExpedientes = async () => (await cuantos('obtenerExpedientes')) === 0;
     const sinNotas = async () => (await cuantos('obtenerNotas')) === 0;
     const enCelular = () => window.matchMedia('(max-width: 768px)').matches;
-    const esPremium = () => !!(window.estadoPremium && window.estadoPremium.activo);
+    // estadoPremium se declara con let en app.js: existe, pero no cuelga de
+    // window (ahí siempre saldría "sin Premium").
+    const esPremium = () => typeof estadoPremium !== 'undefined' && !!(estadoPremium && estadoPremium.activo);
+    /** La tarjeta de sesiones solo existe para quien lleva asuntos en tribunales colegiados. */
+    const sinTarjetaSesiones = async () => {
+        const t = document.getElementById('sesiones-pjf');
+        return !t || t.hidden;
+    };
 
     const instalada = () => typeof estaInstalada === 'function' && estaInstalada();
     const instrucciones = () => typeof instruccionesInstalacionHTML === 'function'
@@ -446,6 +453,53 @@
             ]
         },
 
+        sesiones: {
+            grupo: 'tribunales',
+            icono: '🏛️',
+            titulo: 'Sesiones de Tribunales Colegiados',
+            duracion: '40 s',
+            pasos: [
+                {
+                    titulo: '¿Ya listaron tu asunto para sesión?',
+                    texto: 'La app revisa por ti las listas de sesión de los Tribunales Colegiados de Circuito (PJF) y te dice si tu amparo directo, amparo en revisión o queja está listado: fecha, tipo de sesión, ponente y secretario.'
+                },
+                {
+                    antes: ir('expedientes'),
+                    objetivo: '#page-expedientes .page-header .btn-primary',
+                    titulo: '1. Registra el asunto como federal',
+                    texto: 'En "Nuevo Expediente" elige PJF, el circuito, el tribunal colegiado y el tipo de asunto, y escribe el número con su año (557/2026). El tipo importa: en una misma lista hay quejas y revisiones con el mismo número.'
+                },
+                {
+                    saltarSi: sinTarjetaSesiones,
+                    antes: ir('inicio'),
+                    objetivo: '#sesiones-pjf',
+                    titulo: '2. Mira la tarjeta en Inicio',
+                    texto: 'Aquí salen tus asuntos listados, cada uno con su sesión. Debajo, los que se revisaron y no están en ninguna lista. Toca cualquiera para abrir su expediente.'
+                },
+                {
+                    saltarSi: async () => !esPremium() || await sinTarjetaSesiones(),
+                    objetivo: '.sesiones-pjf-controles',
+                    titulo: 'El periodo y "Actualizar"',
+                    texto: 'Elige de 1 a 4 semanas. Con Premium la app consulta sola al abrirla y cuando cambian tus expedientes; "Actualizar" vuelve a preguntar en ese momento.'
+                },
+                {
+                    saltarSi: async () => !(await sinTarjetaSesiones()),
+                    antes: ir('inicio'),
+                    titulo: '2. La tarjeta aparece en Inicio',
+                    texto: 'En cuanto tengas un asunto en un tribunal colegiado, en Inicio sale la tarjeta "Sesiones de Tribunales Colegiados" con los que están listados y los que no. Mientras no tengas ninguno, no estorba.'
+                },
+                {
+                    saltarSi: async () => esPremium(),
+                    antes: ir('config'),
+                    // Solo su renglón: en el celular el bloque entero de
+                    // límites no deja sitio para la tarjeta del recorrido.
+                    objetivo: bloqueDe('#limit-sesiones', '.limit-item'),
+                    titulo: 'Con Premium, sola; sin él, 2 de prueba',
+                    texto: 'Con Premium la revisión es automática cada vez que abres la app. En el plan gratuito tienes 2 consultas de prueba, que usas con "Consultar ahora" en la tarjeta: aquí ves cuántas llevas.'
+                }
+            ]
+        },
+
         laboral: {
             grupo: 'herramientas',
             paginas: ['laboral'],
@@ -614,7 +668,7 @@
                     antes: ir('config'),
                     objetivo: '#plan-limits',
                     titulo: 'Lo que llevas del plan gratuito',
-                    texto: 'Expedientes, búsquedas globales, búsquedas en el IMPI y estudios de viabilidad: aquí ves cuánto has usado de cada uno.'
+                    texto: 'Expedientes, búsquedas globales, búsquedas en el IMPI, estudios de viabilidad y consultas de sesiones de colegiados: aquí ves cuánto has usado de cada uno.'
                 },
                 {
                     saltarSi: async () => esPremium(),
