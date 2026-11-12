@@ -172,8 +172,10 @@ const estados = (r) => Object.fromEntries(r.chequeos.map(c => [c.id, c.estado]))
     verificar('un 402 del Worker se explica como pase rechazado', por(r, 'siga-busqueda').estado === 'falla' && /pase \(HTTP 402\)/.test(por(r, 'siga-busqueda').detalle));
 
     r = await con((u) => { if (u.includes('www.tsjqroo.gob.mx')) { const e = new TypeError('fetch failed'); e.cause = { code: 'ECONNRESET' }; throw e; } });
-    verificar('un sitio que corta la conexión → falla con el host y el código',
-        por(r, 'tsj-estrados-primera').estado === 'falla' && /www\.tsjqroo\.gob\.mx.*ECONNRESET/.test(por(r, 'tsj-estrados-primera').detalle) && por(r, 'tsj-estrados-segunda').estado === 'falla', por(r, 'tsj-estrados-primera').detalle);
+    verificar('el TSJ corta la conexión a GitHub (fuera de México) → aviso, no falla, con el host y el código',
+        por(r, 'tsj-estrados-primera').estado === 'aviso' && /www\.tsjqroo\.gob\.mx.*ECONNRESET/.test(por(r, 'tsj-estrados-primera').detalle) && por(r, 'tsj-estrados-segunda').estado === 'aviso', por(r, 'tsj-estrados-primera').detalle);
+    r = await con((u) => { if (u.includes('sag-styps')) { const e = new TypeError('fetch failed'); e.cause = { code: 'ECONNRESET' }; throw e; } });
+    verificar('otro sitio que corta la conexión → sigue siendo falla', por(r, 'estrados-laborales').estado === 'falla' && /ECONNRESET/.test(por(r, 'estrados-laborales').detalle));
     r = await con((u) => { if (u.includes('dgej.cjf.gob.mx')) { const e = new TypeError('fetch failed'); e.cause = { code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' }; throw e; } });
     verificar('SISE con la cadena incompleta → falla y dice cómo arreglarlo (NODE_EXTRA_CA_CERTS)',
         por(r, 'pjf-consulta').estado === 'falla' && /NODE_EXTRA_CA_CERTS=herramientas\/certificados\/root-yr-by-x1\.pem/.test(por(r, 'pjf-consulta').detalle), por(r, 'pjf-consulta').detalle);
@@ -190,6 +192,19 @@ const estados = (r) => Object.fromEntries(r.chequeos.map(c => [c.id, c.estado]))
     verificar('Gemini sin cuota (429) → falla', por(r, 'gemini').estado === 'falla' && /HTTP 429/.test(por(r, 'gemini').detalle));
     r = await con((u) => u.endsWith('/models?pageSize=200') ? JSON_({ models: [{ name: 'models/gemini-3-flash', supportedGenerationMethods: ['generateContent'] }] }) : null);
     verificar('si el modelo por defecto de la app ya no existe → aviso', por(r, 'gemini').estado === 'aviso' && /gemini-3-flash/.test(por(r, 'gemini').detalle));
+    {
+        const probados = [];
+        r = await con((u) => {
+            if (u.endsWith('/models?pageSize=200')) return JSON_({ models: ['gemini-2.5-flash', 'gemini-9.0-flash', 'gemini-8.0-flash', 'gemini-9.0-flash-preview-tts']
+                .map(n => ({ name: 'models/' + n, supportedGenerationMethods: ['generateContent'] })) });
+            const m = /models\/([^:]+):generateContent/.exec(u);
+            if (m) { probados.push(m[1]); if (m[1] !== 'gemini-8.0-flash') return JSON_({ error: { message: 'This model is no longer available to new users.' } }, 404); }
+            return null;
+        });
+        verificar('el modelo por defecto aparece en la lista pero ya no responde → prueba los demás como la app y avisa',
+            por(r, 'gemini').estado === 'aviso' && /gemini-8\.0-flash/.test(por(r, 'gemini').detalle), por(r, 'gemini').detalle);
+        igual('en el orden de la app: el de la app, luego el más nuevo, sin el de voz', probados.slice(0, 3), ['gemini-2.5-flash', 'gemini-9.0-flash', 'gemini-8.0-flash']);
+    }
 
     console.log('\n── Reintentos');
     let intentos = 0;
