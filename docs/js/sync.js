@@ -576,15 +576,32 @@ async function fetchConReintentos(url, opciones = {}, maxReintentos = 3) {
     }
 }
 
+/**
+ * Lo que identifica a este dispositivo ante la sincronización: el código y el
+ * id del dispositivo registrado en la licencia. Va siempre por POST, nunca en
+ * la URL (ahí el código acaba en el historial y en los registros).
+ */
+function _credencialesSync() {
+    const dispositivo = estadoPremium.dispositivoId ||
+        (typeof obtenerDeviceId === 'function' ? obtenerDeviceId() : '');
+    return { codigo: estadoPremium.codigo, dispositivo_id: dispositivo };
+}
+
+function _peticionSync(action, timeout, extra) {
+    return {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(Object.assign({ action }, _credencialesSync(), extra || {})),
+        timeout
+    };
+}
+
 // Descargar datos del servidor
 async function descargarDatosRemotos() {
-    const url = `${PREMIUM_CONFIG.apiUrl}?action=obtener_sync&codigo=${encodeURIComponent(estadoPremium.codigo)}`;
+    const url = PREMIUM_CONFIG.apiUrl;
 
     try {
-        const response = await fetchConReintentos(url, {
-            method: 'GET',
-            timeout: 30000
-        });
+        const response = await fetchConReintentos(url, _peticionSync('obtener_sync', 30000));
         const texto = await response.text();
 
         // Intentar parsear JSON
@@ -683,12 +700,7 @@ async function respaldarYLimpiarSyncRemoto() {
     }
 
     try {
-        const response = await fetchConReintentos(PREMIUM_CONFIG.apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ action: 'respaldar_sync', codigo: estadoPremium.codigo }),
-            timeout: 60000
-        });
+        const response = await fetchConReintentos(PREMIUM_CONFIG.apiUrl, _peticionSync('respaldar_sync', 60000));
 
         const resultado = JSON.parse(await response.text());
         if (typeof ajustarRelojSync === 'function') ajustarRelojSync(resultado.servidorAhora);
@@ -739,11 +751,7 @@ async function subirDatosRemotos(datosCifrados, versionExpected) {
         // El primer trozo viaja como "datos" para que un servidor antiguo
         // —sin las columnas nuevas— siga entendiendo la petición.
         const partes = _partirParaCeldas(datosCifrados, celdas);
-        const body = {
-            action: 'guardar_sync',
-            codigo: estadoPremium.codigo,
-            datos: partes[0]
-        };
+        const body = Object.assign({ action: 'guardar_sync' }, _credencialesSync(), { datos: partes[0] });
         for (let i = 1; i < partes.length; i++) body['datos_' + (i + 1)] = partes[i];
         if (versionExpected !== undefined && versionExpected !== null) {
             body.version_expected = versionExpected;
@@ -2017,13 +2025,11 @@ async function verificarSyncAlCargar() {
 
 // Verificar si hay datos remotos (sin descargar todo)
 async function verificarDatosRemotos() {
-    const url = `${PREMIUM_CONFIG.apiUrl}?action=obtener_sync&codigo=${encodeURIComponent(estadoPremium.codigo)}`;
+    const url = PREMIUM_CONFIG.apiUrl;
 
     try {
-        const response = await fetchConReintentos(url, {
-            method: 'GET',
-            timeout: 15000 // 15 segundos para verificación rápida
-        }, 2); // Solo 2 reintentos para verificación
+        // 15 segundos y solo 2 reintentos: es una verificación rápida.
+        const response = await fetchConReintentos(url, _peticionSync('obtener_sync', 15000), 2);
 
         const resultado = await response.json();
 

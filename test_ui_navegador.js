@@ -3341,7 +3341,9 @@ async function probarQueNoSePierdenDatos(navegador) {
             const modo = fallos[params.action];
             if (modo === 'antes') return r.abort('internetdisconnected');
             if (typeof modo === 'number') await new Promise(x => setTimeout(x, modo));
-            const respuesta = nube.llamar(params);
+            // Lo que la app mande por GET llega como en Google: por doGet.
+            if (req.method() === 'GET') nube.peticionesGet = (nube.peticionesGet || []).concat(params.action);
+            const respuesta = nube.llamar(params, req.method());
             if (modo === 'despues') { fallos[params.action] = null; return r.abort('connectionreset'); }
             return r.fulfill({ status: 200, contentType: 'application/json',
                 headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(respuesta) });
@@ -3409,6 +3411,12 @@ async function probarQueNoSePierdenDatos(navegador) {
             const r = await resumen(telefono.pagina);
             igual('datos: con señal, el teléfono recibe los cinco expedientes', r.expedientes.length, 5);
             igual('datos: y la nota', r.notas, ['Plazo para contestar']);
+            igual('datos: la app no manda nada a la nube por GET (el código no va en la URL)', nube.peticionesGet || [], []);
+
+            // Un dispositivo que no está registrado en la licencia no recibe nada.
+            const intruso = await nube.llamar({ action: 'obtener_sync', codigo: CODIGO, dispositivo_id: 'NO-REGISTRADO' }, 'POST');
+            verificar('datos: con el código pero sin un dispositivo registrado, la nube no entrega los datos',
+                intruso.success === false && intruso.datos === undefined, JSON.stringify(intruso).slice(0, 200));
 
             // Un bloque que no se puede leer (cortado) tampoco se pisa.
             nube.hoja._datos[1][10] = String(nube.hoja._datos[1][10]).slice(0, 200);

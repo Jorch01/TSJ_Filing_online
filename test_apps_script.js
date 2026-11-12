@@ -53,7 +53,11 @@ const ID_PRUEBA = '1TESTtestTESTtestTESTtestTESTtestTESTtest123';
 
 const CABECERA = ['codigo','fecha_exp','disp','usuario','estado','freg','intentos','ultimo','max','disp_json',
                   'datos_sync','datos_2','datos_3','datos_4','resp_1','resp_2','resp_3','resp_4','resp_fecha'];
-const hoja = crearHoja([CABECERA, ['ABC123','perpetua','','','activo','',0,'',2,'[]','','','','','','','','','']]);
+// La licencia de prueba tiene un dispositivo registrado: la sincronización lo exige.
+const DISP = 'DISP-REGISTRADO-0001';
+const hoja = crearHoja([CABECERA, ['ABC123','perpetua','','','activo','',0,'',2,
+  JSON.stringify([{ id: DISP, tipo: 'desktop', nombre: 'PC', fechaRegistro: '2026-01-01T00:00:00Z' }]),
+  '','','','','','','','','']]);
 
 // Propiedades del script: aquí vive la configuración que sobrevive a las
 // actualizaciones del código.
@@ -110,8 +114,11 @@ const sandbox = {
 vm.createContext(sandbox);
 vm.runInContext(fs.readFileSync(GS, 'utf8'), sandbox);
 
-const llamar = (params) => JSON.parse(vm.runInContext(
-  'procesarSolicitud(' + JSON.stringify(params) + ')', sandbox));
+// Como la app: todo por POST y, en la sincronización, con su dispositivo.
+const llamarCrudo = (params, metodo) => JSON.parse(vm.runInContext(
+  'procesarSolicitud(' + JSON.stringify(params) + ',' + JSON.stringify(metodo || 'POST') + ')', sandbox));
+const llamar = (params) => llamarCrudo(/_sync$/.test(params.action || '') && !('dispositivo_id' in params)
+  ? Object.assign({ dispositivo_id: DISP }, params) : params);
 
 let pasadas = 0, fallidas = 0;
 const fallos = [];
@@ -457,6 +464,42 @@ try {
         delete hoja.getMaxColumns; delete hoja.insertColumnsAfter;
         hoja.getRange = getRangeOriginal;
     }
+
+
+    // ---------- La sincronización exige un dispositivo registrado ----------
+    llamar({ action: 'guardar_sync', codigo: 'ABC123', datos: 'privado' });
+    r = llamarCrudo({ action: 'obtener_sync', codigo: 'ABC123' });
+    verificar('sin dispositivo no se entregan los datos', r.success === false && r.datos === undefined && r.razon === 'dispositivo_no_registrado', JSON.stringify(r));
+    r = llamarCrudo({ action: 'obtener_sync', codigo: 'ABC123', dispositivo_id: 'OTRO-DISPOSITIVO' });
+    verificar('con un dispositivo que no está en la licencia, tampoco', r.success === false && r.datos === undefined && r.razon === 'dispositivo_no_registrado', JSON.stringify(r));
+    r = llamarCrudo({ action: 'guardar_sync', codigo: 'ABC123', dispositivo_id: 'OTRO-DISPOSITIVO', datos: 'pisado' });
+    verificar('ni se pueden pisar', r.success === false);
+    r = llamarCrudo({ action: 'respaldar_sync', codigo: 'ABC123', dispositivo_id: 'OTRO-DISPOSITIVO' });
+    verificar('ni vaciar', r.success === false);
+    igual('los datos siguen intactos', llamar({ action: 'obtener_sync', codigo: 'ABC123' }).datos, 'privado');
+
+    // ---------- Por GET (código en la URL) la sincronización no responde ----------
+    r = llamarCrudo({ action: 'obtener_sync', codigo: 'ABC123', dispositivo_id: DISP }, 'GET');
+    verificar('obtener_sync por GET no entrega datos y pide actualizar la app', r.success === false && r.datos === undefined && r.razon === 'actualizar_app', JSON.stringify(r));
+    r = llamarCrudo({ action: 'guardar_sync', codigo: 'ABC123', dispositivo_id: DISP, datos: 'por get' }, 'GET');
+    verificar('guardar_sync por GET tampoco', r.success === false && r.razon === 'actualizar_app');
+    r = llamarCrudo({ action: 'verificar', codigo: 'NO-EXISTE', dispositivo_id: 'x' }, 'GET');
+    igual('verificar sigue respondiendo por GET (apps y Worker anteriores)', r.mensaje, 'Código no encontrado');
+
+    // ---------- Los ids de dispositivo no se entregan completos ----------
+    r = llamar({ action: 'obtener_dispositivos', codigo: 'ABC123' });
+    verificar('obtener_dispositivos recorta los ids', r.success && r.dispositivos.length === 1 && r.dispositivos[0].id !== DISP && r.dispositivos[0].id.endsWith('...'), JSON.stringify(r.dispositivos));
+
+    // ---------- Tope de transferencias ----------
+    const transferir = (id) => llamar({ action: 'transferir', codigo: 'ABC123', nuevo_dispositivo_id: id });
+    r = transferir('NUEVO-1');
+    verificar('la primera transferencia pasa', r.success === true, JSON.stringify(r));
+    r = transferir(DISP);
+    verificar('la segunda (el dueño la recupera) también', r.success === true, JSON.stringify(r));
+    r = transferir('NUEVO-2');
+    verificar('la tercera en 30 días, no: manda a soporte', r.success === false && r.razon === 'tope_transferencias' && /soporte/.test(r.mensaje), JSON.stringify(r));
+    verificar('y la licencia sigue en el dispositivo del dueño', JSON.parse(hoja._datos[1][9]).map(d => d.id).join() === DISP, hoja._datos[1][9]);
+    verificar('el tope se guarda sin el código en claro', Object.keys(propiedades).some(k => /^transf_/.test(k)) && !Object.keys(propiedades).some(k => /ABC123/.test(k)));
 
 } catch (e) {
     fallidas++;

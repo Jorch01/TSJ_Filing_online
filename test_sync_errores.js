@@ -55,7 +55,7 @@ function cargar() {
                      'CELDAS_DATOS_SYNC', 'TAMANO_POR_CELDA',
                      'LIMITE_CELDA_SHEETS', 'AVISO_CELDA_SHEETS',
                      'CELDAS_MAXIMAS_SYNC', '_celdasSync',
-                     '_partirParaCeldas', 'subirDatosRemotos']) {
+                     '_partirParaCeldas', '_credencialesSync', 'subirDatosRemotos']) {
         vm.runInContext(extraerDeclaracion(src, n), sandbox, { filename: `sync.js:${n}` });
     }
 

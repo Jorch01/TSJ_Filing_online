@@ -8868,12 +8868,24 @@ async function verificarCodigoPremium(codigo, deviceId, usuario) {
     return { valido: false, mensaje: 'Sistema de licencias no configurado' };
 }
 
+/**
+ * Llama a la API de licencias por POST. El código de licencia nunca va en la
+ * URL: ahí acaba en el historial del navegador y en los registros de Google.
+ * text/plain evita la consulta previa de CORS, que Apps Script no responde.
+ */
+async function llamarApiLicencias(parametros) {
+    const response = await fetch(PREMIUM_CONFIG.apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(parametros)
+    });
+    return response.json();
+}
+
 // Verificar usando la API de Google Apps Script
 async function verificarConAPI(codigo, deviceId, usuario) {
     try {
-        const url = `${PREMIUM_CONFIG.apiUrl}?action=verificar&codigo=${encodeURIComponent(codigo)}&dispositivo_id=${encodeURIComponent(deviceId)}&usuario=${encodeURIComponent(usuario || '')}`;
-        const response = await fetch(url);
-        const resultado = await response.json();
+        const resultado = await llamarApiLicencias({ action: 'verificar', codigo, dispositivo_id: deviceId, usuario: usuario || '' });
 
         if (resultado.requiereRegistro) {
             // El código es válido pero necesita registrar este dispositivo
@@ -8903,9 +8915,10 @@ async function registrarDispositivoEnAPI(codigo, deviceId, usuario) {
         const tipoDispositivo = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
         const nombreDispositivo = navigator.userAgent.split(/[()]/)[1] || 'Dispositivo';
 
-        const url = `${PREMIUM_CONFIG.apiUrl}?action=registrar_dispositivo&codigo=${encodeURIComponent(codigo)}&dispositivo_id=${encodeURIComponent(deviceId)}&usuario=${encodeURIComponent(usuario || '')}&tipo_dispositivo=${encodeURIComponent(tipoDispositivo)}&nombre_dispositivo=${encodeURIComponent(nombreDispositivo)}`;
-        const response = await fetch(url);
-        const resultado = await response.json();
+        const resultado = await llamarApiLicencias({
+            action: 'registrar_dispositivo', codigo, dispositivo_id: deviceId, usuario: usuario || '',
+            tipo_dispositivo: tipoDispositivo, nombre_dispositivo: nombreDispositivo
+        });
 
         if (resultado.success) {
             return {
@@ -8934,11 +8947,10 @@ async function transferirLicencia(codigo, nuevoDeviceId, usuario, motivo) {
         const tipoDispositivo = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
         const nombreDispositivo = navigator.userAgent.split(/[()]/)[1] || 'Dispositivo';
 
-        const url = `${PREMIUM_CONFIG.apiUrl}?action=transferir&codigo=${encodeURIComponent(codigo)}&nuevo_dispositivo_id=${encodeURIComponent(nuevoDeviceId)}&usuario=${encodeURIComponent(usuario || '')}&tipo_dispositivo=${encodeURIComponent(tipoDispositivo)}&nombre_dispositivo=${encodeURIComponent(nombreDispositivo)}`;
-        const response = await fetch(url);
-        const resultado = await response.json();
-
-        return resultado;
+        return await llamarApiLicencias({
+            action: 'transferir', codigo, nuevo_dispositivo_id: nuevoDeviceId, usuario: usuario || '',
+            tipo_dispositivo: tipoDispositivo, nombre_dispositivo: nombreDispositivo
+        });
     } catch (error) {
         Logger.error('Error al transferir licencia:', error);
         return { success: false, mensaje: 'Error de conexión' };
@@ -8960,9 +8972,7 @@ async function verificarLicenciaPeriodica() {
 
     if (PREMIUM_CONFIG.apiUrl) {
         try {
-            const url = `${PREMIUM_CONFIG.apiUrl}?action=heartbeat&codigo=${encodeURIComponent(estadoPremium.codigo)}&dispositivo_id=${encodeURIComponent(estadoPremium.dispositivoId)}`;
-            const response = await fetch(url);
-            const resultado = await response.json();
+            const resultado = await llamarApiLicencias({ action: 'heartbeat', codigo: estadoPremium.codigo, dispositivo_id: estadoPremium.dispositivoId });
 
             if (!resultado.valido) {
                 // Licencia ya no es válida
