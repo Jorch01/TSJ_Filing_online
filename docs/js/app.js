@@ -7090,13 +7090,49 @@ async function listarModelosIA(apiKey) {
         .filter(Boolean);
 }
 
+// Modelos que la lista ofrece pero no sirven para leer y escribir texto
+// (voz, imágenes, pruebas internas): van al final.
+const GEMINI_NO_TEXTO = /(tts|image|embedding|live|audio|aqa|learnlm|robotics|computer-use)/i;
+
+/** "gemini-2.5-flash" → [2, 5]: para ordenar del más nuevo al más viejo. */
+function _versionModelo(nombre) {
+    const m = /(\d+(?:\.\d+)*)/.exec(nombre);
+    return m ? m[1].split('.').map(Number) : [0];
+}
+
+/**
+ * Los modelos de la lista en el orden en que conviene probarlos: primero los
+ * de texto; dentro de ellos, por la preferencia de GEMINI_PREFERENCIAS
+ * (flash-lite, flash, pro) y, en cada una, del más nuevo al más viejo; las
+ * versiones de prueba (preview, exp) detrás de las estables.
+ *
+ * Que un modelo aparezca en la lista no garantiza que se pueda usar: Google
+ * deja de ofrecer los viejos a las claves nuevas y aun así los lista. Por eso
+ * se prueban en este orden hasta que uno responde.
+ */
+function _candidatosModelo(modelos) {
+    const grupo = (m) => {
+        if (GEMINI_NO_TEXTO.test(m)) return 99;
+        if (m.includes('flash-lite')) return GEMINI_PREFERENCIAS.indexOf('flash-lite');
+        if (m.includes('flash')) return GEMINI_PREFERENCIAS.indexOf('flash');
+        if (m.includes('pro')) return GEMINI_PREFERENCIAS.indexOf('pro');
+        return GEMINI_PREFERENCIAS.length;
+    };
+    const prueba = (m) => (/(preview|exp)/i.test(m) ? 1 : 0);
+    const compararVersion = (a, b) => {
+        const va = _versionModelo(a), vb = _versionModelo(b);
+        for (let i = 0; i < Math.max(va.length, vb.length); i++) {
+            if ((vb[i] || 0) !== (va[i] || 0)) return (vb[i] || 0) - (va[i] || 0);
+        }
+        return 0;
+    };
+    return [...new Set(modelos)].sort((a, b) =>
+        grupo(a) - grupo(b) || prueba(a) - prueba(b) || compararVersion(a, b) || a.localeCompare(b));
+}
+
 /** De una lista de modelos, el que mejor encaja con lo que hace esta app. */
 function _elegirModelo(modelos) {
-    for (const preferencia of GEMINI_PREFERENCIAS) {
-        const encontrado = modelos.find(m => m.includes(preferencia));
-        if (encontrado) return encontrado;
-    }
-    return modelos[0] || null;
+    return _candidatosModelo(modelos)[0] || null;
 }
 
 /** Rellena el select de modelos con lo que la API diga que hay. */
@@ -7133,20 +7169,20 @@ async function cargarModelosIA() {
  * app rota hasta que alguien toque el código.
  */
 async function buscarModeloVivo(apiKey, guardar = true) {
-    const modelos = await listarModelosIA(apiKey);
-    const elegido = _elegirModelo(modelos);
+    const elegido = _elegirModelo(await listarModelosIA(apiKey));
     if (!elegido) throw new Error('Tu clave no tiene acceso a ningún modelo');
-
-    // Solo se guarda cuando el modelo que falló era el de la configuración. Si
-    // venía suelto —una prueba desde el formulario— no se toca lo guardado.
-    if (guardar) {
-        await guardarConfig('ia_modelo', elegido);
-        const select = document.getElementById('ia-modelo');
-        if (select) _ponerOpcionModelo(select, elegido);
-    }
-
+    if (guardar) await _guardarModeloElegido(elegido);
     return elegido;
 }
+
+async function _guardarModeloElegido(modelo) {
+    await guardarConfig('ia_modelo', modelo);
+    const select = document.getElementById('ia-modelo');
+    if (select) _ponerOpcionModelo(select, modelo);
+}
+
+// Cuántos modelos se prueban, como mucho, cuando el guardado ya no responde.
+const GEMINI_INTENTOS_MODELO = 5;
 
 /**
  * ¿El fallo es "ese modelo no está ahí"? Es el único que sabemos arreglar solos.
@@ -7158,7 +7194,7 @@ async function buscarModeloVivo(apiKey, guardar = true) {
  */
 function _esModeloInexistente(mensaje, status) {
     if (status === 404) return true;
-    return /not found|does not exist|no tiene acceso|is not supported/i.test(String(mensaje || ''));
+    return /not found|does not exist|no tiene acceso|is not supported|no longer available/i.test(String(mensaje || ''));
 }
 
 /**
@@ -7180,7 +7216,13 @@ async function llamarIA(prompt, opciones = {}) {
         throw new Error('Para usar la IA acepta antes el aviso sobre qué se envía a Google.');
     }
 
-    let modelo = opciones.modelo || await obtenerConfig('ia_modelo') || GEMINI_MODELO_POR_DEFECTO;
+    let modelo = opciones.modelo || await obtenerConfig('ia_modelo');
+    // La primera vez, sin modelo elegido, se toma uno de la lista que da la
+    // propia API en vez del escrito en el código, que Google acaba retirando.
+    if (!modelo) {
+        try { modelo = await buscarModeloVivo(apiKey, true); }
+        catch (e) { modelo = GEMINI_MODELO_POR_DEFECTO; }
+    }
 
     const cuerpo = {
         contents: _contenidosGemini(prompt, opciones),
@@ -7213,13 +7255,32 @@ async function llamarIA(prompt, opciones = {}) {
     } catch (error) {
         if (!_esModeloInexistente(error.message, error.status)) throw error;
 
-        // El modelo guardado ya no existe: se busca uno vivo y se reintenta.
-        // Al usuario se le dice cuál, porque su asistente acaba de cambiar de
-        // motor y merece enterarse.
+        // El modelo guardado ya no existe: se prueban los vivos, en orden,
+        // hasta que uno responda. No basta con el primero de la lista: Google
+        // sigue listando modelos que ya no deja usar a las claves nuevas.
+        // Al usuario se le dice cuál quedó, porque su asistente acaba de
+        // cambiar de motor y merece enterarse.
         const anterior = modelo;
-        modelo = await buscarModeloVivo(apiKey, !opciones.modelo);
-        mostrarToast(`El modelo "${anterior}" ya no existe. Cambiado a "${modelo}".`, 'info');
-        datos = await pedir(modelo);
+        const candidatos = _candidatosModelo(await listarModelosIA(apiKey))
+            .filter(m => m !== anterior).slice(0, GEMINI_INTENTOS_MODELO);
+        if (!candidatos.length) throw new Error('Tu clave no tiene acceso a ningún modelo');
+        let ultimo = error;
+        datos = null;
+        for (const candidato of candidatos) {
+            try {
+                datos = await pedir(candidato);
+                modelo = candidato;
+                break;
+            } catch (e) {
+                if (!_esModeloInexistente(e.message, e.status)) throw e;
+                ultimo = e;
+            }
+        }
+        if (!datos) throw ultimo;
+        // Solo se guarda cuando el modelo que falló era el de la configuración.
+        // Si venía suelto —una prueba desde el formulario— no se toca lo guardado.
+        if (!opciones.modelo) await _guardarModeloElegido(modelo);
+        mostrarToast(`El modelo "${anterior}" ya no está disponible. Cambiado a "${modelo}".`, 'info');
     }
 
     const texto = (datos.candidates?.[0]?.content?.parts || [])
