@@ -84,7 +84,7 @@ const peticion = (pase) => ({ headers: { get: (h) => (h === 'X-TSJ-Cuota' ? pase
     {
         const e = env();
         let consultas = 0;
-        const api = (valido) => async (url) => { consultas++; verificar('se consulta la API de licencias con el código', /action=verificar&codigo=LIC-1&dispositivo_id=D1/.test(url)); return { json: async () => ({ valido }) }; };
+        const api = (valido) => async (url, o) => { consultas++; const c = JSON.parse((o && o.body) || '{}'); verificar('se consulta la API de licencias por POST, sin el código en la URL', o && o.method === 'POST' && c.action === 'verificar' && c.codigo === 'LIC-1' && c.dispositivo_id === 'D1' && !/LIC-1/.test(url)); return { json: async () => ({ valido }) }; };
         const prem = { tipo: 'busqueda', ...chrome, licencia: { codigo: 'LIC-1', dispositivoId: 'D1' } };
         for (let i = 0; i < 8; i++) {
             const r = (await W.atenderCuota(e, '1.1.1.1', prem, MES1, api(true))).datos;
@@ -94,6 +94,42 @@ const peticion = (pase) => ({ headers: { get: (h) => (h === 'X-TSJ-Cuota' ? pase
         const e2 = env();
         const falsa = (await W.atenderCuota(e2, '1.1.1.1', { ...prem, licencia: { codigo: 'LIC-1', dispositivoId: 'D1' } }, MES1, api(false))).datos;
         igual('una licencia inválida cuenta como gratuita', [falsa.premium, falsa.usados], [undefined, 1]);
+    }
+
+    console.log('\nLa IP cuenta aunque el navegador invente huellas nuevas');
+    {
+        const e = env();
+        let n = 0;
+        const inventado = () => ({ huella: { amplia: 'h-' + (++n), fina: 'f-' + n }, dispositivo: 'd-' + n });
+        const r = [];
+        for (let i = 0; i < 16; i++) r.push((await W.atenderCuota(e, '5.5.5.5', { tipo: 'busqueda', ...inventado() }, MES1, sinLicencia)).datos.permitido);
+        igual('con huellas nuevas en cada intento, la IP se detiene en 3 veces el límite (15)', r.filter(Boolean).length, 15);
+        igual('y el intento 16 ya no', r[15], false);
+        igual('otra IP no se ve afectada', (await W.atenderCuota(e, '6.6.6.6', { tipo: 'busqueda', ...chrome }, MES1, sinLicencia)).datos.permitido, true);
+        const s = [];
+        for (let i = 0; i < 8; i++) s.push((await W.atenderCuota(e, '5.5.5.5', { tipo: 'sesiones', ...inventado() }, MES1, sinLicencia)).datos.permitido);
+        igual('las consultas de prueba de sesiones: 6 por IP, aunque cambie la huella', s.filter(Boolean).length, 6);
+        const e2 = env();
+        const sinHuella = [];
+        for (let i = 0; i < 6; i++) sinHuella.push((await W.atenderCuota(e2, '7.7.7.7', { tipo: 'busqueda' }, MES1, sinLicencia)).datos.permitido);
+        igual('sin datos del equipo, la IP lleva el límite normal (5)', sinHuella.filter(Boolean).length, 5);
+    }
+
+    console.log('\nPremium solo en un dispositivo registrado');
+    {
+        const e = env();
+        const prem = { tipo: 'busqueda', ...chrome, licencia: { codigo: 'LIC-2', dispositivoId: 'NUEVO' } };
+        const r = (await W.atenderCuota(e, '1.1.1.1', prem, MES1, async () => ({ json: async () => ({ valido: true, requiereRegistro: true }) }))).datos;
+        igual('un código válido en un dispositivo sin registrar cuenta como gratuito', [r.premium, r.usados], [undefined, 1]);
+    }
+
+    console.log('\nLa ficha completa de Marcanet');
+    {
+        const ruta = WORKER.slice(WORKER.indexOf("path === '/marcanet/full-detail'"), WORKER.indexOf('// ===== Sesiones de los Tribunales Colegiados'));
+        verificar('la búsqueda por denominación solo corre con un pase vigente', /leerPase\(env\.CUOTA_SECRETO/.test(ruta) && /buscarPorNombre: conPase/.test(ruta));
+        const manejador = WORKER.slice(WORKER.indexOf('async function handleMarcanetFullDetail'), WORKER.indexOf('// ==================== SESIONES SISE (INICIO)'));
+        verificar('sin pase no se busca por nombre', /if \(searchNum \|\| \(denominacion && buscarPorNombre\)\)/.test(manejador));
+        verificar('la respuesta ya no lleva diagnósticos internos (debugSnippets)', !/debug:\s*debugSnippets/.test(manejador));
     }
 
     console.log('\nLos pases');
