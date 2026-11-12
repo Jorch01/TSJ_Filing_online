@@ -100,8 +100,9 @@ function crearAppsScriptSimulado(codigo = 'LIC-DATOS') {
     vm.createContext(sandbox);
     vm.runInContext(fs.readFileSync(GS, 'utf8'), sandbox);
 
-    const llamar = (params) => JSON.parse(vm.runInContext(
-        'procesarSolicitud(' + JSON.stringify(params) + ')', sandbox));
+    // metodo: 'GET' o 'POST', como llegó la petición (doGet o doPost).
+    const llamar = (params, metodo) => JSON.parse(vm.runInContext(
+        'procesarSolicitud(' + JSON.stringify(params) + ',' + JSON.stringify(metodo || 'POST') + ')', sandbox));
 
     // El bloque guardado ahora mismo en la nube, leído como lo lee el script
     // (todas sus columnas de datos unidas, no solo las cuatro primeras).

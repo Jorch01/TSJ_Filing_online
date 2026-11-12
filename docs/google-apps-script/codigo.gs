@@ -266,7 +266,7 @@ function conCandadoSync(fn) {
 // ==================== FUNCIONES PRINCIPALES ====================
 
 function doGet(e) {
-  return procesarSolicitud(e.parameter);
+  return procesarSolicitud(e.parameter, 'GET');
 }
 
 function doPost(e) {
@@ -288,15 +288,22 @@ function doPost(e) {
     }
   }
 
-  return procesarSolicitud(params);
+  return procesarSolicitud(params, 'POST');
 }
 
-function procesarSolicitud(params) {
+// Lo que lee o escribe los datos de un cliente. Va solo por POST: en un GET el
+// código de licencia viaja en la URL y acaba en historiales y registros.
+const ACCIONES_SOLO_POST = ['obtener_sync', 'guardar_sync', 'respaldar_sync'];
+
+function procesarSolicitud(params, metodo) {
   const action = params.action;
   let resultado;
 
   try {
-    switch (action) {
+    if (metodo === 'GET' && ACCIONES_SOLO_POST.indexOf(action) !== -1) {
+      resultado = { success: false, razon: 'actualizar_app',
+                    mensaje: 'Actualiza la app (cierra y vuelve a abrir la página) para seguir sincronizando.' };
+    } else switch (action) {
       case 'verificar':
         resultado = verificarCodigo(params);
         break;
@@ -528,6 +535,24 @@ function getDispositivos(row) {
   }
 
   return dispositivos;
+}
+
+/**
+ * La sincronización necesita, además del código, un dispositivo registrado en
+ * la licencia. Antes bastaba el código: quien lo tuviera podía bajar, pisar o
+ * vaciar los datos de ese cliente desde cualquier lado.
+ */
+function rechazoDeDispositivo(row, dispositivoId) {
+  if (!dispositivoId) {
+    return { success: false, razon: 'dispositivo_no_registrado',
+             mensaje: 'Actualiza la app (cierra y vuelve a abrir la página) para seguir sincronizando.' };
+  }
+  const registrado = getDispositivos(row).some(function (d) { return d && d.id === String(dispositivoId); });
+  if (!registrado) {
+    return { success: false, razon: 'dispositivo_no_registrado',
+             mensaje: 'Este dispositivo no está registrado en la licencia. Vuelve a activar Premium en Configuración.' };
+  }
+  return null;
 }
 
 function getMaxDispositivos(row) {
@@ -781,9 +806,13 @@ function obtenerDispositivos(params) {
       const dispositivos = getDispositivos(row);
       const maxDispositivos = getMaxDispositivos(row);
 
+      // Los ids van recortados, como en verificar: con el id completo se puede
+      // desvincular el dispositivo de otro.
       return {
         success: true,
-        dispositivos: dispositivos,
+        dispositivos: dispositivos.map(function (d) {
+          return { id: String(d.id || '').substring(0, 12) + '...', tipo: d.tipo, nombre: d.nombre, fechaRegistro: d.fechaRegistro };
+        }),
         maxDispositivos: maxDispositivos,
         disponibles: maxDispositivos - dispositivos.length
       };
@@ -841,6 +870,27 @@ function verificarHeartbeat(params) {
 
 // ==================== TRANSFERENCIA DE LICENCIA ====================
 
+const TRANSFERENCIAS_MAXIMAS = 2;
+const DIAS_ENTRE_TRANSFERENCIAS = 30;
+
+/**
+ * Anota una transferencia si cabe en el tope. Se guarda en las propiedades del
+ * script, con el código resumido (no en claro), la fecha de cada una.
+ */
+function registrarTransferencia(codigo) {
+  const props = PropertiesService.getScriptProperties();
+  const clave = 'transf_' + computeSyncHash('transferencia|' + codigo);
+  const ahora = Date.now();
+  const ventana = DIAS_ENTRE_TRANSFERENCIAS * 24 * 60 * 60 * 1000;
+  let fechas = [];
+  try { fechas = JSON.parse(props.getProperty(clave) || '[]'); } catch (e) { fechas = []; }
+  fechas = fechas.filter(function (f) { return typeof f === 'number' && ahora - f < ventana; });
+  if (fechas.length >= TRANSFERENCIAS_MAXIMAS) return { ok: false };
+  fechas.push(ahora);
+  props.setProperty(clave, JSON.stringify(fechas));
+  return { ok: true };
+}
+
 function transferirLicencia(params) {
   const codigo = params.codigo;
   const nuevoDispositivoId = params.nuevo_dispositivo_id;
@@ -862,6 +912,18 @@ function transferirLicencia(params) {
 
       if (!esEstadoActivo(row[COL.ESTADO]) || licenciaExpirada(infoFecha)) {
         return { success: false, mensaje: 'Licencia no válida' };
+      }
+
+      // Transferir deja la licencia en un solo dispositivo y saca a los demás,
+      // y solo pide el código. Para que un código filtrado no sirva para sacar
+      // al dueño una y otra vez, hay un tope: TRANSFERENCIAS_MAXIMAS cada
+      // DIAS_ENTRE_TRANSFERENCIAS días. Dos, para que el dueño pueda recuperarla
+      // una vez; pasado el tope, por soporte.
+      const permiso = registrarTransferencia(codigo);
+      if (!permiso.ok) {
+        return { success: false, razon: 'tope_transferencias',
+                 mensaje: 'Esta licencia ya se transfirió ' + TRANSFERENCIAS_MAXIMAS + ' veces en los últimos ' +
+                          DIAS_ENTRE_TRANSFERENCIAS + ' días. Para moverla otra vez escribe a soporte: jorge_clemente@empirica.mx' };
       }
 
       const dispositivos = [{
@@ -937,6 +999,9 @@ function obtenerDatosSync(params) {
         return { success: false, mensaje: 'Licencia expirada' };
       }
 
+      const rechazo = rechazoDeDispositivo(row, params.dispositivo_id);
+      if (rechazo) return rechazo;
+
       const datosSync = leerDatosSync(sheet, i + 1) || null;
       sheet.getRange(i + 1, COL.ULTIMO_ACCESO + 1).setValue(new Date());
 
@@ -984,6 +1049,9 @@ function guardarDatosSync(params) {
       if (licenciaExpirada(infoFecha)) {
         return { success: false, mensaje: 'Licencia expirada' };
       }
+
+      const rechazo = rechazoDeDispositivo(row, params.dispositivo_id);
+      if (rechazo) return rechazo;
 
       const rowNum = i + 1;
 
@@ -1052,6 +1120,9 @@ function respaldarYLimpiarSync(params) {
     if (!esEstadoActivo(row[COL.ESTADO])) {
       return { success: false, mensaje: 'Licencia inactiva' };
     }
+
+    const rechazo = rechazoDeDispositivo(row, params.dispositivo_id);
+    if (rechazo) return rechazo;
 
     const rowNum = i + 1;
     const actuales = leerColumnas(sheet, rowNum, COLUMNAS_DATOS);
