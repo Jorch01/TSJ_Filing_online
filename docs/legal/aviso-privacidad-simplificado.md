@@ -1,12 +1,12 @@
 # Aviso de privacidad simplificado — TSJ Filing Online
 
-> **BORRADOR PARA REVISIÓN JURÍDICA. No publicar hasta validarlo.** Versión propuesta: `[AAAA-MM-DD]`.
+> **BORRADOR PARA REVISIÓN JURÍDICA. No publicar hasta validarlo.** Versión propuesta: `2026-11-12`.
 > Fundamento: art. 16, fr. II, en relación con el art. 15, frs. I a IV, de la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (DOF 20-03-2025).
 > Pensado para la ventana del primer arranque, el pie de la sección Premium y el pie del sitio. Hay una versión corta para espacios reducidos al final.
 
 ---
 
-**`[Razón social]` (Empírica Legal Lab)**, con domicilio en `[domicilio, Cancún, Quintana Roo]`, es responsable de los datos personales que recaba de quienes usan TSJ Filing Online.
+**Empírica Legal (Empírica Legal Lab)**, con domicilio en Av. La Luna, número exterior 4, Supermanzana 44, C.P. 77506, Benito Juárez (Cancún), Quintana Roo, México, es responsable de los datos personales que recaba de quienes usan TSJ Filing Online.
 
 **Datos que tratamos:** nombre, teléfono, correo, datos de pago y fiscales (al contratar); código de licencia, identificador y tipo de dispositivo, IP y un resumen cifrado de las características de tu equipo (para la licencia y los límites del plan gratuito); estadísticas de uso; y lo que nos escribas. No pedimos datos sensibles.
 
@@ -16,7 +16,7 @@
 
 **Proveedores:** Google, Cloudflare, GitHub y WhatsApp tratan datos por cuenta nuestra, también fuera de México. No vendemos ni transferimos tus datos para fines de terceros.
 
-**Tus derechos (ARCO), dudas y revocación:** `[datospersonales@empirica.mx]` o WhatsApp 998 139 9930.
+**Tus derechos (ARCO), dudas y revocación:** jorge_clemente@empirica.mx o WhatsApp 998 139 9930.
 
 **Aviso de privacidad integral:** `tsjia.empirica.mx/aviso-de-privacidad/` y en la app, *Configuración › Privacidad*.
 
@@ -24,11 +24,11 @@
 
 ## Versión corta (pie de página, formularios)
 
-> `[Razón social]` (Empírica Legal Lab) trata tus datos para gestionar tu plan y tu licencia, aplicar los límites del plan gratuito y, si no lo desactivas, para estadísticas de uso. Los datos de tus expedientes se quedan en tu dispositivo, salvo que actives la sincronización cifrada. Conoce el aviso integral y tus derechos en `tsjia.empirica.mx/aviso-de-privacidad/`.
+> Empírica Legal (Empírica Legal Lab) trata tus datos para gestionar tu plan y tu licencia, aplicar los límites del plan gratuito y, si no lo desactivas, para estadísticas de uso. Los datos de tus expedientes se quedan en tu dispositivo, salvo que actives la sincronización cifrada. Conoce el aviso integral y tus derechos en `tsjia.empirica.mx/aviso-de-privacidad/`.
 
 ## Texto para la casilla al contratar o activar (consentimiento expreso)
 
-> ☐ He leído el [Aviso de privacidad] (versión `[AAAA-MM-DD]`) y consiento el tratamiento de mis datos personales, incluidos los financieros y fiscales necesarios para el pago y la facturación de mi plan.
+> ☐ He leído el [Aviso de privacidad] (versión 2026-11-12) y consiento el tratamiento de mis datos personales, incluidos los financieros y fiscales necesarios para el pago y la facturación de mi plan.
 
 ## Texto para la ventana previa al primer uso de la IA
 

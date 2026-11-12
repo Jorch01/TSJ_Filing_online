@@ -1,15 +1,15 @@
 # Aviso de privacidad integral — TSJ Filing Online
 
-> **BORRADOR PARA REVISIÓN JURÍDICA. No publicar hasta validarlo.** Versión propuesta: `[AAAA-MM-DD]`.
-> Completar los datos entre corchetes. Fundamento: arts. 14, 15 y 16 de la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (DOF 20-03-2025, última reforma DOF 14-11-2025).
+> **BORRADOR PARA REVISIÓN JURÍDICA. No publicar hasta validarlo.** Versión propuesta: `2026-11-12`.
+> Lo que sigue entre corchetes falta confirmarlo. Fundamento: arts. 14, 15 y 16 de la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (DOF 20-03-2025, última reforma DOF 14-11-2025).
 
-Última actualización: `[día] de [mes] de [año]`.
+Última actualización: 12 de noviembre de 2026.
 
 ## 1. Quién es el responsable
 
-`[Razón social completa]` ("**Empírica Legal Lab**" o "**Empírica**"), con domicilio en `[calle, número, colonia, código postal, Cancún, Quintana Roo, México]`, es responsable del tratamiento de los datos personales de quienes usan y contratan **TSJ Filing Online** (la "**Herramienta**"), en la app y en el sitio tsjia.empirica.mx, conforme a este aviso.
+**Empírica Legal** ("**Empírica Legal Lab**" o "**Empírica**"), con domicilio en Av. La Luna, número exterior 4, Supermanzana 44, C.P. 77506, Benito Juárez (Cancún), Quintana Roo, México, es responsable del tratamiento de los datos personales de quienes usan y contratan **TSJ Filing Online** (la "**Herramienta**"), en la app y en el sitio tsjia.empirica.mx, conforme a este aviso.
 
-Persona o departamento de datos personales: `[nombre o área]`, correo `[datospersonales@empirica.mx]`, WhatsApp 998 139 9930.
+Departamento de datos personales: correo **jorge_clemente@empirica.mx**, WhatsApp 998 139 9930.
 
 ### Un aviso importante sobre los datos de tus clientes
 
@@ -65,15 +65,13 @@ Los datos de tu licencia se guardan en una hoja de cálculo de Google de Empíri
 ### 4.3 Sincronización entre dispositivos (Premium)
 Si la activas, la app comprime y **cifra en tu dispositivo** (AES-256-GCM) todo tu contenido y sube el bloque cifrado a la hoja de Google de Empírica, junto con un respaldo que se guarda cuando se hace un borrado masivo, para poder devolverte lo que borraste por error.
 
-`[OPCIÓN A, si se mantiene el diseño actual]` **La clave se obtiene de tu código de activación.** Como Empírica genera y registra esos códigos, **técnicamente podría descifrar** el bloque. Nos comprometemos a no hacerlo, salvo que tú lo pidas por escrito para recuperar tu información o que lo ordene una autoridad competente. El acceso a la hoja está limitado a `[personas o cargos]`. Si eso no te basta, no actives la sincronización y haz tus respaldos con la exportación de la app.
-
-`[OPCIÓN B, si se cambia a una frase secreta]` La clave se obtiene de una frase secreta que solo tú conoces. Empírica no la recibe y no puede descifrar el bloque ni recuperarlo si la olvidas.
+**La clave se obtiene de tu código de activación.** Como Empírica genera y registra esos códigos, **técnicamente podría descifrar** el bloque. Nos comprometemos a no hacerlo, salvo que tú lo pidas por escrito para recuperar tu información o que lo ordene una autoridad competente. El acceso a la hoja está limitado a `[personas o cargos]`. Para descargar, reemplazar o borrar el bloque no basta el código: la petición tiene que venir de un dispositivo registrado en tu licencia. Si eso no te basta, no actives la sincronización y haz tus respaldos con la exportación de la app.
 
 ### 4.4 Consultas a portales oficiales
 Para consultar las sesiones de Tribunales Colegiados (SISE del Consejo de la Judicatura Federal), el IMPI (MARCia, Marcanet, SIGA) y otros portales que no admiten consultas directas desde el navegador, la app envía los datos de la búsqueda a un servidor intermedio de Empírica en Cloudflare, que la reenvía al portal y te devuelve la respuesta. Las respuestas de las sesiones se guardan hasta 6 horas para no repetir la consulta. Los portales son fuentes de acceso público y tratan las consultas conforme a sus propios avisos.
 
 ### 4.5 Límites del plan gratuito
-Para contar las búsquedas sin cuentas ni registro, el servidor intermedio guarda **resúmenes cifrados (SHA-256)** de tu IP combinada con la huella del equipo, de la huella sola y del identificador de dispositivo, junto con el número de búsquedas. No guarda la IP ni la huella en claro, pero estos resúmenes permiten reconocer el equipo, por lo que los tratamos como datos personales.
+Para contar las búsquedas sin cuentas ni registro, el servidor intermedio guarda **resúmenes cifrados (SHA-256)** de tu IP sola, de tu IP combinada con la huella del equipo, de la huella sola y del identificador de dispositivo, junto con el número de búsquedas. No guarda la IP ni la huella en claro, pero estos resúmenes permiten reconocer el equipo, por lo que los tratamos como datos personales.
 
 ## 5. Servicios que conectas tú
 
@@ -103,17 +101,15 @@ Estas funciones son opcionales y usan **tus propias claves o cuentas**. Los dato
 
 ## 7. Cuánto tiempo los conservamos
 
-`[Plazos propuestos; confirmar]`
-
 | Datos | Plazo |
 |---|---|
-| Licencia y dispositivos | Mientras esté vigente el plan y `[2 años]` después de vencido, para aclaraciones y nuevas contrataciones; luego se bloquean y se eliminan |
+| Licencia y dispositivos | Mientras esté vigente el plan y 2 años después de vencido, para aclaraciones y nuevas contrataciones; luego se bloquean y se eliminan |
 | Comprobantes de pago y datos fiscales | El plazo que exigen las disposiciones fiscales (5 años, Código Fiscal de la Federación, art. 30) |
-| Bloque sincronizado y su respaldo | Mientras esté vigente el plan y `[90 días]` después de vencido, para que puedas renovar sin perder nada; luego se eliminan. Puedes pedir que se borren antes |
-| Contadores del plan gratuito | Mensuales: 40 días. Diarios: 2 días. Totales (estudios de viabilidad y consultas de sesiones): `[13 meses]` desde el último uso |
+| Bloque sincronizado y su respaldo | Mientras esté vigente el plan y **30 días** después de vencido, para que puedas renovar sin perder nada; luego se eliminan. Puedes pedir que se borren antes |
+| Contadores del plan gratuito | Mensuales: 40 días. Diarios: 2 días. Totales (estudios de viabilidad y consultas de sesiones): 13 meses desde el último uso |
 | Caché de consultas a portales | 6 horas |
-| Estadísticas de uso | `[2 meses]`, según la configuración de Google Analytics |
-| Reportes y conversaciones | `[2 años]` desde la última comunicación |
+| Estadísticas de uso | 2 meses, según la configuración de Google Analytics |
+| Reportes y conversaciones | 2 años desde la última comunicación |
 
 Concluidos los plazos, los datos se bloquean el tiempo que dure la prescripción de las acciones derivadas de la relación y después se suprimen (arts. 2, fr. III; 10 y 24).
 
@@ -121,7 +117,7 @@ Concluidos los plazos, los datos se bloquean el tiempo que dure la prescripción
 
 Puedes **acceder** a tus datos, **rectificarlos**, **cancelarlos** y **oponerte** a su tratamiento (arts. 21 a 34 de la Ley).
 
-**Cómo:** envía tu solicitud al correo `[datospersonales@empirica.mx]` o por WhatsApp al 998 139 9930, con:
+**Cómo:** envía tu solicitud al correo **jorge_clemente@empirica.mx** o por WhatsApp al 998 139 9930, con:
 
 1. Tu nombre y un correo o medio para responderte.
 2. Copia de una identificación oficial o, si actúas por otra persona, del documento que acredite tu representación y la identificación de ambos.
