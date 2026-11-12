@@ -54,6 +54,7 @@ function cargar() {
     for (const n of ['_clasificarErrorFetch', '_mensajeErrorFetch',
                      'CELDAS_DATOS_SYNC', 'TAMANO_POR_CELDA',
                      'LIMITE_CELDA_SHEETS', 'AVISO_CELDA_SHEETS',
+                     'CELDAS_MAXIMAS_SYNC', '_celdasSync',
                      '_partirParaCeldas', 'subirDatosRemotos']) {
         vm.runInContext(extraerDeclaracion(src, n), sandbox, { filename: `sync.js:${n}` });
     }
@@ -182,6 +183,22 @@ async function main() {
     verificar('cerca del límite avisa en consola sin bloquear',
         estado.avisosConsola.some(a => /caracteres que admite la celda/.test(a)),
         JSON.stringify(estado.avisosConsola));
+
+    // ---------- Con el Apps Script nuevo caben cinco veces más ----------
+    // Un servidor anterior no anuncia "celdas": se sigue en cuatro, porque
+    // los trozos de más se perderían. El nuevo anuncia 20.
+    igual('sin anuncio del servidor se usan cuatro celdas', leer('_celdasSync()'), 4);
+    vm.runInContext('var syncState = { celdasServidor: 20 };', sandbox);
+    igual('con el servidor nuevo, veinte', leer('_celdasSync()'), 20);
+    igual('partir: una parte por cada una', partir('x'.repeat(100)).length, 20);
+    let falloGrande = null;
+    try { await sandbox.subirDatosRemotos('x'.repeat(limite * 3), null); } catch (e) { falloGrande = e; }
+    verificar('un bloque tres veces el límite viejo ya no se rechaza por tamaño',
+        falloGrande && falloGrande.tipoFallo !== 'tamano' && /__llego_a_la_red__/.test(falloGrande.message),
+        falloGrande && falloGrande.message);
+    vm.runInContext('syncState.celdasServidor = 999;', sandbox);
+    igual('y nunca más de las que entiende la app', leer('_celdasSync()'), 20);
+    vm.runInContext('syncState.celdasServidor = 0;', sandbox);
 
     // ---------- Con cuántos datos se llega al límite ----------
     // No es una aserción sobre el código, sino una red de seguridad: si alguien

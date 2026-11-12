@@ -165,6 +165,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         await initDB();
         await inicializarApp();
         Logger.log('Aplicación inicializada correctamente');
+        // Pedir que el navegador no borre los datos por su cuenta. Va tarde a
+        // propósito: hace falta saber si hay licencia (sincronización) para
+        // decidir si vale la pena avisar.
+        if (typeof revisarAlmacenamientoPersistente === 'function') {
+            setTimeout(async () => {
+                try {
+                    await revisarAlmacenamientoPersistente({
+                        haySync: typeof estadoPremium !== 'undefined' && !!(estadoPremium.activo && estadoPremium.codigo),
+                        hayRespaldoAuto: (await obtenerConfig('auto_backup')) === 'true'
+                    });
+                } catch (e) { console.warn('No se pudo revisar el almacenamiento:', e); }
+            }, 4000);
+        }
     } catch (error) {
         Logger.error('Error al inicializar:', error);
         mostrarToast('Error al cargar la aplicación', 'error');
@@ -5538,11 +5551,30 @@ async function importarDatos(event) {
             advertenciaPremium = `\n\n⚠️ CUENTA GRATUITA: Solo se importarán los ${PREMIUM_CONFIG.limiteExpedientes} expedientes más recientes de ${totalExpedientes} totales.\n\nActiva Premium (${textoPrecioDesde()}) para importar todos tus expedientes.`;
         }
 
-        const mensajeConfirm = esPremium
+        // Importar REEMPLAZA lo que hay en este dispositivo. Antes el aviso
+        // solo decía "¿Importar N expedientes?" y quien quería sumar un
+        // respaldo viejo a lo que ya tenía perdía todo lo capturado después.
+        const hayAqui = typeof hayDatosLocales === 'function' && await hayDatosLocales();
+        const avisoReemplazo = hayAqui
+            ? '\n\nOJO: esto REEMPLAZA los datos que hay ahora en este dispositivo. ' +
+              'Antes de importar se descargará una copia de lo actual (tsj_antes_de_importar_….json) por si necesitas volver atrás.'
+            : '';
+
+        const mensajeConfirm = (esPremium
             ? `¿Importar ${totalExpedientes} expedientes, ${totalNotas} notas y ${totalEventos} eventos?`
-            : `¿Importar ${expedientesAImportar.length} expedientes, ${totalNotas} notas y ${totalEventos} eventos?${advertenciaPremium}`;
+            : `¿Importar ${expedientesAImportar.length} expedientes, ${totalNotas} notas y ${totalEventos} eventos?${advertenciaPremium}`) +
+            avisoReemplazo;
 
         if (confirm(mensajeConfirm)) {
+            if (hayAqui) {
+                // La copia va antes de borrar nada. Si no se puede descargar,
+                // no se sigue: sin ella, reemplazar no tiene vuelta atrás.
+                const actual = await exportarTodosDatos();
+                const fechaHora = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                descargarArchivo(`tsj_antes_de_importar_${fechaHora}.json`,
+                    JSON.stringify(actual, null, 2), 'application/json');
+            }
+
             // Crear copia de datos con expedientes limitados si no es premium
             const datosAImportar = {
                 ...datos,
