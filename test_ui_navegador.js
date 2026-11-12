@@ -3246,6 +3246,480 @@ async function probarViabilidadMarca(navegador) {
     }
 }
 
+/**
+ * Que un abogado no pierda expedientes, plazos ni notas.
+ *
+ * Cada contexto de Chromium es un dispositivo con su propio IndexedDB; todos
+ * hablan con el Apps Script de verdad (codigo.gs ejecutado en Node, ver
+ * test_fixtures/apps_script_simulado.js) sobre una misma hoja. Así se ven los
+ * fallos que solo aparecen con red real de por medio: una descarga que no
+ * llega, una subida cortada, dos pestañas, dos dispositivos.
+ */
+async function probarQueNoSePierdenDatos(navegador) {
+    const { crearAppsScriptSimulado } = require('./test_fixtures/apps_script_simulado.js');
+    const CODIGO = 'LIC-DATOS';
+    const JUZGADO = 'JUZGADO PRIMERO CIVIL CANCUN';
+
+    // Un dispositivo: contexto nuevo, la app abierta y la licencia puesta.
+    // "fallos" decide qué le pasa a cada acción del Apps Script:
+    //   'antes'   la petición no llega (sin señal)
+    //   'despues' el servidor la procesa pero la respuesta se pierde
+    //   número    milisegundos de espera antes de responder (red lenta)
+    const abrirDispositivo = async (nube, fallos = {}, opciones = {}) => {
+        const ctx = await navegador.newContext({ acceptDownloads: true, viewport: { width: 1200, height: 800 } });
+        if (opciones.persistencia !== undefined) {
+            await ctx.addInitScript((p) => {
+                if (navigator.storage) {
+                    navigator.storage.persist = async () => p;
+                    navigator.storage.persisted = async () => p;
+                }
+            }, opciones.persistencia);
+        }
+        await ctx.route('https://script.google.com/**', async (r) => {
+            const req = r.request();
+            const params = req.method() === 'GET'
+                ? Object.fromEntries(new URL(req.url()).searchParams)
+                : JSON.parse(req.postData() || '{}');
+            const modo = fallos[params.action];
+            if (modo === 'antes') return r.abort('internetdisconnected');
+            if (typeof modo === 'number') await new Promise(x => setTimeout(x, modo));
+            const respuesta = nube.llamar(params);
+            if (modo === 'despues') { fallos[params.action] = null; return r.abort('connectionreset'); }
+            return r.fulfill({ status: 200, contentType: 'application/json',
+                headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(respuesta) });
+        });
+        const pagina = await ctx.newPage();
+        const errores = [];
+        pagina.on('pageerror', e => errores.push(e.message));
+        await pagina.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await pagina.waitForFunction(() => typeof crearExpedienteCore === 'function' && typeof db !== 'undefined' && !!db,
+            { timeout: 20000 });
+        // El dispositivo se registra en la licencia como lo haría al activarla:
+        // si no, la verificación periódica de la app la da por inválida y
+        // apaga la sincronización a media prueba.
+        const idDispositivo = await pagina.evaluate(() => obtenerDeviceId());
+        nube.llamar({ action: 'registrar_dispositivo', codigo: CODIGO, dispositivo_id: idDispositivo, usuario: 'Prueba' });
+        await pagina.evaluate((codigo) => {
+            estadoPremium.activo = true; estadoPremium.codigo = codigo; estadoPremium.dispositivoId = obtenerDeviceId();
+            // Los reintentos esperan 2, 4 y 8 s; aquí basta con un instante.
+            // Los plazos largos (el tiempo límite de cada petición) se quedan.
+            const original = window.setTimeout;
+            window.setTimeout = (f, ms, ...a) => original(f, (ms >= 1000 && ms <= 9000) ? 20 : ms, ...a);
+        }, CODIGO);
+        return { ctx, pagina, fallos, errores };
+    };
+    const resumen = (pagina) => pagina.evaluate(async () => ({
+        expedientes: (await obtenerExpedientes()).map(e => e.numero).sort(),
+        archivados: (await obtenerExpedientesArchivados()).map(e => e.numero).sort(),
+        notas: (await obtenerNotas()).map(n => n.titulo).sort(),
+        pendienteSync: hayPendienteSync()
+    }));
+    const sincronizar = (pagina) => pagina.evaluate(async () => {
+        const toasts = [];
+        const original = window.mostrarToast;
+        window.mostrarToast = (m, t) => { toasts.push([m, t]); };
+        try { await sincronizarDatos(); } finally { window.mostrarToast = original; }
+        return toasts;
+    });
+    const abiertos = [];
+    const abrir = async (...a) => { const d = await abrirDispositivo(...a); abiertos.push(d); return d; };
+
+    try {
+        // ---- 1. Teléfono sin datos y sin señal: la nube no se vacía ----
+        // El caso más grave encontrado: Safari borró los datos del teléfono (o
+        // es uno nuevo), la descarga falla por mala señal y la subida sí pasa.
+        // Antes se subía la base vacía encima de todo lo de la nube.
+        {
+            const nube = crearAppsScriptSimulado(CODIGO);
+            const pc = await abrir(nube);
+            await pc.pagina.evaluate(async (j) => {
+                for (let i = 0; i < 5; i++) await crearExpedienteCore({ numero: `${100 + i}/2026`, institucion: 'TSJ', juzgado: j });
+                await crearNotaCore({ titulo: 'Plazo para contestar', contenido: 'vence el viernes' });
+            }, JUZGADO);
+            await sincronizar(pc.pagina);
+            const antes = nube.bloque();
+            verificar('datos: la computadora subió a la nube', antes.length > 1000, String(antes.length));
+
+            const telefono = await abrir(nube, { obtener_sync: 'antes' });
+            const avisos = await sincronizar(telefono.pagina);
+            igual('datos: si la descarga falla, la nube queda como estaba', nube.bloque() === antes, true);
+            verificar('datos: y se avisa que no se subió nada',
+                avisos.some(([m, t]) => t === 'error' && /No se subió nada/.test(m)), JSON.stringify(avisos));
+
+            telefono.fallos.obtener_sync = null;
+            await sincronizar(telefono.pagina);
+            const r = await resumen(telefono.pagina);
+            igual('datos: con señal, el teléfono recibe los cinco expedientes', r.expedientes.length, 5);
+            igual('datos: y la nota', r.notas, ['Plazo para contestar']);
+
+            // Un bloque que no se puede leer (cortado) tampoco se pisa.
+            nube.hoja._datos[1][10] = String(nube.hoja._datos[1][10]).slice(0, 200);
+            const dañado = nube.bloque();
+            const otro = await abrir(nube);
+            await otro.pagina.evaluate(async (j) => crearExpedienteCore({ numero: '999/2026', institucion: 'TSJ', juzgado: j }), JUZGADO);
+            await sincronizar(otro.pagina);
+            igual('datos: un bloque ilegible en la nube no se sobrescribe', nube.bloque() === dañado, true);
+            igual('datos: y el expediente de este dispositivo sigue aquí',
+                (await resumen(otro.pagina)).expedientes, ['999/2026']);
+        }
+
+        // ---- 2. Red cortada a media subida ----
+        {
+            const nube = crearAppsScriptSimulado(CODIGO);
+            const a = await abrir(nube, { guardar_sync: 'antes' });
+            await a.pagina.evaluate(async (j) => {
+                await crearExpedienteCore({ numero: '200/2026', institucion: 'TSJ', juzgado: j });
+                marcarPendienteSync();
+            }, JUZGADO);
+            await sincronizar(a.pagina);
+            igual('datos: subida que no llegó: el cambio queda pendiente', (await resumen(a.pagina)).pendienteSync, true);
+            igual('datos: y la nube no tiene nada a medias', nube.bloque(), '');
+
+            // El servidor escribe, pero la respuesta no vuelve (se cortó al
+            // final). El reintento choca con la versión nueva, vuelve a bajar y
+            // termina bien, sin duplicar.
+            a.fallos.guardar_sync = 'despues';
+            await sincronizar(a.pagina);
+            igual('datos: respuesta perdida: tras reintentar ya no queda pendiente', (await resumen(a.pagina)).pendienteSync, false);
+            const b = await abrir(nube);
+            await sincronizar(b.pagina);
+            igual('datos: el otro dispositivo recibe el expediente una sola vez', (await resumen(b.pagina)).expedientes, ['200/2026']);
+        }
+
+        // ---- 3. Lo que se guarda mientras viaja una subida ----
+        // Antes se borraba el aviso de pendiente al terminar y esa nota se
+        // quedaba solo aquí, sin que nada lo indicara.
+        {
+            const nube = crearAppsScriptSimulado(CODIGO);
+            const a = await abrir(nube, { guardar_sync: 1500 });
+            await a.pagina.evaluate(async (j) => {
+                await crearExpedienteCore({ numero: '300/2026', institucion: 'TSJ', juzgado: j });
+                marcarPendienteSync();
+                const enCurso = sincronizarDatos();
+                await new Promise(x => setTimeout(x, 600));
+                await agregarNota({ titulo: 'Nota escrita durante la subida', contenido: 'audiencia el 3' });
+                await marcarYSincronizar();
+                await enCurso;
+            }, JUZGADO);
+            await a.pagina.waitForFunction(() => !hayPendienteSync() && !syncState.syncInProgress, { timeout: 15000 }).catch(() => {});
+            const b = await abrir(nube);
+            await sincronizar(b.pagina);
+            igual('datos: la nota escrita durante una subida también llega a la nube',
+                (await resumen(b.pagina)).notas, ['Nota escrita durante la subida']);
+
+            // ---- Dos pestañas del mismo dispositivo ----
+            // Mientras una sube, la otra guarda: el candado entre pestañas
+            // hace que la segunda no suba, y lo suyo debe ir en otra vuelta.
+            const pestana2 = await a.ctx.newPage();
+            await pestana2.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+            await pestana2.waitForFunction(() => typeof crearExpedienteCore === 'function' && typeof db !== 'undefined' && !!db, { timeout: 20000 });
+            await pestana2.evaluate((c) => { estadoPremium.activo = true; estadoPremium.codigo = c; estadoPremium.dispositivoId = obtenerDeviceId(); }, CODIGO);
+            const subida = a.pagina.evaluate(async (j) => {
+                await crearExpedienteCore({ numero: '301/2026', institucion: 'TSJ', juzgado: j });
+                marcarPendienteSync();
+                await sincronizarDatos();
+            }, JUZGADO);
+            await a.pagina.waitForTimeout(500);
+            await pestana2.evaluate(async () => {
+                await agregarNota({ titulo: 'Nota de la otra pestaña', contenido: 'x' });
+                await marcarYSincronizar();
+            });
+            await subida;
+            await a.pagina.waitForFunction(() => !hayPendienteSync() && !syncState.syncInProgress, { timeout: 15000 }).catch(() => {});
+            await sincronizar(b.pagina);
+            const rb = await resumen(b.pagina);
+            igual('datos: lo guardado en otra pestaña durante la subida llega a la nube',
+                rb.notas.includes('Nota de la otra pestaña') && rb.expedientes.includes('301/2026'), true);
+
+            // ---- Una versión nueva de la base con la app abierta ----
+            // La pestaña vieja suelta la base en vez de bloquear la nueva.
+            // Antes la nueva se quedaba colgada (y la app, en blanco).
+            await sincronizar(a.pagina);   // aplicar datos abría conexiones que nunca cerraba
+            const apertura = await pestana2.evaluate(() => new Promise(res => {
+                const q = indexedDB.open('TSJFilingDB', 99);
+                q.onblocked = () => res('bloqueada');
+                q.onsuccess = () => { q.result.close(); res('abrió'); };
+                q.onerror = () => res('error');
+                setTimeout(() => res('colgada'), 5000);
+            }));
+            igual('datos: otra pestaña abierta no bloquea una versión nueva de la base', apertura, 'abrió');
+            verificar('datos: y la pestaña vieja avisa que hay que recargar',
+                await a.pagina.evaluate(() => /Recarga esta página/.test(document.body.innerText)) ||
+                await a.pagina.evaluate(() => db === null));
+            await pestana2.close();
+        }
+
+        // ---- 4a. Dos dispositivos dan de alta cosas entre sincronizaciones ----
+        // Cada base numera por su cuenta desde el último id que bajó: los dos
+        // expedientes nuevos salen con el mismo id. Antes cada dispositivo
+        // veía solo el suyo (el otro lo pisaba al guardar) y las notas de los
+        // dos colgaban del que sobrevivía.
+        {
+            const nube = crearAppsScriptSimulado(CODIGO);
+            const pc = await abrir(nube);
+            await pc.pagina.evaluate(async (j) => crearExpedienteCore({ numero: '10/2026', institucion: 'TSJ', juzgado: j }), JUZGADO);
+            await sincronizar(pc.pagina);
+            const tel = await abrir(nube);
+            await sincronizar(tel.pagina);
+            await pc.pagina.evaluate(async (j) => {
+                const id = await crearExpedienteCore({ numero: '11/2026', institucion: 'TSJ', juzgado: j });
+                await crearNotaCore({ titulo: 'Contestar demanda', contenido: 'de la computadora', expedienteId: id });
+                await crearPendienteCore({ titulo: 'Copias certificadas', fechaLimite: '2026-12-01', expedienteId: id });
+                await sincronizarDatos();
+            }, JUZGADO);
+            // El teléfono no bajó lo nuevo antes de capturar (sin señal).
+            tel.fallos.obtener_sync = 'antes';
+            await tel.pagina.evaluate(async (j) => {
+                const id = await crearExpedienteCore({ numero: '12/2026', institucion: 'TSJ', juzgado: j });
+                await crearNotaCore({ titulo: 'Ofrecer pruebas', contenido: 'del teléfono', expedienteId: id });
+                await crearPendienteCore({ titulo: 'Ratificar perito', fechaLimite: '2026-12-02', expedienteId: id });
+            }, JUZGADO);
+            tel.fallos.obtener_sync = null;
+            await sincronizar(tel.pagina); await sincronizar(pc.pagina); await sincronizar(tel.pagina);
+            const vista = (d) => d.pagina.evaluate(async () => {
+                const exps = await obtenerExpedientes();
+                const num = (id) => (exps.find(e => e.id === id) || {}).numero;
+                const eventos = await obtenerEventos();
+                return {
+                    expedientes: exps.map(e => e.numero).sort(),
+                    ids: new Set(exps.map(e => e.id)).size === exps.length,
+                    notas: (await obtenerNotas()).map(n => `${n.titulo}→${num(n.expedienteId)}`).sort(),
+                    pendientes: (await obtenerPendientes()).map(p => `${p.titulo}→${num(p.expedienteId)}→${(eventos.find(e => e.id === p.eventoId) || {}).fechaInicio ? 'agendado' : 'sin fecha'}`).sort()
+                };
+            });
+            for (const [nombre, d] of [['computadora', pc], ['teléfono', tel]]) {
+                const v = await vista(d);
+                igual(`ids: en la ${nombre} están los tres expedientes`, v.expedientes, ['10/2026', '11/2026', '12/2026']);
+                igual(`ids: en la ${nombre} ningún id se repite`, v.ids, true);
+                igual(`ids: en la ${nombre} cada nota sigue en su expediente`, v.notas,
+                    ['Contestar demanda→11/2026', 'Ofrecer pruebas→12/2026']);
+                igual(`ids: en la ${nombre} cada pendiente, en su expediente y agendado`, v.pendientes,
+                    ['Copias certificadas→11/2026→agendado', 'Ratificar perito→12/2026→agendado']);
+            }
+            // Y se quedan quietos: otra vuelta no cambia nada ni vuelve a subir.
+            const antes = nube.bloque();
+            await sincronizar(pc.pagina); await sincronizar(tel.pagina);
+            igual('ids: los dos dispositivos convergen (nada más que subir)', nube.bloque() === antes, true);
+
+            // Dos notas sin texto, solo título, el mismo día y en el mismo
+            // expediente: son dos, no una. Y borrar una no se lleva a la otra.
+            await pc.pagina.evaluate(async () => {
+                const e = (await obtenerExpedientes()).find(x => x.numero === '10/2026');
+                await crearNotaCore({ titulo: 'Llamar al cliente', contenido: '', expedienteId: e.id });
+                await crearNotaCore({ titulo: 'Pagar derechos', contenido: '', expedienteId: e.id });
+                await sincronizarDatos();
+                const borrar = (await obtenerNotas()).find(n => n.titulo === 'Pagar derechos');
+                await eliminarNotaCore(borrar.id);
+                await sincronizarDatos();
+            });
+            await sincronizar(tel.pagina);
+            igual('notas: dos notas solo con título no se funden en una, y borrar una deja la otra',
+                (await tel.pagina.evaluate(async () => (await obtenerNotas()).map(n => n.titulo).sort())),
+                ['Contestar demanda', 'Llamar al cliente', 'Ofrecer pruebas']);
+        }
+
+        // ---- 4b. Dos dispositivos sin conexión editan el mismo expediente ----
+        {
+            const nube = crearAppsScriptSimulado(CODIGO);
+            const pc = await abrir(nube);
+            await pc.pagina.evaluate(async (j) => {
+                await crearExpedienteCore({ numero: '400/2026', institucion: 'TSJ', juzgado: j, comentario: 'inicial', actor: 'Pérez' });
+                await crearExpedienteCore({ numero: '401/2026', institucion: 'TSJ', juzgado: j });
+            }, JUZGADO);
+            await sincronizar(pc.pagina);
+            const tel = await abrir(nube);
+            await sincronizar(tel.pagina);
+
+            // Los dos sin red; cada uno cambia un campo distinto y escribe una nota.
+            pc.fallos.obtener_sync = 'antes'; tel.fallos.obtener_sync = 'antes';
+            await pc.pagina.evaluate(async () => {
+                const e = (await obtenerExpedientes()).find(x => x.numero === '400/2026');
+                await actualizarExpediente(e.id, { comentario: 'audiencia movida al 20' });
+                await agregarNota({ titulo: 'Nota de la computadora', contenido: '', expedienteId: e.id });
+                marcarPendienteSync(); await sincronizarDatos();
+            });
+            await tel.pagina.evaluate(async () => {
+                const e = (await obtenerExpedientes()).find(x => x.numero === '400/2026');
+                await actualizarExpediente(e.id, { actor: 'Pérez López' });
+                await agregarNota({ titulo: 'Nota del teléfono', contenido: '', expedienteId: e.id });
+                // Y borra el otro expediente.
+                const b = (await obtenerExpedientes()).find(x => x.numero === '401/2026');
+                await eliminarExpediente(b.id, true);
+                marcarPendienteSync(); await sincronizarDatos();
+            });
+            igual('datos: sin conexión, los cambios quedan pendientes', [(await resumen(pc.pagina)).pendienteSync, (await resumen(tel.pagina)).pendienteSync], [true, true]);
+            pc.fallos.obtener_sync = null; tel.fallos.obtener_sync = null;
+            await sincronizar(tel.pagina); await sincronizar(pc.pagina); await sincronizar(tel.pagina);
+            for (const [nombre, d] of [['computadora', pc], ['teléfono', tel]]) {
+                const r = await d.pagina.evaluate(async () => {
+                    const e = (await obtenerExpedientes()).find(x => x.numero === '400/2026');
+                    return { e: e && [e.comentario, e.actor], notas: (await obtenerNotas()).filter(n => n.expedienteId === (e && e.id)).map(n => n.titulo).sort(),
+                             todos: (await obtenerExpedientes()).map(x => x.numero).sort() };
+                });
+                igual(`datos: en la ${nombre} se juntan las dos ediciones`, r.e, ['audiencia movida al 20', 'Pérez López']);
+                igual(`datos: en la ${nombre} están las dos notas, en su expediente`, r.notas, ['Nota de la computadora', 'Nota del teléfono']);
+                igual(`datos: en la ${nombre} el borrado también llegó`, r.todos, ['400/2026']);
+            }
+
+            // ---- 5. Restaurar un respaldo viejo no deshace lo más nuevo ----
+            const respaldoViejo = await pc.pagina.evaluate(() => exportarTodosDatos());
+            await tel.pagina.evaluate(async () => {
+                const e = (await obtenerExpedientes()).find(x => x.numero === '400/2026');
+                await new Promise(x => setTimeout(x, 30));
+                await actualizarExpediente(e.id, { comentario: 'NUEVO: sentencia el 30' });
+            });
+            await sincronizar(tel.pagina);
+            await pc.pagina.evaluate(async (d) => { await importarTodosDatos(d, true); }, respaldoViejo);
+            await sincronizar(pc.pagina); await sincronizar(tel.pagina);
+            const comentario = (d) => d.pagina.evaluate(async () => (await obtenerExpedientes()).find(x => x.numero === '400/2026').comentario);
+            igual('datos: restaurar un respaldo viejo no pisa la edición más nueva del otro dispositivo',
+                [await comentario(pc), await comentario(tel)], ['NUEVO: sentencia el 30', 'NUEVO: sentencia el 30']);
+        }
+
+        // ---- 6. Respaldo JSON completo y restauración en otro dispositivo ----
+        {
+            const nube = crearAppsScriptSimulado(CODIGO);
+            const a = await abrir(nube);
+            const exportado = await a.pagina.evaluate(async (j) => {
+                const carpetaId = await agregarCarpeta({ nombre: 'Caso Hernández' });
+                const e1 = await crearExpedienteCore({ numero: '600/2026', institucion: 'TSJ', juzgado: j });
+                const e2 = await crearExpedienteCore({ numero: '601/2026', institucion: 'TSJ', juzgado: j });
+                await actualizarExpediente(e1, { carpetaId });
+                await crearNotaCore({ titulo: 'Nota del archivado', contenido: 'se concluyó', expedienteId: e2 });
+                await crearEventoCore({ titulo: 'Audiencia constitucional', tipo: 'audiencia', fechaInicio: '2026-12-10T10:00', expedienteId: e1 });
+                await crearPendienteCore({ titulo: 'Presentar alegatos', fechaLimite: '2026-12-05', expedienteId: e1 });
+                await archivarExpedienteDB(e2, true, 'concluido');
+                return await exportarTodosDatos();
+            }, JUZGADO);
+            igual('respaldo: incluye los expedientes archivados', exportado.expedientes.map(e => e.numero).sort(), ['600/2026', '601/2026']);
+
+            // Otro dispositivo, sin sincronización: solo el archivo.
+            const b = await abrir(nube);
+            await b.pagina.evaluate(() => { estadoPremium.activo = false; estadoPremium.codigo = null; });
+            const r = await b.pagina.evaluate(async (d) => {
+                await importarTodosDatos(d, true);
+                const exps = [...await obtenerExpedientes(), ...await obtenerExpedientesArchivados()];
+                const porId = new Map(exps.map(e => [e.id, e]));
+                const carpetas = await obtenerCarpetas();
+                const notas = await obtenerNotas();
+                const eventos = await obtenerEventos();
+                const pendientes = await obtenerPendientes();
+                const p = pendientes.find(x => x.titulo === 'Presentar alegatos');
+                const espejo = p && eventos.find(ev => ev.id === p.eventoId);
+                return {
+                    archivados: (await obtenerExpedientesArchivados()).map(e => e.numero),
+                    carpeta: (carpetas.find(c => c.id === (exps.find(e => e.numero === '600/2026') || {}).carpetaId) || {}).nombre,
+                    notaEn: (porId.get((notas.find(n => n.titulo === 'Nota del archivado') || {}).expedienteId) || {}).numero,
+                    eventoEn: (porId.get((eventos.find(ev => ev.titulo === 'Audiencia constitucional') || {}).expedienteId) || {}).numero,
+                    pendienteEn: p && (porId.get(p.expedienteId) || {}).numero,
+                    espejo: !!espejo && espejo.pendienteId === p.id,
+                    sellosConservados: exps.find(e => e.numero === '600/2026').fechaCreacion === d.expedientes.find(e => e.numero === '600/2026').fechaCreacion
+                };
+            }, exportado);
+            igual('respaldo: el archivado vuelve archivado', r.archivados, ['601/2026']);
+            igual('respaldo: el expediente vuelve a su carpeta', r.carpeta, 'Caso Hernández');
+            igual('respaldo: la nota del archivado sigue en su expediente', r.notaEn, '601/2026');
+            igual('respaldo: el evento sigue en su expediente', r.eventoEn, '600/2026');
+            igual('respaldo: el pendiente sigue en su expediente', r.pendienteEn, '600/2026');
+            igual('respaldo: y con su evento en el calendario, vinculado', r.espejo, true);
+            igual('respaldo: se conservan las fechas originales', r.sellosConservados, true);
+
+            // Una importación que falla a medias deja todo como estaba.
+            const fallida = await b.pagina.evaluate(async (d) => {
+                const antes = (await obtenerNotas()).length + (await obtenerExpedientes()).length;
+                const original = window.agregarNota;
+                let n = 0;
+                window.agregarNota = async (...a) => { if (++n === 1) throw new Error('QuotaExceededError'); return original(...a); };
+                let error = null;
+                try { await importarTodosDatos({ expedientes: [{ numero: '1/2020', juzgado: 'X' }], notas: [{ titulo: 'z' }] }, true); }
+                catch (e) { error = e.message; }
+                window.agregarNota = original;
+                return { error, igual: (await obtenerNotas()).length + (await obtenerExpedientes()).length === antes,
+                         archivados: (await obtenerExpedientesArchivados()).length };
+            }, exportado);
+            verificar('respaldo: si la importación falla, se avisa', /No se cambió nada/.test(fallida.error || ''), fallida.error);
+            igual('respaldo: y los datos que había siguen ahí', [fallida.igual, fallida.archivados], [true, 1]);
+
+            // La importación desde la pantalla avisa que reemplaza y guarda antes una copia.
+            const descarga = b.pagina.waitForEvent('download', { timeout: 10000 }).catch(() => null);
+            const aviso = await b.pagina.evaluate(async (d) => {
+                let mensaje = '';
+                window.confirm = (m) => { mensaje = m; return true; };
+                const archivo = new File([JSON.stringify(d)], 'respaldo.json', { type: 'application/json' });
+                await importarDatos({ target: { files: [archivo], value: '' } });
+                return mensaje;
+            }, exportado);
+            verificar('respaldo: el aviso dice que reemplaza lo que hay', /REEMPLAZA/.test(aviso), aviso);
+            const copia = await descarga;
+            verificar('respaldo: y antes descarga una copia de lo actual',
+                !!copia && /^tsj_antes_de_importar_/.test(copia.suggestedFilename()), copia && copia.suggestedFilename());
+        }
+
+        // ---- 7. Miles de expedientes caben en la sincronización ----
+        {
+            const nube = crearAppsScriptSimulado(CODIGO);
+            const a = await abrir(nube);
+            const n = await a.pagina.evaluate(async (j) => {
+                const ahora = new Date().toISOString();
+                await new Promise((res, rej) => {
+                    const tx = db.transaction(['expedientes', 'notas'], 'readwrite');
+                    // Texto que no se repite, como el de verdad: con texto
+                    // calcado la compresión lo deja en nada y no se prueba el límite.
+                    const azar = () => Math.random().toString(36).slice(2, 10);
+                    for (let i = 0; i < 3000; i++) {
+                        const e = { id: i + 1, numero: `${i + 1}/2025`, institucion: 'TSJ', juzgado: j, nombre: `${azar()} ${azar()} contra ${azar()} SA de CV`,
+                                    comentario: `Pendiente contestar ${azar()} ${azar()}`, activo: true, fechaCreacion: ahora, fechaActualizacion: ahora, _fieldTimestamps: {} };
+                        for (const k of Object.keys(e)) if (k !== 'id' && k !== '_fieldTimestamps') e._fieldTimestamps[k] = ahora;
+                        tx.objectStore('expedientes').put(e);
+                        if (i % 2 === 0) tx.objectStore('notas').put({ titulo: `Nota ${i}`, contenido: `Audiencia ${azar()} ${azar()} ${azar()}`, expedienteId: i + 1, fechaCreacion: ahora, fechaActualizacion: ahora });
+                    }
+                    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+                });
+                return (await obtenerExpedientes()).length;
+            }, JUZGADO);
+            const avisos = await sincronizar(a.pagina);
+            verificar('datos: 3 000 expedientes ocupan más que las 4 celdas de antes', nube.bloque().length > 196000, String(nube.bloque().length));
+            verificar('datos: y aun así se sincronizan', !avisos.some(([, t]) => t === 'error'), JSON.stringify(avisos));
+            const b = await abrir(nube);
+            await sincronizar(b.pagina);
+            igual('datos: el otro dispositivo recibe los 3 000', (await resumen(b.pagina)).expedientes.length, n);
+        }
+
+        // ---- 8. Almacenamiento persistente ----
+        {
+            const nube = crearAppsScriptSimulado(CODIGO);
+            const sinPermiso = await abrir(nube, {}, { persistencia: false });
+            const r = await sinPermiso.pagina.evaluate(async (j) => {
+                estadoPremium.activo = false;
+                await crearExpedienteCore({ numero: '800/2026', institucion: 'TSJ', juzgado: j });
+                const avisos = [];
+                window.mostrarToast = (m, t) => avisos.push([m, t]);
+                try { localStorage.removeItem('aviso_almacenamiento_no_persistente'); } catch (e) {}
+                const estado = await revisarAlmacenamientoPersistente({ haySync: false });
+                const segunda = await revisarAlmacenamientoPersistente({ haySync: false });
+                return { estado, avisos, segunda: !!segunda.avisado };
+            }, JUZGADO);
+            igual('almacenamiento: se pide que el navegador no borre los datos', r.estado.soportado, true);
+            verificar('almacenamiento: si lo niega, se avisa de que puede borrarlos',
+                r.avisos.some(([m]) => /puede borrar los datos/.test(m)), JSON.stringify(r.avisos));
+            igual('almacenamiento: y no se repite el aviso cada vez', r.segunda, false);
+
+            const conPermiso = await abrir(nube, {}, { persistencia: true });
+            const r2 = await conPermiso.pagina.evaluate(async () => {
+                const avisos = [];
+                window.mostrarToast = (m, t) => avisos.push([m, t]);
+                try { localStorage.removeItem('aviso_almacenamiento_no_persistente'); } catch (e) {}
+                return { estado: await revisarAlmacenamientoPersistente({}), avisos };
+            });
+            igual('almacenamiento: si lo concede, no hay aviso', [r2.estado.persistente, r2.avisos.length], [true, 0]);
+        }
+
+        for (const d of abiertos) igual('datos: sin errores de JavaScript', d.errores, []);
+    } finally {
+        for (const d of abiertos) await d.ctx.close().catch(() => {});
+    }
+}
+
 async function main() {
     verificar('la copia local de DOMPurify es la que pide la página',
         fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8').includes(`<script src="${URL_DOMPURIFY}"`),
