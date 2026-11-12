@@ -1,13 +1,12 @@
 # Aviso de privacidad integral — TSJ Filing Online
 
-> **BORRADOR PARA REVISIÓN JURÍDICA. No publicar hasta validarlo.** Versión propuesta: `2026-11-12`.
-> Lo que sigue entre corchetes falta confirmarlo. Fundamento: arts. 14, 15 y 16 de la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (DOF 20-03-2025, última reforma DOF 14-11-2025).
+> Versión 2026-11-12. Fundamento: arts. 14, 15 y 16 de la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (DOF 20-03-2025, última reforma DOF 14-11-2025).
 
 Última actualización: 12 de noviembre de 2026.
 
 ## 1. Quién es el responsable
 
-**Empírica Legal** ("**Empírica Legal Lab**" o "**Empírica**"), con domicilio en Av. La Luna, número exterior 4, Supermanzana 44, C.P. 77506, Benito Juárez (Cancún), Quintana Roo, México, es responsable del tratamiento de los datos personales de quienes usan y contratan **TSJ Filing Online** (la "**Herramienta**"), en la app y en el sitio tsjia.empirica.mx, conforme a este aviso.
+**Empírica Legal Lab, S.A.S. de C.V.** ("**Empírica**"), con domicilio en Av. La Luna, número exterior 4, Supermanzana 44, C.P. 77506, Benito Juárez (Cancún), Quintana Roo, México, es responsable del tratamiento de los datos personales de quienes usan y contratan **TSJ Filing Online** (la "**Herramienta**"), en la app y en el sitio tsjia.empirica.mx, conforme a este aviso.
 
 Departamento de datos personales: correo **jorge_clemente@empirica.mx**, WhatsApp 998 139 9930.
 
@@ -65,7 +64,7 @@ Los datos de tu licencia se guardan en una hoja de cálculo de Google de Empíri
 ### 4.3 Sincronización entre dispositivos (Premium)
 Si la activas, la app comprime y **cifra en tu dispositivo** (AES-256-GCM) todo tu contenido y sube el bloque cifrado a la hoja de Google de Empírica, junto con un respaldo que se guarda cuando se hace un borrado masivo, para poder devolverte lo que borraste por error.
 
-**La clave se obtiene de tu código de activación.** Como Empírica genera y registra esos códigos, **técnicamente podría descifrar** el bloque. Nos comprometemos a no hacerlo, salvo que tú lo pidas por escrito para recuperar tu información o que lo ordene una autoridad competente. El acceso a la hoja está limitado a `[personas o cargos]`. Para descargar, reemplazar o borrar el bloque no basta el código: la petición tiene que venir de un dispositivo registrado en tu licencia. Si eso no te basta, no actives la sincronización y haz tus respaldos con la exportación de la app.
+**La clave se obtiene de tu código de activación.** Como Empírica genera y registra esos códigos, **técnicamente podría descifrar** el bloque. Nos comprometemos a no hacerlo, salvo que tú lo pidas por escrito para recuperar tu información o que lo ordene una autoridad competente. El acceso a la hoja está limitado a una sola persona: el administrador de Empírica. Para descargar, reemplazar o borrar el bloque no basta el código: la petición tiene que venir de un dispositivo registrado en tu licencia. Si eso no te basta, no actives la sincronización y haz tus respaldos con la exportación de la app.
 
 ### 4.4 Consultas a portales oficiales
 Para consultar las sesiones de Tribunales Colegiados (SISE del Consejo de la Judicatura Federal), el IMPI (MARCia, Marcanet, SIGA) y otros portales que no admiten consultas directas desde el navegador, la app envía los datos de la búsqueda a un servidor intermedio de Empírica en Cloudflare, que la reenvía al portal y te devuelve la respuesta. Las respuestas de las sesiones se guardan hasta 6 horas para no repetir la consulta. Los portales son fuentes de acceso público y tratan las consultas conforme a sus propios avisos.
@@ -142,7 +141,7 @@ La Herramienta usa almacenamiento local, IndexedDB y una cookie propia para su f
 
 ## 11. Seguridad
 
-Aplicamos medidas administrativas, técnicas y físicas para proteger tus datos (art. 18), entre ellas: cifrado del contenido sincronizado en tu dispositivo; conexiones HTTPS; resúmenes cifrados en lugar de IP y huella en claro; acceso restringido a la hoja de licencias y a los servidores; y verificación en dos pasos en las cuentas administrativas `[confirmar que esté activa]`. Si ocurre una vulneración que afecte de forma significativa tus derechos, te la informaremos de inmediato para que puedas defenderte (art. 19).
+Aplicamos medidas administrativas, técnicas y físicas para proteger tus datos (art. 18), entre ellas: cifrado del contenido sincronizado en tu dispositivo; conexiones HTTPS; resúmenes cifrados en lugar de IP y huella en claro; acceso restringido a la hoja de licencias y a los servidores; y verificación en dos pasos en las cuentas administrativas. Si ocurre una vulneración que afecte de forma significativa tus derechos, te la informaremos de inmediato para que puedas defenderte (art. 19).
 
 ## 12. Cambios a este aviso
 

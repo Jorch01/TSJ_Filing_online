@@ -5,7 +5,7 @@
 body.sitio { background: var(--bg-primary); }
 
 .sitio-ancho { width: min(1120px, 100% - 2rem); margin: 0 auto; }
-.sitio-angosto { width: min(760px, 100%); }
+.sitio-angosto { width: min(760px, 100% - 2rem); }
 
 .sitio-saltar { position: absolute; left: -999px; top: 0; }
 .sitio-saltar:focus { left: 1rem; top: 1rem; z-index: 10; background: #fff; padding: 0.5rem 0.75rem; border-radius: var(--radius); }
@@ -160,3 +160,13 @@ body.sitio { background: var(--bg-primary); }
     border-radius: 6px; background: #fff8e6; color: #6b4e00; font-size: 0.9rem; line-height: 1.5; }
 .sitio-terminos h2 { font-size: 1.15rem; margin: 1.6rem 0 0.5rem; }
 .sitio-terminos p { color: var(--text-secondary); line-height: 1.65; margin: 0 0 0.7rem; }
+.sitio-terminos h3 { font-size: 1rem; margin: 1.2rem 0 0.4rem; }
+.sitio-terminos ol { color: var(--text-secondary); line-height: 1.65; padding-left: 1.4rem; margin: 0 0 0.8rem; }
+.sitio-terminos blockquote { margin: 0 0 0.8rem; padding: 0.6rem 0.9rem; border-left: 3px solid var(--border-fuerte); background: var(--bg-secondary); }
+.sitio-terminos blockquote p { margin: 0; font-size: 0.9rem; }
+.sitio-terminos code { font-size: 0.85em; }
+.sitio-tabla { overflow-x: auto; margin: 0 0 1rem; }
+.sitio-tabla table { width: 100%; border-collapse: collapse; font-size: 0.88rem; line-height: 1.45; }
+.sitio-tabla th, .sitio-tabla td { text-align: left; vertical-align: top; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border-color); color: var(--text-secondary); }
+.sitio-tabla th { color: var(--text-primary); background: var(--bg-secondary); }
+@media (max-width: 600px) { .sitio-tabla table { font-size: 0.8rem; } .sitio-tabla th, .sitio-tabla td { padding: 0.4rem; } }

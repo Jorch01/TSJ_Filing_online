@@ -182,7 +182,28 @@ function servirDOMPurifyLocal(navegador) {
 }
 
 async function abrirChromium() {
-    return sinSesionesReales(servirDOMPurifyLocal(await lanzarChromium()));
+    return conAvisoDePrivacidadVisto(sinSesionesReales(servirDOMPurifyLocal(await lanzarChromium())));
+}
+
+// El aviso de privacidad sale al pie la primera vez y la IA pide permiso antes
+// de su primer uso. Para el resto de las pruebas, cada contexto nace como el de
+// alguien que ya los vio y aceptó; la sección de privacidad los prueba abriendo
+// la app con ?privacidad=probar.
+function conAvisoDePrivacidadVisto(navegador) {
+    const version = require('./docs/js/privacidad.js').VERSION;
+    const nuevoContexto = navegador.newContext.bind(navegador);
+    navegador.newContext = async (opciones) => {
+        const contexto = await nuevoContexto(opciones);
+        await contexto.addInitScript((v) => {
+            if (location.search.includes('privacidad=probar')) return;
+            try {
+                localStorage.setItem('tsj_aviso_privacidad_visto', v);
+                localStorage.setItem('tsj_ia_consentimiento', v);
+            } catch (e) { /* páginas sin almacenamiento */ }
+        }, version);
+        return contexto;
+    };
+    return navegador;
 }
 
 // La tarjeta de sesiones de los Tribunales Colegiados consulta al proxy en
@@ -2790,6 +2811,92 @@ async function probarCuotasIMPI(navegador) {
  * 44 px, los botones primarios llegan a contraste AA, los interruptores tienen
  * nombre y el selector de tribunal no finge ser un tablist.
  */
+/**
+ * Aviso de privacidad: el simplificado al pie la primera vez (y no otra vez),
+ * el permiso antes del primer uso de la IA, y el consentimiento expreso en la
+ * casilla de los términos.
+ */
+async function probarAvisoPrivacidad(navegador) {
+    console.log('\nAviso de privacidad');
+    const contexto = await navegador.newContext({ viewport: { width: 1300, height: 900 } });
+    await contexto.addInitScript(() => { try { localStorage.setItem('tour_bienvenida_visto', '1'); } catch (e) {} });
+    const page = await contexto.newPage();
+    try {
+        const url = `http://localhost:${PUERTO}/index.html?privacidad=probar`;
+        await page.goto(url, { waitUntil: 'load' });
+        await page.waitForSelector('#aviso-privacidad-pie', { timeout: 15000 });
+        const pie = await page.evaluate(() => {
+            const a = document.getElementById('aviso-privacidad-pie');
+            const enlace = a.querySelector('a');
+            return { texto: a.textContent, href: enlace && enlace.href, z: getComputedStyle(a).zIndex };
+        });
+        verificar('privacidad: la primera vez sale el aviso simplificado con el responsable',
+            /Empírica Legal Lab, S\.A\.S\. de C\.V\./.test(pie.texto), pie.texto);
+        igual('privacidad: con el enlace al aviso integral', pie.href, 'https://tsjia.empirica.mx/aviso-de-privacidad/');
+        verificar('privacidad: debajo de las ventanas, para no tapar sus botones', Number(pie.z) < 1250, pie.z);
+        await page.click('#aviso-privacidad-pie button');
+        await page.reload({ waitUntil: 'load' });
+        await page.waitForTimeout(1500);
+        igual('privacidad: visto una vez, ya no vuelve a salir', await page.$('#aviso-privacidad-pie'), null);
+
+        // La IA pide permiso antes de mandar nada a Google.
+        const enviado = await page.evaluate(async () => {
+            await guardarConfig('ia_api_key', 'CLAVE-DE-PRUEBA');
+            await guardarConfig('ia_modelo', 'gemini-de-prueba');
+            window.__llamadasIA = 0;
+            const original = window.fetch;
+            window.fetch = (u, o) => {
+                if (/generativelanguage/.test(String(u))) { window.__llamadasIA++; return Promise.resolve(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'OK' }] } }] }), { status: 200 })); }
+                return original(u, o);
+            };
+            window.__respuestaIA = llamarIA('analiza este acuerdo').then(r => r, e => 'ERROR: ' + e.message);
+            return true;
+        });
+        await page.waitForSelector('dialog.dialogo-ia-consentimiento[open]', { timeout: 5000 });
+        const dialogo = await page.evaluate(() => ({
+            texto: document.querySelector('dialog.dialogo-ia-consentimiento').textContent,
+            llamadas: window.__llamadasIA,
+            aceptarDeshabilitado: document.getElementById('ia-consentimiento-aceptar').disabled
+        }));
+        verificar('privacidad: antes del primer uso de la IA se explica qué se manda a Google', enviado && /nivel gratuito/.test(dialogo.texto) && /secreto profesional/.test(dialogo.texto), dialogo.texto.slice(0, 200));
+        igual('privacidad: y no se manda nada mientras no acepte', dialogo.llamadas, 0);
+        igual('privacidad: el botón espera a que marque la casilla', dialogo.aceptarDeshabilitado, true);
+        await page.click('button:has-text("Ahora no")');
+        igual('privacidad: si dice que no, la IA no se usa', await page.evaluate(() => window.__respuestaIA.then(r => [r.startsWith('ERROR'), window.__llamadasIA])), [true, 0]);
+
+        await page.evaluate(() => { window.__respuestaIA = llamarIA('otra vez').then(r => r, e => 'ERROR: ' + e.message); });
+        await page.waitForSelector('dialog.dialogo-ia-consentimiento[open]', { timeout: 5000 });
+        await page.check('#ia-consentimiento-check');
+        await page.click('#ia-consentimiento-aceptar');
+        igual('privacidad: si acepta, la IA responde', await page.evaluate(() => window.__respuestaIA), 'OK');
+        igual('privacidad: y ya no vuelve a preguntar', await page.evaluate(async () => { await llamarIA('tercera'); return [!!document.querySelector('dialog.dialogo-ia-consentimiento'), window.__llamadasIA]; }), [false, 2]);
+        await page.evaluate(() => retirarConsentimientoIA());
+        igual('privacidad: el permiso se retira en Configuración', await page.evaluate(() => consentimientoIADado()), false);
+
+        // La casilla de los términos es también el consentimiento expreso.
+        const casilla = await page.evaluate(() => {
+            pedirAceptacionTerminos(() => {});
+            const etiqueta = document.querySelector('.terminos-acepto');
+            const r = { texto: etiqueta.textContent, enlace: (etiqueta.querySelector('a') || {}).href };
+            document.getElementById('terminos-check').click();
+            aceptarTerminos();
+            const guardado = JSON.parse(localStorage.getItem('tsj_terminos_aceptados'));
+            r.privacidad = guardado.privacidad;
+            r.mensaje = decodeURIComponent(enlaceSolicitudPremium(PREMIUM_CONFIG.planes[0]));
+            localStorage.setItem('tsj_terminos_aceptados', JSON.stringify(Object.assign(guardado, { privacidad: 'vieja' })));
+            r.conAvisoViejo = !!terminosAceptados();
+            return r;
+        });
+        verificar('privacidad: la casilla de los términos incluye el consentimiento de datos financieros y fiscales',
+            /financieros y fiscales/.test(casilla.texto) && casilla.enlace === 'https://tsjia.empirica.mx/aviso-de-privacidad/', casilla.texto);
+        igual('privacidad: se guarda la versión del aviso aceptada', casilla.privacidad, require('./docs/js/privacidad.js').VERSION);
+        verificar('privacidad: y el mensaje de WhatsApp lo dice', /Aviso de privacidad \(versión /.test(casilla.mensaje), casilla.mensaje.slice(-200));
+        igual('privacidad: si cambia el aviso, la casilla se vuelve a pedir', casilla.conAvisoViejo, false);
+    } finally {
+        await contexto.close();
+    }
+}
+
 async function probarAccesibilidadCelular(navegador) {
     const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     await contexto.addInitScript(() => {
@@ -5417,6 +5524,7 @@ async function main() {
         await probarInstalacion(navegador);
         await probarAnaliticaYRecomendar(navegador);
         await probarSitioPublico(navegador);
+        await probarAvisoPrivacidad(navegador);
 
     } finally {
         await navegador.close();

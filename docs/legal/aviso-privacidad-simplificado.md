@@ -1,12 +1,12 @@
 # Aviso de privacidad simplificado — TSJ Filing Online
 
-> **BORRADOR PARA REVISIÓN JURÍDICA. No publicar hasta validarlo.** Versión propuesta: `2026-11-12`.
+> Versión 2026-11-12.
 > Fundamento: art. 16, fr. II, en relación con el art. 15, frs. I a IV, de la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (DOF 20-03-2025).
 > Pensado para la ventana del primer arranque, el pie de la sección Premium y el pie del sitio. Hay una versión corta para espacios reducidos al final.
 
 ---
 
-**Empírica Legal (Empírica Legal Lab)**, con domicilio en Av. La Luna, número exterior 4, Supermanzana 44, C.P. 77506, Benito Juárez (Cancún), Quintana Roo, México, es responsable de los datos personales que recaba de quienes usan TSJ Filing Online.
+**Empírica Legal Lab, S.A.S. de C.V.**, con domicilio en Av. La Luna, número exterior 4, Supermanzana 44, C.P. 77506, Benito Juárez (Cancún), Quintana Roo, México, es responsable de los datos personales que recaba de quienes usan TSJ Filing Online.
 
 **Datos que tratamos:** nombre, teléfono, correo, datos de pago y fiscales (al contratar); código de licencia, identificador y tipo de dispositivo, IP y un resumen cifrado de las características de tu equipo (para la licencia y los límites del plan gratuito); estadísticas de uso; y lo que nos escribas. No pedimos datos sensibles.
 
@@ -24,7 +24,7 @@
 
 ## Versión corta (pie de página, formularios)
 
-> Empírica Legal (Empírica Legal Lab) trata tus datos para gestionar tu plan y tu licencia, aplicar los límites del plan gratuito y, si no lo desactivas, para estadísticas de uso. Los datos de tus expedientes se quedan en tu dispositivo, salvo que actives la sincronización cifrada. Conoce el aviso integral y tus derechos en `tsjia.empirica.mx/aviso-de-privacidad/`.
+> Empírica Legal Lab, S.A.S. de C.V. trata tus datos para gestionar tu plan y tu licencia, aplicar los límites del plan gratuito y, si no lo desactivas, para estadísticas de uso. Los datos de tus expedientes se quedan en tu dispositivo, salvo que actives la sincronización cifrada. Conoce el aviso integral y tus derechos en `tsjia.empirica.mx/aviso-de-privacidad/`.
 
 ## Texto para la casilla al contratar o activar (consentimiento expreso)
 

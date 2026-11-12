@@ -3103,6 +3103,20 @@
                 <h3>📊 Privacidad</h3>
                 <div class="config-item">
                     <div class="config-info">
+                        <h4>Aviso de privacidad</h4>
+                        <p>Qué datos tratamos, para qué, con quién se comparten y cómo ejercer tus derechos ARCO.</p>
+                    </div>
+                    <a class="btn btn-secondary" href="https://tsjia.empirica.mx/aviso-de-privacidad/" target="_blank" rel="noopener">Leer el aviso</a>
+                </div>
+                <div class="config-item">
+                    <div class="config-info">
+                        <h4>Uso de la IA con tus datos</h4>
+                        <p>La IA manda el texto de los acuerdos, tu voz y, en el asistente, tus expedientes y tu agenda a Google con tu clave. <span id="config-ia-consentimiento-estado"></span></p>
+                    </div>
+                    <button class="btn btn-secondary" id="config-ia-consentimiento-retirar" onclick="retirarConsentimientoIA()">Retirar</button>
+                </div>
+                <div class="config-item">
+                    <div class="config-info">
                         <h4>Estadísticas de uso anónimas</h4>
                         <p>Nos ayudan a saber qué secciones se usan para mejorarlas. Solo se cuenta el nombre de la acción (por ejemplo "abrió el calendario"); nunca números de expediente, nombres, juzgados, notas ni importes.</p>
                     </div>
@@ -3229,6 +3243,7 @@
     <script src="js/pjf-search.js"></script>
     <script src="js/impi-search.js"></script>
     <script src="js/terminos.js"></script>
+    <script src="js/privacidad.js"></script>
     <script src="js/cuotas-impi.js"></script>
     <script src="js/impi-viabilidad.js"></script>
     <script src="js/app.js"></script>

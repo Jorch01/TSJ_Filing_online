@@ -92,6 +92,7 @@ const RUTA_SESIONES = '/sesiones-tribunales-colegiados-quintana-roo/';
 
 // Los términos de los planes, los mismos que la app pide aceptar.
 const TERMINOS = require(path.join(RAIZ, 'docs/js/terminos.js'));
+const PRIVACIDAD = require(path.join(RAIZ, 'docs/js/privacidad.js'));
 // El aviso del estudio de viabilidad, el mismo que muestra la app.
 const AVISO_VIABILIDAD = require(path.join(RAIZ, 'docs/js/impi-viabilidad.js')).AVISO_VIABILIDAD;
 
@@ -212,13 +213,14 @@ function pie() {
                     <li><a href="/estudio-viabilidad-marca-impi/">Estudio de viabilidad de marca (IMPI)</a></li>
                     <li><a href="/#planes">Planes y precios</a></li>
                     <li><a href="/terminos-y-condiciones/">Términos y condiciones</a></li>
+                    <li><a href="${PRIVACIDAD.RUTA}">Aviso de privacidad</a></li>
                 </ul>
             </div>
             <div>
                 <strong>Contacto</strong>
                 <p><a href="mailto:jorge_clemente@empirica.mx">jorge_clemente@empirica.mx</a></p>
                 <p class="sitio-legal">Herramienta independiente: no está afiliada al Tribunal Superior de Justicia de Quintana Roo, al Poder Judicial de la Federación, a la Secretaría del Trabajo de Quintana Roo ni al IMPI. Las consultas se hacen en sus portales oficiales.</p>
-                <p class="sitio-legal">Usamos estadísticas de uso anónimas para mejorar el sitio; nunca datos de tus expedientes.</p>
+                <p class="sitio-legal">Usamos estadísticas de uso anónimas para mejorar el sitio; nunca datos de tus expedientes. <a href="${PRIVACIDAD.RUTA}">Aviso de privacidad</a>.</p>
             </div>
         </div>
     </footer>
@@ -1008,6 +1010,81 @@ ${TERMINOS.html(2).replace(/<section/g, '\n                <section')}
 ` + pie();
 }
 
+// ==================== AVISO DE PRIVACIDAD ====================
+// El texto vive en docs/legal/aviso-privacidad-integral.md: aquí se pasa a
+// HTML con lo poco de Markdown que usa (títulos, párrafos, negritas, código,
+// listas numeradas, tablas y citas), sin dependencias.
+
+function enLinea(texto) {
+    return esc(texto)
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
+}
+
+function markdownAHtml(md) {
+    const lineas = md.replace(/\r/g, '').split('\n');
+    const out = [];
+    let i = 0;
+    while (i < lineas.length) {
+        const l = lineas[i];
+        if (!l.trim()) { i++; continue; }
+        let m;
+        if ((m = /^(#{2,4})\s+(.*)$/.exec(l))) {
+            const n = m[1].length;
+            out.push(`<h${n}>${enLinea(m[2])}</h${n}>`);
+            i++;
+        } else if (/^\|/.test(l)) {
+            const filas = [];
+            while (i < lineas.length && /^\|/.test(lineas[i])) filas.push(lineas[i++]);
+            const celdas = (f) => f.replace(/^\|/, '').replace(/\|\s*$/, '').split('|').map(c => c.trim());
+            const cuerpo = filas.slice(2).map(f => '<tr>' + celdas(f).map(c => `<td>${enLinea(c)}</td>`).join('') + '</tr>').join('');
+            out.push('<div class="sitio-tabla"><table><thead><tr>' + celdas(filas[0]).map(c => `<th>${enLinea(c)}</th>`).join('') +
+                '</tr></thead><tbody>' + cuerpo + '</tbody></table></div>');
+        } else if (/^\d+\.\s/.test(l)) {
+            const items = [];
+            while (i < lineas.length && /^\d+\.\s/.test(lineas[i])) items.push(lineas[i++].replace(/^\d+\.\s+/, ''));
+            const inicio = parseInt(l, 10);
+            out.push(`<ol${inicio !== 1 ? ` start="${inicio}"` : ''}>` + items.map(x => `<li>${enLinea(x)}</li>`).join('') + '</ol>');
+        } else if (/^>\s?/.test(l)) {
+            const partes = [];
+            while (i < lineas.length && /^>/.test(lineas[i])) partes.push(lineas[i++].replace(/^>\s?/, ''));
+            out.push(`<blockquote><p>${enLinea(partes.join(' '))}</p></blockquote>`);
+        } else {
+            const partes = [];
+            while (i < lineas.length && lineas[i].trim() && !/^(#|\||>|\d+\.\s)/.test(lineas[i])) partes.push(lineas[i++]);
+            out.push(`<p>${enLinea(partes.join(' '))}</p>`);
+        }
+    }
+    return out.join('\n');
+}
+
+function paginaPrivacidad() {
+    const md = fs.readFileSync(path.join(RAIZ, 'docs/legal/aviso-privacidad-integral.md'), 'utf8')
+        // El título y la nota de versión ya van en la cabecera de la página.
+        .replace(/^# .*\n/, '').replace(/^\s*>[^\n]*\n/, '');
+    return cabeza({
+        ruta: PRIVACIDAD.RUTA,
+        tituloPagina: 'Aviso de privacidad de TSJ Filing Online | Quintana Roo',
+        descripcion: 'Aviso de privacidad integral de TSJ Filing Online: qué datos personales trata Empírica Legal Lab, para qué, con quién los comparte y cómo ejercer tus derechos ARCO.',
+        jsonld: [migas({ nombre: 'Aviso de privacidad', ruta: PRIVACIDAD.RUTA })]
+    }) + `
+        <section class="sitio-hero sitio-hero-chico">
+            <div class="sitio-ancho">
+                <nav class="sitio-migas" aria-label="Ruta"><a href="/">Inicio</a> › Aviso de privacidad</nav>
+                <h1>Aviso de privacidad integral</h1>
+                <p class="sitio-lead">Versión ${PRIVACIDAD.VERSION}, vigente desde el ${PRIVACIDAD.VIGENTE_DESDE}. Responsable: ${esc(PRIVACIDAD.RESPONSABLE)}.</p>
+            </div>
+        </section>
+
+        <section class="sitio-seccion">
+            <div class="sitio-ancho sitio-angosto sitio-terminos">
+${markdownAHtml(md)}
+            </div>
+        </section>
+` + pie();
+}
+
 // ==================== SITEMAP ====================
 
 function sitemap() {
@@ -1020,6 +1097,7 @@ function sitemap() {
         ['/expedientes-pjf-quintana-roo/', '0.8'],
         [RUTA_SESIONES, '0.8'],
         ['/terminos-y-condiciones/', '0.3'],
+        [PRIVACIDAD.RUTA, '0.3'],
         ['/docs/', '0.7']
     ];
     return `<?xml version="1.0" encoding="UTF-8"?>
@@ -1050,6 +1128,7 @@ function generar() {
         'estrados-laborales-quintana-roo/index.html': paginaLaborales(unidadesLaborales()),
         'estudio-viabilidad-marca-impi/index.html': paginaViabilidad(lim, planes),
         'terminos-y-condiciones/index.html': paginaTerminos(),
+        [PRIVACIDAD.RUTA.slice(1) + 'index.html']: paginaPrivacidad(),
         'sitemap.xml': sitemap()
     };
 }
