@@ -2785,6 +2785,64 @@ async function probarCuotasIMPI(navegador) {
     }
 }
 
+/**
+ * Celular (390 px, pantalla táctil, tema oscuro): lo que se toca mide al menos
+ * 44 px, los botones primarios llegan a contraste AA, los interruptores tienen
+ * nombre y el selector de tribunal no finge ser un tablist.
+ */
+async function probarAccesibilidadCelular(navegador) {
+    const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    await contexto.addInitScript(() => {
+        try { localStorage.setItem('tour_bienvenida_visto', '1'); localStorage.setItem('tema_oscuro', 'true'); } catch (e) {}
+    });
+    const page = await contexto.newPage();
+    try {
+        await page.goto(`http://localhost:${PUERTO}/index.html`, { waitUntil: 'load' });
+        await page.waitForTimeout(800);
+        await page.evaluate(() => { document.getElementById('tour-oferta')?.remove(); });
+
+        const luminancia = (rgb) => {
+            const c = rgb.match(/\d+(\.\d+)?/g).slice(0, 3).map(n => { n /= 255; return n <= 0.03928 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4; });
+            return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+        };
+        const revisar = async (pagina) => {
+            await page.evaluate((n) => { navegarA(n); }, pagina);
+            await page.waitForTimeout(400);
+            return page.evaluate(() => {
+                const pg = document.querySelector('.page.active');
+                const visible = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden'; };
+                const chicos = [...pg.querySelectorAll('.btn, .pjf-tab, .impi-tab, .view-btn, select, input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden])')]
+                    .filter(visible).map(e => ({ n: e.className + ' ' + (e.id || ''), h: Math.round(e.getBoundingClientRect().height), w: Math.round(e.getBoundingClientRect().width) }))
+                    .filter(x => x.h < 44 || x.w < 44);
+                const btn = pg.querySelector('.btn-primary');
+                const cs = btn && getComputedStyle(btn);
+                return { chicos, fondo: cs && cs.backgroundColor, texto: cs && cs.color, desborde: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+            });
+        };
+
+        for (const pagina of ['expedientes', 'calendario', 'pendientes', 'notas', 'busqueda', 'pjf', 'impi', 'laboral', 'config']) {
+            const r = await revisar(pagina);
+            verificar(`celular ${pagina}: todo lo que se toca mide 44 px`, r.chicos.length === 0, JSON.stringify(r.chicos.slice(0, 4)));
+            igual(`celular ${pagina}: sin desborde horizontal`, r.desborde, 0);
+            if (r.fondo) {
+                const [a, b] = [luminancia(r.fondo), luminancia(r.texto)].sort((x, y) => y - x);
+                verificar(`celular ${pagina}: botón primario con contraste AA en tema oscuro`, (a + 0.05) / (b + 0.05) >= 4.5, `${r.texto} sobre ${r.fondo}`);
+            }
+        }
+
+        const a11y = await page.evaluate(() => ({
+            sinNombre: [...document.querySelectorAll('label.switch > input[type=checkbox]')].filter(i => !i.getAttribute('aria-label')).map(i => i.id),
+            tablistFalso: [...document.querySelectorAll('[role=tablist]')].filter(t => [...t.children].some(h => h.getAttribute('role') !== 'tab')).length
+        }));
+        igual('celular: todos los interruptores tienen nombre accesible', a11y.sinNombre, []);
+        igual('celular: ningún tablist con hijos que no son pestañas', a11y.tablistFalso, 0);
+    } catch (e) {
+        verificar('celular: la prueba corrió sin excepciones', false, e.message);
+    } finally {
+        await contexto.close();
+    }
+}
+
 async function probarEstadisticas(navegador) {
     const contexto = await navegador.newContext({ acceptDownloads: true, viewport: { width: 1280, height: 900 },
         locale: 'es-MX', timezoneId: 'America/Cancun' });
@@ -5317,6 +5375,9 @@ async function main() {
 
         // ---- Estadísticas del despacho ----
         await probarEstadisticas(navegador);
+
+        // ---- Accesibilidad en celular ----
+        await probarAccesibilidadCelular(navegador);
 
         // ---- Búsqueda global en juzgados específicos ----
         await probarBusquedaGlobalEspecificos(navegador);
