@@ -881,7 +881,8 @@
 
         // 3) Acción que modifica datos → confirmar
         if (ACCIONES_MUTANTES.has(accion)) {
-            pedirConfirmacion(r, r.resumen || 'Ejecutar: ' + accion);
+            const conf = textoDeConfirmacion(accion, r.resumen, p);
+            pedirConfirmacion(r, conf.resumen, conf.detalles);
             return;
         }
 
@@ -1010,6 +1011,40 @@
         agregarMensaje('asistente', '⚠️ Error: ' + esc(e.message));
         hablar('Ocurrió un error: ' + e.message);
         conversacion = [];
+    }
+
+    // ==================== TEXTO DE LA CONFIRMACIÓN ====================
+    // El "resumen" lo redacta el modelo, y al modelo le llega lo que el usuario
+    // dicte o pegue. Un texto pegado con instrucciones escondidas podía hacer
+    // que el resumen dijera "Crear una nota" mientras la acción era archivar o
+    // reescribir un expediente, y el usuario confirmaba sin saberlo. Por eso
+    // lo que se enseña empieza siempre por la acción real, con un nombre que
+    // pone la app, y los cambios a un expediente salen de los parámetros que
+    // se van a aplicar, no del texto del modelo.
+    const ETIQUETAS_CONFIRMACION = {
+        crear_evento: 'Agendar un evento',
+        crear_expediente: 'Crear un expediente',
+        editar_expediente: 'Modificar un expediente',
+        archivar_expediente: 'Archivar un expediente',
+        crear_nota: 'Crear una nota',
+        mover_a_carpeta: 'Mover un expediente de carpeta',
+        crear_pendiente: 'Crear un pendiente',
+        completar_pendiente: 'Marcar un pendiente como terminado'
+    };
+
+    function textoDeConfirmacion(accion, resumenModelo, p) {
+        const etiqueta = ETIQUETAS_CONFIRMACION[accion] || ('Ejecutar: ' + accion);
+        const resumen = String(resumenModelo || '').trim();
+        const detalles = [];
+        const c = p && p.cambios;
+        if (accion === 'editar_expediente' && c && typeof c === 'object') {
+            Object.keys(c).forEach(k => {
+                const v = c[k];
+                if (v === null || v === undefined || typeof v === 'object') return;
+                detalles.push(k + ' → ' + (String(v) === '' ? '(vacío)' : String(v).slice(0, 120)));
+            });
+        }
+        return { resumen: resumen ? etiqueta + ': ' + resumen : etiqueta, detalles };
     }
 
     // ==================== EJECUTORES DE ACCIONES ====================

@@ -58,6 +58,47 @@ const archivosDe = (dir, ext) => fs.readdirSync(path.join(DOCS, dir)).filter(f =
         const v = dp && /dompurify@(\d+)\.(\d+)\.(\d+)/.exec(dp.url);
         const num = v ? (+v[1]) * 1e6 + (+v[2]) * 1e3 + (+v[3]) : 0;
         verificar('DOMPurify 3.2.4 o posterior (las anteriores tienen fallas públicas)', num >= 3002004, dp && dp.url);
+
+        // Los que se cargan desde el JavaScript (EmailJS, Tesseract) siguen la
+        // misma regla que los de index.html: con "@3" o "@5" la CDN sirve lo
+        // último de esa serie sin que nadie lo haya revisado.
+        for (const f of archivosDe('js', '.js')) {
+            const fuente = leer(f);
+            const cargas = [...fuente.matchAll(/(\w+)\.src = '(https:\/\/cdn\.jsdelivr\.net\/[^']+)';/g)];
+            for (const [, variable, url] of cargas) {
+                const corto = url.split('/npm/')[1] || url;
+                verificar(`${f}: ${corto} fijado a una versión exacta`, /@\d+\.\d+\.\d+\//.test(url), url);
+                const tras = fuente.slice(fuente.indexOf(url), fuente.indexOf(url) + 400);
+                verificar(`${f}: ${corto} con integrity sha384`,
+                    new RegExp(variable + "\\.integrity = 'sha384-[A-Za-z0-9+/=]{64}'").test(tras));
+                verificar(`${f}: ${corto} con crossOrigin anonymous`,
+                    new RegExp(variable + "\\.crossOrigin = 'anonymous'").test(tras));
+            }
+        }
+    }
+
+    console.log('\nConfirmaciones del asistente de voz');
+    {
+        // El resumen lo escribe el modelo; lo que dicte o pegue el usuario
+        // puede torcerlo. La confirmación tiene que nombrar la acción real.
+        const voz = leer('js/voice-assistant.js');
+        const ini = voz.indexOf('    const ETIQUETAS_CONFIRMACION');
+        const fin = voz.indexOf('// ==================== EJECUTORES DE ACCIONES');
+        verificar('existe la sección del texto de la confirmación', ini > 0 && fin > ini);
+        const ctx = {};
+        vm.createContext(ctx);
+        vm.runInContext(voz.slice(ini, fin) + '\nthis.t = textoDeConfirmacion;', ctx);
+        const r = ctx.t('archivar_expediente', 'Crear una nota de recordatorio', {});
+        verificar('un resumen engañoso no esconde que se va a archivar', /^Archivar un expediente: /.test(r.resumen), r.resumen);
+        const e = ctx.t('editar_expediente', 'Agregar comentario', { cambios: { nombre: 'Otro cliente', comentario: '' } });
+        verificar('los cambios de un expediente salen de los parámetros',
+            e.detalles.includes('nombre → Otro cliente') && e.detalles.includes('comentario → (vacío)'), JSON.stringify(e.detalles));
+        verificar('sin resumen, queda la etiqueta de la app', ctx.t('crear_nota', '', {}).resumen === 'Crear una nota');
+        const m = /const ACCIONES_MUTANTES = new Set\(\[([\s\S]*?)\]\);/.exec(voz);
+        const mutantes = m ? [...m[1].matchAll(/'(\w+)'/g)].map(x => x[1]) : [];
+        const sinEtiqueta = mutantes.filter(a => !['editar_evento', 'eliminar_evento'].includes(a) && !ctx.t(a, '', {}).resumen.indexOf('Ejecutar:'));
+        verificar('toda acción que modifica datos tiene su etiqueta', mutantes.length > 0 && sinEtiqueta.length === 0, sinEtiqueta.join(', '));
+        verificar('la confirmación usa textoDeConfirmacion', /textoDeConfirmacion\(accion, r\.resumen, p\)/.test(voz));
     }
 
     console.log('\nColores que vienen de los datos');

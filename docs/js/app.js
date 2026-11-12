@@ -5189,7 +5189,12 @@ function cargarEmailJS() {
         }
 
         const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js';
+        // Versión exacta y con su huella, como DOMPurify en index.html: con
+        // "@3" la CDN servía la última 3.x que hubiera, sin que nadie la revisara,
+        // y este script tiene a la vista la configuración de correo.
+        script.src = 'https://cdn.jsdelivr.net/npm/@emailjs/browser@3.12.1/dist/email.min.js';
+        script.integrity = 'sha384-VDbnsk/qjpIVHPQMkJiROI+vW/7cw0k8TFYVLUabm7EWoLEDwcXh09XQ6gQ86Y0B';
+        script.crossOrigin = 'anonymous';
         script.onload = resolve;
         script.onerror = reject;
         document.head.appendChild(script);
@@ -7329,7 +7334,12 @@ function cargarTesseract() {
     if (!_cargaTesseract) {
         _cargaTesseract = new Promise((resolve, reject) => {
             const s = document.createElement('script');
-            s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+            // Versión exacta y con su huella: lee el texto de los acuerdos, que
+            // son datos de clientes. (El worker y el motor los pide la propia
+            // Tesseract a la CDN con esta misma versión.)
+            s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+            s.integrity = 'sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F';
+            s.crossOrigin = 'anonymous';
             s.onload = () => resolve();
             s.onerror = () => { _cargaTesseract = null; s.remove(); reject(new Error('Tesseract.js no está cargado')); };
             document.head.appendChild(s);
