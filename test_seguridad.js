@@ -77,6 +77,15 @@ const archivosDe = (dir, ext) => fs.readdirSync(path.join(DOCS, dir)).filter(f =
         }
     }
 
+    console.log('\nPolítica de contenido');
+    {
+        const html = leer('index.html');
+        const csp = /<meta http-equiv="Content-Security-Policy" content="([^"]+)">/.exec(html);
+        verificar('index.html declara una CSP', !!csp);
+        verificar("sin plugins: object-src 'none'", csp && /object-src 'none'/.test(csp[1]));
+        verificar("sin <base> ajena: base-uri 'self'", csp && /base-uri 'self'/.test(csp[1]));
+    }
+
     console.log('\nConfirmaciones del asistente de voz');
     {
         // El resumen lo escribe el modelo; lo que dicte o pegue el usuario
