@@ -91,6 +91,11 @@ function hayPendienteSync() {
     return !!localStorage.getItem('sync_pendiente');
 }
 
+/** Cuándo se marcó el último cambio pendiente (0 si no hay ninguno). */
+function _marcaPendienteSync() {
+    try { return parseInt(localStorage.getItem('sync_pendiente'), 10) || 0; } catch (e) { return 0; }
+}
+
 function actualizarBadgePendiente() {
     const badge = document.getElementById('sync-pendiente-badge');
     if (badge) {
@@ -246,19 +251,41 @@ async function descifrarDatos(datosCifradosBase64, codigoPremium) {
 // Si el servidor responde conflict (otro dispositivo escribió mientras tanto),
 // la función externa sincronizarDatos llama de nuevo a este intento.
 async function _intentoSincronizar() {
-    // 1. Obtener datos remotos (si existen) y su versión
+    // 1. Obtener datos remotos (si existen) y su versión.
+    //
+    // Si la descarga o el descifrado fallan, la sincronización se DETIENE
+    // aquí. Antes el error se tragaba y se seguía como si la nube estuviera
+    // vacía: se subía lo de este dispositivo sin versión esperada y el
+    // servidor lo escribía encima de todo. Un teléfono recién instalado (o al
+    // que Safari le borró los datos) con mala señal vaciaba así la copia de la
+    // nube, que en ese momento era la única que quedaba. "Sin datos todavía"
+    // no es un error: llega como { datos: null } y sí se sigue.
     let datosRemotos = null;
     let versionRemota = null;
+    let respuestaRemota;
     try {
-        const respuestaRemota = await descargarDatosRemotos();
-        if (respuestaRemota) {
-            versionRemota = respuestaRemota.version || null;
-            if (respuestaRemota.datos) {
-                datosRemotos = await descifrarDatos(respuestaRemota.datos, estadoPremium.codigo);
-            }
-        }
+        respuestaRemota = await descargarDatosRemotos();
     } catch (e) {
-        console.log('No hay datos remotos o error:', e.message);
+        const fallo = new Error('No se pudo descargar la copia de la nube (' + e.message + '). ' +
+                                'No se subió nada para no sobrescribirla; se reintentará.');
+        fallo.tipoFallo = e.tipoFallo || 'descarga';
+        throw fallo;
+    }
+    if (!respuestaRemota) {
+        throw new Error('El servidor no devolvió la copia de la nube. No se subió nada para no sobrescribirla.');
+    }
+    versionRemota = respuestaRemota.version !== undefined ? respuestaRemota.version : null;
+    if (respuestaRemota.datos) {
+        try {
+            datosRemotos = await descifrarDatos(respuestaRemota.datos, estadoPremium.codigo);
+        } catch (e) {
+            // Un bloque que no se puede leer (cortado, de otra licencia) no se
+            // pisa: puede ser lo único que quede de otro dispositivo.
+            const fallo = new Error('La copia de la nube no se pudo leer (' + e.message + '). ' +
+                                    'No se sobrescribió; tus datos de este dispositivo siguen intactos.');
+            fallo.tipoFallo = 'lectura';
+            throw fallo;
+        }
     }
     syncState.remoteVersion = versionRemota;
 
@@ -363,7 +390,13 @@ async function sincronizarDatos() {
     }
 
     syncState.syncInProgress = true;
+    let repetirSync = false;
     actualizarUISync('syncing');
+
+    // Lo que se guarde a partir de aquí puede no ir en esta vuelta: la lectura
+    // local ya se hizo o está por hacerse. Se anota cuándo empezó para no
+    // borrar al final un aviso de pendiente que es posterior.
+    const inicioSync = Date.now();
 
     try {
         // Hasta 3 ciclos en caso de conflict (otro dispositivo escribió mientras
@@ -394,7 +427,16 @@ async function sincronizarDatos() {
 
         syncState.lastSync = Date.now();
         localStorage.setItem('sync_last_sync', syncState.lastSync.toString());
-        limpiarPendienteSync();
+
+        // Solo se da por subido lo que existía al empezar. Una nota guardada
+        // mientras viajaba la subida no iba en ella: antes se borraba el aviso
+        // igual y esa nota se quedaba solo en este dispositivo hasta el
+        // siguiente guardado, sin que nada lo indicara.
+        if (_marcaPendienteSync() > inicioSync) {
+            repetirSync = true;
+        } else {
+            limpiarPendienteSync();
+        }
 
         actualizarUISync('success');
 
@@ -405,6 +447,14 @@ async function sincronizarDatos() {
     } finally {
         syncState.syncInProgress = false;
         liberarLockSync();
+    }
+
+    if (repetirSync) {
+        // Otra vuelta para lo que entró durante esta. No se espera: quien
+        // llamó ya tiene su resultado y la siguiente se avisa sola.
+        setTimeout(() => {
+            sincronizarDatos().catch(e => console.warn('Segunda vuelta de sync falló:', e && e.message ? e.message : e));
+        }, 300);
     }
 }
 
@@ -555,6 +605,11 @@ async function descargarDatosRemotos() {
             throw new Error(resultado.mensaje || 'Error del servidor');
         }
 
+        // Cuánto admite este servidor. Uno anterior no lo dice: cuatro.
+        if (resultado.success) {
+            syncState.celdasServidor = parseInt(resultado.celdas, 10) || CELDAS_DATOS_SYNC;
+        }
+
         if (resultado.success && resultado.datos) {
             return { datos: resultado.datos, version: resultado.version || null };
         }
@@ -587,15 +642,27 @@ const TAMANO_POR_CELDA = 49000;
 const LIMITE_CELDA_SHEETS = CELDAS_DATOS_SYNC * TAMANO_POR_CELDA;
 const AVISO_CELDA_SHEETS = Math.round(LIMITE_CELDA_SHEETS * 0.9);
 
+// Cuatro celdas son unos 1 900 expedientes con notas y eventos: un despacho
+// grande se quedaba sin sincronizar. El Apps Script nuevo admite hasta 20 y
+// lo dice en cada respuesta ("celdas"); con uno anterior, que no lo dice, se
+// siguen usando cuatro, porque los trozos de más se perderían por el camino.
+const CELDAS_MAXIMAS_SYNC = 20;
+
+/** Cuántas celdas se pueden usar con el servidor al que se está hablando. */
+function _celdasSync() {
+    const anunciadas = (typeof syncState !== 'undefined' && syncState && syncState.celdasServidor) || CELDAS_DATOS_SYNC;
+    return Math.max(CELDAS_DATOS_SYNC, Math.min(anunciadas, CELDAS_MAXIMAS_SYNC));
+}
+
 /**
  * Parte el bloque en los trozos que van a cada columna. Devuelve siempre
- * CELDAS_DATOS_SYNC elementos: los sobrantes van vacíos para que el servidor
+ * tantos elementos como celdas: los sobrantes van vacíos para que el servidor
  * limpie las columnas que ya no se usan (si no, quedaría cola de una
  * sincronización anterior más larga y el bloque se leería corrupto).
  */
-function _partirParaCeldas(texto) {
+function _partirParaCeldas(texto, celdas = _celdasSync()) {
     const partes = [];
-    for (let i = 0; i < CELDAS_DATOS_SYNC; i++) {
+    for (let i = 0; i < celdas; i++) {
         partes.push(texto.substr(i * TAMANO_POR_CELDA, TAMANO_POR_CELDA));
     }
     return partes;
@@ -644,18 +711,25 @@ async function subirDatosRemotos(datosCifrados, versionExpected) {
     const url = PREMIUM_CONFIG.apiUrl;
 
     const tamano = datosCifrados.length;
-    if (tamano > AVISO_CELDA_SHEETS) {
+    const celdas = _celdasSync();
+    const limite = celdas * TAMANO_POR_CELDA;
+    const aviso = Math.round(limite * 0.9);
+    if (tamano > aviso) {
         console.warn(`[SYNC] El bloque ocupa ${tamano.toLocaleString('es')} de ` +
-                     `${LIMITE_CELDA_SHEETS.toLocaleString('es')} caracteres que admite la celda ` +
-                     `(${Math.round(tamano / LIMITE_CELDA_SHEETS * 100)}%).`);
+                     `${limite.toLocaleString('es')} caracteres que admite la celda ` +
+                     `(${Math.round(tamano / limite * 100)}%).`);
     }
-    if (tamano > LIMITE_CELDA_SHEETS) {
+    if (tamano > limite) {
         const error = new Error(
             `Tus datos ya no caben en una sincronización: ocupan ${tamano.toLocaleString('es')} ` +
-            `caracteres y el máximo que admite la hoja de cálculo es ${LIMITE_CELDA_SHEETS.toLocaleString('es')} ` +
-            `(${CELDAS_DATOS_SYNC} celdas de ${TAMANO_POR_CELDA.toLocaleString('es')}). ` +
+            `caracteres y el máximo que admite la hoja de cálculo es ${limite.toLocaleString('es')} ` +
+            `(${celdas} celdas de ${TAMANO_POR_CELDA.toLocaleString('es')}). ` +
             'No es un problema de conexión y reintentar no va a servir. ' +
-            'Archiva expedientes que ya no sigas, o pide que se amplíe el almacenamiento.');
+            (celdas < CELDAS_MAXIMAS_SYNC
+                ? 'Hay que publicar la versión nueva del Apps Script, que admite hasta ' +
+                  (CELDAS_MAXIMAS_SYNC * TAMANO_POR_CELDA).toLocaleString('es') + ' caracteres. '
+                : '') +
+            'Mientras tanto, archiva expedientes que ya no sigas. Tus datos de este dispositivo no se tocan.');
         error.tipoFallo = 'tamano';
         error.tamanoBloque = tamano;
         throw error;
@@ -664,15 +738,13 @@ async function subirDatosRemotos(datosCifrados, versionExpected) {
     try {
         // El primer trozo viaja como "datos" para que un servidor antiguo
         // —sin las columnas nuevas— siga entendiendo la petición.
-        const partes = _partirParaCeldas(datosCifrados);
+        const partes = _partirParaCeldas(datosCifrados, celdas);
         const body = {
             action: 'guardar_sync',
             codigo: estadoPremium.codigo,
-            datos: partes[0],
-            datos_2: partes[1],
-            datos_3: partes[2],
-            datos_4: partes[3]
+            datos: partes[0]
         };
+        for (let i = 1; i < partes.length; i++) body['datos_' + (i + 1)] = partes[i];
         if (versionExpected !== undefined && versionExpected !== null) {
             body.version_expected = versionExpected;
         }
@@ -745,8 +817,84 @@ function _ultimaEdicionDe(registro) {
     return ultima;
 }
 
+/**
+ * Dos dispositivos que crean algo entre una sincronización y otra le dan el
+ * mismo id: cada base cuenta por su lado (autoIncrement) desde el último id
+ * que bajó de la nube. Antes se fusionaban los dos registros —distintos— con
+ * el mismo id y, al guardarlos por id, uno pisaba al otro: cada dispositivo
+ * veía solo SU expediente nuevo, el del otro se quedaba invisible en la nube y
+ * las notas de los dos acababan colgando del que sobrevivía.
+ *
+ * Gana la nube: lo que ya está publicado conserva su id y lo de aquí que
+ * choca se renumera, con todo lo que lo referencia en este dispositivo
+ * (notas, eventos, pendientes, historial). Así el otro dispositivo, al bajar,
+ * no ve ningún choque y todos convergen a los mismos ids.
+ *
+ * "Distinto" quiere decir fecha de creación distinta y contenido distinto:
+ * el mismo registro viaja con su id y su fecha de creación a todas partes.
+ * Modifica `local` (sus arreglos se sustituyen por copias); `remoto` no se toca.
+ */
+function _resolverChoquesDeIds(local, remoto) {
+    const sello = typeof ahoraSync === 'function' ? ahoraSync() : new Date().toISOString();
+    const mismoOrigen = (a, b) => !a.fechaCreacion || !b.fechaCreacion || a.fechaCreacion === b.fechaCreacion;
+    let renumerados = 0;
+
+    const renumerar = (store, esMismo) => {
+        const locales = local[store] || [];
+        const remotos = remoto[store] || [];
+        const remotoPorId = new Map();
+        let max = 0;
+        for (const r of remotos) {
+            if (!r || r.id === undefined || r.id === null) continue;
+            remotoPorId.set(r.id, r);
+            if (Number(r.id) > max) max = Number(r.id);
+        }
+        for (const r of locales) if (r && Number(r.id) > max) max = Number(r.id);
+
+        const cambios = new Map();
+        local[store] = locales.map(r => {
+            const otro = r && r.id !== undefined && r.id !== null ? remotoPorId.get(r.id) : null;
+            if (!otro || esMismo(r, otro)) return r;
+            const nuevo = ++max;
+            cambios.set(r.id, nuevo);
+            renumerados++;
+            return { ...r, id: nuevo };
+        });
+        return cambios;
+    };
+
+    // Cambia una referencia en los registros de aquí y la sella, para que
+    // al fusionar campo a campo no la gane la versión vieja.
+    const reapuntar = (store, campo, cambios) => {
+        if (!cambios.size || !Array.isArray(local[store])) return;
+        local[store] = local[store].map(r => {
+            if (!r || !cambios.has(r[campo])) return r;
+            const copia = { ...r, [campo]: cambios.get(r[campo]) };
+            if (copia._fieldTimestamps) copia._fieldTimestamps = { ...copia._fieldTimestamps, [campo]: sello };
+            return copia;
+        });
+    };
+
+    const exp = renumerar('expedientes', (a, b) => mismoOrigen(a, b) || sonExpedientesDuplicados(a, b).esDuplicado);
+    for (const store of ['notas', 'eventos', 'pendientes', 'historial']) reapuntar(store, 'expedienteId', exp);
+
+    renumerar('notas', (a, b) => mismoOrigen(a, b) || claveNota(a) === claveNota(b));
+    const ev = renumerar('eventos', (a, b) => mismoOrigen(a, b) || claveEvento(a) === claveEvento(b));
+    reapuntar('pendientes', 'eventoId', ev);
+    const pend = renumerar('pendientes', (a, b) => mismoOrigen(a, b) || _clavePendiente(a) === _clavePendiente(b));
+    reapuntar('eventos', 'pendienteId', pend);
+
+    if (renumerados) console.log(`[SYNC] ${renumerados} registro(s) de este dispositivo cambiaron de id para no chocar con la nube`);
+    return renumerados;
+}
+
 // Fusionar datos locales y remotos
 function fusionarDatos(local, remoto) {
+    // Lo primero, antes de comparar nada: que ningún registro de aquí comparta
+    // id con uno distinto de la nube.
+    local = { ...local };
+    _resolverChoquesDeIds(local, remoto);
+
     // Fusionar eliminados primero (unir ambas listas)
     const eliminadosFusionados = fusionarEliminados(
         local.eliminados || [],
@@ -757,7 +905,8 @@ function fusionarDatos(local, remoto) {
     // Mapa clave → fecha del borrado, no un simple Set: sin la fecha no se
     // puede saber si el borrado es anterior a la edición que tenemos delante,
     // y un borrado viejo se llevaba por delante ediciones más nuevas.
-    const clavesEliminadas = new Map(eliminadosFusionados.map(e => [e.clave, e.fecha || '']));
+    const clavesEliminadas = new Map(eliminadosFusionados.map(e => [
+        typeof claveBorradoNormalizada === 'function' ? claveBorradoNormalizada(e) : e.clave, e.fecha || '']));
 
     // Carpetas: fusión por nombre (dedup) + remap de carpetaId solo en expedientes
     // REMOTOS, antes de fusionarlos. Aplicar el remap post-fusión sería incorrecto
@@ -1237,11 +1386,15 @@ function limpiarReporteFusion() {
 }
 
 // Generar clave única para nota
+// El título va en la clave. Sin él, dos notas del mismo expediente escritas
+// el mismo día con el mismo arranque (o sin contenido, solo título) eran "la
+// misma" y la sincronización se quedaba con una.
 function claveNota(nota) {
     const contenido = (nota.contenido || '').substring(0, 100).trim().toLowerCase();
+    const titulo = (nota.titulo || '').trim().toLowerCase();
     const expedienteId = nota.expedienteId || 'sin-exp';
     const fecha = nota.fechaCreacion || '';
-    return `${expedienteId}|${contenido}|${fecha.substring(0, 10)}`;
+    return `${expedienteId}|${titulo}|${contenido}|${fecha.substring(0, 10)}`;
 }
 
 // Generar clave única para evento.
@@ -1264,8 +1417,10 @@ function claveEliminacionEvento(ev) {
     return `evento|${titulo}|${fechaInicio}|${expedienteId}`;
 }
 
-// Generar clave de eliminación de nota.
+// Generar clave de eliminación de nota (la misma que claveBorradoNota de
+// database.js, que es quien la escribe).
 function claveEliminacionNota(n) {
+    if (typeof claveBorradoNota === 'function') return claveBorradoNota(n);
     const contenido = (n.contenido || '').substring(0, 100).trim().toLowerCase();
     const expedienteId = n.expedienteId || 'sin-exp';
     const fecha = (n.fechaCreacion || '').substring(0, 10);
@@ -1419,38 +1574,33 @@ function fusionarRegistroPorCampo(a, b, omitirKeys = new Set(['id', '_fieldTimes
 // Fusionar notas sin duplicar, con merge por campo, reasignación de
 // expedientes fusionados y filtrado de notas eliminadas remotamente.
 function fusionarNotas(locales, remotas, clavesEliminadas = new Map()) {
-    const mapa = new Map();
     const mapaReasignacion = crearMapaReasignacion();
+    const preparadas = [];
 
     // Locales primero como base, para que ediciones locales recientes ganen
     // sobre versiones remotas más viejas en el mismo campo.
-    const todasNotas = [...locales, ...remotas];
-
-    todasNotas.forEach(nota => {
+    for (const nota of [...locales, ...remotas]) {
         // Filtrar si está en la lista de eliminados
-        if (_eliminadoGana(clavesEliminadas, claveEliminacionNota(nota), nota)) return;
+        if (_eliminadoGana(clavesEliminadas, claveEliminacionNota(nota), nota)) continue;
+        // Un borrado viejo que no guardó el título sigue con su clave de antes.
+        if (typeof claveBorradoNotaAntigua === 'function' &&
+            _eliminadoGana(clavesEliminadas, claveBorradoNotaAntigua(nota), nota)) continue;
 
         // Reasignar expedienteId si el expediente fue fusionado
-        let notaProcesada = { ...nota };
+        const notaProcesada = { ...nota };
         if (nota.expedienteId && mapaReasignacion.has(nota.expedienteId)) {
             notaProcesada.expedienteId = mapaReasignacion.get(nota.expedienteId);
             notaProcesada._reasignada = true;
             reporteFusionDuplicados.notasReasignadas++;
         }
+        preparadas.push(notaProcesada);
+    }
 
-        const clave = claveNota(notaProcesada);
-        if (!clave) return;
-
-        const existente = mapa.get(clave);
-        if (!existente) {
-            mapa.set(clave, notaProcesada);
-        } else {
-            // Merge por campo: ninguna edición se pierde si afectó campos distintos
-            mapa.set(clave, fusionarRegistroPorCampo(existente, notaProcesada));
-        }
-    });
-
-    return Array.from(mapa.values()).map(nota => {
+    // Como los eventos: las versiones de una misma nota se juntan por su
+    // identidad de origen aunque se haya editado el texto (que es parte de
+    // la clave por contenido). Antes, editar una nota dejaba dos con el mismo
+    // id y al guardar se quedaba la que llegara última.
+    return unirVersiones(preparadas, claveNota, (a, b) => fusionarRegistroPorCampo(a, b)).map(nota => {
         delete nota._reasignada;
         return nota;
     });
@@ -1603,13 +1753,18 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// La conexión abierta por database.js (variable global "db" del script).
+function _conexionDB() {
+    return (typeof db !== 'undefined' && db) ? db : null;
+}
+
 // Aplicar datos a IndexedDB
 async function aplicarDatosLocalmente(datos) {
-    const db = await new Promise((resolve, reject) => {
-        const request = indexedDB.open('TSJFilingDB');
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-    });
+    // La conexión de database.js, no una nueva. Antes cada sincronización
+    // abría otra y no la cerraba nunca: al publicar una versión nueva de la
+    // base, esas conexiones colgadas bloqueaban la actualización y la app
+    // nueva se quedaba sin abrir en las demás pestañas.
+    const db = _conexionDB() || await initDB();
 
     // Incluir 'carpetas' en la tx solo si el store existe (compat con DB v4)
     const stores = ['expedientes', 'notas', 'eventos', 'eliminados'];
