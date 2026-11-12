@@ -12,13 +12,29 @@
 
 name = "throbbing-scene-1c2b"
 main = "impi-proxy-worker.js"
-compatibility_date = "2024-09-23"
+# Lo que tenía el panel de Cloudflare al 12/11/2026 (pestaña Production):
+# fecha de compatibilidad, sin flags, placement Default, solo workers.dev (sin
+# dominios ni rutas), URLs de preview apagadas, logs al 100 % y sin traces.
+compatibility_date = "2026-03-22"
 workers_dev = true
+preview_urls = false
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+persist = true
+
+[observability.traces]
+enabled = false
 
 [[kv_namespaces]]
 binding = "CUOTAS"
 # El id del KV no se guarda en el repo: el workflow sustituye este texto por la
 # variable de GitHub CUOTAS_KV_ID (Settings → Secrets and variables → Actions →
-# Variables). Se ve en Cloudflare: Workers & Pages → KV, o en el worker →
-# Settings → Bindings → CUOTAS.
+# Variables). Se ve en Cloudflare: Storage & databases → Workers KV → tsj-cuotas,
+# o en el worker → Settings → Bindings → CUOTAS.
 id = "REEMPLAZAR_CON_CUOTAS_KV_ID"
