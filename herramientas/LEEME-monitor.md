@@ -21,7 +21,7 @@ Una prueba **omitida** (falta un secreto opcional) no es una falla.
 
 | Nombre | Tipo | ¿Obligatorio? | Para qué |
 |---|---|---|---|
-| `MONITOR_LICENCIA_CODIGO` | Secret | Opcional | Una licencia Premium. Sin ella se omiten las pruebas que exigen el pase de `/cuota` (búsquedas de MARCia, SIGA y Marcanet, y `/api/sesiones`). Debe tener un lugar de dispositivo libre: la verificación no registra el dispositivo, pero la API rechaza si el límite ya está lleno. |
+| `MONITOR_LICENCIA_CODIGO` | Secret | Opcional | Una licencia Premium. Sin ella se omiten las pruebas que exigen el pase de `/cuota` (búsquedas de MARCia, SIGA y Marcanet, y `/api/sesiones`). Conviene una licencia solo para el monitor. Su dispositivo (`monitor-integraciones`, o el de `MONITOR_LICENCIA_DISPOSITIVO`) tiene que estar **registrado** en ella: el Worker solo da Premium a dispositivos registrados. Se registra poniendo en la columna J de esa fila `[{"id":"monitor-integraciones","tipo":"desktop","nombre":"Monitor GitHub","fechaRegistro":"2026-11-12T00:00:00Z"}]`. |
 | `GEMINI_API_KEY` | Secret | Opcional | Sin ella se omite la prueba de Gemini. |
 | `CLOUDFLARE_API_TOKEN` | Secret | Para desplegar | Sin él, el workflow de despliegue avisa y termina en verde sin tocar nada. De preferencia el que ofrece el propio worker (Settings → Builds → "API token for external CI/CD"), que solo puede desplegar este Worker; si le faltan permisos, la plantilla "Edit Cloudflare Workers". |
 | `CUOTAS_KV_ID` | Variable | Si hay token | Id del KV `CUOTAS` (Cloudflare → Storage & databases → Workers KV → `tsj-cuotas`, o el worker → Settings → Bindings). Sin él el despliegue se detiene: wrangler borra los bindings que no declara el `wrangler.toml`. |
