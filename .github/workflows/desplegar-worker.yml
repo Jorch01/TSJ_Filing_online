@@ -1,0 +1,105 @@
+name: Desplegar Worker
+
+# El Worker (docs/proxy/impi-proxy-worker.js) se publicaba pegándolo a mano en
+# el panel de Cloudflare y ya se desfasó del repo. Este workflow lo despliega
+# con wrangler cuando cambia en main.
+#
+# NO HACE NADA mientras no exista el secreto CLOUDFLARE_API_TOKEN: avisa y
+# termina en verde. Ver herramientas/LEEME-monitor.md para configurarlo.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/proxy/impi-proxy-worker.js'
+      - 'docs/proxy/wrangler.toml'
+      - '.github/workflows/desplegar-worker.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desplegar-worker
+  cancel-in-progress: false
+
+jobs:
+  desplegar:
+    name: Desplegar con wrangler
+    if: github.repository == 'Jorch01/TSJ_Filing_online'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      WORKER: throbbing-scene-1c2b
+      CONFIG: docs/proxy/wrangler.toml
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: ¿Hay token de Cloudflare?
+        id: token
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "hay=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Worker sin desplegar::No existe el secreto CLOUDFLARE_API_TOKEN, así que no se despliega nada. El Worker se sigue publicando a mano."
+            echo "Sin CLOUDFLARE_API_TOKEN: no se despliega nada." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "hay=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Instalar Node
+        if: steps.token.outputs.hay == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Antes de tocar producción: que el código compile y pasen las pruebas
+      # que cubren al Worker.
+      - name: Pruebas del Worker
+        if: steps.token.outputs.hay == 'true'
+        run: |
+          node --check docs/proxy/impi-proxy-worker.js
+          node test_proxy_enlaces.js
+          node test_cuotas_impi.js
+          node test_sesiones.js
+
+      # wrangler borra los bindings que no estén en el archivo: el KV CUOTAS
+      # tiene que ir con su id real, que se guarda como variable de GitHub.
+      - name: Preparar la configuración
+        if: steps.token.outputs.hay == 'true'
+        env:
+          CUOTAS_KV_ID: ${{ vars.CUOTAS_KV_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CUOTAS_KV_ID" ]; then
+            echo "::error title=Falta CUOTAS_KV_ID::Define la variable de GitHub CUOTAS_KV_ID con el id del KV CUOTAS. Sin ella el despliegue dejaría el Worker sin cuotas."
+            exit 1
+          fi
+          sed -i "s/REEMPLAZAR_CON_CUOTAS_KV_ID/$CUOTAS_KV_ID/" "$CONFIG"
+          grep -q 'REEMPLAZAR_CON' "$CONFIG" && { echo "::error::No se pudo sustituir el id del KV"; exit 1; }
+          # Si hay varias cuentas, wrangler necesita saber cuál.
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] && echo "CLOUDFLARE_ACCOUNT_ID=$CLOUDFLARE_ACCOUNT_ID" >> "$GITHUB_ENV"
+          exit 0
+
+      # Los secretos viven en Cloudflare y un despliegue no los toca, pero si
+      # CUOTA_SECRETO no está el Worker arranca con las cuotas apagadas.
+      - name: Comprobar el secreto CUOTA_SECRETO
+        if: steps.token.outputs.hay == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@4.160.1 secret list --config "$CONFIG" --format json > "$RUNNER_TEMP/secretos.json"
+          node -e "const s=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));if(!s.some(x=>x.name==='CUOTA_SECRETO')){console.log('::error title=Falta CUOTA_SECRETO::El Worker no tiene el secreto CUOTA_SECRETO; desplegarlo así apagaría las cuotas.');process.exit(1)}" "$RUNNER_TEMP/secretos.json"
+
+      - name: Desplegar
+        if: steps.token.outputs.hay == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.160.1 deploy --config "$CONFIG" --keep-vars
+
+      # Un desfase de versión es un aviso; cuotas inactivas o /health caído,
+      # un error.
+      - name: Verificar /health contra WORKER_VERSION
+        if: steps.token.outputs.hay == 'true'
+        run: node herramientas/verificar-worker.js --intentos 6 --espera 10 --exigir-cuotas
