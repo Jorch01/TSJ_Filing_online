@@ -5306,6 +5306,9 @@ async function main() {
         // ---- Sin internet ----
         await probarSinConexion(navegador);
 
+        // ---- Que no se pierdan datos: dos dispositivos, dos pestañas, red cortada ----
+        await probarQueNoSePierdenDatos(navegador);
+
         // ---- Alta con IA, consulta en su tribunal y anuncios ----
         await probarAltaConIAyConsulta(navegador);
 
