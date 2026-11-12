@@ -547,7 +547,7 @@ const reportes = (sise) => sise.llamadas.filter(l => !l.esCalendario);
         const licenciasVistas = [];
         globalThis.fetch = async (destino, opciones) => {
             const u = String(destino);
-            if (u.startsWith('https://script.google.com/')) { licenciasVistas.push(u); return { json: async () => ({ valido: /codigo=BUENA(&|$)/.test(u) }) }; }
+            if (u.startsWith('https://script.google.com/')) { const c = JSON.parse((opciones && opciones.body) || '{}'); licenciasVistas.push({ u, metodo: opciones && opciones.method, ...c }); return { json: async () => ({ valido: c.codigo === 'BUENA' }) }; }
             if (u.startsWith('https://www.dgej.cjf.gob.mx/')) return sise.fetch(u, opciones);
             throw new Error('petición que la prueba no esperaba: ' + u);
         };
@@ -586,7 +586,7 @@ const reportes = (sise) => sise.llamadas.filter(l => !l.esCalendario);
 
             const mala = await pedirCuota('sesiones', { codigo: 'MALA', dispositivoId: 'D' }, null, 3);
             igual('una licencia que el servidor no reconoce cuenta como sin licencia: gasta una de prueba', [mala.datos.permitido, mala.datos.premium, mala.datos.usados], [true, undefined, 1]);
-            verificar('la licencia se comprobó con la API de licencias', licenciasVistas.some(u => /action=verificar&codigo=MALA&dispositivo_id=D/.test(u)));
+            verificar('la licencia se comprobó con la API de licencias, por POST y sin el código en la URL', licenciasVistas.some(v => v.metodo === 'POST' && v.action === 'verificar' && v.codigo === 'MALA' && v.dispositivo_id === 'D' && !/MALA/.test(v.u)));
 
             const buena = await pedirCuota('sesiones', { codigo: 'BUENA', dispositivoId: 'D' });
             igual('con licencia vigente no hay límite: pase de Premium aunque las de prueba estén gastadas', [buena.datos.permitido, buena.datos.premium, buena.datos.usados, typeof buena.datos.pase], [true, true, null, 'string']);

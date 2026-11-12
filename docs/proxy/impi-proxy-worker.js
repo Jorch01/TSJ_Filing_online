@@ -33,7 +33,7 @@
 
 // Sirve para confirmar, desde /health, que el worker publicado es el esperado.
 // Actualízala cuando el cambio valga la pena verificar tras desplegar.
-const WORKER_VERSION = '2026-11-11-sesiones-prueba';
+const WORKER_VERSION = '2026-11-12-cuotas-por-ip';
 
 const ALLOWED_ORIGINS = [
     'https://jorch01.github.io',
@@ -154,30 +154,43 @@ function periodoDe(tipo, ahora) {
     return 'siempre';
 }
 
-/** Los resúmenes con los que se cuenta a quien busca. */
+// La huella y el id de dispositivo los manda el navegador, así que quien
+// llame al proxy a mano puede inventar unos nuevos en cada intento. Por eso la
+// IP sola cuenta SIEMPRE, con su propio tope: más holgado que el de un equipo,
+// porque en un despacho varias computadoras salen a internet con la misma IP.
+const FACTOR_IP = 3;
+
+/** Los resúmenes con los que se cuenta a quien busca: { equipo: [...], ip }. */
 async function identidades(ip, cuerpo) {
     const h = (cuerpo && cuerpo.huella) || {};
-    const ids = [];
-    if (ip && h.amplia) ids.push('a:' + await sha256Hex('ip+amplia|' + ip + '|' + h.amplia));
-    if (h.fina) ids.push('f:' + await sha256Hex('fina|' + h.fina));
-    if (cuerpo && cuerpo.dispositivo) ids.push('d:' + await sha256Hex('disp|' + cuerpo.dispositivo));
-    // Sin ningún dato del equipo, al menos la IP.
-    if (!ids.length && ip) ids.push('i:' + await sha256Hex('ip|' + ip));
-    return ids;
+    const equipo = [];
+    if (ip && h.amplia) equipo.push('a:' + await sha256Hex('ip+amplia|' + ip + '|' + h.amplia));
+    if (h.fina) equipo.push('f:' + await sha256Hex('fina|' + h.fina));
+    if (cuerpo && cuerpo.dispositivo) equipo.push('d:' + await sha256Hex('disp|' + cuerpo.dispositivo));
+    return { equipo, ip: ip ? 'i:' + await sha256Hex('ip|' + ip) : null };
 }
 
 /** ¿La licencia es Premium vigente? Se pregunta a la API de licencias y se recuerda unas horas. */
 async function esPremium(env, licencia, consultar) {
     if (!licencia || !licencia.codigo || !licencia.dispositivoId) return false;
-    const clave = 'lic:' + await sha256Hex(licencia.codigo + '|' + licencia.dispositivoId);
+    // "lic2": las respuestas guardadas antes de exigir dispositivo registrado
+    // no se reutilizan.
+    const clave = 'lic2:' + await sha256Hex(licencia.codigo + '|' + licencia.dispositivoId);
     const guardada = await env.CUOTAS.get(clave);
     if (guardada) return guardada === '1';
     let valido = false;
     try {
-        const r = await consultar(LICENCIAS_API + '?action=verificar&codigo=' + encodeURIComponent(licencia.codigo) +
-            '&dispositivo_id=' + encodeURIComponent(licencia.dispositivoId));
+        // Por POST: el código de licencia no va en la URL, que acaba en registros.
+        const r = await consultar(LICENCIAS_API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: 'verificar', codigo: licencia.codigo, dispositivo_id: licencia.dispositivoId })
+        });
         const d = await r.json();
-        valido = !!(d && d.valido);
+        // "valido" también llega como true para un dispositivo que NO está
+        // registrado mientras la licencia tenga lugares libres (requiereRegistro):
+        // así un código compartido daba Premium en equipos ilimitados.
+        valido = !!(d && d.valido && !d.requiereRegistro);
     } catch (e) { valido = false; }
     await env.CUOTAS.put(clave, valido ? '1' : '0', { expirationTtl: valido ? 6 * 3600 : 600 });
     return valido;
@@ -196,14 +209,28 @@ async function atenderCuota(env, ip, cuerpo, ahora, consultar) {
         return { status: 200, datos: { servidor: true, permitido: true, premium: true, limite: null, usados: null, pase: await crearPase(env.CUOTA_SECRETO, tipo, true, ahora) } };
     }
     const periodo = periodoDe(tipo, ahora);
-    const claves = (await identidades(ip, cuerpo)).map(id => 'c:' + tipo + ':' + periodo + ':' + id);
-    if (!claves.length) return { status: 400, datos: { error: 'Sin datos para contar' } };
-    const valores = await Promise.all(claves.map(k => env.CUOTAS.get(k)));
-    const usados = Math.max(0, ...valores.map(v => parseInt(v, 10) || 0));
-    if (usados >= limite) return { status: 200, datos: { servidor: true, permitido: false, usados, limite } };
+    const prefijo = 'c:' + tipo + ':' + periodo + ':';
+    const ids = await identidades(ip, cuerpo);
+    // Sin datos del equipo, la IP es la única cuenta y lleva el tope normal.
+    const claves = ids.equipo.map(id => prefijo + id);
+    const claveIp = ids.ip ? prefijo + ids.ip : null;
+    if (!claves.length && !claveIp) return { status: 400, datos: { error: 'Sin datos para contar' } };
+    const topeIp = claves.length ? limite * FACTOR_IP : limite;
+    const [valores, valorIp] = await Promise.all([
+        Promise.all(claves.map(k => env.CUOTAS.get(k))),
+        claveIp ? env.CUOTAS.get(claveIp) : null
+    ]);
+    const usadosIp = parseInt(valorIp, 10) || 0;
+    const usados = claves.length ? Math.max(0, ...valores.map(v => parseInt(v, 10) || 0)) : usadosIp;
+    if (usados >= limite || usadosIp >= topeIp) {
+        return { status: 200, datos: { servidor: true, permitido: false, usados: Math.max(usados, usadosIp >= topeIp ? limite : 0), limite } };
+    }
     const nuevo = usados + 1;
     const ttl = CUOTAS[tipo].periodo === 'mes' ? 40 * 86400 : CUOTAS[tipo].periodo === 'dia' ? 2 * 86400 : undefined;
-    await Promise.all(claves.map(k => env.CUOTAS.put(k, String(nuevo), ttl ? { expirationTtl: ttl } : undefined)));
+    const opciones = ttl ? { expirationTtl: ttl } : undefined;
+    const escrituras = claves.map(k => env.CUOTAS.put(k, String(nuevo), opciones));
+    if (claveIp) escrituras.push(env.CUOTAS.put(claveIp, String(usadosIp + 1), opciones));
+    await Promise.all(escrituras);
     return { status: 200, datos: { servidor: true, permitido: true, usados: nuevo, limite, pase: await crearPase(env.CUOTA_SECRETO, tipo, false, ahora) } };
 }
 
@@ -340,7 +367,7 @@ export default {
             if (path === '/cuota' && request.method === 'POST') {
                 let cuerpo = {};
                 try { cuerpo = await request.json(); } catch (e) { /* cuerpo vacío */ }
-                const r = await atenderCuota(env, request.headers.get('CF-Connecting-IP') || '', cuerpo, Date.now(), (u) => fetch(u, { redirect: 'follow' }));
+                const r = await atenderCuota(env, request.headers.get('CF-Connecting-IP') || '', cuerpo, Date.now(), (u, o) => fetch(u, { redirect: 'follow', ...(o || {}) }));
                 return addCORSHeaders(new Response(JSON.stringify(r.datos), { status: r.status, headers: { 'Content-Type': 'application/json' } }), origin);
             }
             const sinPase = await revisarPase(env, path, request, Date.now());
@@ -383,7 +410,12 @@ export default {
             } else if (path === '/marcanet/detail-link') {
                 response = await handleMarcanetDetailLink(request);
             } else if (path === '/marcanet/full-detail') {
-                response = await handleMarcanetFullDetail(request);
+                // Ver la ficha de un expediente o registro no gasta búsquedas.
+                // Pero con solo la denominación, esta ruta hace una búsqueda en
+                // MARCia: esa parte necesita pase, igual que las demás búsquedas.
+                // Sin él, se responde con lo que dé Marcanet y sin buscar.
+                const conPase = !cuotasActivas(env) || !!(await leerPase(env.CUOTA_SECRETO, request.headers.get(CUOTA_HEADER), Date.now()));
+                response = await handleMarcanetFullDetail(request, { buscarPorNombre: conPase });
             }
             // ===== Sesiones de los Tribunales Colegiados (SISE) =====
             else if (path === '/api/sesiones') {
@@ -1754,8 +1786,9 @@ async function handleMarcanetDetailLink(request) {
 }
 
 // Handler: obtener detalle completo combinando Marcanet + MARCia
-async function handleMarcanetFullDetail(request) {
+async function handleMarcanetFullDetail(request, opciones = {}) {
     const body = await request.json();
+    const buscarPorNombre = opciones.buscarPorNombre !== false;
     const expediente = body.expediente || '';
     const registro = body.registro || '';
     const link = body.link || '';
@@ -1935,7 +1968,7 @@ async function handleMarcanetFullDetail(request) {
     if (activeMarciaSession && activeMarciaSession.csrf) {
         const searchNum = expediente || registro || '';
         // Buscar por número O por denominación
-        if (searchNum || denominacion) {
+        if (searchNum || (denominacion && buscarPorNombre)) {
             try {
                 // Helper to get fresh headers (cookies may update between calls)
                 const getMarciaHdrs = () => {
@@ -2050,8 +2083,9 @@ async function handleMarcanetFullDetail(request) {
         detail: allDetail,
         marcia: marciaData,
         fieldCount: Object.keys(allDetail).filter(k => !k.startsWith('_')).length,
-        sources: sources,
-        debug: debugSnippets
+        // debugSnippets se queda en el Worker: llevaba la clave de la sesión
+        // y mensajes de error internos.
+        sources: sources
     }), {
         headers: { 'Content-Type': 'application/json' }
     });
