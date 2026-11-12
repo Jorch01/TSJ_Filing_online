@@ -1,0 +1,40 @@
+# Despliegue del Worker con wrangler (lo corre .github/workflows/desplegar-worker.yml).
+#
+# El worker ya existe en Cloudflare con este nombre; este archivo lo describe para
+# que desplegar desde el repo CONSERVE lo que ya tiene en vez de borrarlo:
+#   - el KV CUOTAS (cuentas del plan gratuito, licencias recordadas, sesiones);
+#   - el secreto CUOTA_SECRETO, que NO se declara aquí: los secretos viven en
+#     Cloudflare y un despliegue no los toca (el workflow comprueba que exista).
+# Todo binding que no esté en este archivo desaparece al desplegar, por eso el KV
+# va declarado. Cualquier otro ajuste puesto a mano en el panel (variables, cron
+# triggers, dominios) que no esté aquí se pierde: se conservan las variables
+# gracias a --keep-vars, lo demás hay que ponerlo en este archivo.
+
+name = "throbbing-scene-1c2b"
+main = "impi-proxy-worker.js"
+# Lo que tenía el panel de Cloudflare al 12/11/2026 (pestaña Production):
+# fecha de compatibilidad, sin flags, placement Default, solo workers.dev (sin
+# dominios ni rutas), URLs de preview apagadas, logs al 100 % y sin traces.
+compatibility_date = "2026-03-22"
+workers_dev = true
+preview_urls = false
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+persist = true
+
+[observability.traces]
+enabled = false
+
+[[kv_namespaces]]
+binding = "CUOTAS"
+# El id del KV no se guarda en el repo: el workflow sustituye este texto por la
+# variable de GitHub CUOTAS_KV_ID (Settings → Secrets and variables → Actions →
+# Variables). Se ve en Cloudflare: Storage & databases → Workers KV → tsj-cuotas,
+# o en el worker → Settings → Bindings → CUOTAS.
+id = "REEMPLAZAR_CON_CUOTAS_KV_ID"

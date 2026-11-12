@@ -3,6 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Política de contenido mínima: ni plugins (<object>, <embed>) ni una
+         <base> inyectada que redirija los enlaces y scripts relativos. No
+         restringe scripts ni conexiones todavía: la app usa onclick en línea y
+         habla con varios servicios, y una política más estricta necesita
+         probarse aparte. -->
+    <meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'">
 
     <!-- SEO Primary -->
     <title>App TSJ Filing Online | Expedientes TSJ Quintana Roo, PJF, estrados laborales y marcas IMPI</title>
@@ -1007,9 +1013,9 @@
                 </div>
             </div>
             <!-- Un solo apartado para los dos tribunales: se cambia aquí. -->
-            <div class="tribunal-selector" role="tablist" aria-label="Tribunal">
-                <button type="button" role="tab" class="tribunal-opcion activa" aria-selected="true" onclick="navegarA('busqueda')">🏢 TSJ Quintana Roo</button>
-                <button type="button" role="tab" class="tribunal-opcion" aria-selected="false" onclick="navegarA('pjf')">🏛️ PJF Federal</button>
+            <div class="tribunal-selector" role="group" aria-label="Tribunal">
+                <button type="button" class="tribunal-opcion activa" aria-current="page" onclick="navegarA('busqueda')">🏢 TSJ Quintana Roo</button>
+                <button type="button" class="tribunal-opcion" onclick="navegarA('pjf')">🏛️ PJF Federal</button>
                 <button type="button" class="tribunal-opcion" id="btn-estrados-laborales-tsj" onclick="ESTRADOS_LABORALES.abrir()" title="Estrados del Tribunal de Conciliación y Arbitraje y de las Juntas (sitio de la Secretaría del Trabajo)">👷 Laboral Q. Roo</button>
             </div>
 
@@ -1409,9 +1415,9 @@
                 </div>
             </div>
             <!-- Un solo apartado para los dos tribunales: se cambia aquí. -->
-            <div class="tribunal-selector" role="tablist" aria-label="Tribunal">
-                <button type="button" role="tab" class="tribunal-opcion" aria-selected="false" onclick="navegarA('busqueda')">🏢 TSJ Quintana Roo</button>
-                <button type="button" role="tab" class="tribunal-opcion activa" aria-selected="true" onclick="navegarA('pjf')">🏛️ PJF Federal</button>
+            <div class="tribunal-selector" role="group" aria-label="Tribunal">
+                <button type="button" class="tribunal-opcion" onclick="navegarA('busqueda')">🏢 TSJ Quintana Roo</button>
+                <button type="button" class="tribunal-opcion activa" aria-current="page" onclick="navegarA('pjf')">🏛️ PJF Federal</button>
                 <button type="button" class="tribunal-opcion" id="btn-estrados-laborales-pjf" onclick="ESTRADOS_LABORALES.abrir()" title="Estrados del Tribunal de Conciliación y Arbitraje y de las Juntas (sitio de la Secretaría del Trabajo)">👷 Laboral Q. Roo</button>
             </div>
 
@@ -2533,7 +2539,7 @@
                         <p>Reduce la fatiga visual en ambientes con poca luz</p>
                     </div>
                     <label class="switch">
-                        <input type="checkbox" id="config-tema-oscuro" onchange="toggleTemaOscuro()">
+                        <input type="checkbox" id="config-tema-oscuro" aria-label="Tema oscuro" onchange="toggleTemaOscuro()">
                         <span class="slider"></span>
                     </label>
                 </div>
@@ -2547,7 +2553,7 @@
                         <p>Recibe alertas cuando haya eventos próximos</p>
                     </div>
                     <label class="switch">
-                        <input type="checkbox" id="config-notificaciones" onchange="toggleNotificaciones()">
+                        <input type="checkbox" id="config-notificaciones" aria-label="Notificaciones del navegador" onchange="toggleNotificaciones()">
                         <span class="slider"></span>
                     </label>
                 </div>
@@ -2606,7 +2612,7 @@
                         <p>Descarga automáticamente un respaldo cada día al abrir la app</p>
                     </div>
                     <label class="switch">
-                        <input type="checkbox" id="config-auto-backup" onchange="toggleAutoBackup()">
+                        <input type="checkbox" id="config-auto-backup" aria-label="Respaldo automático diario" onchange="toggleAutoBackup()">
                         <span class="slider"></span>
                     </label>
                 </div>
@@ -2713,7 +2719,7 @@
                         <p>Abre las búsquedas de tus expedientes periódicamente</p>
                     </div>
                     <label class="switch">
-                        <input type="checkbox" id="config-busquedas-auto" onchange="toggleBusquedasAuto()">
+                        <input type="checkbox" id="config-busquedas-auto" aria-label="Activar búsquedas automáticas" onchange="toggleBusquedasAuto()">
                         <span class="slider"></span>
                     </label>
                 </div>
@@ -2936,7 +2942,7 @@
                         <div class="info-icon">🧾</div>
                         <div class="info-content">
                             <h4>¿Necesitas factura?</h4>
-                            <p>Envía tu solicitud con tus datos fiscales a: <a href="mailto:frida@empirica.mx" style="color: var(--primary); font-weight: 500;">frida@empirica.mx</a></p>
+                            <p>Envía tu solicitud con tus datos fiscales a: <a href="mailto:frida@empirica.mx" style="color: var(--enlace); font-weight: 500;">frida@empirica.mx</a></p>
                         </div>
                     </div>
                 </div>
@@ -2961,7 +2967,7 @@
                                 <p>Navega sin distracciones publicitarias</p>
                             </div>
                             <label class="switch">
-                                <input type="checkbox" id="config-ocultar-anuncios" onchange="toggleAnunciosPremium()">
+                                <input type="checkbox" id="config-ocultar-anuncios" aria-label="Ocultar anuncios" onchange="toggleAnunciosPremium()">
                                 <span class="slider"></span>
                             </label>
                         </div>
@@ -3041,7 +3047,7 @@
                                     <p>Descarga cambios de otros dispositivos al abrir la app</p>
                                 </div>
                                 <label class="switch">
-                                    <input type="checkbox" id="sync-on-load" onchange="guardarConfigSync()">
+                                    <input type="checkbox" id="sync-on-load" aria-label="Sincronizar al iniciar" onchange="guardarConfigSync()">
                                     <span class="slider"></span>
                                 </label>
                             </div>
@@ -3052,7 +3058,7 @@
                                     <p>Sube cambios automáticamente al crear/editar datos</p>
                                 </div>
                                 <label class="switch">
-                                    <input type="checkbox" id="sync-on-save" onchange="guardarConfigSync()">
+                                    <input type="checkbox" id="sync-on-save" aria-label="Sincronizar al guardar" onchange="guardarConfigSync()">
                                     <span class="slider"></span>
                                 </label>
                             </div>
@@ -3101,7 +3107,7 @@
                         <p>Nos ayudan a saber qué secciones se usan para mejorarlas. Solo se cuenta el nombre de la acción (por ejemplo "abrió el calendario"); nunca números de expediente, nombres, juzgados, notas ni importes.</p>
                     </div>
                     <label class="switch">
-                        <input type="checkbox" id="config-analitica" checked onchange="desactivarAnalitica(!this.checked)">
+                        <input type="checkbox" id="config-analitica" aria-label="Estadísticas de uso anónimas" checked onchange="desactivarAnalitica(!this.checked)">
                         <span class="slider"></span>
                     </label>
                 </div>

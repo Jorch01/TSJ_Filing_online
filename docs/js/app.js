@@ -165,6 +165,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         await initDB();
         await inicializarApp();
         Logger.log('Aplicación inicializada correctamente');
+        // Pedir que el navegador no borre los datos por su cuenta. Va tarde a
+        // propósito: hace falta saber si hay licencia (sincronización) para
+        // decidir si vale la pena avisar.
+        if (typeof revisarAlmacenamientoPersistente === 'function') {
+            setTimeout(async () => {
+                try {
+                    await revisarAlmacenamientoPersistente({
+                        haySync: typeof estadoPremium !== 'undefined' && !!(estadoPremium.activo && estadoPremium.codigo),
+                        hayRespaldoAuto: (await obtenerConfig('auto_backup')) === 'true'
+                    });
+                } catch (e) { console.warn('No se pudo revisar el almacenamiento:', e); }
+            }, 4000);
+        }
     } catch (error) {
         Logger.error('Error al inicializar:', error);
         mostrarToast('Error al cargar la aplicación', 'error');
@@ -5189,7 +5202,12 @@ function cargarEmailJS() {
         }
 
         const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js';
+        // Versión exacta y con su huella, como DOMPurify en index.html: con
+        // "@3" la CDN servía la última 3.x que hubiera, sin que nadie la revisara,
+        // y este script tiene a la vista la configuración de correo.
+        script.src = 'https://cdn.jsdelivr.net/npm/@emailjs/browser@3.12.1/dist/email.min.js';
+        script.integrity = 'sha384-VDbnsk/qjpIVHPQMkJiROI+vW/7cw0k8TFYVLUabm7EWoLEDwcXh09XQ6gQ86Y0B';
+        script.crossOrigin = 'anonymous';
         script.onload = resolve;
         script.onerror = reject;
         document.head.appendChild(script);
@@ -5533,11 +5551,30 @@ async function importarDatos(event) {
             advertenciaPremium = `\n\n⚠️ CUENTA GRATUITA: Solo se importarán los ${PREMIUM_CONFIG.limiteExpedientes} expedientes más recientes de ${totalExpedientes} totales.\n\nActiva Premium (${textoPrecioDesde()}) para importar todos tus expedientes.`;
         }
 
-        const mensajeConfirm = esPremium
+        // Importar REEMPLAZA lo que hay en este dispositivo. Antes el aviso
+        // solo decía "¿Importar N expedientes?" y quien quería sumar un
+        // respaldo viejo a lo que ya tenía perdía todo lo capturado después.
+        const hayAqui = typeof hayDatosLocales === 'function' && await hayDatosLocales();
+        const avisoReemplazo = hayAqui
+            ? '\n\nOJO: esto REEMPLAZA los datos que hay ahora en este dispositivo. ' +
+              'Antes de importar se descargará una copia de lo actual (tsj_antes_de_importar_….json) por si necesitas volver atrás.'
+            : '';
+
+        const mensajeConfirm = (esPremium
             ? `¿Importar ${totalExpedientes} expedientes, ${totalNotas} notas y ${totalEventos} eventos?`
-            : `¿Importar ${expedientesAImportar.length} expedientes, ${totalNotas} notas y ${totalEventos} eventos?${advertenciaPremium}`;
+            : `¿Importar ${expedientesAImportar.length} expedientes, ${totalNotas} notas y ${totalEventos} eventos?${advertenciaPremium}`) +
+            avisoReemplazo;
 
         if (confirm(mensajeConfirm)) {
+            if (hayAqui) {
+                // La copia va antes de borrar nada. Si no se puede descargar,
+                // no se sigue: sin ella, reemplazar no tiene vuelta atrás.
+                const actual = await exportarTodosDatos();
+                const fechaHora = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                descargarArchivo(`tsj_antes_de_importar_${fechaHora}.json`,
+                    JSON.stringify(actual, null, 2), 'application/json');
+            }
+
             // Crear copia de datos con expedientes limitados si no es premium
             const datosAImportar = {
                 ...datos,
@@ -7329,7 +7366,12 @@ function cargarTesseract() {
     if (!_cargaTesseract) {
         _cargaTesseract = new Promise((resolve, reject) => {
             const s = document.createElement('script');
-            s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+            // Versión exacta y con su huella: lee el texto de los acuerdos, que
+            // son datos de clientes. (El worker y el motor los pide la propia
+            // Tesseract a la CDN con esta misma versión.)
+            s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+            s.integrity = 'sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F';
+            s.crossOrigin = 'anonymous';
             s.onload = () => resolve();
             s.onerror = () => { _cargaTesseract = null; s.remove(); reject(new Error('Tesseract.js no está cargado')); };
             document.head.appendChild(s);
@@ -8826,12 +8868,24 @@ async function verificarCodigoPremium(codigo, deviceId, usuario) {
     return { valido: false, mensaje: 'Sistema de licencias no configurado' };
 }
 
+/**
+ * Llama a la API de licencias por POST. El código de licencia nunca va en la
+ * URL: ahí acaba en el historial del navegador y en los registros de Google.
+ * text/plain evita la consulta previa de CORS, que Apps Script no responde.
+ */
+async function llamarApiLicencias(parametros) {
+    const response = await fetch(PREMIUM_CONFIG.apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(parametros)
+    });
+    return response.json();
+}
+
 // Verificar usando la API de Google Apps Script
 async function verificarConAPI(codigo, deviceId, usuario) {
     try {
-        const url = `${PREMIUM_CONFIG.apiUrl}?action=verificar&codigo=${encodeURIComponent(codigo)}&dispositivo_id=${encodeURIComponent(deviceId)}&usuario=${encodeURIComponent(usuario || '')}`;
-        const response = await fetch(url);
-        const resultado = await response.json();
+        const resultado = await llamarApiLicencias({ action: 'verificar', codigo, dispositivo_id: deviceId, usuario: usuario || '' });
 
         if (resultado.requiereRegistro) {
             // El código es válido pero necesita registrar este dispositivo
@@ -8861,9 +8915,10 @@ async function registrarDispositivoEnAPI(codigo, deviceId, usuario) {
         const tipoDispositivo = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
         const nombreDispositivo = navigator.userAgent.split(/[()]/)[1] || 'Dispositivo';
 
-        const url = `${PREMIUM_CONFIG.apiUrl}?action=registrar_dispositivo&codigo=${encodeURIComponent(codigo)}&dispositivo_id=${encodeURIComponent(deviceId)}&usuario=${encodeURIComponent(usuario || '')}&tipo_dispositivo=${encodeURIComponent(tipoDispositivo)}&nombre_dispositivo=${encodeURIComponent(nombreDispositivo)}`;
-        const response = await fetch(url);
-        const resultado = await response.json();
+        const resultado = await llamarApiLicencias({
+            action: 'registrar_dispositivo', codigo, dispositivo_id: deviceId, usuario: usuario || '',
+            tipo_dispositivo: tipoDispositivo, nombre_dispositivo: nombreDispositivo
+        });
 
         if (resultado.success) {
             return {
@@ -8892,11 +8947,10 @@ async function transferirLicencia(codigo, nuevoDeviceId, usuario, motivo) {
         const tipoDispositivo = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
         const nombreDispositivo = navigator.userAgent.split(/[()]/)[1] || 'Dispositivo';
 
-        const url = `${PREMIUM_CONFIG.apiUrl}?action=transferir&codigo=${encodeURIComponent(codigo)}&nuevo_dispositivo_id=${encodeURIComponent(nuevoDeviceId)}&usuario=${encodeURIComponent(usuario || '')}&tipo_dispositivo=${encodeURIComponent(tipoDispositivo)}&nombre_dispositivo=${encodeURIComponent(nombreDispositivo)}`;
-        const response = await fetch(url);
-        const resultado = await response.json();
-
-        return resultado;
+        return await llamarApiLicencias({
+            action: 'transferir', codigo, nuevo_dispositivo_id: nuevoDeviceId, usuario: usuario || '',
+            tipo_dispositivo: tipoDispositivo, nombre_dispositivo: nombreDispositivo
+        });
     } catch (error) {
         Logger.error('Error al transferir licencia:', error);
         return { success: false, mensaje: 'Error de conexión' };
@@ -8918,9 +8972,7 @@ async function verificarLicenciaPeriodica() {
 
     if (PREMIUM_CONFIG.apiUrl) {
         try {
-            const url = `${PREMIUM_CONFIG.apiUrl}?action=heartbeat&codigo=${encodeURIComponent(estadoPremium.codigo)}&dispositivo_id=${encodeURIComponent(estadoPremium.dispositivoId)}`;
-            const response = await fetch(url);
-            const resultado = await response.json();
+            const resultado = await llamarApiLicencias({ action: 'heartbeat', codigo: estadoPremium.codigo, dispositivo_id: estadoPremium.dispositivoId });
 
             if (!resultado.valido) {
                 // Licencia ya no es válida

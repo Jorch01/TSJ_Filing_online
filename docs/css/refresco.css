@@ -471,3 +471,32 @@ a:hover { color: var(--text-primary); }
 /* Los estados vacíos llevaban un emoji grande: ahora un ícono tenue. */
 .empty-state > span .ico-emoji,
 .empty-state > .ico-emoji { color: var(--text-muted); }
+
+/* ==================== REVISIÓN EN CELULAR: ACCESIBILIDAD ==================== */
+/* En tema oscuro el verde de fondo de los botones se oscureció para que el
+   texto blanco llegue a 4.5:1; como TEXTO sobre fondo oscuro, en cambio, se
+   usa el verde claro (8:1). */
+[data-theme="dark"] .pjf-tab.active,
+[data-theme="dark"] .impi-tab.active,
+[data-theme="dark"] .btn-outline,
+[data-theme="dark"] .ad-detallado .ad-llamada,
+[data-theme="dark"] .impi-local-notice a { color: var(--primary-light); }
+[data-theme="dark"] .btn-outline:hover { color: #fff; }
+
+/* El «Quitar anuncios» medía 83×18 px: imposible de acertar con el pulgar. */
+.ad-remove-link { display: inline-block; padding: 0.8rem 0.5rem; margin: -0.8rem -0.5rem; }
+
+/* Pantallas táctiles: todo lo que se toca mide al menos 44 px (WCAG 2.5.5;
+   el mínimo de AA, 2.5.8, es 24). Abogados con una mano y prisa en el pasillo. */
+@media (pointer: coarse) {
+    .btn, .btn-sm, .view-btn, .pjf-tab, .impi-tab, .tribunal-opcion,
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]),
+    select, summary { min-height: 44px; }
+    .btn, .btn-sm { display: inline-flex; align-items: center; justify-content: center; }
+    .view-btn { min-width: 44px; }
+    /* El círculo «?» sigue viéndose de 22 px, pero se toca en 44 px. */
+    .help-btn::before { content: ''; position: absolute; inset: -11px; }
+}
+
+/* «Ahorra…» sobre el fondo azul de la columna popular: 4.4:1 → 5.9:1. */
+.popular .pricing-ahorro { color: #1f6a3f; }

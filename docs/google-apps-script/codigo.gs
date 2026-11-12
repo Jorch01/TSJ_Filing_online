@@ -154,10 +154,74 @@ const COL = {
 };
 
 // Una celda de Google Sheets admite 50 000 caracteres. Repartir el bloque
-// entre cuatro columnas multiplica por cuatro lo que cabe, sin cambiar nada
-// más de la estructura de la hoja.
-const COLUMNAS_DATOS = [COL.DATOS_SYNC, COL.DATOS_SYNC_2, COL.DATOS_SYNC_3, COL.DATOS_SYNC_4];
-const COLUMNAS_RESPALDO = [COL.RESPALDO_1, COL.RESPALDO_2, COL.RESPALDO_3, COL.RESPALDO_4];
+// entre varias columnas multiplica lo que cabe. Las cuatro primeras (K a N)
+// son las de siempre; con ellas el bloque se quedaba en unos 196 000
+// caracteres, que son unos 1 900 expedientes con sus notas y eventos: un
+// despacho con más dejaba de sincronizar. Por eso se suman 16 columnas más
+// después del respaldo (T a AI), con su propio respaldo detrás (AJ a AY).
+// Una hoja antigua no tiene esas columnas y no hace falta crearlas a mano: se
+// añaden solas la primera vez que un bloque las necesita.
+const COLUMNAS_EXTRA = 16;
+const PRIMERA_DATOS_EXTRA = 19;       // T
+const PRIMERA_RESPALDO_EXTRA = PRIMERA_DATOS_EXTRA + COLUMNAS_EXTRA;   // AJ
+
+function rangoColumnas(desde, cuantas) {
+  const out = [];
+  for (let i = 0; i < cuantas; i++) out.push(desde + i);
+  return out;
+}
+
+const COLUMNAS_DATOS = [COL.DATOS_SYNC, COL.DATOS_SYNC_2, COL.DATOS_SYNC_3, COL.DATOS_SYNC_4]
+  .concat(rangoColumnas(PRIMERA_DATOS_EXTRA, COLUMNAS_EXTRA));
+const COLUMNAS_RESPALDO = [COL.RESPALDO_1, COL.RESPALDO_2, COL.RESPALDO_3, COL.RESPALDO_4]
+  .concat(rangoColumnas(PRIMERA_RESPALDO_EXTRA, COLUMNAS_EXTRA));
+
+// Cuántos trozos admite este servidor. Va en las respuestas de sync para que
+// la app sepa cuánto puede mandar: una app nueva frente a un script viejo
+// (sin este dato) se queda en cuatro y no manda trozos que se perderían.
+const CELDAS_SYNC = COLUMNAS_DATOS.length;
+
+function _valorCelda(v) {
+  return v === null || v === undefined ? '' : String(v);
+}
+
+/**
+ * Lee unas columnas (índices desde 0) de una fila. Las que la hoja todavía no
+ * tiene se leen vacías: pedir un rango fuera de la hoja es un error en Sheets.
+ */
+function leerColumnas(sheet, rowNum, columnas) {
+  const max = sheet.getMaxColumns ? sheet.getMaxColumns() : Infinity;
+  const desde = Math.min.apply(null, columnas);
+  const hasta = Math.min(Math.max.apply(null, columnas), max - 1);
+  if (hasta < desde) return columnas.map(function () { return ''; });
+  const valores = sheet.getRange(rowNum, desde + 1, 1, hasta - desde + 1).getValues()[0];
+  return columnas.map(function (c) { return c <= hasta ? _valorCelda(valores[c - desde]) : ''; });
+}
+
+/**
+ * Escribe unas columnas de una fila, por tramos seguidos: escribir de un
+ * golpe de la primera a la última pisaría lo que hay en medio (el respaldo).
+ * Si la hoja no llega a la última columna con datos, se ensancha; si lo que
+ * sobra va vacío y la hoja no lo tiene, no se crea nada.
+ */
+function escribirColumnas(sheet, rowNum, columnas, valores) {
+  let max = sheet.getMaxColumns ? sheet.getMaxColumns() : Infinity;
+  let ultimaConDatos = -1;
+  columnas.forEach(function (c, i) { if (_valorCelda(valores[i]) !== '') ultimaConDatos = Math.max(ultimaConDatos, c); });
+  if (ultimaConDatos + 1 > max && sheet.insertColumnsAfter) {
+    sheet.insertColumnsAfter(max, ultimaConDatos + 1 - max);
+    max = ultimaConDatos + 1;
+  }
+  let i = 0;
+  while (i < columnas.length) {
+    let j = i;
+    while (j + 1 < columnas.length && columnas[j + 1] === columnas[j] + 1) j++;
+    const tramo = [];
+    for (let k = i; k <= j && columnas[k] < max; k++) tramo.push(_valorCelda(valores[k]));
+    if (tramo.length) sheet.getRange(rowNum, columnas[i] + 1, 1, tramo.length).setValues([tramo]);
+    i = j + 1;
+  }
+}
 
 /**
  * Lee el bloque de sincronización completo de una fila, uniendo las columnas.
@@ -165,8 +229,7 @@ const COLUMNAS_RESPALDO = [COL.RESPALDO_1, COL.RESPALDO_2, COL.RESPALDO_3, COL.R
  * la unión devuelve exactamente lo mismo que antes: no hay que migrar nada.
  */
 function leerDatosSync(sheet, rowNum) {
-  const valores = sheet.getRange(rowNum, COLUMNAS_DATOS[0] + 1, 1, COLUMNAS_DATOS.length).getValues()[0];
-  return valores.map(function (v) { return v === null || v === undefined ? '' : String(v); }).join('');
+  return leerColumnas(sheet, rowNum, COLUMNAS_DATOS).join('');
 }
 
 /**
@@ -175,14 +238,35 @@ function leerDatosSync(sheet, rowNum) {
  * anterior y al concatenar saldría un blob corrupto.
  */
 function escribirDatosSync(sheet, rowNum, partes) {
-  const fila = COLUMNAS_DATOS.map(function (_, i) { return partes[i] || ''; });
-  sheet.getRange(rowNum, COLUMNAS_DATOS[0] + 1, 1, COLUMNAS_DATOS.length).setValues([fila]);
+  escribirColumnas(sheet, rowNum, COLUMNAS_DATOS, COLUMNAS_DATOS.map(function (_, i) { return partes[i] || ''; }));
+}
+
+/**
+ * Una escritura de sync a la vez. Sin el candado, dos dispositivos que suben
+ * casi al mismo tiempo pasaban los dos la comprobación de versión (cada uno
+ * veía la versión anterior) y el segundo borraba lo que acababa de subir el
+ * primero. Si no se consigue en 25 s se responde conflicto: el cliente vuelve
+ * a descargar y reintenta, que es lo correcto.
+ */
+function conCandadoSync(fn) {
+  const candado = LockService.getScriptLock();
+  try {
+    candado.waitLock(25000);
+  } catch (e) {
+    return { success: false, conflict: true, mensaje: 'El servidor está ocupado con otra sincronización. Reintenta.' };
+  }
+  try {
+    return fn();
+  } finally {
+    try { SpreadsheetApp.flush(); } catch (e) { /* nada pendiente */ }
+    candado.releaseLock();
+  }
 }
 
 // ==================== FUNCIONES PRINCIPALES ====================
 
 function doGet(e) {
-  return procesarSolicitud(e.parameter);
+  return procesarSolicitud(e.parameter, 'GET');
 }
 
 function doPost(e) {
@@ -204,15 +288,22 @@ function doPost(e) {
     }
   }
 
-  return procesarSolicitud(params);
+  return procesarSolicitud(params, 'POST');
 }
 
-function procesarSolicitud(params) {
+// Lo que lee o escribe los datos de un cliente. Va solo por POST: en un GET el
+// código de licencia viaja en la URL y acaba en historiales y registros.
+const ACCIONES_SOLO_POST = ['obtener_sync', 'guardar_sync', 'respaldar_sync'];
+
+function procesarSolicitud(params, metodo) {
   const action = params.action;
   let resultado;
 
   try {
-    switch (action) {
+    if (metodo === 'GET' && ACCIONES_SOLO_POST.indexOf(action) !== -1) {
+      resultado = { success: false, razon: 'actualizar_app',
+                    mensaje: 'Actualiza la app (cierra y vuelve a abrir la página) para seguir sincronizando.' };
+    } else switch (action) {
       case 'verificar':
         resultado = verificarCodigo(params);
         break;
@@ -235,10 +326,10 @@ function procesarSolicitud(params) {
         resultado = obtenerDatosSync(params);
         break;
       case 'guardar_sync':
-        resultado = guardarDatosSync(params);
+        resultado = conCandadoSync(function () { return guardarDatosSync(params); });
         break;
       case 'respaldar_sync':
-        resultado = respaldarYLimpiarSync(params);
+        resultado = conCandadoSync(function () { return respaldarYLimpiarSync(params); });
         break;
       case 'reportar_bug':
         resultado = reportarBug(params);
@@ -444,6 +535,24 @@ function getDispositivos(row) {
   }
 
   return dispositivos;
+}
+
+/**
+ * La sincronización necesita, además del código, un dispositivo registrado en
+ * la licencia. Antes bastaba el código: quien lo tuviera podía bajar, pisar o
+ * vaciar los datos de ese cliente desde cualquier lado.
+ */
+function rechazoDeDispositivo(row, dispositivoId) {
+  if (!dispositivoId) {
+    return { success: false, razon: 'dispositivo_no_registrado',
+             mensaje: 'Actualiza la app (cierra y vuelve a abrir la página) para seguir sincronizando.' };
+  }
+  const registrado = getDispositivos(row).some(function (d) { return d && d.id === String(dispositivoId); });
+  if (!registrado) {
+    return { success: false, razon: 'dispositivo_no_registrado',
+             mensaje: 'Este dispositivo no está registrado en la licencia. Vuelve a activar Premium en Configuración.' };
+  }
+  return null;
 }
 
 function getMaxDispositivos(row) {
@@ -697,9 +806,13 @@ function obtenerDispositivos(params) {
       const dispositivos = getDispositivos(row);
       const maxDispositivos = getMaxDispositivos(row);
 
+      // Los ids van recortados, como en verificar: con el id completo se puede
+      // desvincular el dispositivo de otro.
       return {
         success: true,
-        dispositivos: dispositivos,
+        dispositivos: dispositivos.map(function (d) {
+          return { id: String(d.id || '').substring(0, 12) + '...', tipo: d.tipo, nombre: d.nombre, fechaRegistro: d.fechaRegistro };
+        }),
         maxDispositivos: maxDispositivos,
         disponibles: maxDispositivos - dispositivos.length
       };
@@ -757,6 +870,27 @@ function verificarHeartbeat(params) {
 
 // ==================== TRANSFERENCIA DE LICENCIA ====================
 
+const TRANSFERENCIAS_MAXIMAS = 2;
+const DIAS_ENTRE_TRANSFERENCIAS = 30;
+
+/**
+ * Anota una transferencia si cabe en el tope. Se guarda en las propiedades del
+ * script, con el código resumido (no en claro), la fecha de cada una.
+ */
+function registrarTransferencia(codigo) {
+  const props = PropertiesService.getScriptProperties();
+  const clave = 'transf_' + computeSyncHash('transferencia|' + codigo);
+  const ahora = Date.now();
+  const ventana = DIAS_ENTRE_TRANSFERENCIAS * 24 * 60 * 60 * 1000;
+  let fechas = [];
+  try { fechas = JSON.parse(props.getProperty(clave) || '[]'); } catch (e) { fechas = []; }
+  fechas = fechas.filter(function (f) { return typeof f === 'number' && ahora - f < ventana; });
+  if (fechas.length >= TRANSFERENCIAS_MAXIMAS) return { ok: false };
+  fechas.push(ahora);
+  props.setProperty(clave, JSON.stringify(fechas));
+  return { ok: true };
+}
+
 function transferirLicencia(params) {
   const codigo = params.codigo;
   const nuevoDispositivoId = params.nuevo_dispositivo_id;
@@ -778,6 +912,18 @@ function transferirLicencia(params) {
 
       if (!esEstadoActivo(row[COL.ESTADO]) || licenciaExpirada(infoFecha)) {
         return { success: false, mensaje: 'Licencia no válida' };
+      }
+
+      // Transferir deja la licencia en un solo dispositivo y saca a los demás,
+      // y solo pide el código. Para que un código filtrado no sirva para sacar
+      // al dueño una y otra vez, hay un tope: TRANSFERENCIAS_MAXIMAS cada
+      // DIAS_ENTRE_TRANSFERENCIAS días. Dos, para que el dueño pueda recuperarla
+      // una vez; pasado el tope, por soporte.
+      const permiso = registrarTransferencia(codigo);
+      if (!permiso.ok) {
+        return { success: false, razon: 'tope_transferencias',
+                 mensaje: 'Esta licencia ya se transfirió ' + TRANSFERENCIAS_MAXIMAS + ' veces en los últimos ' +
+                          DIAS_ENTRE_TRANSFERENCIAS + ' días. Para moverla otra vez escribe a soporte: jorge_clemente@empirica.mx' };
       }
 
       const dispositivos = [{
@@ -853,13 +999,17 @@ function obtenerDatosSync(params) {
         return { success: false, mensaje: 'Licencia expirada' };
       }
 
+      const rechazo = rechazoDeDispositivo(row, params.dispositivo_id);
+      if (rechazo) return rechazo;
+
       const datosSync = leerDatosSync(sheet, i + 1) || null;
       sheet.getRange(i + 1, COL.ULTIMO_ACCESO + 1).setValue(new Date());
 
       return {
         success: true,
         datos: datosSync,
-        version: computeSyncHash(datosSync || '')
+        version: computeSyncHash(datosSync || ''),
+        celdas: CELDAS_SYNC
       };
     }
   }
@@ -900,10 +1050,16 @@ function guardarDatosSync(params) {
         return { success: false, mensaje: 'Licencia expirada' };
       }
 
+      const rechazo = rechazoDeDispositivo(row, params.dispositivo_id);
+      if (rechazo) return rechazo;
+
       const rowNum = i + 1;
 
       // Verificar versión solo cuando el cliente la envió explícitamente.
-      if (!forzar && versionExpected !== undefined && versionExpected !== null && versionExpected !== '') {
+      // Una versión vacía ('') también cuenta: significa "la vi vacía". Antes
+      // se tomaba como "sin versión" y dos dispositivos que sincronizaban por
+      // primera vez a la vez se pisaban: el segundo borraba al primero.
+      if (!forzar && versionExpected !== undefined && versionExpected !== null) {
         const datosActuales = leerDatosSync(sheet, rowNum);
         const versionActual = computeSyncHash(String(datosActuales));
         if (String(versionExpected) !== versionActual) {
@@ -919,15 +1075,19 @@ function guardarDatosSync(params) {
       // El cliente manda el bloque partido en datos, datos_2, datos_3 y
       // datos_4. Un cliente antiguo manda solo "datos": las demás llegan
       // vacías y se escriben vacías, que es justo lo que hace falta.
-      const partes = [datos, params.datos_2, params.datos_3, params.datos_4]
-        .map(function (p) { return p === null || p === undefined ? '' : String(p); });
+      // datos_5 en adelante solo los manda una app que ya vio "celdas" en
+      // la respuesta de este servidor.
+      const partes = COLUMNAS_DATOS.map(function (_, i) {
+        return _valorCelda(i === 0 ? datos : params['datos_' + (i + 1)]);
+      });
       escribirDatosSync(sheet, rowNum, partes);
       sheet.getRange(rowNum, COL.ULTIMO_ACCESO + 1).setValue(new Date());
 
       return {
         success: true,
         mensaje: 'Datos sincronizados correctamente',
-        version: computeSyncHash(partes.join(''))
+        version: computeSyncHash(partes.join('')),
+        celdas: CELDAS_SYNC
       };
     }
   }
@@ -961,18 +1121,21 @@ function respaldarYLimpiarSync(params) {
       return { success: false, mensaje: 'Licencia inactiva' };
     }
 
+    const rechazo = rechazoDeDispositivo(row, params.dispositivo_id);
+    if (rechazo) return rechazo;
+
     const rowNum = i + 1;
-    const actuales = sheet.getRange(rowNum, COLUMNAS_DATOS[0] + 1, 1, COLUMNAS_DATOS.length).getValues()[0];
-    const tenia = actuales.some(function (v) { return v !== null && v !== undefined && String(v) !== ''; });
+    const actuales = leerColumnas(sheet, rowNum, COLUMNAS_DATOS);
+    const tenia = actuales.some(function (v) { return v !== ''; });
 
     if (tenia) {
       // Copia tal cual, columna a columna: así el respaldo se puede devolver a
       // su sitio sin volver a partirlo.
-      sheet.getRange(rowNum, COLUMNAS_RESPALDO[0] + 1, 1, COLUMNAS_RESPALDO.length).setValues([actuales]);
+      escribirColumnas(sheet, rowNum, COLUMNAS_RESPALDO, actuales);
       sheet.getRange(rowNum, COL.RESPALDO_FECHA + 1).setValue(new Date());
     }
 
-    escribirDatosSync(sheet, rowNum, ['', '', '', '']);
+    escribirDatosSync(sheet, rowNum, []);
     sheet.getRange(rowNum, COL.ULTIMO_ACCESO + 1).setValue(new Date());
 
     return {
@@ -1004,15 +1167,15 @@ function restaurarRespaldoSync(codigo) {
     if (data[i][COL.CODIGO] !== codigo) continue;
 
     const rowNum = i + 1;
-    const respaldo = sheet.getRange(rowNum, COLUMNAS_RESPALDO[0] + 1, 1, COLUMNAS_RESPALDO.length).getValues()[0];
-    const tiene = respaldo.some(function (v) { return v !== null && v !== undefined && String(v) !== ''; });
+    const respaldo = leerColumnas(sheet, rowNum, COLUMNAS_RESPALDO);
+    const tiene = respaldo.some(function (v) { return v !== ''; });
 
     if (!tiene) {
       Logger.log('No hay respaldo para el código ' + codigo);
       return { success: false, mensaje: 'No hay respaldo para ese código' };
     }
 
-    escribirDatosSync(sheet, rowNum, respaldo.map(function (v) { return String(v || ''); }));
+    escribirDatosSync(sheet, rowNum, respaldo);
     Logger.log('Respaldo restaurado para ' + codigo +
                ' (' + String(respaldo.join('')).length + ' caracteres)');
     return { success: true, mensaje: 'Respaldo restaurado' };
@@ -1184,9 +1347,9 @@ function limpiarCeldaSync(codigo) {
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][COL.CODIGO]).trim() === CODIGO_A_LIMPIAR) {
-      // Las cuatro, no solo la K: vaciar una sola dejaría la cola de las otras
-      // tres y al concatenarlas saldría un bloque corrupto.
-      escribirDatosSync(sheet, i + 1, ['', '', '', '']);
+      // Todas, no solo la K: vaciar una sola dejaría la cola de las otras y
+      // al concatenarlas saldría un bloque corrupto.
+      escribirDatosSync(sheet, i + 1, []);
       Logger.log('Celdas de sync limpiadas para: ' + CODIGO_A_LIMPIAR);
       return 'OK - celda limpiada para ' + CODIGO_A_LIMPIAR;
     }

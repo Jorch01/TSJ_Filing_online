@@ -53,7 +53,11 @@ const ID_PRUEBA = '1TESTtestTESTtestTESTtestTESTtestTESTtest123';
 
 const CABECERA = ['codigo','fecha_exp','disp','usuario','estado','freg','intentos','ultimo','max','disp_json',
                   'datos_sync','datos_2','datos_3','datos_4','resp_1','resp_2','resp_3','resp_4','resp_fecha'];
-const hoja = crearHoja([CABECERA, ['ABC123','perpetua','','','activo','',0,'',2,'[]','','','','','','','','','']]);
+// La licencia de prueba tiene un dispositivo registrado: la sincronización lo exige.
+const DISP = 'DISP-REGISTRADO-0001';
+const hoja = crearHoja([CABECERA, ['ABC123','perpetua','','','activo','',0,'',2,
+  JSON.stringify([{ id: DISP, tipo: 'desktop', nombre: 'PC', fechaRegistro: '2026-01-01T00:00:00Z' }]),
+  '','','','','','','','','']]);
 
 // Propiedades del script: aquí vive la configuración que sobrevive a las
 // actualizaciones del código.
@@ -74,6 +78,8 @@ function propiedadesFalsas(almacen) {
   };
 }
 
+const candado = { pedidos: 0, tomado: false };
+
 const sandbox = {
   PropertiesService: {
     getScriptProperties: () => propiedadesFalsas(propiedades)
@@ -92,6 +98,11 @@ const sandbox = {
       };
     }
   },
+  // El candado real deja pasar una ejecución a la vez. Aquí todo corre en
+  // fila, así que basta con anotar que se pidió y que se soltó.
+  LockService: { getScriptLock: () => ({
+      waitLock: () => { candado.pedidos++; candado.tomado = true; },
+      releaseLock: () => { candado.tomado = false; } }) },
   MailApp: { sendEmail: (destino, asunto, cuerpo, opciones) =>
       correosEnviados.push({ destino, asunto, cuerpo, opciones: opciones || {} }) },
   Utilities: { computeDigest: (a, s) => Array.from(require('crypto').createHash('md5').update(String(s)).digest()),
@@ -103,8 +114,11 @@ const sandbox = {
 vm.createContext(sandbox);
 vm.runInContext(fs.readFileSync(GS, 'utf8'), sandbox);
 
-const llamar = (params) => JSON.parse(vm.runInContext(
-  'procesarSolicitud(' + JSON.stringify(params) + ')', sandbox));
+// Como la app: todo por POST y, en la sincronización, con su dispositivo.
+const llamarCrudo = (params, metodo) => JSON.parse(vm.runInContext(
+  'procesarSolicitud(' + JSON.stringify(params) + ',' + JSON.stringify(metodo || 'POST') + ')', sandbox));
+const llamar = (params) => llamarCrudo(/_sync$/.test(params.action || '') && !('dispositivo_id' in params)
+  ? Object.assign({ dispositivo_id: DISP }, params) : params);
 
 let pasadas = 0, fallidas = 0;
 const fallos = [];
@@ -384,6 +398,108 @@ try {
     verificar('se puede reportar aunque la hoja no esté configurada',
         r.success && correosEnviados.length === 1, JSON.stringify(r));
     propiedades.SPREADSHEET_ID = idBueno;
+
+    // ---------- Versión esperada: también la vacía ----------
+    // Dos dispositivos que sincronizan por primera vez a la vez: los dos vieron
+    // la nube vacía (versión ''). Antes '' contaba como "sin versión" y el
+    // segundo borraba lo que acababa de subir el primero.
+    llamar({ action: 'guardar_sync', codigo: 'ABC123', datos: '' });   // dejarla vacía
+    vm.runInContext('limpiarCeldaSync("ABC123")', sandbox);
+    r = llamar({ action: 'obtener_sync', codigo: 'ABC123' });
+    igual('la nube vacía tiene versión vacía', r.version, '');
+    r = llamar({ action: 'guardar_sync', codigo: 'ABC123', datos: 'del teléfono', version_expected: '' });
+    verificar('el primero en subir sobre la nube vacía entra', r.success, JSON.stringify(r));
+    r = llamar({ action: 'guardar_sync', codigo: 'ABC123', datos: 'de la computadora', version_expected: '' });
+    verificar('el segundo, que también la vio vacía, recibe conflicto en vez de pisar',
+        r.conflict === true && !r.success, JSON.stringify(r));
+    igual('y la nube conserva lo del primero', llamar({ action: 'obtener_sync', codigo: 'ABC123' }).datos, 'del teléfono');
+
+    // ---------- Una escritura a la vez ----------
+    const pedidosAntes = candado.pedidos;
+    llamar({ action: 'guardar_sync', codigo: 'ABC123', datos: 'x' });
+    llamar({ action: 'respaldar_sync', codigo: 'ABC123' });
+    igual('guardar y respaldar toman el candado', candado.pedidos - pedidosAntes, 2);
+    igual('y lo sueltan al terminar', candado.tomado, false);
+
+    // ---------- Miles de expedientes: más de cuatro celdas ----------
+    r = llamar({ action: 'obtener_sync', codigo: 'ABC123' });
+    igual('el servidor dice cuántos trozos admite', r.celdas, 20);
+
+    // Una hoja real empieza con 26 columnas (A a Z): las de datos nuevas que
+    // pasen de ahí deben crearse solas, y pedir un rango fuera es un error.
+    let ancho = 26;
+    const getRangeOriginal = hoja.getRange.bind(hoja);
+    hoja.getMaxColumns = () => ancho;
+    hoja.insertColumnsAfter = (despues, cuantas) => { ancho += cuantas; };
+    hoja.getRange = (fila, col, nFilas, nCols) => {
+        if (col + (nCols || 1) - 1 > ancho) throw new Error('The coordinates of the range are outside the dimensions of the sheet.');
+        return getRangeOriginal(fila, col, nFilas, nCols);
+    };
+    try {
+        // Con una hoja de 26 columnas, el bloque corto se lee sin tocar nada.
+        llamar({ action: 'guardar_sync', codigo: 'ABC123', datos: 'pequeño' });
+        igual('un bloque pequeño no ensancha la hoja', ancho, 26);
+        igual('y se lee bien aunque la hoja no tenga las columnas nuevas',
+            llamar({ action: 'obtener_sync', codigo: 'ABC123' }).datos, 'pequeño');
+
+        const enorme = 'B'.repeat(49000 * 14 + 123);   // 15 celdas: llega a la columna AD
+        const trozos = {};
+        for (let i = 0; i < 20; i++) trozos[i === 0 ? 'datos' : 'datos_' + (i + 1)] = enorme.substr(i * 49000, 49000);
+        r = llamar(Object.assign({ action: 'guardar_sync', codigo: 'ABC123' }, trozos));
+        verificar('un bloque de quince celdas se guarda', r.success, JSON.stringify(r).slice(0, 200));
+        verificar('la hoja se ensancha lo justo', ancho === 30, String(ancho));
+        igual('vuelve idéntico', (llamar({ action: 'obtener_sync', codigo: 'ABC123' }).datos || '').length, enorme.length);
+        verificar('las columnas de respaldo (O a S) no se tocan al escribir en T en adelante',
+            [14, 15, 16, 17].every(i => !String(hoja._datos[1][i] || '').startsWith('B')));
+
+        r = llamar({ action: 'respaldar_sync', codigo: 'ABC123' });
+        verificar('el respaldo guarda el bloque grande entero', r.respaldado === true, JSON.stringify(r));
+        vm.runInContext('restaurarRespaldoSync("ABC123")', sandbox);
+        igual('y se restaura entero', (llamar({ action: 'obtener_sync', codigo: 'ABC123' }).datos || '').length, enorme.length);
+
+        llamar({ action: 'guardar_sync', codigo: 'ABC123', datos: 'corto otra vez' });
+        igual('un bloque corto vacía también las columnas nuevas',
+            llamar({ action: 'obtener_sync', codigo: 'ABC123' }).datos, 'corto otra vez');
+    } finally {
+        delete hoja.getMaxColumns; delete hoja.insertColumnsAfter;
+        hoja.getRange = getRangeOriginal;
+    }
+
+
+    // ---------- La sincronización exige un dispositivo registrado ----------
+    llamar({ action: 'guardar_sync', codigo: 'ABC123', datos: 'privado' });
+    r = llamarCrudo({ action: 'obtener_sync', codigo: 'ABC123' });
+    verificar('sin dispositivo no se entregan los datos', r.success === false && r.datos === undefined && r.razon === 'dispositivo_no_registrado', JSON.stringify(r));
+    r = llamarCrudo({ action: 'obtener_sync', codigo: 'ABC123', dispositivo_id: 'OTRO-DISPOSITIVO' });
+    verificar('con un dispositivo que no está en la licencia, tampoco', r.success === false && r.datos === undefined && r.razon === 'dispositivo_no_registrado', JSON.stringify(r));
+    r = llamarCrudo({ action: 'guardar_sync', codigo: 'ABC123', dispositivo_id: 'OTRO-DISPOSITIVO', datos: 'pisado' });
+    verificar('ni se pueden pisar', r.success === false);
+    r = llamarCrudo({ action: 'respaldar_sync', codigo: 'ABC123', dispositivo_id: 'OTRO-DISPOSITIVO' });
+    verificar('ni vaciar', r.success === false);
+    igual('los datos siguen intactos', llamar({ action: 'obtener_sync', codigo: 'ABC123' }).datos, 'privado');
+
+    // ---------- Por GET (código en la URL) la sincronización no responde ----------
+    r = llamarCrudo({ action: 'obtener_sync', codigo: 'ABC123', dispositivo_id: DISP }, 'GET');
+    verificar('obtener_sync por GET no entrega datos y pide actualizar la app', r.success === false && r.datos === undefined && r.razon === 'actualizar_app', JSON.stringify(r));
+    r = llamarCrudo({ action: 'guardar_sync', codigo: 'ABC123', dispositivo_id: DISP, datos: 'por get' }, 'GET');
+    verificar('guardar_sync por GET tampoco', r.success === false && r.razon === 'actualizar_app');
+    r = llamarCrudo({ action: 'verificar', codigo: 'NO-EXISTE', dispositivo_id: 'x' }, 'GET');
+    igual('verificar sigue respondiendo por GET (apps y Worker anteriores)', r.mensaje, 'Código no encontrado');
+
+    // ---------- Los ids de dispositivo no se entregan completos ----------
+    r = llamar({ action: 'obtener_dispositivos', codigo: 'ABC123' });
+    verificar('obtener_dispositivos recorta los ids', r.success && r.dispositivos.length === 1 && r.dispositivos[0].id !== DISP && r.dispositivos[0].id.endsWith('...'), JSON.stringify(r.dispositivos));
+
+    // ---------- Tope de transferencias ----------
+    const transferir = (id) => llamar({ action: 'transferir', codigo: 'ABC123', nuevo_dispositivo_id: id });
+    r = transferir('NUEVO-1');
+    verificar('la primera transferencia pasa', r.success === true, JSON.stringify(r));
+    r = transferir(DISP);
+    verificar('la segunda (el dueño la recupera) también', r.success === true, JSON.stringify(r));
+    r = transferir('NUEVO-2');
+    verificar('la tercera en 30 días, no: manda a soporte', r.success === false && r.razon === 'tope_transferencias' && /soporte/.test(r.mensaje), JSON.stringify(r));
+    verificar('y la licencia sigue en el dispositivo del dueño', JSON.parse(hoja._datos[1][9]).map(d => d.id).join() === DISP, hoja._datos[1][9]);
+    verificar('el tope se guarda sin el código en claro', Object.keys(propiedades).some(k => /^transf_/.test(k)) && !Object.keys(propiedades).some(k => /ABC123/.test(k)));
 
 } catch (e) {
     fallidas++;
