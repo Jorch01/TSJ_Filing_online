@@ -7211,6 +7211,10 @@ async function llamarIA(prompt, opciones = {}) {
     if (!apiKey) {
         throw new Error('Configura tu API Key de Gemini en Configuración');
     }
+    // "Probar conexión" (con la clave escrita en pantalla) solo manda un saludo.
+    if (!opciones.apiKey && !(await asegurarConsentimientoIA())) {
+        throw new Error('Para usar la IA acepta antes el aviso sobre qué se envía a Google.');
+    }
 
     let modelo = opciones.modelo || await obtenerConfig('ia_modelo');
     // La primera vez, sin modelo elegido, se toma uno de la lista que da la
@@ -8445,7 +8449,10 @@ function terminosAceptados() {
     if (typeof TERMINOS === 'undefined') return null;
     try {
         const t = JSON.parse(localStorage.getItem(CLAVE_TERMINOS) || 'null');
-        return t && t.version === TERMINOS.VERSION ? t : null;
+        // La casilla es también el consentimiento expreso del aviso de
+        // privacidad: si cambia la versión del aviso, se vuelve a pedir.
+        const avisoAlDia = typeof PRIVACIDAD === 'undefined' || t && t.privacidad === PRIVACIDAD.VERSION;
+        return t && t.version === TERMINOS.VERSION && avisoAlDia ? t : null;
     } catch (e) { return null; }
 }
 
@@ -8458,7 +8465,11 @@ function pedirAceptacionTerminos(alAceptar) {
         '<div class="terminos-texto">' + TERMINOS.html(4) +
         '<p class="text-muted">Versión ' + TERMINOS.VERSION + ', vigente desde el ' + TERMINOS.VIGENTES_DESDE + '.</p></div>' +
         (alAceptar ? '<label class="checkbox-label terminos-acepto"><input type="checkbox" id="terminos-check" onchange="document.getElementById(\'terminos-aceptar\').disabled = !this.checked"> ' +
-            'He leído y acepto los Términos y condiciones, incluido que las cuotas no se devuelven.</label>' : '');
+            'He leído y acepto los Términos y condiciones, incluido que las cuotas no se devuelven.' +
+            (typeof PRIVACIDAD !== 'undefined'
+                ? ' ' + PRIVACIDAD.CONSENTIMIENTO.replace('Aviso de privacidad', '<a href="' + PRIVACIDAD.URL + '" target="_blank" rel="noopener">Aviso de privacidad</a>')
+                : '') +
+            '</label>' : '');
     document.getElementById('modal-footer').innerHTML = alAceptar
         ? '<button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>' +
           '<button class="btn btn-success" id="terminos-aceptar" disabled onclick="aceptarTerminos()">Aceptar y continuar</button>'
@@ -8467,7 +8478,13 @@ function pedirAceptacionTerminos(alAceptar) {
 }
 
 function aceptarTerminos() {
-    try { localStorage.setItem(CLAVE_TERMINOS, JSON.stringify({ version: TERMINOS.VERSION, fecha: new Date().toISOString() })); } catch (e) { /* sin almacenamiento */ }
+    try {
+        localStorage.setItem(CLAVE_TERMINOS, JSON.stringify({
+            version: TERMINOS.VERSION,
+            privacidad: typeof PRIVACIDAD !== 'undefined' ? PRIVACIDAD.VERSION : null,
+            fecha: new Date().toISOString()
+        }));
+    } catch (e) { /* sin almacenamiento */ }
     cerrarModal();
     renderizarPlanesPremium();
     const seguir = window.__alAceptarTerminos;
@@ -8496,7 +8513,8 @@ function enlaceSolicitudPremium(plan) {
     const texto = `Hola, quiero contratar ${pedido} de TSJ Filing Online. ` +
         '¿Me pueden enviar los datos para el pago? En cuanto pague les mando el comprobante por aquí.' +
         (dispositivo ? `\n\nMi ID de dispositivo: ${dispositivo}` : '') +
-        (terminosAceptados() ? `\n\nAcepto los Términos y condiciones de TSJ Filing Online (versión ${TERMINOS.VERSION}).` : '');
+        (terminosAceptados() ? `\n\nAcepto los Términos y condiciones de TSJ Filing Online (versión ${TERMINOS.VERSION})` +
+            (typeof PRIVACIDAD !== 'undefined' ? ` y el Aviso de privacidad (versión ${PRIVACIDAD.VERSION}).` : '.') : '');
     return `https://wa.me/${PREMIUM_CONFIG.whatsappVentas}?text=${encodeURIComponent(texto)}`;
 }
 
@@ -9101,6 +9119,124 @@ ejecutarBusquedaGlobal = async function() {
     await incrementarBusquedasGlobales();
 };
 
+// ==================== AVISO DE PRIVACIDAD ====================
+// El aviso simplificado se enseña al abrir la app por primera vez y cada vez
+// que cambia la versión del aviso (js/privacidad.js). Al cerrarlo se recuerda
+// qué versión se vio.
+const CLAVE_AVISO_VISTO = 'tsj_aviso_privacidad_visto';
+
+function mostrarAvisoPrivacidadSiHaceFalta() {
+    if (typeof PRIVACIDAD === 'undefined' || document.getElementById('aviso-privacidad-pie')) return;
+    let visto = null;
+    try { visto = localStorage.getItem(CLAVE_AVISO_VISTO); } catch (e) { return; }
+    if (visto === PRIVACIDAD.VERSION) return;
+    const aviso = document.createElement('div');
+    aviso.id = 'aviso-privacidad-pie';
+    aviso.className = 'aviso-privacidad-pie';
+    aviso.setAttribute('role', 'region');
+    aviso.setAttribute('aria-label', 'Aviso de privacidad');
+    const texto = document.createElement('p');
+    texto.textContent = (visto ? 'Actualizamos el aviso de privacidad. ' : '') + PRIVACIDAD.CORTO + ' ';
+    const enlace = document.createElement('a');
+    enlace.href = PRIVACIDAD.URL;
+    enlace.target = '_blank';
+    enlace.rel = 'noopener';
+    enlace.textContent = 'Aviso de privacidad integral y tus derechos';
+    texto.appendChild(enlace);
+    const boton = document.createElement('button');
+    boton.type = 'button';
+    boton.className = 'btn btn-primary btn-sm';
+    boton.textContent = 'Entendido';
+    boton.onclick = () => {
+        try { localStorage.setItem(CLAVE_AVISO_VISTO, PRIVACIDAD.VERSION); } catch (e) { /* sin almacenamiento */ }
+        aviso.remove();
+    };
+    aviso.append(texto, boton);
+    document.body.appendChild(aviso);
+}
+
+// Antes del primer uso de la IA: qué se manda, a quién, y que lo decida el
+// usuario. Se recuerda por versión del aviso; se retira en Configuración.
+const CLAVE_CONSENTIMIENTO_IA = 'tsj_ia_consentimiento';
+
+function consentimientoIADado() {
+    if (typeof PRIVACIDAD === 'undefined') return true;
+    try { return localStorage.getItem(CLAVE_CONSENTIMIENTO_IA) === PRIVACIDAD.VERSION; } catch (e) { return false; }
+}
+
+function retirarConsentimientoIA() {
+    try { localStorage.removeItem(CLAVE_CONSENTIMIENTO_IA); } catch (e) { /* sin almacenamiento */ }
+    actualizarEstadoConsentimientoIA();
+    mostrarToast('Listo: antes de volver a usar la IA se te pedirá otra vez.', 'info');
+}
+
+function actualizarEstadoConsentimientoIA() {
+    const estado = document.getElementById('config-ia-consentimiento-estado');
+    const boton = document.getElementById('config-ia-consentimiento-retirar');
+    const dado = consentimientoIADado();
+    if (estado) estado.textContent = dado ? 'Aceptaste el envío a Google con tu clave.' : 'Se te preguntará antes del primer uso.';
+    if (boton) boton.disabled = !dado;
+}
+
+/**
+ * Resuelve true si el usuario acepta (o ya había aceptado). Usa un <dialog>
+ * propio para no pisar la ventana que pueda estar abierta: la IA se llama a
+ * menudo desde otra ventana, como la del acuerdo que se está leyendo.
+ */
+let _consentimientoIAPendiente = null;
+function asegurarConsentimientoIA() {
+    if (consentimientoIADado()) return Promise.resolve(true);
+    if (_consentimientoIAPendiente) return _consentimientoIAPendiente;
+    _consentimientoIAPendiente = new Promise((resolver) => {
+        const d = document.createElement('dialog');
+        d.className = 'dialogo-ia-consentimiento';
+        d.setAttribute('aria-labelledby', 'dialogo-ia-titulo');
+        const titulo = document.createElement('h3');
+        titulo.id = 'dialogo-ia-titulo';
+        titulo.textContent = PRIVACIDAD.IA.titulo;
+        d.appendChild(titulo);
+        PRIVACIDAD.IA.parrafos.forEach(texto => { const p = document.createElement('p'); p.textContent = texto; d.appendChild(p); });
+        const etiqueta = document.createElement('label');
+        etiqueta.className = 'checkbox-label';
+        const casilla = document.createElement('input');
+        casilla.type = 'checkbox';
+        casilla.id = 'ia-consentimiento-check';
+        etiqueta.append(casilla, ' ' + PRIVACIDAD.IA.casilla);
+        const nota = document.createElement('p');
+        nota.className = 'text-muted';
+        nota.textContent = 'Puedes retirarlo en Configuración › Privacidad.';
+        const botones = document.createElement('div');
+        botones.className = 'dialogo-botones';
+        const cancelar = document.createElement('button');
+        cancelar.type = 'button';
+        cancelar.className = 'btn btn-secondary';
+        cancelar.textContent = 'Ahora no';
+        const aceptar = document.createElement('button');
+        aceptar.type = 'button';
+        aceptar.className = 'btn btn-success';
+        aceptar.id = 'ia-consentimiento-aceptar';
+        aceptar.textContent = 'Usar la IA';
+        aceptar.disabled = true;
+        casilla.onchange = () => { aceptar.disabled = !casilla.checked; };
+        const terminar = (si) => {
+            if (si) { try { localStorage.setItem(CLAVE_CONSENTIMIENTO_IA, PRIVACIDAD.VERSION); } catch (e) { /* sin almacenamiento */ } }
+            if (d.open) d.close();
+            d.remove();
+            _consentimientoIAPendiente = null;
+            actualizarEstadoConsentimientoIA();
+            resolver(si);
+        };
+        cancelar.onclick = () => terminar(false);
+        aceptar.onclick = () => terminar(true);
+        d.addEventListener('cancel', (e) => { e.preventDefault(); terminar(false); });
+        botones.append(cancelar, aceptar);
+        d.append(etiqueta, nota, botones);
+        document.body.appendChild(d);
+        if (typeof d.showModal === 'function') d.showModal(); else d.setAttribute('open', '');
+    });
+    return _consentimientoIAPendiente;
+}
+
 // Extender inicialización para cargar premium
 const inicializarAppConPremium = inicializarApp;
 inicializarApp = async function() {
@@ -9111,6 +9247,10 @@ inicializarApp = async function() {
     // cargar la licencia, y no se espera: consulta a la red y la app ya
     // está lista.
     if (typeof SESIONES_PJF !== 'undefined') SESIONES_PJF.iniciar();
+    // Aviso de privacidad simplificado (primera vez o versión nueva) y el
+    // estado del permiso de la IA en Configuración.
+    mostrarAvisoPrivacidadSiHaceFalta();
+    actualizarEstadoConsentimientoIA();
     await cargarConfigAutoBackup();
     // Verificar licencia periódicamente
     await verificarLicenciaPeriodica();

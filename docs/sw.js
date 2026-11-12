@@ -30,6 +30,7 @@ const ARCHIVOS_APP = [
     'js/pjf-search.js',
     'js/impi-search.js',
     'js/terminos.js',
+    'js/privacidad.js',
     'js/cuotas-impi.js',
     'js/impi-viabilidad.js',
     'js/app.js',

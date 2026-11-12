@@ -500,3 +500,29 @@ a:hover { color: var(--text-primary); }
 
 /* «Ahorra…» sobre el fondo azul de la columna popular: 4.4:1 → 5.9:1. */
 .popular .pricing-ahorro { color: #1f6a3f; }
+
+/* ==================== AVISO DE PRIVACIDAD ==================== */
+.aviso-privacidad-pie {
+    /* Debajo de las ventanas (1250) y de los botones flotantes (1140-1150): no tapa nada que se esté usando. */
+    position: fixed; left: 1rem; right: 1rem; bottom: 1rem; z-index: 1100;
+    max-width: 760px; margin: 0 auto; padding: 0.9rem 1rem;
+    display: flex; gap: 1rem; align-items: center;
+    background: var(--bg-primary); color: var(--text-primary);
+    border: 1px solid var(--border-fuerte); border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.aviso-privacidad-pie p { margin: 0; font-size: 0.85rem; line-height: 1.45; }
+.aviso-privacidad-pie a { color: var(--enlace); }
+.aviso-privacidad-pie .btn { flex-shrink: 0; }
+@media (max-width: 600px) {
+    .aviso-privacidad-pie { flex-direction: column; align-items: stretch; bottom: 0.5rem; left: 0.5rem; right: 0.5rem; }
+}
+.dialogo-ia-consentimiento {
+    max-width: 560px; width: calc(100% - 2rem); padding: 1.25rem 1.5rem;
+    background: var(--bg-primary); color: var(--text-primary);
+    border: 1px solid var(--border-fuerte); border-radius: 12px;
+}
+.dialogo-ia-consentimiento::backdrop { background: rgba(0, 0, 0, 0.45); }
+.dialogo-ia-consentimiento h3 { margin-top: 0; }
+.dialogo-ia-consentimiento p { font-size: 0.92rem; line-height: 1.5; }
+.dialogo-ia-consentimiento .dialogo-botones { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
