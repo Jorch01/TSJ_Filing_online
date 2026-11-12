@@ -159,20 +159,42 @@ function paginaHtml(r, nombre, minimo) {
 // ==================== LAS PRUEBAS ====================
 // Cada una devuelve un texto (ok), { aviso } o lanza Falla / Omitida.
 
+/**
+ * El sitio del TSJ no contesta a los servidores de GitHub (fuera de México):
+ * la conexión se corta antes de llegar a la página. Desde México la app entra
+ * directo, así que eso no es una caída: se marca como aviso. Una respuesta
+ * que sí llega pero viene mal (error HTTP, página vacía o de error) sigue
+ * siendo falla.
+ */
+async function desdeFueraDeMexico(prueba) {
+    try {
+        return await prueba();
+    } catch (e) {
+        if (e instanceof Falla && /no se pudo alcanzar/.test(e.message)) {
+            return { aviso: e.message + '. El sitio del TSJ no responde desde los servidores de GitHub, que están fuera de México; desde México la app entra directo. Esta prueba no puede confirmarlo.' };
+        }
+        throw e;
+    }
+}
+
 async function tsjPrimera(ctx) {
     const q = CONSULTAS.tsjPrimera;
     const url = 'https://www.tsjqroo.gob.mx/estrados/buscador_primera.php?int=' + q.int +
         '&metodo=1&findexp=' + encodeURIComponent(q.expediente);
-    paginaHtml(await pedir(ctx, url), 'Estrados del TSJ (primera instancia)');
-    return 'buscador_primera.php responde con una página HTML válida';
+    return desdeFueraDeMexico(async () => {
+        paginaHtml(await pedir(ctx, url), 'Estrados del TSJ (primera instancia)');
+        return 'buscador_primera.php responde con una página HTML válida';
+    });
 }
 
 async function tsjSegunda(ctx) {
     const q = CONSULTAS.tsjSala;
     const url = 'https://www.tsjqroo.gob.mx/estrados/buscador_segunda.php?findexp=' + encodeURIComponent(q.expediente) +
         '&int=' + q.int + '&areaId=' + q.areaId + '&metodo=1';
-    paginaHtml(await pedir(ctx, url), 'Estrados del TSJ (salas)');
-    return 'buscador_segunda.php responde con una página HTML válida';
+    return desdeFueraDeMexico(async () => {
+        paginaHtml(await pedir(ctx, url), 'Estrados del TSJ (salas)');
+        return 'buscador_segunda.php responde con una página HTML válida';
+    });
 }
 
 async function estradosLaborales(ctx) {
@@ -339,6 +361,20 @@ async function sesionesSise(ctx) {
     return 'listas de sesión revisadas completas y sin errores (' + d.desde + ' a ' + d.hasta + ')';
 }
 
+/** Copia del orden de _candidatosModelo (docs/js/app.js), para probar lo mismo que hará la app. */
+function ordenarModelosComoLaApp(modelos) {
+    const grupo = (m) => /(tts|image|embedding|live|audio|aqa|learnlm|robotics|computer-use)/i.test(m) ? 99
+        : m.includes('flash-lite') ? 0 : m.includes('flash') ? 1 : m.includes('pro') ? 2 : 3;
+    const prueba = (m) => (/(preview|exp)/i.test(m) ? 1 : 0);
+    const version = (m) => { const v = /(\d+(?:\.\d+)*)/.exec(m); return v ? v[1].split('.').map(Number) : [0]; };
+    const comparar = (a, b) => {
+        const va = version(a), vb = version(b);
+        for (let i = 0; i < Math.max(va.length, vb.length); i++) if ((vb[i] || 0) !== (va[i] || 0)) return (vb[i] || 0) - (va[i] || 0);
+        return 0;
+    };
+    return [...new Set(modelos)].sort((a, b) => grupo(a) - grupo(b) || prueba(a) - prueba(b) || comparar(a, b) || a.localeCompare(b));
+}
+
 async function gemini(ctx) {
     const clave = ctx.env.GEMINI_API_KEY;
     if (!clave) throw new Omitida('sin el secreto GEMINI_API_KEY');
@@ -352,17 +388,30 @@ async function gemini(ctx) {
         .map(m => String(m.name || '').replace(/^models\//, ''));
     if (!modelos.length) throw new Falla('Gemini no ofrece ningún modelo con generateContent');
     const porDefecto = (/const GEMINI_MODELO_POR_DEFECTO\s*=\s*'([^']+)'/.exec(ctx.codigoApp || '') || [])[1];
-    const elegido = modelos.includes(porDefecto) ? porDefecto : (modelos.find(m => /flash/.test(m)) || modelos[0]);
-    const r = await pedir(ctx, base + '/models/' + encodeURIComponent(elegido) + ':generateContent', {
+    // El mismo orden que usa la app para reemplazar un modelo (_candidatosModelo).
+    const candidatos = ordenarModelosComoLaApp(modelos);
+    const orden = (porDefecto && modelos.includes(porDefecto) ? [porDefecto] : []).concat(candidatos.filter(m => m !== porDefecto)).slice(0, 6);
+    const generar = (modelo) => pedir(ctx, base + '/models/' + encodeURIComponent(modelo) + ':generateContent', {
         metodo: 'POST', cabeceras, timeoutMs: 60000,
         cuerpo: JSON.stringify({ contents: [{ parts: [{ text: 'Responde solo con la palabra: listo' }] }], generationConfig: { maxOutputTokens: 16 } })
     });
+    let elegido = null, r = null;
+    const descartados = [];
+    for (const modelo of orden) {
+        r = await generar(modelo);
+        if (r.status === 404) { descartados.push(modelo); continue; }
+        elegido = modelo;
+        break;
+    }
+    if (!elegido) {
+        throw new Falla('Gemini: ningún modelo respondió (' + descartados.join(', ') + '): ' + limpiar((r && r.json && r.json.error && r.json.error.message) || (r && r.texto) || '', ctx.secretos));
+    }
     if (r.status !== 200 || !r.json) {
         throw new Falla('Gemini (generateContent con ' + elegido + ') respondió HTTP ' + r.status + ': ' + limpiar((r.json && r.json.error && r.json.error.message) || r.texto, ctx.secretos));
     }
     if (!Array.isArray(r.json.candidates) || !r.json.candidates.length) throw new Falla('Gemini respondió sin candidatos');
-    if (porDefecto && !modelos.includes(porDefecto)) {
-        return { aviso: 'El modelo por defecto de la app (' + porDefecto + ') ya no existe; la app elegirá otro sola. Funciona con ' + elegido };
+    if (porDefecto && elegido !== porDefecto) {
+        return { aviso: 'El modelo por defecto de la app (' + porDefecto + ') ya no responde; la app cambia sola a otro. Funciona con ' + elegido };
     }
     return 'responde con ' + elegido + ' (' + modelos.length + ' modelos disponibles)';
 }

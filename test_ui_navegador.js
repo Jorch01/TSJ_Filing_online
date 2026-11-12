@@ -4394,6 +4394,10 @@ async function main() {
             // Al tener que elegir solos, Flash antes que Pro.
             resultados.elegido = _elegirModelo(['gemini-9.9-pro', 'gemini-9.9-flash']);
             resultados.elegidoSinFlash = _elegirModelo(['gemini-9.9-pro']);
+            // Del más nuevo al más viejo, las estables antes que las de prueba,
+            // y nada de voz ni imágenes.
+            resultados.elegidoNuevo = _elegirModelo(['gemini-2.0-flash', 'gemini-3.8-flash-preview-tts', 'gemini-3.8-flash', 'gemini-3.9-flash-preview', 'gemini-2.5-flash']);
+            resultados.reconoceRetirado = _esModeloInexistente('This model models/gemini-2.5-flash is no longer available to new users.');
 
             // El mensaje exacto que dio el fallo que rompió el asistente.
             resultados.reconoceGroq = _esModeloInexistente(
@@ -4412,6 +4416,8 @@ async function main() {
         igual('ia: sin perder el texto', ia.textos, ['hola', 'qué tal']);
         igual('ia: se prefiere Flash sobre Pro', ia.elegido, 'gemini-9.9-flash');
         igual('ia: pero se coge Pro si es lo único', ia.elegidoSinFlash, 'gemini-9.9-pro');
+        igual('ia: entre los Flash, el estable más nuevo (ni voz ni versiones de prueba)', ia.elegidoNuevo, 'gemini-3.8-flash');
+        igual('ia: reconoce el modelo que Google ya no da a claves nuevas', ia.reconoceRetirado, true);
         igual('ia: reconoce el error que rompió el asistente', ia.reconoceGroq, true);
         igual('ia: y el equivalente de Gemini', ia.reconoceGemini, true);
         igual('ia: sin confundirlo con otros errores', ia.noConfundeOtros, false);
@@ -4489,6 +4495,35 @@ async function main() {
         igual('ia: se queda con uno que existe y descarta el de embeddings',
             recuperacion.guardado, 'gemini-nuevo-flash');
         igual('ia: sin dar error al usuario', recuperacion.error, null);
+
+        // Google sigue listando modelos que ya no deja usar: si el primero
+        // también falla, se prueba el siguiente.
+        const segundaOpcion = await page.evaluate(async () => {
+            await guardarConfig('ia_modelo', 'gemini-2.5-flash');
+            const original = window.fetch;
+            const intentos = [];
+            window.fetch = (url) => {
+                if (/\/models\?/.test(url)) {
+                    return Promise.resolve(new Response(JSON.stringify({ models: [
+                        { name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] },
+                        { name: 'models/gemini-9.0-flash', supportedGenerationMethods: ['generateContent'] },
+                        { name: 'models/gemini-8.0-flash', supportedGenerationMethods: ['generateContent'] }
+                    ]}), { status: 200 }));
+                }
+                const m = /models\/([^:]+):generateContent/.exec(url);
+                if (m) intentos.push(m[1]);
+                if (/gemini-2\.5-flash|gemini-9\.0-flash/.test(url)) {
+                    return Promise.resolve(new Response(JSON.stringify({ error: { message: 'This model is no longer available to new users.' } }), { status: 404 }));
+                }
+                return Promise.resolve(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'con el de respaldo' }] } }] }), { status: 200 }));
+            };
+            let texto, error = null;
+            try { texto = await llamarIA('hola'); } catch (e) { error = e.message; } finally { window.fetch = original; }
+            return { texto, error, intentos, guardado: await obtenerConfig('ia_modelo') };
+        });
+        igual('ia: si el primer reemplazo tampoco sirve, prueba el siguiente', segundaOpcion.texto, 'con el de respaldo');
+        igual('ia: en orden y sin repetir el que falló', segundaOpcion.intentos, ['gemini-2.5-flash', 'gemini-9.0-flash', 'gemini-8.0-flash']);
+        igual('ia: y guarda el que respondió', segundaOpcion.guardado, 'gemini-8.0-flash');
 
         // "Probar conexión" no debe guardar nada.
         const prueba = await page.evaluate(async () => {
