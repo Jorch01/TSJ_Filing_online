@@ -23,8 +23,8 @@ Una prueba **omitida** (falta un secreto opcional) no es una falla.
 |---|---|---|---|
 | `MONITOR_LICENCIA_CODIGO` | Secret | Opcional | Una licencia Premium. Sin ella se omiten las pruebas que exigen el pase de `/cuota` (búsquedas de MARCia, SIGA y Marcanet, y `/api/sesiones`). Debe tener un lugar de dispositivo libre: la verificación no registra el dispositivo, pero la API rechaza si el límite ya está lleno. |
 | `GEMINI_API_KEY` | Secret | Opcional | Sin ella se omite la prueba de Gemini. |
-| `CLOUDFLARE_API_TOKEN` | Secret | Para desplegar | Sin él, el workflow de despliegue avisa y termina en verde sin tocar nada. Plantilla "Edit Cloudflare Workers" de Cloudflare. |
-| `CUOTAS_KV_ID` | Variable | Si hay token | Id del KV `CUOTAS` (Cloudflare → Workers & Pages → KV, o el worker → Settings → Bindings). Sin él el despliegue se detiene: wrangler borra los bindings que no declara el `wrangler.toml`. |
+| `CLOUDFLARE_API_TOKEN` | Secret | Para desplegar | Sin él, el workflow de despliegue avisa y termina en verde sin tocar nada. De preferencia el que ofrece el propio worker (Settings → Builds → "API token for external CI/CD"), que solo puede desplegar este Worker; si le faltan permisos, la plantilla "Edit Cloudflare Workers". |
+| `CUOTAS_KV_ID` | Variable | Si hay token | Id del KV `CUOTAS` (Cloudflare → Storage & databases → Workers KV → `tsj-cuotas`, o el worker → Settings → Bindings). Sin él el despliegue se detiene: wrangler borra los bindings que no declara el `wrangler.toml`. |
 | `CLOUDFLARE_ACCOUNT_ID` | Variable | Opcional | Solo si el token ve más de una cuenta. |
 
 `CUOTA_SECRETO` **no** va en GitHub: vive en Cloudflare y un despliegue no lo toca.
@@ -41,7 +41,8 @@ El workflow se detiene si el worker no lo tiene.
    `docs/proxy/impi-proxy-worker.js` en `main` se despliega solo.
    **Antes del primer despliegue** conviene comparar el panel de Cloudflare con
    `wrangler.toml`: lo que esté puesto a mano y no figure ahí (cron triggers,
-   rutas, dominios) se pierde; las variables de texto se conservan (`--keep-vars`).
+   rutas, dominios, fecha de compatibilidad, logs) se pierde o se cambia; las
+   variables de texto se conservan (`--keep-vars`). Se comparó el 12/11/2026.
 5. Al cambiar el Worker, subir `WORKER_VERSION`; el despliegue avisa si `/health`
    no devuelve esa versión, y el monitor lo marca como aviso.
 
