@@ -134,7 +134,8 @@ function crearEntornoBorrados(datos) {
     vm.createContext(sandbox);
 
     const fuenteDB = fs.readFileSync(DB, 'utf8');
-    for (const n of ['ultimaEdicionDe', '_borradoMandaSobre', 'aplicarEliminacionesRemotas']) {
+    for (const n of ['ultimaEdicionDe', '_borradoMandaSobre', 'claveBorradoNota', 'claveBorradoNotaAntigua',
+                     'claveBorradoNormalizada', 'aplicarEliminacionesRemotas']) {
         vm.runInContext(extraerDeclaracion(fuenteDB, n, 'database.js'), sandbox,
             { filename: `database.js:${n}` });
     }

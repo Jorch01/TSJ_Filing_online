@@ -76,6 +76,102 @@ function ahoraSync() {
 function desfaseRelojSync() { return _desfaseReloj; }
 
 
+/**
+ * Aviso sobre el almacenamiento. Usa el toast de la app si ya está cargado
+ * y, si no (la base se abre antes que nada), deja una franja fija arriba.
+ */
+function avisarAlmacenamiento(mensaje, tipo = 'warning') {
+    console.warn('[almacenamiento] ' + mensaje);
+    if (typeof mostrarToast === 'function') {
+        try { mostrarToast(mensaje, tipo); return; } catch (e) { /* sin toast todavía */ }
+    }
+    if (typeof document === 'undefined' || !document.body) return;
+    let franja = document.getElementById('aviso-almacenamiento');
+    if (!franja) {
+        franja = document.createElement('div');
+        franja.id = 'aviso-almacenamiento';
+        franja.setAttribute('role', 'alert');
+        franja.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;padding:10px 16px;' +
+            'background:#b45309;color:#fff;font:14px/1.4 system-ui,sans-serif;text-align:center';
+        document.body.appendChild(franja);
+    }
+    franja.textContent = mensaje;
+}
+
+// ==================== ALMACENAMIENTO PERSISTENTE ====================
+//
+// Sin permiso de almacenamiento persistente, el navegador puede borrar los
+// datos de la app cuando le falta espacio, y Safari los borra si el sitio no
+// se abre en 7 días (salvo que esté instalado en la pantalla de inicio). Para
+// un despacho eso es perder expedientes y plazos sin aviso. Se pide el
+// permiso una vez; si el navegador lo niega se avisa —una vez por semana como
+// mucho— de que conviene sincronizar o descargar respaldos.
+
+const CLAVE_AVISO_PERSISTENCIA = 'aviso_almacenamiento_no_persistente';
+
+/**
+ * Pide almacenamiento persistente. Devuelve { soportado, persistente,
+ * usado, cuota }. No lanza nunca: un navegador sin la API sigue funcionando.
+ */
+async function solicitarAlmacenamientoPersistente() {
+    const estado = { soportado: false, persistente: false, usado: null, cuota: null };
+    try {
+        if (typeof navigator === 'undefined' || !navigator.storage) return estado;
+        if (navigator.storage.persisted) {
+            estado.soportado = true;
+            estado.persistente = await navigator.storage.persisted();
+        }
+        if (!estado.persistente && navigator.storage.persist) {
+            estado.soportado = true;
+            estado.persistente = await navigator.storage.persist();
+        }
+        if (navigator.storage.estimate) {
+            const est = await navigator.storage.estimate();
+            estado.usado = est.usage ?? null;
+            estado.cuota = est.quota ?? null;
+        }
+    } catch (e) {
+        console.warn('No se pudo consultar el almacenamiento persistente:', e);
+    }
+    return estado;
+}
+
+/**
+ * Pide la persistencia y avisa si se niega y hay algo que perder sin copia en
+ * otro sitio (ni sincronización ni respaldo automático). La llama app.js
+ * después de cargar.
+ */
+async function revisarAlmacenamientoPersistente({ haySync = false, hayRespaldoAuto = false } = {}) {
+    const estado = await solicitarAlmacenamientoPersistente();
+    if (!estado.soportado || estado.persistente) return estado;
+
+    let hayDatos = false;
+    try { hayDatos = db && (await contarRegistrosStore('expedientes')) > 0; } catch (e) { /* sin base */ }
+    if (!hayDatos || haySync) return estado;
+
+    let ultimoAviso = 0;
+    try { ultimoAviso = parseInt(localStorage.getItem(CLAVE_AVISO_PERSISTENCIA), 10) || 0; } catch (e) { /* modo privado */ }
+    if (Date.now() - ultimoAviso < 7 * 24 * 60 * 60 * 1000) return estado;
+    try { localStorage.setItem(CLAVE_AVISO_PERSISTENCIA, String(Date.now())); } catch (e) { /* modo privado */ }
+
+    avisarAlmacenamiento('Este navegador puede borrar los datos de la app por su cuenta ' +
+        '(Safari lo hace si no la abres en 7 días). ' +
+        (hayRespaldoAuto ? 'Tienes el respaldo automático activado; guarda esos archivos. '
+                         : 'Descarga un respaldo en Configuración o activa la sincronización. ') +
+        'Instalar la app en la pantalla de inicio también lo evita.', 'warning');
+    estado.avisado = true;
+    return estado;
+}
+
+function contarRegistrosStore(nombre) {
+    return new Promise((resolve, reject) => {
+        if (!db || !db.objectStoreNames.contains(nombre)) { resolve(0); return; }
+        const req = db.transaction([nombre], 'readonly').objectStore(nombre).count();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
 // Inicializar base de datos
 function initDB() {
     return new Promise((resolve, reject) => {
@@ -83,11 +179,36 @@ function initDB() {
 
         request.onerror = () => {
             console.error('Error al abrir IndexedDB:', request.error);
+            // Sin base de datos no se puede guardar nada. Se dice por qué en
+            // vez de un "error al cargar": lo normal es un navegador en modo
+            // privado o con el almacenamiento de sitios desactivado, y quien
+            // lo ve debe saber que lo que escriba no se va a conservar.
+            avisarAlmacenamiento('No se puede abrir la base de datos de este navegador ' +
+                '(¿modo privado o almacenamiento de sitios desactivado?). ' +
+                'Lo que captures no se guardará. Abre la app en una ventana normal.', 'error');
             reject(request.error);
+        };
+
+        // Otra pestaña con la versión anterior de la app tiene la base
+        // abierta y no la suelta. Sin esto la promesa no se resolvía nunca y
+        // la app se quedaba en blanco, que invita a "borrar datos del sitio"
+        // para arreglarlo: justo lo que no hay que hacer.
+        request.onblocked = () => {
+            avisarAlmacenamiento('Hay otra pestaña de la app abierta con una versión anterior. ' +
+                'Ciérrala (o recárgala) para terminar de actualizar; tus datos están a salvo.', 'warning');
         };
 
         request.onsuccess = () => {
             db = request.result;
+            // Si otra pestaña trae una versión nueva de la base, esta suelta
+            // la suya para no bloquearla y pide recargar. Seguir escribiendo
+            // con la conexión vieja ya no sería posible de todos modos.
+            db.onversionchange = () => {
+                try { db.close(); } catch (e) { /* ya cerrada */ }
+                db = null;
+                avisarAlmacenamiento('La app se actualizó en otra pestaña. Recarga esta página para seguir; ' +
+                    'lo que ya guardaste no se pierde.', 'warning');
+            };
             console.log('IndexedDB inicializada correctamente');
             resolve(db);
         };
@@ -391,10 +512,7 @@ async function registrarEliminacion(tipo, registro) {
             clave = `exp|${numero}|${nombre}|${juzgado}`;
             datos = { numero: registro.numero, nombre: registro.nombre, juzgado: registro.juzgado };
         } else if (tipo === 'nota') {
-            const contenido = (registro.contenido || '').substring(0, 100).trim().toLowerCase();
-            const expedienteId = registro.expedienteId || 'sin-exp';
-            const fecha = (registro.fechaCreacion || '').substring(0, 10);
-            clave = `nota|${expedienteId}|${contenido}|${fecha}`;
+            clave = claveBorradoNota(registro);
             datos = { expedienteId: registro.expedienteId, titulo: registro.titulo };
         } else if (tipo === 'evento') {
             const titulo = (registro.titulo || '').trim().toLowerCase();
@@ -431,6 +549,42 @@ async function registrarEliminacion(tipo, registro) {
         request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
     });
+}
+
+/**
+ * Clave del borrado de una nota. Lleva el título al final: sin él, borrar una
+ * nota se llevaba también a cualquier otra del mismo expediente y del mismo
+ * día que empezara igual (o que no tuviera contenido), en todos los
+ * dispositivos.
+ */
+function claveBorradoNota(nota) {
+    const contenido = (nota.contenido || '').substring(0, 100).trim().toLowerCase();
+    const expedienteId = nota.expedienteId || 'sin-exp';
+    const fecha = (nota.fechaCreacion || '').substring(0, 10);
+    const titulo = (nota.titulo || '').trim().toLowerCase();
+    return `nota2|${expedienteId}|${contenido}|${fecha}|${titulo}`;
+}
+
+/** La clave de antes, sin título. Solo para borrados viejos que no lo guardaron. */
+function claveBorradoNotaAntigua(nota) {
+    const contenido = (nota.contenido || '').substring(0, 100).trim().toLowerCase();
+    const expedienteId = nota.expedienteId || 'sin-exp';
+    const fecha = (nota.fechaCreacion || '').substring(0, 10);
+    return `nota|${expedienteId}|${contenido}|${fecha}`;
+}
+
+/**
+ * La clave de un borrado en el formato de ahora. Los de notas escritos por
+ * una versión anterior no llevan el título en la clave pero sí en sus datos:
+ * se le añade, para que sigan borrando la nota que tocaba y solo esa.
+ */
+function claveBorradoNormalizada(eliminado) {
+    if (!eliminado || eliminado.tipo !== 'nota' || typeof eliminado.clave !== 'string') return eliminado && eliminado.clave;
+    if (!eliminado.clave.startsWith('nota|')) return eliminado.clave;   // ya es "nota2|…"
+    const titulo = eliminado.datos && eliminado.datos.titulo !== undefined
+        ? String(eliminado.datos.titulo || '').trim().toLowerCase() : null;
+    // Sin título guardado no hay forma de afinar: se deja como estaba.
+    return titulo === null ? eliminado.clave : `nota2|${eliminado.clave.slice(5)}|${titulo}`;
 }
 
 // Obtener todos los registros de eliminación
@@ -507,7 +661,7 @@ async function aplicarEliminacionesRemotas(eliminadosRemotos) {
     // reciente.
     const porTipo = (tipo) => new Map(eliminadosRemotos
         .filter(e => e.tipo === tipo)
-        .map(e => [e.clave, e.fecha || '']));
+        .map(e => [claveBorradoNormalizada(e), e.fecha || '']));
 
     const clavesExpediente = porTipo('expediente');
     const clavesNota = porTipo('nota');
@@ -544,10 +698,8 @@ async function aplicarEliminacionesRemotas(eliminadosRemotos) {
     if (clavesNota.size > 0) {
         const notas = await obtenerNotas();
         for (const nota of notas) {
-            const contenido = (nota.contenido || '').substring(0, 100).trim().toLowerCase();
-            const expedienteId = nota.expedienteId || 'sin-exp';
-            const fecha = (nota.fechaCreacion || '').substring(0, 10);
-            const clave = `nota|${expedienteId}|${contenido}|${fecha}`;
+            const nueva = claveBorradoNota(nota);
+            const clave = clavesNota.has(nueva) ? nueva : claveBorradoNotaAntigua(nota);
 
             if (clavesNota.has(clave)) {
                 if (!_borradoMandaSobre(clavesNota.get(clave), nota)) {
@@ -1375,7 +1527,12 @@ async function obtenerConfig(clave) {
 // ==================== EXPORTAR / IMPORTAR ====================
 
 async function exportarTodosDatos() {
-    const expedientes = await obtenerExpedientes();
+    // Activos Y archivados. Antes solo iban los activos (obtenerExpedientes
+    // filtra el archivo): un respaldo restaurado perdía todos los asuntos
+    // archivados, y sus notas y eventos quedaban sueltos, sin expediente.
+    const activos = await obtenerExpedientes();
+    const archivados = await obtenerExpedientesArchivados();
+    const expedientes = [...activos, ...archivados];
     const notas = await obtenerNotas();
     const eventos = await obtenerEventos();
     const pendientes = await obtenerPendientes().catch(() => []);
@@ -1387,19 +1544,114 @@ async function exportarTodosDatos() {
     // Búsquedas guardadas de las herramientas de marcas.
     const sigaGuardadas = await obtenerBusquedasGuardadas();
 
+    // Lo demás que también se sincroniza: las cuentas del despacho (gastos y
+    // cobros) y lo descartado del seguimiento semanal. Sin ellos, restaurar
+    // en un dispositivo sin sincronización perdía las cuentas enteras.
+    const opcional = async (fn) => (typeof fn === 'function' ? await fn().catch(() => []) : []);
+    const cuentas = await opcional(typeof obtenerCuentasCompartidas === 'function' ? obtenerCuentasCompartidas : null);
+    const seguimientoDescartados = await opcional(typeof obtenerSeguimientoDescartados === 'function' ? obtenerSeguimientoDescartados : null);
+    const seguimientoOmitidos = await opcional(typeof obtenerSeguimientoOmitidos === 'function' ? obtenerSeguimientoOmitidos : null);
+
     return {
-        version: 1,
+        version: 2,
         fechaExportacion: new Date().toISOString(),
         expedientes,
         carpetas,
         notas,
         eventos,
         pendientes,
-        sigaGuardadas
+        sigaGuardadas,
+        cuentas,
+        seguimientoDescartados,
+        seguimientoOmitidos
     };
 }
 
+/** ¿Hay algo en este dispositivo que una importación con reemplazo borraría? */
+async function hayDatosLocales() {
+    for (const nombre of ['expedientes', 'notas', 'eventos', 'pendientes', 'carpetas']) {
+        if ((await contarRegistrosStore(nombre).catch(() => 0)) > 0) return true;
+    }
+    return false;
+}
+
+/**
+ * Devuelve a un registro recién importado las fechas que traía el respaldo.
+ *
+ * agregarExpediente y compañía sellan todo con la hora actual, que es lo
+ * correcto al crear algo nuevo pero no al restaurar: un respaldo de hace un
+ * mes quedaba marcado como "editado ahora" y, al sincronizar, ganaba campo a
+ * campo contra lo que se había cambiado después en otro dispositivo. El
+ * abogado veía volver la fecha de audiencia vieja.
+ */
+async function _restaurarSellos(storeName, id, original) {
+    if (!original || id === undefined || id === null) return;
+    const sellos = {};
+    for (const campo of ['fechaCreacion', 'fechaActualizacion', '_fieldTimestamps']) {
+        if (original[campo] !== undefined) sellos[campo] = original[campo];
+    }
+    if (!Object.keys(sellos).length) return;
+    await new Promise((resolve, reject) => {
+        const tx = db.transaction([storeName], 'readwrite');
+        const store = tx.objectStore(storeName);
+        const req = store.get(id);
+        req.onsuccess = () => {
+            if (req.result) {
+                const registro = req.result;
+                // Los sellos por campo del respaldo, más los de los campos que
+                // se añadieron al importar (carpetaId traducido, etc.), que
+                // conservan el de ahora.
+                if (sellos._fieldTimestamps && typeof sellos._fieldTimestamps === 'object') {
+                    sellos._fieldTimestamps = { ...(registro._fieldTimestamps || {}), ...sellos._fieldTimestamps };
+                }
+                store.put({ ...registro, ...sellos });
+            }
+        };
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+/** Una copia profunda de los sellos antes de que agregar* los sobrescriba. */
+function _sellosDe(registro) {
+    if (!registro) return null;
+    return {
+        fechaCreacion: registro.fechaCreacion,
+        fechaActualizacion: registro.fechaActualizacion,
+        _fieldTimestamps: registro._fieldTimestamps ? { ...registro._fieldTimestamps } : undefined
+    };
+}
+
+/**
+ * Importa un respaldo. Con sobrescribir, lo de este dispositivo se reemplaza;
+ * si algo falla a medias (sin espacio, un registro dañado), se devuelve lo
+ * que había antes en vez de dejar la base vacía o a medio llenar.
+ */
 async function importarTodosDatos(datos, sobrescribir = false) {
+    if (!sobrescribir) return _importarTodosDatos(datos, false);
+
+    const previo = await exportarTodosDatos();
+    try {
+        await _importarTodosDatos(datos, true);
+    } catch (error) {
+        console.error('La importación falló a medias; se restaura lo que había:', error);
+        try {
+            await _importarTodosDatos(previo, true);
+        } catch (e2) {
+            console.error('Tampoco se pudo restaurar lo anterior:', e2);
+            error.message += ' (y no se pudo restaurar lo anterior: ' + e2.message + ')';
+            throw error;
+        }
+        error.message += '. No se cambió nada: tus datos siguen como estaban.';
+        throw error;
+    }
+}
+
+async function _importarTodosDatos(datos, sobrescribir = false) {
+    // Se trabaja sobre una copia: los bucles de abajo quitan ids y traducen
+    // referencias, y si la importación falla hay que poder reintentar con el
+    // respaldo intacto.
+    datos = JSON.parse(JSON.stringify(datos || {}));
     if (sobrescribir) {
         // Limpiar stores
         await limpiarStore('expedientes');
@@ -1418,7 +1670,9 @@ async function importarTodosDatos(datos, sobrescribir = false) {
             const idOriginal = carpeta.id;
             delete carpeta.id;
             try {
+                const sellos = _sellosDe(carpeta);
                 const nuevoId = await agregarCarpeta(carpeta);
+                await _restaurarSellos('carpetas', nuevoId, sellos);
                 if (idOriginal !== undefined && idOriginal !== null) {
                     mapaCarpetas.set(idOriginal, nuevoId);
                 }
@@ -1443,7 +1697,9 @@ async function importarTodosDatos(datos, sobrescribir = false) {
         if (traeCarpetas && exp.carpetaId !== undefined && exp.carpetaId !== null) {
             exp.carpetaId = mapaCarpetas.has(exp.carpetaId) ? mapaCarpetas.get(exp.carpetaId) : null;
         }
+        const sellos = _sellosDe(exp);
         const nuevoId = await agregarExpediente(exp);
+        await _restaurarSellos('expedientes', nuevoId, sellos);
         if (idOriginal !== undefined && idOriginal !== null) {
             mapaExpedientes.set(idOriginal, nuevoId);
         }
@@ -1462,7 +1718,9 @@ async function importarTodosDatos(datos, sobrescribir = false) {
     // Importar notas
     for (const nota of datos.notas || []) {
         delete nota.id;
-        await agregarNota(remapearExpediente(nota));
+        const sellos = _sellosDe(nota);
+        const nuevoId = await agregarNota(remapearExpediente(nota));
+        await _restaurarSellos('notas', nuevoId, sellos);
     }
 
     // Importar eventos. Cada uno recibe un id nuevo, así que se anota la
@@ -1474,7 +1732,9 @@ async function importarTodosDatos(datos, sobrescribir = false) {
         delete evento.id;
         // El pendiente al que espeja aún no existe; se reengancha más abajo.
         delete evento.pendienteId;
+        const sellos = _sellosDe(evento);
         const nuevoId = await agregarEvento(remapearExpediente(evento));
+        await _restaurarSellos('eventos', nuevoId, sellos);
         if (idOriginal !== undefined && idOriginal !== null) {
             mapaEventos.set(idOriginal, nuevoId);
         }
@@ -1491,7 +1751,9 @@ async function importarTodosDatos(datos, sobrescribir = false) {
         pendiente.eventoId = mapaEventos.has(eventoOriginal)
             ? mapaEventos.get(eventoOriginal)
             : null;
+        const sellos = _sellosDe(pendiente);
         const nuevoId = await agregarPendiente(remapearExpediente(pendiente));
+        await _restaurarSellos('pendientes', nuevoId, sellos);
         if (pendiente.eventoId != null) {
             await actualizarEvento(pendiente.eventoId, { pendienteId: nuevoId }).catch(() => {});
         }
@@ -1517,6 +1779,15 @@ async function importarTodosDatos(datos, sobrescribir = false) {
             }
         } catch (e) { /* store may not exist */ }
     }
+
+    // Cuentas del despacho y seguimiento: se juntan con lo que haya, igual
+    // que al sincronizar, así que importar dos veces no duplica nada.
+    const juntar = async (fn, lista) => {
+        if (typeof fn === 'function' && Array.isArray(lista) && lista.length) await fn(lista);
+    };
+    await juntar(typeof aplicarCuentasCompartidas === 'function' ? aplicarCuentasCompartidas : null, datos.cuentas);
+    await juntar(typeof aplicarSeguimientoDescartados === 'function' ? aplicarSeguimientoDescartados : null, datos.seguimientoDescartados);
+    await juntar(typeof aplicarSeguimientoOmitidos === 'function' ? aplicarSeguimientoOmitidos : null, datos.seguimientoOmitidos);
 }
 
 async function limpiarStore(storeName) {
