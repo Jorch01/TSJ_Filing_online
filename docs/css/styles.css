@@ -20,7 +20,7 @@
     --bg-tertiary: #eaf0ee;
     --text-primary: #1b312b;
     --text-secondary: #46574f;
-    --text-muted: #66766f;
+    --text-muted: #5a6a63;   /* 5.2:1 sobre el fondo crema (antes #66766f: 4.36:1) */
     --border-color: #e1e8e4;
     --border-fuerte: #c9d5cf;
 
@@ -67,8 +67,8 @@
 /* Tema oscuro: el Bosque se vuelve la superficie y los pasteles se
    oscurecen sin perder su tono. */
 [data-theme="dark"] {
-    --primary: #4f8a72;
-    --primary-dark: #3f7a63;
+    --primary: #3f7a63;          /* texto blanco encima: 5.0:1 (con #4f8a72 eran 4.0:1) */
+    --primary-dark: #346b56;
     --primary-light: #8fc2aa;
     --primary-suave: #1e2d28;
 
