@@ -1,0 +1,73 @@
+name: Monitor de integraciones
+
+# La app depende de sitios que cambian sin avisar (estrados del TSJ, estrados
+# laborales, SISE, MARCia, SIGA, Marcanet, el Apps Script de licencias, Gemini).
+# Cada día se prueban en vivo con una consulta conocida; si algo falla se abre
+# (o actualiza) un issue, y cuando se recupera se cierra solo.
+#
+# Secretos, todos opcionales (sin ellos esas pruebas se omiten y se dice en el
+# resultado; omitir NO es fallar y no abre issue):
+#   MONITOR_LICENCIA_CODIGO  una licencia Premium, para las rutas que exigen el
+#                            pase de /cuota (búsquedas del IMPI y /api/sesiones)
+#   GEMINI_API_KEY           para probar la API de Gemini
+on:
+  schedule:
+    - cron: '37 12 * * *'    # 7:37 en Cancún
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: monitor-integraciones
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    name: Probar integraciones
+    # Los forks heredan el calendario pero no los secretos: ahí no tiene sentido.
+    if: github.repository == 'Jorch01/TSJ_Filing_online'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # continue-on-error: aunque algo falle hay que abrir el issue; el trabajo
+      # se pone en rojo al final.
+      - name: Probar las integraciones
+        id: monitor
+        continue-on-error: true
+        env:
+          MONITOR_LICENCIA_CODIGO: ${{ secrets.MONITOR_LICENCIA_CODIGO }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # SISE sirve la cadena de certificados incompleta (Let's Encrypt YR2
+          # sin el cruzado de Root YR). Node lo lee al arrancar, por eso va aquí.
+          NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/herramientas/certificados/root-yr-by-x1.pem
+        run: >
+          node herramientas/monitor-integraciones.js
+          --json "$RUNNER_TEMP/resultado.json"
+          --markdown "$RUNNER_TEMP/informe.md"
+
+      - name: Abrir, actualizar o cerrar el issue
+        if: always() && steps.monitor.outcome != 'skipped'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f "$RUNNER_TEMP/resultado.json" ]; then
+            node herramientas/monitor-issue.js "$RUNNER_TEMP/resultado.json" "$RUNNER_TEMP/informe.md"
+          else
+            echo "::error::El monitor no dejó resultado (se cayó antes de terminar): no se toca el issue."
+          fi
+
+      - name: Marcar el trabajo en rojo si algo falló
+        if: steps.monitor.outcome == 'failure'
+        run: |
+          echo "::error::Al menos una integración falló. Ver el resumen del trabajo y el issue 'monitor-integraciones'."
+          exit 1
