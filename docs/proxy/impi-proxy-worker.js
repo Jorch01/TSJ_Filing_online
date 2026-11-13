@@ -33,11 +33,15 @@
 
 // Sirve para confirmar, desde /health, que el worker publicado es el esperado.
 // Actualízala cuando el cambio valga la pena verificar tras desplegar.
-const WORKER_VERSION = '2026-11-12-cuotas-por-ip';
+const WORKER_VERSION = '2026-11-13-verificador-sitio';
 
 const ALLOWED_ORIGINS = [
     'https://jorch01.github.io',
-    'https://tsjia.empirica.mx'
+    'https://tsjia.empirica.mx',
+    // El sitio del despacho (verificador de viabilidad de marca): ver la
+    // sección SITIO PÚBLICO.
+    'https://empirica.mx',
+    'https://www.empirica.mx'
 ];
 
 // Desarrollo local, en cualquier puerto.
@@ -103,7 +107,11 @@ const CUOTAS = {
     vigilancia: { limite: 60, periodo: 'dia', vidaPase: 10 * 60 * 1000 },
     // Sesiones de los Tribunales Colegiados (/api/sesiones): es de Premium,
     // con 2 consultas de prueba, en total, para quien no lo tiene.
-    sesiones: { limite: 2, periodo: 'siempre', vidaPase: 10 * 60 * 1000 }
+    sesiones: { limite: 2, periodo: 'siempre', vidaPase: 10 * 60 * 1000 },
+    // El verificador de viabilidad de marca del sitio público (empirica.mx): 1
+    // estudio al mes por IP. Se pide por su propio camino (atenderCuotaSitio,
+    // con Turnstile), no por atenderCuota.
+    viabilidad_sitio: { limite: 1, periodo: 'mes', vidaPase: 30 * 60 * 1000 }
 };
 // Las rutas que hacen una búsqueda nueva necesitan pase; paginar, ver un
 // detalle o pedir la sesión, no.
@@ -202,7 +210,7 @@ async function esPremium(env, licencia, consultar) {
  */
 async function atenderCuota(env, ip, cuerpo, ahora, consultar) {
     const tipo = cuerpo && cuerpo.tipo;
-    if (!CUOTAS[tipo]) return { status: 400, datos: { error: 'Tipo de cuota desconocido' } };
+    if (!CUOTAS[tipo] || tipo === 'viabilidad_sitio') return { status: 400, datos: { error: 'Tipo de cuota desconocido' } };
     if (!cuotasActivas(env)) return { status: 200, datos: { servidor: false, permitido: true } };
     const { limite } = CUOTAS[tipo];
     if (await esPremium(env, cuerpo.licencia, consultar)) {
@@ -238,7 +246,13 @@ async function atenderCuota(env, ip, cuerpo, ahora, consultar) {
 async function revisarPase(env, path, request, ahora) {
     if (!cuotasActivas(env) || !RUTAS_CON_PASE.includes(path)) return null;
     const pase = await leerPase(env.CUOTA_SECRETO, request.headers.get(CUOTA_HEADER), ahora);
-    return pase ? null : 'Se alcanzó el límite de búsquedas gratuitas o el permiso venció. Activa Premium para seguir buscando.';
+    if (!pase) return 'Se alcanzó el límite de búsquedas gratuitas o el permiso venció. Activa Premium para seguir buscando.';
+    // El pase del verificador del sitio solo sirve para las búsquedas del
+    // estudio y desde los orígenes del sitio (ver SITIO PÚBLICO).
+    if (pase.t === 'viabilidad_sitio' && !paseSitioValido(path, request.headers.get('Origin'))) {
+        return 'Este permiso solo sirve para el verificador de marca del sitio.';
+    }
+    return null;
 }
 
 /**
@@ -254,6 +268,91 @@ async function revisarPaseSesiones(env, request, ahora) {
         : 'La consulta de sesiones de los Tribunales Colegiados es de Premium: las consultas de prueba se agotaron o el permiso venció.';
 }
 // ==================== CUOTAS (FIN) ====================
+
+// ==================== SITIO PÚBLICO (INICIO) ====================
+// El verificador de viabilidad de marca de empirica.mx usa este mismo proxy,
+// con reglas propias que NO cambian lo que hace la app:
+//   - solo desde los orígenes del sitio (SITIO_ORIGINS); sin cabecera Origin, no;
+//   - Cloudflare Turnstile en cada estudio (secreto TURNSTILE_SECRET);
+//   - 1 estudio al mes por IP (CUOTAS.viabilidad_sitio), sin Premium ni huellas;
+//   - el pase solo abre las 3 búsquedas del estudio, y solo desde el sitio;
+//   - las respuestas idénticas de Marcanet, de SIGA y de las fichas de MARCia
+//     se recuerdan una hora (Cache API), solo para el sitio, y nunca un vacío
+//     ni un error.
+// Sin TURNSTILE_SECRET, o sin las cuotas (KV CUOTAS + secreto CUOTA_SECRETO),
+// el estudio del sitio queda apagado: no se concede ningún pase.
+const SITIO_ORIGINS = ['https://empirica.mx', 'https://www.empirica.mx'];
+const RUTAS_PASE_SITIO = ['/marcia/search', '/siga/search', '/marcanet/fonetica'];
+const TURNSTILE_VERIFICAR = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
+const CACHE_SITIO_SEGUNDOS = 3600;
+
+function esOrigenSitio(origin) {
+    return SITIO_ORIGINS.includes(origin);
+}
+
+/** ¿Puede un pase del sitio abrir esta ruta desde este origen? */
+function paseSitioValido(path, origin) {
+    return esOrigenSitio(origin) && RUTAS_PASE_SITIO.includes(path);
+}
+
+/** Valida el token de Turnstile con Cloudflare. { ok, apagado?, error? } */
+async function verificarTurnstile(env, token, ip, consultar) {
+    if (!env || !env.TURNSTILE_SECRET) return { ok: false, apagado: true };
+    if (typeof token !== 'string' || !token || token.length > 2048) return { ok: false };
+    let cuerpo = 'secret=' + encodeURIComponent(env.TURNSTILE_SECRET) + '&response=' + encodeURIComponent(token);
+    if (ip) cuerpo += '&remoteip=' + encodeURIComponent(ip);
+    try {
+        const r = await consultar(TURNSTILE_VERIFICAR, {
+            method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: cuerpo
+        });
+        const datos = await r.json();
+        return { ok: !!(datos && datos.success === true) };
+    } catch (e) {
+        return { ok: false, error: true };
+    }
+}
+
+/**
+ * POST /cuota { tipo: 'viabilidad_sitio', turnstile } desde el sitio.
+ * → { servidor, permitido, usados, limite, pase }
+ * Primero se verifica a la persona (Turnstile) y solo entonces se cuenta: un
+ * intento fallido no gasta el estudio del mes.
+ */
+async function atenderCuotaSitio(env, ip, origin, cuerpo, ahora, consultar) {
+    if (!esOrigenSitio(origin)) return { status: 403, datos: { error: 'Origen no permitido' } };
+    if (!cuotasActivas(env)) return { status: 503, datos: { error: 'El verificador no está disponible por ahora' } };
+    const t = await verificarTurnstile(env, cuerpo && cuerpo.turnstile, ip, consultar);
+    if (t.apagado) return { status: 503, datos: { error: 'El verificador no está disponible por ahora' } };
+    if (!t.ok) return { status: 403, datos: { error: 'No pudimos verificar que eres una persona. Inténtalo de nuevo.', turnstile: false } };
+    if (!ip) return { status: 400, datos: { error: 'Sin datos para contar' } };
+    const { limite } = CUOTAS.viabilidad_sitio;
+    const clave = 'c:viabilidad_sitio:' + periodoDe('viabilidad_sitio', ahora) + ':i:' + await sha256Hex('ip|' + ip);
+    const usados = parseInt(await env.CUOTAS.get(clave), 10) || 0;
+    if (usados >= limite) return { status: 200, datos: { servidor: true, permitido: false, usados, limite } };
+    await env.CUOTAS.put(clave, String(usados + 1), { expirationTtl: 40 * 86400 });
+    return { status: 200, datos: { servidor: true, permitido: true, usados: usados + 1, limite, pase: await crearPase(env.CUOTA_SECRETO, 'viabilidad_sitio', false, ahora) } };
+}
+
+/** Rutas cuya respuesta no depende de quién pregunta ni de la sesión. */
+function esRutaCacheableSitio(path, method) {
+    if (method === 'POST') return path === '/marcanet/fonetica' || path === '/siga/search' || path === '/marcanet/full-detail';
+    if (method === 'GET') return path.indexOf('/marcia/view/') === 0;
+    return false;
+}
+
+/** Solo se recuerda lo que respondió bien: nunca un vacío ni un error. */
+function respuestaCacheable(path, datos) {
+    if (!datos || typeof datos !== 'object' || Array.isArray(datos) || datos.error) return false;
+    if (path === '/marcanet/fonetica') return !datos.isFormPage && Array.isArray(datos.results) && datos.results.length > 0;
+    if (path === '/siga/search') return datos.successed !== false && Array.isArray(datos.data);
+    if (path === '/marcanet/full-detail') return !!datos.detail;
+    return path.indexOf('/marcia/view/') === 0 && Object.keys(datos).length > 0;
+}
+
+async function urlCacheSitio(path, cuerpo) {
+    return 'https://cache.impi-proxy.invalid/sitio/' + await sha256Hex(path + '|' + cuerpo);
+}
+// ==================== SITIO PÚBLICO (FIN) ====================
 const SESSION_TTL_MS = 30 * 60 * 1000;
 
 // El token vuelve del cliente, así que se valida antes de reenviarlo al IMPI:
@@ -341,7 +440,7 @@ function respuestaConSesion(data, status, session, request) {
 }
 
 export default {
-    async fetch(request, env) {
+    async fetch(request, env, ctx) {
         // Manejar preflight CORS
         if (request.method === 'OPTIONS') {
             return handleCORS(request);
@@ -367,12 +466,33 @@ export default {
             if (path === '/cuota' && request.method === 'POST') {
                 let cuerpo = {};
                 try { cuerpo = await request.json(); } catch (e) { /* cuerpo vacío */ }
-                const r = await atenderCuota(env, request.headers.get('CF-Connecting-IP') || '', cuerpo, Date.now(), (u, o) => fetch(u, { redirect: 'follow', ...(o || {}) }));
+                const consultar = (u, o) => fetch(u, { redirect: 'follow', ...(o || {}) });
+                const ipCliente = request.headers.get('CF-Connecting-IP') || '';
+                // El estudio del sitio público va por su propio camino (Turnstile, 1 al mes por IP).
+                const r = cuerpo && cuerpo.tipo === 'viabilidad_sitio'
+                    ? await atenderCuotaSitio(env, ipCliente, origin, cuerpo, Date.now(), consultar)
+                    : await atenderCuota(env, ipCliente, cuerpo, Date.now(), consultar);
                 return addCORSHeaders(new Response(JSON.stringify(r.datos), { status: r.status, headers: { 'Content-Type': 'application/json' } }), origin);
             }
             const sinPase = await revisarPase(env, path, request, Date.now());
             if (sinPase) {
                 return addCORSHeaders(new Response(JSON.stringify({ error: sinPase, cuota: true }), { status: 402, headers: { 'Content-Type': 'application/json' } }), origin);
+            }
+
+            // ===== Caché corta (solo el sitio público, con su pase) =====
+            let claveCacheSitio = null;
+            if (esOrigenSitio(origin) && cuotasActivas(env) && typeof caches !== 'undefined' && esRutaCacheableSitio(path, request.method)) {
+                const paseSitio = await leerPase(env.CUOTA_SECRETO, request.headers.get(CUOTA_HEADER), Date.now());
+                if (paseSitio && paseSitio.t === 'viabilidad_sitio') {
+                    const cuerpoPeticion = request.method === 'POST' ? await request.clone().text() : '';
+                    claveCacheSitio = new Request(await urlCacheSitio(path, cuerpoPeticion));
+                    const guardada = await caches.default.match(claveCacheSitio);
+                    if (guardada) {
+                        return addCORSHeaders(new Response(guardada.body, {
+                            status: 200, headers: { 'Content-Type': 'application/json', 'X-Cache': 'HIT' }
+                        }), origin);
+                    }
+                }
             }
 
             // ===== Rutas MARCia =====
@@ -444,11 +564,25 @@ export default {
                     version: WORKER_VERSION,
                     services: ['marcia', 'siga', 'marcanet', 'sesiones'],
                     cuotas: cuotasActivas(env),
+                    sitio: { turnstile: !!(env && env.TURNSTILE_SECRET) },
                     timestamp: new Date().toISOString()
                 }), { headers: { 'Content-Type': 'application/json' } });
             }
             else {
                 response = new Response('Not Found', { status: 404 });
+            }
+
+            // Lo que respondió bien se recuerda una hora para el sitio público.
+            if (claveCacheSitio && response && response.status === 200) {
+                try {
+                    const texto = await response.clone().text();
+                    if (respuestaCacheable(path, JSON.parse(texto))) {
+                        const guardar = caches.default.put(claveCacheSitio, new Response(texto, {
+                            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=' + CACHE_SITIO_SEGUNDOS }
+                        }));
+                        if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(guardar); else await guardar;
+                    }
+                } catch (e) { /* si no se pudo guardar, la respuesta sale igual */ }
             }
 
             // Agregar headers CORS a la respuesta

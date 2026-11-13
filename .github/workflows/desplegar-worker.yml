@@ -63,6 +63,8 @@ jobs:
           node test_proxy_enlaces.js
           node test_cuotas_impi.js
           node test_sesiones.js
+          node test_viabilidad_sitio.js
+          node test_verificador_sitio.js
 
       # wrangler borra los bindings que no estén en el archivo: el KV CUOTAS
       # tiene que ir con su id real, que se guarda como variable de GitHub.
