@@ -16,8 +16,8 @@
 (function (global) {
     'use strict';
 
-    const VERSION = '2026-11-12';
-    const VIGENTE_DESDE = '12 de noviembre de 2026';
+    const VERSION = '2026-11-14';
+    const VIGENTE_DESDE = '14 de noviembre de 2026';
     const RUTA = '/aviso-de-privacidad/';
     const URL = 'https://tsjia.empirica.mx' + RUTA;
     const RESPONSABLE = 'Empírica Legal Lab, S.A.S. de C.V.';

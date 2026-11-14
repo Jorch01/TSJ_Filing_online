@@ -34,7 +34,9 @@
         origen: /^[a-z_]{1,30}$/,
         pagina: /^[a-z0-9_/-]{1,60}$/,
         cantidad: /^\d{1,4}$/,
-        paso: /^\d{1,2}$/
+        paso: /^\d{1,2}$/,
+        // El anuncio contextual que se mostró (p. ej. parte_familiar). Nunca datos del expediente.
+        anuncio: /^(abogado|parte)_[a-z]{1,20}$/
     };
 
     function idConfigurado() {
