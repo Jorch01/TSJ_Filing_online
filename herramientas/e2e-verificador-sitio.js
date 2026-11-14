@@ -53,7 +53,10 @@ const marcia = (id, title, status) => ({
     globalThis.caches = { default: { match: async (r) => (cachesMem.has(r.url) ? new Response(cachesMem.get(r.url)) : undefined), put: async (r, res) => { cachesMem.set(r.url, await res.text()); } } };
 
     const estadisticas = { cuota: [], impi: 0, sinPase: 0, leads: [], cache: 0, collect: [] };
-    const MARCAS = { 'luna azul': [marcia('RM201900111111', 'LUNA AZUL', 'REGISTRADO')], 'sol naciente': [marcia('RM201900222222', 'MAR ABIERTO', 'REGISTRADO')] };
+    const ficha = (id, reg) => ({ fichaId: id, gaceta: 'Conservación de los Derechos', seccion: 'Marcas Renovadas en el Mes', ejemplar: 'Febrero de 2026', fechaPuestaCirculacion: '10/02/2026',
+    datos: [{ descripcion: 'Denominación', datoTxt: 'LUNA AZUL' }, { descripcion: 'Clase', datoTxt: '' }].concat(reg ? [{ descripcion: 'Registro de Marca', datoTxt: reg }] : []) });
+const FICHAS_GACETA = [ficha(9001, '811111'), ficha(9002, '811112'), ficha(9003, ''), ficha(9004, '')];
+const MARCAS = { 'luna azul': [marcia('RM201900111111', 'LUNA AZUL', 'REGISTRADO')], 'sol naciente': [marcia('RM201900222222', 'MAR ABIERTO', 'REGISTRADO')] };
     let denominacionActual = 'luna azul';
 
     async function atender(page, ruta) {
@@ -72,7 +75,7 @@ const marcia = (id, title, status) => ({
             else if (url.pathname === '/marcia/results') cuerpo = { resultPage: marcas, totalResults: marcas.length, aggregates: { NICE_CLASSES: [{ key: '25', docCount: 1 }, { key: '35', docCount: 1 }] } };
             else if (url.pathname === '/marcanet/fonetica') cuerpo = { results: [{ 'Denominación': 'MAR ABIERTO', Expediente: '9100001', Clase: '25', Titular: 'OTRO', 'Situación': 'REGISTRADA' }] };
             else if (url.pathname === '/marcanet/full-detail') cuerpo = { detail: null };
-            else if (url.pathname === '/siga/search') cuerpo = { successed: true, data: [] };
+            else if (url.pathname === '/siga/search') cuerpo = { successed: true, data: denominacionActual === 'luna azul' ? FICHAS_GACETA : [] };
             return ruta.fulfill({ status: 200, headers: Object.assign({ 'Content-Type': 'application/json' }, cors(origen)), body: JSON.stringify(cuerpo) });
         }
         // El resto (/cuota, preflight…): el Worker de verdad
@@ -213,6 +216,10 @@ const marcia = (id, title, status) => ({
             if (nombre === 'escritorio') verificar('la campaña de la visita llega al contacto (utm_source y utm_medium)', /utm_source=e2e/.test(lead.campana) && /utm_medium=prueba/.test(lead.campana), 'campana: ' + lead.campana);
             const detalle = await page.textContent('#vm-detalle');
             verificar('desbloquea el dictamen: antecedentes concretos, titular y recomendaciones', /LUNA AZUL/.test(detalle) && /TITULAR DE LUNA AZUL/.test(detalle) && /Recomendaciones/.test(detalle), detalle.slice(0, 300));
+            const gaceta = await page.evaluate(() => { const h = [...document.querySelectorAll('#vm-detalle h4')].find((x) => /Gaceta/.test(x.textContent)); return h ? { titulo: h.textContent, lineas: [...h.parentElement.querySelectorAll('li')].map((li) => li.textContent) } : null; });
+            verificar('la Gaceta se llama "Publicaciones en Gaceta relacionadas" (no "recientes")', !!gaceta && gaceta.titulo === 'Publicaciones en Gaceta relacionadas', JSON.stringify(gaceta));
+            verificar('cada publicación trae su número y las idénticas se agrupan: 2 con registro distinto y 1 línea "(×2)", no 4 repetidas',
+                !!gaceta && gaceta.lineas.length === 3 && /reg\. 811111/.test(gaceta.lineas.join('|')) && /reg\. 811112/.test(gaceta.lineas.join('|')) && gaceta.lineas.some((l) => /\(×2\)$/.test(l)), JSON.stringify(gaceta && gaceta.lineas));
             verificar('y las clases relacionadas, dichas como orientativas', /Clases relacionadas/.test(detalle) && /orientativo/.test(detalle));
             verificar('el dictamen dice cuántos muestra de cuántos y los números cuadran con los del resultado', /Se encontraron 1 antecedentes parecidos \(1 de riesgo alto\)\. Aquí van los 1 principales/.test(detalle), detalle.slice(0, 400));
 
