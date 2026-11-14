@@ -111,6 +111,9 @@ const marcia = (id, title, status) => ({
             return ruta.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ status: 'ok' }) });
         });
         await ctx.route(/fonts\.g|cdnjs\.cloudflare\.com/, (ruta) => ruta.abort());
+        // Condición mala a propósito: el gtag.js en línea llega tarde y gana la instancia del Google tag del contenedor de GTM.
+        // Con las dos instancias, un gtag('event') sin destino explícito se perdía (0 de 6); con send_to llega siempre.
+        await ctx.route(/googletagmanager\.com\/gtag\/js\?id=G-YHSKT7WH3Q$/, async (ruta) => { await new Promise((r) => setTimeout(r, 2500)); ruta.continue(); });
         // La analítica carga de verdad (gtag.js y GTM), pero lo que enviaría a Google se intercepta y se cuenta: no ensucia los datos reales.
         await ctx.route(/google-analytics\.com|analytics\.google\.com|doubleclick\.net|\/g\/collect|\/j\/collect/, (ruta) => { estadisticas.collect.push(ruta.request().url() + '\n' + (ruta.request().postData() || '')); return ruta.fulfill({ status: 204, body: '' }); });
         return { ctx, page };
@@ -147,7 +150,11 @@ const marcia = (id, title, status) => ({
             const { ctx, page } = await contexto(browser, opts, CONFIG_OK);
             page.__ipFinal = ipFinal;
             const collectAntes = estadisticas.collect.length;   // lo de este recorrido, no lo de las cargas anteriores
-            await page.goto(URL_LANDING); await page.waitForSelector('#vm-form');
+            // En el móvil, el botón ES/EN del menú ya quedó en inglés en este navegador (como en el de una persona que lo probó antes);
+            // en escritorio la visita llega con parámetros de campaña.
+            if (nombre === 'móvil') await ctx.addInitScript(() => { try { localStorage.setItem('empirica_lang', 'en'); } catch (e) { /* sin storage */ } });
+            await page.goto(URL_LANDING + (nombre === 'escritorio' ? '?utm_source=e2e&utm_medium=prueba' : '')); await page.waitForSelector('#vm-form');
+            if (nombre === 'móvil') verificar('(escenario) la página quedó con lang="en" por el botón ES/EN guardado', (await page.evaluate(() => document.documentElement.lang)) === 'en');
             verificar('la landing carga y el formulario aparece', !!(await page.$('#vm-denominacion')));
             verificar('el selector de clases trae descripción', /25 — Ropa, calzado/.test(await page.textContent('#vm-clase')));
 
@@ -200,6 +207,10 @@ const marcia = (id, title, status) => ({
             verificar('el lead llega al formulario de contacto del sitio con sus datos', lead && lead.nombre === 'Persona de Prueba' && lead.correo === 'prueba@example.com' && lead.telefono === '998 123 4567' && lead.perfil === 'verificador-marca', JSON.stringify(lead));
             verificar('con el resumen del estudio para el abogado', /Denominación: Luna Azul/.test(lead.mensaje) && /Clases: 25, 35/.test(lead.mensaje) && /Semáforo: rojo/.test(lead.mensaje) && /LUNA AZUL/.test(lead.mensaje), lead.mensaje);
             verificar('la trampa para robots va vacía', lead.sitio_web === '');
+            verificar('el idioma del contacto es el de la página (es), aunque el botón ES/EN esté en inglés', lead.idioma === 'es', 'idioma: ' + lead.idioma);
+            verificar('el semáforo del correo se llama igual que en la página ("Riesgo alto")', /Semáforo: rojo \(Riesgo alto\)/.test(lead.mensaje), lead.mensaje);
+            verificar('cada antecedente del correo trae su número de registro (para no confundir dos iguales)', /«LUNA AZUL» \(reg\. 811111, clase 25/.test(lead.mensaje), lead.mensaje);
+            if (nombre === 'escritorio') verificar('la campaña de la visita llega al contacto (utm_source y utm_medium)', /utm_source=e2e/.test(lead.campana) && /utm_medium=prueba/.test(lead.campana), 'campana: ' + lead.campana);
             const detalle = await page.textContent('#vm-detalle');
             verificar('desbloquea el dictamen: antecedentes concretos, titular y recomendaciones', /LUNA AZUL/.test(detalle) && /TITULAR DE LUNA AZUL/.test(detalle) && /Recomendaciones/.test(detalle), detalle.slice(0, 300));
             verificar('y las clases relacionadas, dichas como orientativas', /Clases relacionadas/.test(detalle) && /orientativo/.test(detalle));
@@ -213,10 +224,13 @@ const marcia = (id, title, status) => ({
 
             // Lo que de verdad saldría hacia Google Analytics (interceptado): cada evento propio, una sola vez
             if (nombre === 'escritorio') {
-                // GA4 junta los eventos y los envía en un solo lote unos 5 s después: se espera a que salga.
-                await page.waitForTimeout(9000);
-                const cuenta = {};
-                for (const c of estadisticas.collect.slice(collectAntes)) for (const m of c.matchAll(/[?&\n]en=([a-z_]+)/g)) cuenta[m[1]] = (cuenta[m[1]] || 0) + 1;
+                // GA4 junta los eventos y los envía en lotes unos segundos después (a veces más con el equipo cargado):
+                // se espera activamente a que salgan los tres (máximo 30 s) y, ya salidos, 2 s más para ver si se duplican.
+                const contar = () => { const c = {}; for (const x of estadisticas.collect.slice(collectAntes)) for (const m of x.matchAll(/[?&\n]en=([a-z_]+)/g)) c[m[1]] = (c[m[1]] || 0) + 1; return c; };
+                const propios = ['marca_estudio_iniciado', 'marca_resultado_mostrado', 'generate_lead'];
+                for (let i = 0; i < 30 && !propios.every(e => contar()[e]); i++) await page.waitForTimeout(1000);
+                await page.waitForTimeout(2000);
+                const cuenta = contar();
                 console.log('    (eventos hacia Google Analytics: ' + JSON.stringify(cuenta) + ')');
                 if (!estadisticas.collect.length) console.log('    (la analítica no cargó en este entorno: se omite la comprobación de envío)');
                 else {
@@ -245,6 +259,20 @@ const marcia = (id, title, status) => ({
             verificar('puede volver a ver su último resultado (y el dictamen ya desbloqueado)', /Riesgo alto/.test(await page.textContent('#vm-titulo-res')) && !!(await page.$('#vm-titulo-detalle')));
             verificar('sin errores en la consola', page.__consola.length === 0, page.__consola.join(' | '));
             await page.screenshot({ path: path.join(os.tmpdir(), 'vm-final-' + nombre + '.png') });
+            await ctx.close();
+        }
+
+        console.log('\nEl generate_lead que ya existía (clic al teléfono) también llega a Analytics');
+        {
+            const { ctx, page } = await contexto(browser, { viewport: { width: 1280, height: 900 } }, CONFIG_OK);
+            const antes = estadisticas.collect.length;
+            await page.goto('https://empirica.mx/'); await page.waitForSelector('a[href^="tel:"]');
+            await page.evaluate(() => document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('a[href^="tel:"]')) e.preventDefault(); }, true));
+            await page.click('a[href^="tel:"]');
+            const cuantos = () => estadisticas.collect.slice(antes).filter((x) => /[?&\n]en=generate_lead/.test(x) && /method=telefono|epn?\.?method|telefono/.test(x)).length;
+            for (let i = 0; i < 30 && !cuantos(); i++) await page.waitForTimeout(1000);
+            await page.waitForTimeout(2000);
+            verificar('el clic al teléfono manda generate_lead a Analytics exactamente una vez', cuantos() === 1, 'veces: ' + cuantos());
             await ctx.close();
         }
 
