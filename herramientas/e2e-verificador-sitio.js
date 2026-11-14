@@ -52,7 +52,7 @@ const marcia = (id, title, status) => ({
     const cachesMem = new Map();
     globalThis.caches = { default: { match: async (r) => (cachesMem.has(r.url) ? new Response(cachesMem.get(r.url)) : undefined), put: async (r, res) => { cachesMem.set(r.url, await res.text()); } } };
 
-    const estadisticas = { cuota: [], impi: 0, sinPase: 0, leads: [], cache: 0 };
+    const estadisticas = { cuota: [], impi: 0, sinPase: 0, leads: [], cache: 0, collect: [] };
     const MARCAS = { 'luna azul': [marcia('RM201900111111', 'LUNA AZUL', 'REGISTRADO')], 'sol naciente': [marcia('RM201900222222', 'MAR ABIERTO', 'REGISTRADO')] };
     let denominacionActual = 'luna azul';
 
@@ -91,7 +91,7 @@ const marcia = (id, title, status) => ({
         const ctx = await browser.newContext(opts);
         const page = await ctx.newPage();
         const consola = []; page.__consola = consola;
-        page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource: net::ERR_FAILED/.test(m.text())) consola.push(m.text()); }); // lo abortado a propósito (GTM, GA, fuentes, iconos) no cuenta
+        page.on('console', (m) => { const t = m.text(); if ((m.type() === 'error' && !/Failed to load resource: net::ERR_FAILED/.test(t)) || /Cannot find Widget|Nothing to remove/.test(t)) consola.push(t); }); // lo abortado a propósito (GTM, GA, fuentes, iconos) no cuenta
         page.on('pageerror', (e) => consola.push('pageerror: ' + e.message));
         await ctx.route('https://empirica.mx/**', async (ruta) => {
             const u = new URL(ruta.request().url());
@@ -104,13 +104,15 @@ const marcia = (id, title, status) => ({
         });
         await ctx.route('https://proxy.test/**', (ruta) => atender(page, ruta));
         await ctx.route('https://challenges.cloudflare.com/**', (ruta) => ruta.fulfill({ status: 200, contentType: MIME['.js'],
-            body: "window.turnstile={render:function(el,o){setTimeout(function(){o.callback('token-bueno')},60);return 'w1'},reset:function(){},remove:function(){}};" }));
+            body: "window.__tw={n:0,vivos:{}};window.turnstile={render:function(el,o){var id='w'+(++__tw.n);__tw.vivos[id]=el;setTimeout(function(){o.callback('token-bueno')},60);return id},reset:function(id){if(!__tw.vivos[id]||!document.contains(__tw.vivos[id]))console.warn('Cannot find Widget '+id)},remove:function(id){if(!__tw.vivos[id]||!document.contains(__tw.vivos[id]))console.warn('Nothing to remove found for the provided container '+id);delete __tw.vivos[id]}};" }));
         await ctx.route('https://script.google.com/**', async (ruta) => {
             const rq = ruta.request();
             if (rq.method() === 'POST') estadisticas.leads.push(JSON.parse(rq.postData()));
             return ruta.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ status: 'ok' }) });
         });
-        await ctx.route(/googletagmanager\.com|google-analytics\.com|fonts\.g|cdnjs\.cloudflare\.com/, (ruta) => ruta.abort());
+        await ctx.route(/fonts\.g|cdnjs\.cloudflare\.com/, (ruta) => ruta.abort());
+        // La analítica carga de verdad (gtag.js y GTM), pero lo que enviaría a Google se intercepta y se cuenta: no ensucia los datos reales.
+        await ctx.route(/google-analytics\.com|analytics\.google\.com|doubleclick\.net|\/g\/collect|\/j\/collect/, (ruta) => { estadisticas.collect.push(ruta.request().url() + '\n' + (ruta.request().postData() || '')); return ruta.fulfill({ status: 204, body: '' }); });
         return { ctx, page };
     }
     const CONFIG_OK = { turnstileSiteKey: '1x00000000000000000000AA', proxy: 'https://proxy.test', whatsapp: '529982570828' };
@@ -144,6 +146,7 @@ const marcia = (id, title, status) => ({
             console.log('\nEstudio completo en ' + nombre);
             const { ctx, page } = await contexto(browser, opts, CONFIG_OK);
             page.__ipFinal = ipFinal;
+            const collectAntes = estadisticas.collect.length;   // lo de este recorrido, no lo de las cargas anteriores
             await page.goto(URL_LANDING); await page.waitForSelector('#vm-form');
             verificar('la landing carga y el formulario aparece', !!(await page.$('#vm-denominacion')));
             verificar('el selector de clases trae descripción', /25 — Ropa, calzado/.test(await page.textContent('#vm-clase')));
@@ -169,7 +172,7 @@ const marcia = (id, title, status) => ({
             const veredicto = (await page.textContent('#vm-titulo-res')).trim();
             verificar('muestra el semáforo en rojo para una marca idéntica ya registrada', veredicto === 'Riesgo alto' && (await page.$('.vm-semaforo.rojo .vm-luz.rojo.on')) !== null, veredicto);
             const conteo = (await page.textContent('.vm-conteo')).trim();
-            verificar('da el número de antecedentes encontrados', /^\d+\s*antecedentes? parecidos?/.test(conteo) || /^\d+\s*antecedente/.test(conteo), conteo);
+            verificar('da el número de antecedentes encontrados, con el desglose por riesgo (sin cifras que no cuadren)', /^[\d,.]+\s*antecedentes? parecidos? encontrados? · \d+ de riesgo alto/.test(conteo), conteo);
             verificar('el disclaimer se ve con el sentido del de la app (orientativo, sistemas externos del IMPI, no concluyente, no afiliado, especialista)',
                 ['orientativos', 'sistemas externos del Instituto Mexicano de la Propiedad Industrial', 'No son concluyentes', 'no está afiliado al IMPI', 'especialista en propiedad industrial'].every(f => (document => document)(true) && true) &&
                 await page.evaluate(() => { const t = document.querySelector('.vm-aviso').textContent; return ['orientativos', 'sistemas externos del Instituto Mexicano de la Propiedad Industrial', 'No son concluyentes', 'no está afiliado al IMPI', 'especialista en propiedad industrial'].every(f => t.includes(f)); }));
@@ -199,13 +202,28 @@ const marcia = (id, title, status) => ({
             verificar('la trampa para robots va vacía', lead.sitio_web === '');
             const detalle = await page.textContent('#vm-detalle');
             verificar('desbloquea el dictamen: antecedentes concretos, titular y recomendaciones', /LUNA AZUL/.test(detalle) && /TITULAR DE LUNA AZUL/.test(detalle) && /Recomendaciones/.test(detalle), detalle.slice(0, 300));
-            verificar('y las clases relacionadas', /Clases relacionadas/.test(detalle));
+            verificar('y las clases relacionadas, dichas como orientativas', /Clases relacionadas/.test(detalle) && /orientativo/.test(detalle));
+            verificar('el dictamen dice cuántos muestra de cuántos y los números cuadran con los del resultado', /Se encontraron 1 antecedentes parecidos \(1 de riesgo alto\)\. Aquí van los 1 principales/.test(detalle), detalle.slice(0, 400));
 
             // Eventos de GA4
             const ga = await eventosGA(page); const nombres = ga.map(e => e.nombre);
             verificar('GA4: estudio iniciado, resultado mostrado y lead enviado', ['marca_estudio_iniciado', 'marca_resultado_mostrado', 'generate_lead'].every(n => nombres.includes(n)), nombres.join(', '));
             const gl = ga.find(e => e.nombre === 'generate_lead');
             verificar('el lead se mide como generate_lead del verificador, sin datos personales', gl && gl.params.method === 'verificador_marca' && !JSON.stringify(ga).match(/prueba@example|Persona de Prueba|998 123|Luna Azul/i), JSON.stringify(ga));
+
+            // Lo que de verdad saldría hacia Google Analytics (interceptado): cada evento propio, una sola vez
+            if (nombre === 'escritorio') {
+                // GA4 junta los eventos y los envía en un solo lote unos 5 s después: se espera a que salga.
+                await page.waitForTimeout(9000);
+                const cuenta = {};
+                for (const c of estadisticas.collect.slice(collectAntes)) for (const m of c.matchAll(/[?&\n]en=([a-z_]+)/g)) cuenta[m[1]] = (cuenta[m[1]] || 0) + 1;
+                console.log('    (eventos hacia Google Analytics: ' + JSON.stringify(cuenta) + ')');
+                if (!estadisticas.collect.length) console.log('    (la analítica no cargó en este entorno: se omite la comprobación de envío)');
+                else {
+                    verificar('una carga de página manda un solo page_view (no hay doble conteo de Analytics)', cuenta.page_view === 1, 'page_view: ' + cuenta.page_view);
+                    for (const e of ['marca_estudio_iniciado', 'marca_resultado_mostrado', 'generate_lead']) verificar('GA4 recibe ' + e + ' (llega a la red) exactamente una vez', cuenta[e] === 1, 'veces: ' + (cuenta[e] || 0));
+                }
+            }
 
             // Pantalla: sin desplazamiento horizontal
             const anchos = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
