@@ -2,7 +2,7 @@
 
 > Versión 2026-11-12. Fundamento: arts. 14, 15 y 16 de la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (DOF 20-03-2025, última reforma DOF 14-11-2025).
 
-Última actualización: 12 de noviembre de 2026.
+Última actualización: 14 de noviembre de 2026.
 
 ## 1. Quién es el responsable
 
@@ -51,12 +51,14 @@ Cuando conectas **tus propias cuentas** de Google Gemini, EmailJS o Google Calen
 
 **Cómo negarte a la finalidad 8:** desactiva "Estadísticas de uso" en Configuración. Queda guardado en ese dispositivo. También puedes escribirnos al correo del apartado 1.
 
-No usamos tus datos para publicidad ni los vendemos.
+No vendemos tus datos ni los usamos para publicidad de terceros. Si no tienes Premium, la app muestra un anuncio de Empírica Legal Lab, el despacho del desarrollador, que se elige en tu dispositivo; los datos con que se elige no salen de él (apartado 4.1).
 
 ## 4. Cómo se tratan, según la función
 
 ### 4.1 En tu dispositivo
 La información de la Herramienta (expedientes, notas, agenda, configuración y claves de tus servicios) se guarda en el almacenamiento de tu navegador (IndexedDB y almacenamiento local). Si borras los datos del navegador o desinstalas la app, se pierde, salvo lo que hayas sincronizado. Los contadores del plan gratuito se guardan además en una cookie y en un almacén propio que "Eliminar todos los datos" no borra, para que el límite no se reinicie.
+
+**Anuncio del despacho.** Si no tienes Premium, la app muestra al pie de la pantalla un anuncio de Empírica Legal Lab. Para elegir cuál, revisa en tu dispositivo cuántos expedientes activos tienes, la materia de sus juzgados (o si son del PJF) y la sección que tienes abierta. Nada de eso se envía a nadie. Si tienes activadas las estadísticas, en Google Analytics solo se registra qué anuncio se mostró (por ejemplo, "orientación en materia familiar") y si lo abriste o lo cerraste. Puedes cerrarlo en cada visita; con Premium no aparece.
 
 ### 4.2 Licencias
 Los datos de tu licencia se guardan en una hoja de cálculo de Google de Empírica, administrada con Google Apps Script.

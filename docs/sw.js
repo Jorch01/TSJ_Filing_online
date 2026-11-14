@@ -49,6 +49,7 @@ const ARCHIVOS_APP = [
     'js/tour.js',
     'js/recomendar.js',
     'js/analitica.js',
+    'js/anuncio-contextual.js',
     'data/pjf_catalogos_completos.json',
     'icons/icono.svg',
     'icons/icono-192.png',
