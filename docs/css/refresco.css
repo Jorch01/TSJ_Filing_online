@@ -523,6 +523,10 @@ a:hover { color: var(--text-primary); }
     border: 1px solid var(--border-fuerte); border-radius: 12px;
 }
 .dialogo-ia-consentimiento::backdrop { background: rgba(0, 0, 0, 0.45); }
+/* Cuerpo con scroll y botones fijos: en pantallas bajas el botón no queda fuera de la ventana. */
+.dialogo-ia-consentimiento { margin: auto; }   /* el reset global (margin: 0) lo dejaba pegado a la esquina */
+.dialogo-ia-consentimiento[open] { display: flex; flex-direction: column; max-height: calc(100dvh - 2rem); overflow: hidden; }
+.dialogo-ia-consentimiento .dialogo-ia-cuerpo { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .dialogo-ia-consentimiento h3 { margin-top: 0; }
-.dialogo-ia-consentimiento p { font-size: 0.92rem; line-height: 1.5; }
-.dialogo-ia-consentimiento .dialogo-botones { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
+.dialogo-ia-consentimiento p { font-size: 0.92rem; line-height: 1.5; margin: 0 0 0.6rem; }
+.dialogo-ia-consentimiento .dialogo-botones { display: flex; gap: 0.5rem; justify-content: flex-end; flex-shrink: 0; margin-top: 1rem; }
