@@ -1602,16 +1602,20 @@ input:checked + .slider:before { transform: translateX(22px); }
     width: 100%;
     max-width: 500px;
     max-height: 90vh;
-    overflow: auto;
+    /* Encabezado y pie fijos; solo el cuerpo se desplaza. Así los botones de
+       acción (Aceptar, Guardar…) siempre se ven, aunque el contenido sea largo. */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     animation: modalIn 0.3s ease;
 }
 
 @keyframes modalIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
 
-.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); }
+.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
 .modal-header h3 { margin: 0; }
-.modal-body { padding: 1.25rem; }
-.modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 1rem 1.25rem; border-top: 1px solid var(--border-color); }
+.modal-body { padding: 1.25rem; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.modal-footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 0.5rem; padding: 1rem 1.25rem; border-top: 1px solid var(--border-color); flex-shrink: 0; }
 
 /* Toast */
 .toast-container { position: fixed; top: 80px; right: 1rem; z-index: 1260; display: flex; flex-direction: column; gap: 0.5rem; }
@@ -6346,10 +6350,25 @@ body.cta-abierto #tour-menu, body.cta-abierto #tour-oferta, body.cta-abierto #re
 [data-theme="dark"] .vb-aviso.vb-aviso-form { background: rgba(240, 195, 109, 0.12); color: #f3d58c; }
 
 /* Términos y condiciones en la ventana de contratación. */
-.terminos-texto { max-height: 50vh; overflow-y: auto; padding-right: 0.5rem; font-size: 0.85rem; line-height: 1.5; }
+.terminos-texto { max-height: 40vh; overflow-y: auto; padding-right: 0.5rem; font-size: 0.85rem; line-height: 1.5; }
 .terminos-texto h4 { margin: 0.9rem 0 0.3rem; font-size: 0.9rem; }
 .terminos-texto p { margin: 0 0 0.5rem; }
-.terminos-acepto { display: flex; gap: 0.5rem; align-items: flex-start; margin-top: 0.9rem; font-weight: 600; }
+
+/* Casilla de aceptación: todo el recuadro es el botón (se marca con un clic en
+   cualquier parte, salvo en el enlace al aviso). Término y IA usan la misma. */
+.acepto-caja {
+    display: flex; gap: 0.75rem; align-items: flex-start; margin-top: 0.9rem;
+    padding: 0.85rem 1rem; cursor: pointer;
+    border: 2px solid var(--border-fuerte); border-radius: var(--radius); background: var(--bg-secondary);
+    font-size: 0.9rem; font-weight: 600; line-height: 1.45; color: var(--text-primary);
+    transition: border-color 0.15s, background-color 0.15s;
+}
+.acepto-caja:hover { border-color: var(--primary-light); background: var(--primary-suave); }
+.acepto-caja:focus-within { outline: 3px solid var(--primary-light); outline-offset: 2px; }
+.acepto-caja:has(input:checked) { border-color: var(--success); background: var(--primary-suave); }
+.acepto-caja input { width: 1.5rem; height: 1.5rem; flex: 0 0 auto; margin: 0.05rem 0 0; cursor: pointer; accent-color: var(--success); }
+.acepto-caja > span { flex: 1 1 auto; min-width: 0; }
+.acepto-caja a { color: var(--enlace); text-decoration: underline; }
 
 /* Reintentar lo que faltó en el estudio de viabilidad. */
 .vb-reintentar { margin: 0.6rem 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }

@@ -2897,6 +2897,118 @@ async function probarAvisoPrivacidad(navegador) {
     }
 }
 
+/**
+ * La aceptación de términos y aviso de privacidad se puede hacer de verdad:
+ * con clics reales (sin el scroll automático de page.check), la casilla y el
+ * botón «Aceptar y continuar» están a la vista dentro de la ventana, todo el
+ * recuadro de la frase «He leído y acepto…» marca la casilla, y lo mismo vale
+ * para el permiso de la IA. Antes el pie de la ventana quedaba fuera de la
+ * parte visible (y la casilla era un cuadrito de 13 px partido en columnas).
+ */
+async function probarAceptacionVisible(navegador) {
+    console.log('\nAceptación de términos y aviso: a la vista y clicable');
+    const tamanos = [
+        { nombre: 'laptop 1366×768', ctx: { viewport: { width: 1366, height: 768 } } },
+        { nombre: 'pantalla baja 1024×600', ctx: { viewport: { width: 1024, height: 600 } } },
+        { nombre: 'celular chico 360×640', ctx: { viewport: { width: 360, height: 640 }, isMobile: true, hasTouch: true } }
+    ];
+    for (const t of tamanos) {
+        const contexto = await navegador.newContext(t.ctx);
+        await contexto.addInitScript(() => { try { localStorage.setItem('tour_bienvenida_visto', '1'); } catch (e) {} });
+        const page = await contexto.newPage();
+        const errores = [];
+        page.on('pageerror', e => errores.push(e.message));
+        try {
+            // ?privacidad=probar: como alguien que abre la app por primera vez (con el
+            // aviso simplificado al pie y sin el permiso de la IA ya dado).
+            await page.goto(`http://localhost:${PUERTO}/index.html?privacidad=probar`, { waitUntil: 'load' });
+            await page.waitForSelector('#aviso-privacidad-pie', { timeout: 15000 });
+            await page.evaluate(() => {
+                window.__abiertas = []; window.open = (u) => { window.__abiertas.push(u); return null; };
+                navegarA('config');
+                document.getElementById('tour-oferta')?.remove();
+                const a = document.querySelectorAll('#pricing-planes a')[1];
+                a.scrollIntoView();
+                a.click();
+            });
+            await page.waitForTimeout(400);
+
+            const g = await page.evaluate(() => {
+                const m = document.querySelector('#modal-overlay .modal').getBoundingClientRect();
+                const b = document.getElementById('terminos-aceptar').getBoundingClientRect();
+                const caja = document.querySelector('.terminos-acepto');
+                const c = caja.getBoundingClientRect();
+                const casilla = document.getElementById('terminos-check').getBoundingClientRect();
+                const texto = (caja.querySelector('span') || caja).getBoundingClientRect();
+                return {
+                    botonVisible: b.top >= m.top && b.bottom <= m.bottom && b.bottom <= innerHeight,
+                    cajaEmpiezaVisible: c.top >= m.top && c.top < m.bottom,
+                    casilla: Math.round(casilla.width),
+                    // Una sola columna de texto: el enlace al aviso va dentro de la frase.
+                    enlaceEnLaFrase: !!caja.querySelector('span a'),
+                    textoAncho: texto.width / c.width,
+                    x: texto.x + 24, y: texto.y + 8
+                };
+            });
+            verificar(`aceptación (${t.nombre}): «Aceptar y continuar» se ve sin hacer scroll en la ventana`, g.botonVisible);
+            verificar(`aceptación (${t.nombre}): el recuadro de la casilla empieza a la vista`, g.cajaEmpiezaVisible);
+            verificar(`aceptación (${t.nombre}): la casilla ya no es un cuadrito (≥ 20 px)`, g.casilla >= 20, `${g.casilla}px`);
+            verificar(`aceptación (${t.nombre}): el aviso de privacidad es un enlace dentro de la frase, no una columna aparte`,
+                g.enlaceEnLaFrase && g.textoAncho > 0.7, `ancho del texto ${g.textoAncho}`);
+            igual(`aceptación (${t.nombre}): sin marcar, el botón está deshabilitado`, await page.isDisabled('#terminos-aceptar'), true);
+
+            // Clic real en el TEXTO del recuadro (no en el cuadrito): marca la casilla.
+            await page.mouse.click(g.x, g.y);
+            await page.waitForTimeout(150);
+            igual(`aceptación (${t.nombre}): un clic en cualquier parte del recuadro marca la casilla y habilita el botón`,
+                await page.evaluate(() => [document.getElementById('terminos-check').checked, document.getElementById('terminos-aceptar').disabled]), [true, false]);
+            // Otro clic en el recuadro la desmarca (es una casilla, no un botón de una sola vez).
+            await page.mouse.click(g.x, g.y);
+            igual(`aceptación (${t.nombre}): y otro clic la desmarca`, await page.isChecked('#terminos-check'), false);
+            await page.mouse.click(g.x, g.y);
+
+            // Clic real en el botón, sin scroll previo: se aceptan y se abre WhatsApp.
+            const b = await page.evaluate(() => { const r = document.getElementById('terminos-aceptar').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+            await page.mouse.click(b.x, b.y);
+            await page.waitForTimeout(300);
+            const fin = await page.evaluate(() => ({
+                abiertas: window.__abiertas.length,
+                modal: document.getElementById('modal-overlay').classList.contains('active'),
+                guardado: JSON.parse(localStorage.getItem('tsj_terminos_aceptados') || '{}')
+            }));
+            igual(`aceptación (${t.nombre}): al aceptar con clics reales se cierra la ventana y se abre WhatsApp`, [fin.abiertas, fin.modal], [1, false]);
+            verificar(`aceptación (${t.nombre}): y se guarda la versión de los términos y del aviso`,
+                fin.guardado.version === require('./docs/js/terminos.js').VERSION && fin.guardado.privacidad === require('./docs/js/privacidad.js').VERSION);
+
+            // El enlace al aviso abre aparte y no marca la casilla por accidente.
+            await page.evaluate(() => { localStorage.removeItem('tsj_terminos_aceptados'); pedirAceptacionTerminos(() => {}); });
+            await page.waitForTimeout(200);
+            const enlace = await page.evaluate(() => { const a = document.querySelector('.terminos-acepto a'); return { href: a.href, target: a.target }; });
+            igual(`aceptación (${t.nombre}): el enlace al aviso abre en otra pestaña`, enlace, { href: 'https://tsjia.empirica.mx/aviso-de-privacidad/', target: '_blank' });
+            await page.evaluate(() => cerrarModal());
+
+            // Permiso de la IA: botones siempre a la vista; todo el recuadro marca la casilla.
+            await page.evaluate(() => { asegurarConsentimientoIA(); });
+            await page.waitForSelector('dialog.dialogo-ia-consentimiento[open]', { timeout: 5000 });
+            const ia = await page.evaluate(() => {
+                const d = document.querySelector('dialog.dialogo-ia-consentimiento').getBoundingClientRect();
+                const b = document.getElementById('ia-consentimiento-aceptar').getBoundingClientRect();
+                return { visible: b.top >= d.top && b.bottom <= d.bottom && b.bottom <= innerHeight };
+            });
+            verificar(`permiso de IA (${t.nombre}): el botón «Usar la IA» se ve sin hacer scroll`, ia.visible);
+            await page.evaluate(() => document.querySelector('dialog .acepto-caja').scrollIntoView({ block: 'nearest' }));
+            const ia2 = await page.evaluate(() => { const t = document.querySelector('dialog .acepto-caja span').getBoundingClientRect(); return { x: t.x + 24, y: t.y + 8 }; });
+            await page.mouse.click(ia2.x, ia2.y);
+            igual(`permiso de IA (${t.nombre}): un clic en el texto marca la casilla y habilita el botón`,
+                await page.evaluate(() => [document.getElementById('ia-consentimiento-check').checked, document.getElementById('ia-consentimiento-aceptar').disabled]), [true, false]);
+            await page.click('button:has-text("Ahora no")');
+            igual(`aceptación (${t.nombre}): sin errores de JavaScript`, errores, []);
+        } finally {
+            await contexto.close();
+        }
+    }
+}
+
 async function probarAccesibilidadCelular(navegador) {
     const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     await contexto.addInitScript(() => {
@@ -5560,6 +5672,7 @@ async function main() {
         await probarAnaliticaYRecomendar(navegador);
         await probarSitioPublico(navegador);
         await probarAvisoPrivacidad(navegador);
+        await probarAceptacionVisible(navegador);
 
     } finally {
         await navegador.close();

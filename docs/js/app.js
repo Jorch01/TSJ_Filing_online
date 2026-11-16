@@ -8464,12 +8464,14 @@ function pedirAceptacionTerminos(alAceptar) {
     document.getElementById('modal-body').innerHTML =
         '<div class="terminos-texto">' + TERMINOS.html(4) +
         '<p class="text-muted">Versión ' + TERMINOS.VERSION + ', vigente desde el ' + TERMINOS.VIGENTES_DESDE + '.</p></div>' +
-        (alAceptar ? '<label class="checkbox-label terminos-acepto"><input type="checkbox" id="terminos-check" onchange="document.getElementById(\'terminos-aceptar\').disabled = !this.checked"> ' +
-            'He leído y acepto los Términos y condiciones, incluido que las cuotas no se devuelven.' +
+        // Todo el recuadro es la casilla: un clic en cualquier parte la marca. El
+        // texto va en un <span> para que el enlace al aviso fluya dentro de la frase.
+        (alAceptar ? '<label class="acepto-caja terminos-acepto"><input type="checkbox" id="terminos-check" onchange="document.getElementById(\'terminos-aceptar\').disabled = !this.checked">' +
+            '<span>Marca esta casilla para continuar. He leído y acepto los Términos y condiciones, incluido que las cuotas no se devuelven.' +
             (typeof PRIVACIDAD !== 'undefined'
                 ? ' ' + PRIVACIDAD.CONSENTIMIENTO.replace('Aviso de privacidad', '<a href="' + PRIVACIDAD.URL + '" target="_blank" rel="noopener">Aviso de privacidad</a>')
                 : '') +
-            '</label>' : '');
+            '</span></label>' : '');
     document.getElementById('modal-footer').innerHTML = alAceptar
         ? '<button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>' +
           '<button class="btn btn-success" id="terminos-aceptar" disabled onclick="aceptarTerminos()">Aceptar y continuar</button>'
@@ -9191,17 +9193,22 @@ function asegurarConsentimientoIA() {
         const d = document.createElement('dialog');
         d.className = 'dialogo-ia-consentimiento';
         d.setAttribute('aria-labelledby', 'dialogo-ia-titulo');
+        // El texto se desplaza; los botones quedan fijos abajo, a la vista.
+        const cuerpo = document.createElement('div');
+        cuerpo.className = 'dialogo-ia-cuerpo';
         const titulo = document.createElement('h3');
         titulo.id = 'dialogo-ia-titulo';
         titulo.textContent = PRIVACIDAD.IA.titulo;
-        d.appendChild(titulo);
-        PRIVACIDAD.IA.parrafos.forEach(texto => { const p = document.createElement('p'); p.textContent = texto; d.appendChild(p); });
+        cuerpo.appendChild(titulo);
+        PRIVACIDAD.IA.parrafos.forEach(texto => { const p = document.createElement('p'); p.textContent = texto; cuerpo.appendChild(p); });
         const etiqueta = document.createElement('label');
-        etiqueta.className = 'checkbox-label';
+        etiqueta.className = 'acepto-caja';
         const casilla = document.createElement('input');
         casilla.type = 'checkbox';
         casilla.id = 'ia-consentimiento-check';
-        etiqueta.append(casilla, ' ' + PRIVACIDAD.IA.casilla);
+        const textoCasilla = document.createElement('span');
+        textoCasilla.textContent = PRIVACIDAD.IA.casilla;
+        etiqueta.append(casilla, textoCasilla);
         const nota = document.createElement('p');
         nota.className = 'text-muted';
         nota.textContent = 'Puedes retirarlo en Configuración › Privacidad.';
@@ -9230,7 +9237,8 @@ function asegurarConsentimientoIA() {
         aceptar.onclick = () => terminar(true);
         d.addEventListener('cancel', (e) => { e.preventDefault(); terminar(false); });
         botones.append(cancelar, aceptar);
-        d.append(etiqueta, nota, botones);
+        cuerpo.append(etiqueta, nota);
+        d.append(cuerpo, botones);
         document.body.appendChild(d);
         if (typeof d.showModal === 'function') d.showModal(); else d.setAttribute('open', '');
     });
