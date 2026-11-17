@@ -94,6 +94,8 @@
                 'Agrégale a la descripción de la audiencia del viernes: llevar testigos',
                 'Cambia la descripción del vencimiento del 15 a "presentar alegatos"',
                 'Mueve las audiencias del lunes al martes a la misma hora',
+                'Crea un recordatorio para el viernes en todos los asuntos de AHO',
+                'Agenda el vencimiento del jueves en el 123/2025 y en el 45/2026',
                 'Elimina el recordatorio del lunes',
                 '¿Qué audiencias tengo esta semana?'
             ]
@@ -166,6 +168,7 @@
         'Para un finiquito o liquidación dime lo que sepas; te pido lo que falte (cómo terminó, fechas, salario) hasta poder calcular, y luego puedes ajustarlo: "¿y si fueron 6 meses de juicio?".',
         'Si mencionas un expediente de tu catálogo, uso su juzgado guardado automáticamente en las búsquedas.',
         'Puedes pedir varias búsquedas en una sola orden: varios tipos de asunto ("la queja y el amparo directo"), "en todos los tipos de asunto", varios órganos, o asuntos del TSJ y del PJF juntos. Antes de abrir te enseño la lista.',
+        'Puedes pedir lo mismo para varios expedientes en una sola orden: "un recordatorio el viernes en todos los asuntos de AHO" (de una carpeta, un cliente o un tipo de asunto) o nombrándolos. Antes de guardar te enseño la lista completa, y "deshaz lo último" los revierte todos juntos.',
         'Para cambiar un evento basta con decir cuál y qué cambia: "pospón una semana la audiencia del 123/2025", "agrégale a la descripción…". Antes de guardar te enseño el antes y el después.',
         'Di "deshaz lo último" para revertir la acción más reciente hecha por el asistente.',
         'Con 🔊/🔇 activas o silencias mis respuestas habladas; en Configuración puedes ajustar la velocidad de la voz y la escucha automática.',
@@ -194,6 +197,7 @@
     let chunksAudio = [];
     let ttsActivo = localStorage.getItem(TTS_KEY) !== '0';
     let pilaDeshacer = [];        // últimas acciones del asistente, para "deshaz lo último"
+    let loteDeshacer = null;      // mientras corre un lote: lo que hay que deshacer, junto
 
     // ==================== HELPERS ====================
 
@@ -224,6 +228,8 @@
     }
 
     function toast(msg, tipo) {
+        // En un lote no sale un aviso por cada paso: sale uno al final.
+        if (loteDeshacer) return;
         if (typeof mostrarToast === 'function') mostrarToast(msg, tipo || 'info');
     }
 
@@ -233,6 +239,8 @@
     // de acciones, así el revert también refresca UI y sincroniza.
 
     function registrarDeshacer(entrada) {
+        // Un lote junta sus pasos en una sola entrada: "deshaz lo último" los revierte todos.
+        if (loteDeshacer) { loteDeshacer.push(entrada); return; }
         pilaDeshacer.push(entrada);
         if (pilaDeshacer.length > 10) pilaDeshacer.shift();
     }
@@ -240,6 +248,12 @@
     async function accDeshacer() {
         const u = pilaDeshacer.pop();
         if (!u) throw new Error('No hay ninguna acción reciente del asistente que deshacer');
+        await enLote(() => revertirEntrada(u));
+        toast('Acción deshecha', 'success');
+        return `Deshecho: ${u.etiqueta}.`;
+    }
+
+    async function revertirEntrada(u) {
         switch (u.tipo) {
             case 'evento_creado':        await eliminarEventoCore(u.id); break;
             case 'evento_editado':       await actualizarEventoCore(u.id, u.antes); break;
@@ -257,10 +271,18 @@
             case 'nota_creada':          await eliminarNotaCore(u.id); break;
             case 'pendiente_creado':     await eliminarPendienteCore(u.id); break;
             case 'pendiente_completado': await completarPendienteCore(u.id, false); break;
+            // Un lote se deshace entero, del último paso al primero.
+            case 'lote':
+                for (const x of u.entradas.slice().reverse()) await revertirEntrada(x);
+                break;
             default: throw new Error('No sé cómo deshacer esa acción');
         }
-        toast('Acción deshecha', 'success');
-        return `Deshecho: ${u.etiqueta}.`;
+    }
+
+    // Varias operaciones del núcleo como una sola: la pantalla se repinta y la
+    // nube se sincroniza una vez al final, no por cada paso.
+    function enLote(fn) {
+        return typeof enLoteCore === 'function' ? enLoteCore(fn) : fn();
     }
 
     // ==================== UI: FAB + PANEL ====================
@@ -872,6 +894,11 @@
             await prepararCambioDeEventos(r);
             return;
         }
+        // Varias acciones en una orden: se resuelve todo antes de confirmar.
+        if (accion === 'varias') {
+            await prepararVarias(r);
+            return;
+        }
         // Cálculo laboral: no modifica nada, pero antes de calcular la app
         // revisa que estén todos los datos y, si no, pide el que falte.
         if (accion === 'calcular_laboral') {
@@ -959,6 +986,7 @@
                 case 'crear_evento':        mensajeFinal = await accCrearEvento(p); break;
                 case 'editar_evento':       mensajeFinal = plan ? await aplicarEdicionesEventos(plan) : await accEditarEvento(p); break;
                 case 'eliminar_evento':     mensajeFinal = plan ? await aplicarEliminacionEventos(plan) : await accEliminarEvento(p); break;
+                case 'varias':              mensajeFinal = plan ? await aplicarVarias(plan) : await accVarias(p); break;
                 case 'consultar_agenda':    mensajeFinal = await accConsultarAgenda(p); break;
                 case 'crear_expediente':    mensajeFinal = await accCrearExpediente(p); break;
                 case 'editar_expediente':   mensajeFinal = await accEditarExpediente(p); break;
@@ -1763,6 +1791,279 @@
         throw new Error(`Tengo ${coincidencias.length} pendientes que coinciden: ${coincidencias.slice(0, 4).map(x => x.titulo).join('; ')}. ¿Cuál?`);
     }
 
+    // ==================== VARIAS ACCIONES A LA VEZ ====================
+    // "Ponme un recordatorio el jueves en los tres asuntos de AHO": el modelo
+    // manda UNA acción "varias" con una entrada por expediente, o con una sola
+    // que lleva paraTodosLosDe para un grupo entero (una carpeta, un cliente…).
+    // Igual que los cambios a eventos, primero se prepara TODO —cuál expediente
+    // es cada uno, qué se va a crear— y solo después de confirmar se aplica, en
+    // un solo lote y con un solo "deshaz lo último". Si algo no se puede
+    // identificar no se hace nada a medias: se dice qué falta y se rehace la
+    // orden completa.
+
+    // Tope de acciones por orden: con más, la lista de confirmación ya no se lee.
+    const TOPE_LOTE = 40;
+
+    // Lo que se puede combinar en una orden. Lo demás (editar eventos, buscar en
+    // estrados…) ya acepta varios por sí mismo o se pide por separado.
+    const ACCIONES_EN_LOTE = {
+        crear_evento:        { expedienteObligatorio: false },
+        crear_pendiente:     { expedienteObligatorio: false },
+        crear_nota:          { expedienteObligatorio: false },
+        mover_a_carpeta:     { expedienteObligatorio: true },
+        archivar_expediente: { expedienteObligatorio: true }
+    };
+
+    const NOMBRE_TIPO_EVENTO = { audiencia: 'Audiencia', vencimiento: 'Vencimiento', recordatorio: 'Recordatorio', otro: 'Evento' };
+
+    // Un problema al preparar la orden NO es un fallo del programa: es que falta
+    // o sobra algo y hay que decírselo al usuario sin perder la conversación.
+    function ErrorLote(problemas) {
+        const lista = Array.isArray(problemas) ? problemas : [String(problemas)];
+        const e = new Error('No pude preparar la orden, y no hice nada: ' + lista.join(' · ') + '. Dime cómo corregirlo y la rehago completa.');
+        e._esLote = true;
+        return e;
+    }
+
+    function plural(n, uno, varios) {
+        return n + ' ' + (n === 1 ? uno : varios);
+    }
+
+    // El expediente de una entrada: por id, o por referencia contra toda la base.
+    // Devuelve { exp } (exp puede ser null si no se mencionó ninguno) o { problema }.
+    async function expedienteParaLote(p) {
+        if (p.expedienteId != null && p.expedienteId !== '') {
+            const exp = await obtenerExpediente(parseInt(p.expedienteId)).catch(() => null);
+            if (exp) return { exp };
+        }
+        const ref = textoLimpio(p.expedienteRef) || textoLimpio(p.expedienteTexto);
+        if (!ref) return { exp: null };
+        if (typeof resolverExpedientePorReferencia !== 'function') return { problema: 'no pude buscar expedientes en este momento' };
+        const r = await resolverExpedientePorReferencia(ref);
+        if (r.estado === 'unico') return { exp: r.expediente };
+        if (r.estado === 'ninguno') return { problema: `no encontré ningún expediente que coincida con “${ref}”` };
+        return { problema: `“${ref}” coincide con ${r.candidatos.length} expedientes (${r.candidatos.slice(0, 4).map(c => etiquetaExpediente(c.expediente)).join('; ')}); ¿cuál?` };
+    }
+
+    // Valida una entrada y devuelve lo que se va a hacer, dicho en una línea.
+    // Lanza Error con el motivo si no se puede.
+    async function validarEntradaLote(accion, p, exp) {
+        const donde = exp ? etiquetaExpediente(exp) : 'sin expediente';
+        switch (accion) {
+            case 'crear_evento': {
+                if (!textoLimpio(p.titulo)) throw new Error('falta el título del evento');
+                if (!textoLimpio(p.fecha)) throw new Error(`falta la fecha de “${p.titulo}”`);
+                const hora = normalizarHora(p.hora);
+                const d = new Date(p.fecha + 'T' + (hora || '09:00'));
+                if (isNaN(d.getTime())) throw new Error(`la fecha “${p.fecha}” no es válida`);
+                const tipo = NOMBRE_TIPO_EVENTO[p.tipo] ? p.tipo : 'otro';
+                const cuando = d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) + (hora ? ' a las ' + hora : '');
+                return { detalle: `${NOMBRE_TIPO_EVENTO[tipo]} “${p.titulo}” — ${cuando} — ${donde}`, clave: [p.titulo, p.fecha, hora, tipo] };
+            }
+            case 'crear_pendiente': {
+                if (!textoLimpio(p.titulo)) throw new Error('falta qué hay que hacer en el pendiente');
+                let cuando = '';
+                if (textoLimpio(p.fecha)) {
+                    const hora = normalizarHora(p.hora);
+                    const d = new Date(p.fecha + 'T' + (hora || '09:00'));
+                    if (isNaN(d.getTime())) throw new Error(`la fecha “${p.fecha}” no es válida`);
+                    cuando = ' — para el ' + d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) + (hora ? ' a las ' + hora : '');
+                }
+                return { detalle: `Pendiente “${p.titulo}”${cuando} — ${donde}`, clave: [p.titulo, p.fecha, p.hora, p.prioridad] };
+            }
+            case 'crear_nota': {
+                if (!textoLimpio(p.titulo)) throw new Error('falta el título de la nota');
+                return { detalle: `Nota “${p.titulo}” — ${donde}`, clave: [p.titulo, p.contenido] };
+            }
+            case 'mover_a_carpeta': {
+                let destino = 'sin carpeta';
+                if (p.carpetaId != null && p.carpetaId !== '') {
+                    const carpeta = await obtenerCarpeta(parseInt(p.carpetaId)).catch(() => null);
+                    if (!carpeta) throw new Error('no encontré esa carpeta');
+                    destino = `la carpeta “${carpeta.nombre || p.carpetaId}”`;
+                }
+                return { detalle: `${donde} → ${destino}`, clave: [p.carpetaId] };
+            }
+            case 'archivar_expediente': {
+                const motivo = p.motivo || 'concluido';
+                return { detalle: `Archivar ${donde} (${motivo})`, clave: [motivo] };
+            }
+        }
+        throw new Error('acción no permitida en una orden múltiple');
+    }
+
+    function resumenDelLote(items) {
+        const n = items.length;
+        if (n === 1) return items[0].detalle;
+        const iguales = items.every(x => x.accion === items[0].accion);
+        if (!iguales) return `Hacer ${n} acciones`;
+        switch (items[0].accion) {
+            case 'crear_evento':        return `Agendar ${plural(n, 'evento', 'eventos')}`;
+            case 'crear_pendiente':     return `Crear ${plural(n, 'pendiente', 'pendientes')}`;
+            case 'crear_nota':          return `Crear ${plural(n, 'nota', 'notas')}`;
+            case 'mover_a_carpeta':     return `Mover ${plural(n, 'expediente', 'expedientes')} de carpeta`;
+            case 'archivar_expediente': return `Archivar ${plural(n, 'expediente', 'expedientes')}`;
+        }
+        return `Hacer ${n} acciones`;
+    }
+
+    /**
+     * Convierte la orden del modelo en una lista de cosas concretas por hacer,
+     * sin hacer ninguna. Cada entrada de "acciones" es { accion, parametros }; si
+     * sus parametros llevan paraTodosLosDe se repite para cada expediente activo
+     * de ese grupo. Devuelve { items, resumen, detalles }.
+     */
+    async function planVarias(p) {
+        const pedidas = Array.isArray(p.acciones) ? p.acciones : [];
+        if (!pedidas.length) throw ErrorLote('no vi qué cosas hacer; dime qué quieres en cada expediente');
+
+        const problemas = [];
+        const candidatas = [];   // { accion, parametros, exp, numero }
+        for (let i = 0; i < pedidas.length; i++) {
+            const entrada = pedidas[i] || {};
+            const accion = entrada.accion;
+            const numero = i + 1;
+            if (!ACCIONES_EN_LOTE[accion]) {
+                problemas.push(`“${accion || '(sin acción)'}” no se puede combinar con otras en una sola orden; pídemelo por separado`);
+                continue;
+            }
+            const parametros = { ...(entrada.parametros || {}) };
+            const grupo = textoLimpio(parametros.paraTodosLosDe);
+            delete parametros.paraTodosLosDe;
+
+            if (grupo) {
+                // Todo un grupo: la app los busca, no el modelo.
+                const miembros = await buscarExpedientesDeGrupo(grupo);
+                if (!miembros.length) {
+                    problemas.push(`no encontré expedientes de “${grupo}” (busqué en carpetas, clientes, tipos de asunto, responsables y comentarios)`);
+                    continue;
+                }
+                for (const { expediente } of miembros) {
+                    const copia = { ...parametros, expedienteId: expediente.id };
+                    delete copia.expedienteRef;
+                    delete copia.expedienteTexto;
+                    candidatas.push({ accion, parametros: copia, exp: expediente, numero });
+                }
+                continue;
+            }
+
+            const r = await expedienteParaLote(parametros);
+            if (r.problema) { problemas.push(`${r.problema}`); continue; }
+            if (!r.exp && ACCIONES_EN_LOTE[accion].expedienteObligatorio) {
+                problemas.push(`en la acción ${numero} (${accion}) falta saber de qué expediente`);
+                continue;
+            }
+            if (r.exp) {
+                parametros.expedienteId = r.exp.id;
+                delete parametros.expedienteRef;
+                delete parametros.expedienteTexto;
+            }
+            candidatas.push({ accion, parametros, exp: r.exp, numero });
+        }
+
+        // Cada una se valida con su expediente ya identificado; lo repetido se junta.
+        const vistos = new Set();
+        const items = [];
+        for (const c of candidatas) {
+            try {
+                const v = await validarEntradaLote(c.accion, c.parametros, c.exp);
+                const clave = JSON.stringify([c.accion, c.exp ? c.exp.id : null, v.clave]);
+                if (vistos.has(clave)) continue;
+                vistos.add(clave);
+                items.push({ accion: c.accion, parametros: c.parametros, detalle: v.detalle });
+            } catch (e) {
+                problemas.push(`${c.exp ? etiquetaExpediente(c.exp) + ': ' : ''}${e.message}`);
+            }
+        }
+
+        if (problemas.length) throw ErrorLote(problemas);
+        if (!items.length) throw ErrorLote('no quedó nada por hacer');
+        if (items.length > TOPE_LOTE) {
+            throw ErrorLote(`son ${items.length} acciones y el máximo por orden es ${TOPE_LOTE}; acótalo (por fecha, carpeta o cliente) o pídelo por partes`);
+        }
+        return {
+            items,
+            resumen: resumenDelLote(items),
+            detalles: items.length === 1 ? [] : items.map(x => x.detalle)
+        };
+    }
+
+    function ejecutorDeLote(accion) {
+        return {
+            crear_evento: accCrearEvento,
+            crear_pendiente: accCrearPendiente,
+            crear_nota: accCrearNota,
+            mover_a_carpeta: accMoverACarpeta,
+            archivar_expediente: accArchivarExpediente
+        }[accion];
+    }
+
+    // Aplica el plan con las mismas acciones de siempre, pero como una unidad: un
+    // solo repintado, una sola subida a la nube y un solo "deshaz lo último".
+    // Un fallo suelto no tira el resto: se cuenta y se informa.
+    async function aplicarVarias(plan) {
+        const entradas = [];
+        const fallos = [];
+        const hechos = {};
+        loteDeshacer = entradas;
+        try {
+            await enLote(async () => {
+                for (const it of plan.items) {
+                    try {
+                        await ejecutorDeLote(it.accion)(it.parametros);
+                        hechos[it.accion] = (hechos[it.accion] || 0) + 1;
+                    } catch (e) {
+                        fallos.push(`${it.detalle}: ${e.message}`);
+                    }
+                }
+            });
+        } finally {
+            loteDeshacer = null;
+        }
+
+        const total = Object.values(hechos).reduce((a, b) => a + b, 0);
+        if (entradas.length) {
+            registrarDeshacer({ tipo: 'lote', entradas, etiqueta: plan.resumen.toLowerCase() });
+        }
+        if (!total) throw new Error('No pude hacer ninguna de las acciones. ' + fallos.slice(0, 3).join(' · '));
+
+        toast(total === 1 ? 'Listo' : `${total} acciones hechas`, 'success');
+        const partes = [];
+        if (hechos.crear_evento) partes.push(plural(hechos.crear_evento, 'evento agendado', 'eventos agendados'));
+        if (hechos.crear_pendiente) partes.push(plural(hechos.crear_pendiente, 'pendiente creado', 'pendientes creados'));
+        if (hechos.crear_nota) partes.push(plural(hechos.crear_nota, 'nota creada', 'notas creadas'));
+        if (hechos.mover_a_carpeta) partes.push(plural(hechos.mover_a_carpeta, 'expediente movido', 'expedientes movidos'));
+        if (hechos.archivar_expediente) partes.push(plural(hechos.archivar_expediente, 'expediente archivado', 'expedientes archivados'));
+        let mensaje = 'Listo: ' + partes.join(', ') + '.';
+        if (fallos.length) {
+            mensaje += ` No pude hacer ${fallos.length === 1 ? 'una de ellas' : fallos.length + ' de ellas'}: ${fallos.slice(0, 3).join(' · ')}.`;
+        }
+        return mensaje;
+    }
+
+    // Sin confirmación: para dispararlas desde otra parte de la app (VOZ.ejecutar).
+    async function accVarias(p) {
+        return aplicarVarias(await planVarias(p));
+    }
+
+    async function prepararVarias(r) {
+        let plan;
+        try {
+            plan = await planVarias(r.parametros || {});
+        } catch (e) {
+            if (!e._esLote) { informarFallo(e); return; }
+            // Se dice qué falta y se sigue escuchando; el modelo también lo ve,
+            // para rehacer la orden completa con la respuesta.
+            estado = Estado.ESPERANDO_DATO;
+            agregarMensaje('asistente', '❓ ' + esc(e.message));
+            const ultimo = conversacion[conversacion.length - 1];
+            if (ultimo && ultimo.role === 'assistant') ultimo.content += '\nNo se ejecutó nada. ' + e.message;
+            hablar(e.message, () => { if (panelAbierto()) iniciarEscucha(); });
+            return;
+        }
+        pedirConfirmacion({ ...r, _plan: plan }, plan.resumen, plan.detalles);
+    }
+
     // ==================== REFERENCIAS A EXPEDIENTES ====================
     // El modelo acierta el id cuando el expediente está en el catálogo y el
     // usuario fue preciso. Cuando no —dijo un fragmento, un apellido, o el
@@ -2398,7 +2699,7 @@
     }
 
     function accNavegar(p) {
-        const paginas = ['inicio', 'expedientes', 'calendario', 'pendientes', 'notas', 'tribunales', 'busqueda', 'pjf', 'laboral', 'impi', 'estadisticas', 'config'];
+        const paginas = ['inicio', 'expedientes', 'calendario', 'pendientes', 'notas', 'tribunales', 'busqueda', 'pjf', 'otros', 'laboral', 'impi', 'estadisticas', 'config'];
         const pagina = paginas.includes(p.pagina) ? p.pagina : null;
         if (!pagina) throw new Error('No identifiqué a qué sección navegar');
         if (typeof navegarA === 'function') navegarA(pagina);
@@ -2851,6 +3152,12 @@
                 // Las partes son como el abogado suele referirse a un caso.
                 actor: e.actor || undefined,
                 demandado: e.demandado || undefined,
+                // Con lo que el abogado agrupa su trabajo: "los de AHO" puede ser un cliente,
+                // un tipo de asunto o un responsable, además de una carpeta.
+                cliente: e.cliente || undefined,
+                tipo: e.tipo || undefined,
+                responsable: e.abogado || undefined,
+                categoria: e.categoria || undefined,
                 archivado: e._arch || undefined,
                 comentario: (e.comentario || '').slice(0, 60) || undefined
             }));
@@ -2878,7 +3185,7 @@
 
 FECHA Y HORA ACTUAL: ${fechaLegible}, ${horaLegible} (zona horaria de Cancún). Resuelve fechas relativas ("mañana", "el jueves", "en 15 días") contra esta fecha. Si el usuario dice un día de la semana sin fecha, usa el PRÓXIMO día con ese nombre.
 
-CATÁLOGO DE EXPEDIENTES DEL USUARIO (${catalogo.length} de ${totalExpedientes}; id, número/nombre, institución, juzgado, partes, carpetaId, archivado):
+CATÁLOGO DE EXPEDIENTES DEL USUARIO (${catalogo.length} de ${totalExpedientes}; id, número/nombre, institución, juzgado, partes, cliente, tipo de asunto, responsable, categoría, carpetaId, archivado):
 ${JSON.stringify(catalogo)}
 ${totalExpedientes > catalogo.length ? `ATENCIÓN: hay ${totalExpedientes - catalogo.length} expedientes MÁS que no caben aquí. Si el usuario menciona uno que no está en la lista, NO digas que no existe: usa expedienteRef.` : ''}
 
@@ -2975,7 +3282,7 @@ CÓMO DECIDIR ENTRE ESTRADOS DEL TSJ Y DEL PJF (importante):
 - Ejemplo mixto: "busca el 123/2025 en el juzgado primero civil de Cancún y el amparo indirecto 45/2026 en el juzgado primero de distrito de Quintana Roo" → buscar_varios con busquedas=[{accion:"buscar_tsj", parametros:{valor:"123/2025", tipoBusqueda:"numero", juzgado:"JUZGADO PRIMERO CIVIL CANCUN"}}, {accion:"buscar_pjf", parametros:{numero:"45/2026", organismo:"juzgado primero de distrito en quintana roo", tiposAsunto:["amparo indirecto"]}}].
 - Ejemplo con números distintos: "busca el amparo directo 100/2026 y la queja 7/2026 en el primer colegiado del 27" → buscar_varios con dos buscar_pjf, uno por número.
 - NO hace falta que el asunto esté en el catálogo del usuario: si dicta el órgano y el número, manda esos datos y deja expedienteId y expedienteRef en null. Solo usa expedienteRef cuando se refiera a algo SUYO sin dar el órgano ("abre los estrados de lo de Ramírez").
-15. "navegar": {pagina:"inicio"|"expedientes"|"calendario"|"pendientes"|"notas"|"tribunales"|"busqueda"|"pjf"|"laboral"|"impi"|"estadisticas"|"config"} — "tribunales" abre el apartado de tribunales; "busqueda" es su parte del TSJ y "pjf" la del PJF; "laboral" es la calculadora de finiquito y liquidación (solo abrirla, sin calcular); "estadisticas" son las tablas y métricas del despacho (tiempos, resultados, clientes, pendientes).
+15. "navegar": {pagina:"inicio"|"expedientes"|"calendario"|"pendientes"|"notas"|"tribunales"|"busqueda"|"pjf"|"otros"|"laboral"|"impi"|"estadisticas"|"config"} — "tribunales" abre el apartado de tribunales; "busqueda" es su parte del TSJ, "pjf" la del PJF y "otros" la de los asuntos ante otras autoridades (otros estados, tribunales administrativos, IMSS, SAT, notarías); "laboral" es la calculadora de finiquito y liquidación (solo abrirla, sin calcular); "estadisticas" son las tablas y métricas del despacho (tiempos, resultados, clientes, pendientes).
 16. "responder": para preguntas generales, saludos o cuando ninguna acción aplica. Usa el campo "respuesta".
 17. "calcular_laboral": calcula finiquito, liquidación o indemnización de un trabajador con la Ley Federal del Trabajo ("calcula el finiquito de…", "cuánto le toca a…", "¿cuánto es la liquidación si lo despidieron?"). Parámetros:
     {supuesto, fechaIngreso:"YYYY-MM-DD", fechaBaja:"YYYY-MM-DD", salario:número, periodo:"diario"|"semanal"|"catorcenal"|"quincenal"|"mensual",
@@ -3002,6 +3309,16 @@ CÓMO DECIDIR ENTRE ESTRADOS DEL TSJ Y DEL PJF (importante):
     - Ve pidiendo lo que falte de UNO EN UNO (faltan_datos=true y una sola "pregunta"), conservando en "parametros" todo lo reunido, hasta tener los obligatorios. Si en una sola frase da varios datos, tómalos todos.
     - Si pide ajustar el último cálculo ("¿y si fueron 6 meses de juicio?", "ahora con 20 días por año", "¿y si renunciara?"), parte de ÚLTIMO CÁLCULO LABORAL y cambia solo lo que dice.
     - Si menciona un expediente, pon su id o expedienteRef: sirve para guardar el cálculo como nota del expediente.
+18. "varias": {acciones:[{accion, parametros}]} — LO MISMO para VARIOS expedientes, o varias cosas distintas en una sola orden. Dentro de "acciones" solo caben: crear_evento, crear_pendiente, crear_nota, mover_a_carpeta, archivar_expediente, cada una con los parámetros que tendría sola.
+    - NUNCA digas que no puedes hacer algo para varios expedientes a la vez, ni pidas que lo repita uno por uno: usa "varias". La app te lo prepara completo y le enseña la lista al usuario antes de guardar nada.
+    - Expedientes CONCRETOS (los nombra, o los identificas con claridad en el catálogo): una entrada por expediente, cada una con su expedienteId (o expedienteRef si no lo ves en el catálogo).
+      · "ponme un recordatorio el jueves de enviar el escrito en el 123/2025 y en el 45/2026" → acciones:[{accion:"crear_evento", parametros:{titulo:"Enviar el escrito", tipo:"recordatorio", fecha:"<fecha del jueves>", expedienteId:12}}, {accion:"crear_evento", parametros:{titulo:"Enviar el escrito", tipo:"recordatorio", fecha:"<fecha del jueves>", expedienteId:15}}].
+    - UN GRUPO ENTERO ("los de AHO", "todos los de la carpeta García", "todos los asuntos de ese cliente"): NO los enumeres. Pon UNA entrada con "paraTodosLosDe": el nombre del grupo, y los demás parámetros de la acción SIN expedienteId. La app busca TODOS los expedientes activos cuya carpeta, cliente, tipo de asunto, responsable, categoría o comentario sea ese texto y repite la acción en cada uno.
+      · "crea un recordatorio para el viernes en todos los asuntos de AHO" → acciones:[{accion:"crear_evento", parametros:{titulo:"Recordatorio", tipo:"recordatorio", fecha:"<fecha del viernes>", paraTodosLosDe:"AHO"}}].
+      · En "paraTodosLosDe" pasa SOLO el nombre del grupo ("AHO"), sin palabras como "carpeta", "cliente" o "categoría".
+    - Cosas distintas: "agenda la audiencia en el 123/2025 y deja una nota en el 45/2026" → una entrada crear_evento y una crear_nota.
+    - Si el título del recordatorio no lo dijo, pregunta UNA vez (faltan_datos=true) en lugar de inventarlo.
+    - Para editar o borrar varios EVENTOS usa editar_evento / eliminar_evento (ya aceptan listas), y para varias búsquedas buscar_varios; no van dentro de "varias".
 
 CÓMO REFERIRSE A UN EXPEDIENTE (importante):
 - Toda acción que reciba "expedienteId" acepta también "expedienteRef": el texto TAL CUAL lo dijo el usuario para referirse al expediente ("el 123", "lo de Ramírez", "el del juzgado segundo", "123 diagonal 2025").
@@ -3013,6 +3330,7 @@ REGLAS:
 - Si falta un dato OBLIGATORIO para la acción: faltan_datos=true y "pregunta" con UNA pregunta corta y específica. Conserva en "parametros" todo lo que ya sepas.
 - En turnos siguientes el usuario responderá tu pregunta: integra su respuesta y devuelve la acción COMPLETA actualizada (con todos los parámetros acumulados).
 - Si la referencia a un expediente o evento es ambigua (varios candidatos), no adivines: usa expedienteRef (expedientes) o "buscar" con eventoId null (eventos) y la app le enseña las opciones.
+- Lo mismo para varios expedientes, o varias cosas en una orden, es SIEMPRE posible: usa "varias". No respondas "no puedo manejar varias peticiones".
 - "resumen" siempre en español, específico y corto (ej: 'Agendar audiencia del exp. 123/2025 el jueves 30 de julio a las 10:00').
 - Números de expediente suelen dictarse como "123 diagonal 2025" o "123 barra 2025" → normaliza a "123/2025".
 - Nunca inventes ids de expedientes o eventos: solo usa los del catálogo/agenda. Si no está, usa expedienteRef, o "buscar" para un evento.`;

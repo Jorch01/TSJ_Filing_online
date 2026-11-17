@@ -857,6 +857,54 @@ async function resolverExpedientePorReferencia(referencia, opciones = {}) {
     return { estado: 'ambiguo', candidatos };
 }
 
+// Palabras con las que se nombra el tipo de grupo pero que no están en ningún
+// dato: "los de la carpeta AHO", "los del cliente AHO". Exigirlas dejaba la
+// búsqueda sin resultados.
+const _PALABRAS_RUIDO_GRUPO = new Set([
+    'carpeta', 'carpetas', 'cliente', 'clientes', 'categoria', 'categorias', 'tipo', 'tipos',
+    'grupo', 'responsable', 'abogado', 'asuntos', 'casos', 'juicios', 'todos', 'todas', 'ese', 'esa'
+]);
+
+/**
+ * Los expedientes ACTIVOS de un grupo: lo que el usuario llama "los de AHO" y
+ * puede ser una carpeta, un cliente, un tipo de asunto, un responsable o la
+ * categoría. A diferencia de buscarExpedientesPorReferencia, que escoge UN
+ * expediente, aquí interesan TODOS los que pertenecen al grupo.
+ *
+ * Cada palabra de la referencia debe aparecer COMPLETA en esos datos: "AHO" no
+ * es "ahorro". Solo cuentan datos de clasificación y de las partes, no el
+ * número del expediente, que identifica a uno y no a un grupo.
+ * Devuelve [{ expediente, motivo }] en el orden de la lista de expedientes.
+ */
+async function buscarExpedientesDeGrupo(referencia) {
+    const tokens = _tokensUtiles(referencia).filter(t => !_PALABRAS_RUIDO_GRUPO.has(t));
+    if (!tokens.length) return [];
+
+    const activos = await obtenerExpedientes().catch(() => []);
+    let carpetas = [];
+    try {
+        if (typeof obtenerCarpetas === 'function') carpetas = await obtenerCarpetas();
+    } catch (e) { /* sin carpetas */ }
+    const nombreCarpeta = (id) => (carpetas.find(c => c.id === id) || {}).nombre || '';
+
+    const palabras = (texto) => new Set(_normRef(texto).split(/[^a-z0-9]+/).filter(Boolean));
+    const resultado = [];
+    for (const exp of activos) {
+        const origenes = [
+            ['carpeta', nombreCarpeta(exp.carpetaId)], ['cliente', exp.cliente], ['tipo de asunto', exp.tipo],
+            ['responsable', exp.abogado], ['categoría', exp.categoria], ['comentario', exp.comentario],
+            ['partes', [exp.actor, exp.demandado, exp.nombre].filter(Boolean).join(' ')], ['autoridad', exp.juzgado]
+        ];
+        const conjuntos = origenes.map(([nombre, texto]) => [nombre, palabras(texto)]);
+        // Todas las palabras, aunque cada una venga de un dato distinto.
+        const cubiertas = tokens.every(t => conjuntos.some(([, set]) => set.has(t)));
+        if (!cubiertas) continue;
+        const motivo = conjuntos.filter(([, set]) => tokens.some(t => set.has(t))).map(([nombre]) => nombre);
+        resultado.push({ expediente: exp, motivo: motivo.join(', ') });
+    }
+    return resultado;
+}
+
 /** Etiqueta corta y reconocible de un expediente, para listas y avisos. */
 function etiquetaExpediente(exp) {
     const principal = exp.numero || exp.nombre || 'Expediente';

@@ -371,7 +371,7 @@
 
         estrados: {
             grupo: 'tribunales',
-            paginas: ['busqueda', 'pjf'],
+            paginas: ['busqueda', 'pjf', 'otros'],
             icono: '⚖️',
             titulo: 'Estrados del TSJ y del PJF',
             duracion: '50 s',
@@ -401,7 +401,7 @@
                 {
                     objetivo: '#page-busqueda .tribunal-selector',
                     titulo: 'Y lo federal, en el mismo lugar',
-                    texto: 'Cambia a "PJF Federal" para consultar expedientes de los juzgados de distrito y tribunales colegiados del Vigésimo Séptimo Circuito (Quintana Roo) y de todo el país. Los laborales tienen su propio recorrido.'
+                    texto: 'Cambia a "PJF Federal" para consultar expedientes de los juzgados de distrito y tribunales colegiados del Vigésimo Séptimo Circuito (Quintana Roo) y de todo el país. Los laborales tienen su propio recorrido, y lo que no es del TSJ ni federal —otro estado, un tribunal administrativo, el IMSS, el SAT— va en "Otros".'
                 },
                 {
                     antes: ir('pjf', () => typeof cambiarTabPJF === 'function' && cambiarTabPJF('busqueda')),

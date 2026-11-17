@@ -3009,6 +3009,183 @@ async function probarAceptacionVisible(navegador) {
     }
 }
 
+/**
+ * Tribunales › Otros: los asuntos ante autoridades que no son el TSJ, el PJF ni
+ * los tribunales laborales (institución OTRO) tienen su propio apartado junto a
+ * los demás: lista, filtro por autoridad y carpeta, búsqueda, vistas, archivo.
+ * Antes solo se veían en la lista general de Expedientes.
+ */
+async function probarApartadoOtros(navegador) {
+    console.log('\nTribunales › Otros');
+    for (const t of [
+        { nombre: 'escritorio', ctx: { viewport: { width: 1280, height: 800 } } },
+        { nombre: 'celular 360 px', ctx: { viewport: { width: 360, height: 740 }, isMobile: true, hasTouch: true } }
+    ]) {
+        const contexto = await navegador.newContext(t.ctx);
+        await contexto.addInitScript(() => { try { localStorage.setItem('tour_bienvenida_visto', '1'); } catch (e) {} });
+        const page = await contexto.newPage();
+        const errores = [];
+        page.on('pageerror', e => errores.push(e.message));
+        try {
+            await page.goto(`http://localhost:${PUERTO}/index.html`, { waitUntil: 'load' });
+            await page.waitForFunction(() => typeof crearExpedienteCore === 'function' && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+            await page.waitForTimeout(800);
+            const r = await page.evaluate(async () => {
+                const pausa = (ms) => new Promise(res => setTimeout(res, ms));
+                const visible = (id) => document.getElementById(id).classList.contains('active');
+                const titulos = (sel) => [...document.querySelectorAll(sel + ' .expediente-titulo')].map(e => e.textContent.trim()).sort();
+                await crearExpedienteCore({ numero: '45/2026', institucion: 'OTRO', juzgado: 'IMSS', comentario: 'Queja' });
+                await crearExpedienteCore({ numero: 'TJA-9/2025', institucion: 'OTRO', juzgado: 'Tribunal de Justicia Administrativa de Yucatán' });
+                await crearExpedienteCore({ numero: '77/2026', institucion: 'OTRO', juzgado: 'IMSS' });
+                await crearExpedienteCore({ numero: '8/2026', institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' });
+                await crearExpedienteCore({ numero: '9/2026', institucion: 'PJF', juzgado: 'Primer Tribunal Colegiado' });
+                const out = {};
+                out.selectores = ['busqueda', 'pjf', 'otros'].map(p => [...document.querySelectorAll(`#page-${p} .tribunal-opcion`)].map(b => b.textContent.trim()));
+                navegarA('tribunales'); navegarA('otros');
+                await pausa(400);
+                out.visible = visible('page-otros');
+                out.menu = document.querySelector('.nav-btn[data-page="tribunales"]').classList.contains('active');
+                out.tarjetas = titulos('#lista-expedientes-otros');
+                out.autoridades = [...document.querySelectorAll('#filtro-autoridad-otros option')].map(o => o.textContent);
+                out.conteo = document.getElementById('count-expedientes-otros').textContent;
+                const sel = document.getElementById('filtro-autoridad-otros');
+                sel.value = 'IMSS'; await cargarExpedientesOtros();
+                out.imss = titulos('#lista-expedientes-otros');
+                out.conteoImss = document.getElementById('count-expedientes-otros').textContent;
+                sel.value = '';
+                const q = document.getElementById('buscar-expediente-otros');
+                q.value = 'yucat'; await cargarExpedientesOtros();
+                out.busqueda = titulos('#lista-expedientes-otros');
+                q.value = ''; await cargarExpedientesOtros();
+                cambiarVistaExpedientesOtros('table');
+                out.filas = document.querySelectorAll('#tabla-expedientes-body-otros tr').length;
+                out.tabla = getComputedStyle(document.getElementById('tabla-expedientes-otros')).display;
+                cambiarVistaExpedientesOtros('cards');
+                navegarA('busqueda'); await pausa(300);
+                out.tsj = titulos('#lista-expedientes-tsj');
+                document.querySelector('#page-busqueda .tribunal-opcion[onclick*="otros"]').click();
+                await pausa(300);
+                out.desdeTSJ = visible('page-otros');
+                navegarA('pjf'); await pausa(300);
+                document.querySelector('#page-pjf .tribunal-opcion[onclick*="otros"]').click();
+                await pausa(300);
+                out.desdePJF = visible('page-otros');
+                const id = (await obtenerExpedientes()).find(e => e.numero === '77/2026').id;
+                await archivarExpedienteCore(id, true, 'concluido', '');
+                await pausa(300);
+                out.trasArchivar = titulos('#lista-expedientes-otros');
+                abrirArchivoOtros(); await pausa(300);
+                out.archivo = titulos('#lista-archivo-otros');
+                out.badge = document.getElementById('count-archivo-badge-otros').textContent;
+                cerrarArchivoOtros();
+                navegarA('inicio'); navegarA('tribunales');
+                out.recuerda = visible('page-otros');
+                out.desborda = document.documentElement.scrollWidth > document.documentElement.clientWidth;
+                out.botonesPequenos = [...document.querySelectorAll('#page-otros .tribunal-opcion')]
+                    .map(b => b.getBoundingClientRect()).filter(r => r.height < 40 || r.width < 40).length;
+                return out;
+            });
+            const n = `otros (${t.nombre})`;
+            igual(`${n}: los tres selectores de tribunal ofrecen "Otros" al final`, r.selectores.map(x => x[x.length - 1]), ['Otros', 'Otros', 'Otros']);
+            verificar(`${n}: y el de Otros ofrece también TSJ, PJF y Laboral`, r.selectores[2].length === 4 && /TSJ/.test(r.selectores[2][0]) && /PJF/.test(r.selectores[2][1]) && /Laboral/.test(r.selectores[2][2]), JSON.stringify(r.selectores[2]));
+            igual(`${n}: la página se abre y el menú sigue marcando Tribunales`, [r.visible, r.menu], [true, true]);
+            igual(`${n}: lista solo los asuntos de otras autoridades`, r.tarjetas, ['45/2026', '77/2026', 'TJA-9/2025']);
+            igual(`${n}: el filtro ofrece cada autoridad una sola vez`, r.autoridades, ['Todas las autoridades', 'IMSS', 'Tribunal de Justicia Administrativa de Yucatán']);
+            igual(`${n}: filtrar por autoridad`, [r.imss, r.conteoImss], [['45/2026', '77/2026'], '2 de 3 expedientes']);
+            igual(`${n}: la búsqueda también (por autoridad, número o comentario)`, r.busqueda, ['TJA-9/2025']);
+            igual(`${n}: vista de tabla`, [r.filas, r.tabla], [3, 'block']);
+            igual(`${n}: lo de Otros no se cuela en el TSJ`, r.tsj, ['8/2026']);
+            igual(`${n}: se llega desde el selector del TSJ y del PJF`, [r.desdeTSJ, r.desdePJF], [true, true]);
+            igual(`${n}: archivar saca el asunto de la lista y lo pasa al archivo`, [r.trasArchivar, r.archivo, r.badge], [['45/2026', 'TJA-9/2025'], ['77/2026'], '1']);
+            igual(`${n}: "Tribunales" recuerda que se quedó en Otros`, r.recuerda, true);
+            igual(`${n}: la página no se desborda a lo ancho`, r.desborda, false);
+            igual(`${n}: los botones del selector se pueden tocar`, r.botonesPequenos, 0);
+            igual(`${n}: sin errores de JavaScript`, errores, []);
+        } finally {
+            await contexto.close();
+        }
+    }
+}
+
+/**
+ * Asistente: "crea un recordatorio para el viernes en todos los asuntos de AHO".
+ * El modelo devuelve UNA orden "varias"; el asistente la prepara completa, enseña
+ * la lista, crea un recordatorio por expediente al confirmar y un solo "deshaz lo
+ * último" los revierte. Antes decía que no podía manejar esa petición.
+ */
+async function probarAsistenteVarias(navegador) {
+    console.log('\nAsistente: varias peticiones en una orden');
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 850 } });
+    await contexto.addInitScript(() => { try { localStorage.setItem('tour_bienvenida_visto', '1'); localStorage.setItem('voz_tts_activado', '0'); } catch (e) {} });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/index.html`, { waitUntil: 'load' });
+        await page.waitForFunction(() => typeof crearExpedienteCore === 'function' && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+        await page.waitForTimeout(800);
+        await page.evaluate(async () => {
+            await guardarConfig('ia_api_key', 'CLAVE-DE-PRUEBA');
+            const carpeta = await agregarCarpeta({ nombre: 'AHO', color: '#2f7d4f' });
+            const juz = 'JUZGADO PRIMERO CIVIL CANCUN';
+            await crearExpedienteCore({ numero: '123/2025', institucion: 'TSJ', juzgado: juz, carpetaId: carpeta });
+            await crearExpedienteCore({ numero: '45/2026', institucion: 'TSJ', juzgado: juz, cliente: 'AHO' });
+            await crearExpedienteCore({ numero: '78/2024', institucion: 'TSJ', juzgado: juz, tipo: 'AHO' });
+            await crearExpedienteCore({ numero: '9/2026', institucion: 'TSJ', juzgado: juz, cliente: 'Ahorro Popular' });
+            window.__sistemas = [];
+            // El "modelo": con el prompt nuevo devuelve la orden múltiple.
+            window.llamarIA = async (p, op) => {
+                window.__sistemas.push(op.sistema);
+                return JSON.stringify({ accion: 'varias', faltan_datos: false, pregunta: null, resumen: 'x',
+                    parametros: { acciones: [{ accion: 'crear_evento', parametros: { titulo: 'Revisar acuerdos', tipo: 'recordatorio', fecha: '2026-12-04', paraTodosLosDe: 'AHO' } }] } });
+            };
+        });
+        await page.click('#voz-fab');
+        await page.waitForSelector('#voz-input', { state: 'visible' });
+        await page.fill('#voz-input', 'crea un recordatorio para el viernes en todos los asuntos de AHO');
+        await page.click('#voz-enviar');
+        await page.waitForSelector('#voz-confirmacion', { state: 'visible', timeout: 8000 });
+        const conf = await page.textContent('#voz-confirmacion-texto');
+        verificar('asistente: la confirmación dice qué se hará (lo pone la app)', /Agendar 3 eventos/.test(conf), conf);
+        verificar('asistente: y enseña cada expediente afectado, sin "Ahorro Popular"',
+            ['123/2025', '45/2026', '78/2024'].every(n => conf.includes(n)) && !conf.includes('9/2026'), conf);
+        igual('asistente: antes de confirmar no se crea nada', await page.evaluate(async () => (await obtenerEventos()).length), 0);
+        const sistema = await page.evaluate(() => window.__sistemas[0]);
+        verificar('asistente: el modelo ve el cliente y el tipo de asunto de cada expediente', /"cliente":"AHO"/.test(sistema) && /"tipo":"AHO"/.test(sistema));
+        verificar('asistente: y conoce la acción para varios expedientes', /18\. "varias"/.test(sistema) && /paraTodosLosDe/.test(sistema));
+
+        await page.click('#voz-btn-confirmar');
+        await page.waitForTimeout(1200);
+        const eventos = await page.evaluate(async () => {
+            const exps = await obtenerExpedientes();
+            return (await obtenerEventos()).map(e => ({ t: e.titulo, tipo: e.tipo, exp: (exps.find(x => x.id === e.expedienteId) || {}).numero })).sort((a, b) => String(a.exp).localeCompare(String(b.exp)));
+        });
+        igual('asistente: al confirmar queda un recordatorio en cada asunto de AHO', eventos,
+            [{ t: 'Revisar acuerdos', tipo: 'recordatorio', exp: '123/2025' }, { t: 'Revisar acuerdos', tipo: 'recordatorio', exp: '45/2026' }, { t: 'Revisar acuerdos', tipo: 'recordatorio', exp: '78/2024' }]);
+        verificar('asistente: y lo cuenta', /3 eventos agendados/.test(await page.textContent('#voz-chat')));
+
+        await page.evaluate(() => { window.llamarIA = async () => JSON.stringify({ accion: 'deshacer', parametros: {}, faltan_datos: false, pregunta: null, resumen: 'Deshacer' }); });
+        await page.fill('#voz-input', 'deshaz lo último');
+        await page.click('#voz-enviar');
+        await page.waitForTimeout(1200);
+        igual('asistente: un solo "deshaz lo último" quita los tres', await page.evaluate(async () => (await obtenerEventos()).length), 0);
+
+        // Un expediente que no existe: no se hace nada a medias y se dice qué falta.
+        await page.evaluate(() => {
+            window.llamarIA = async () => JSON.stringify({ accion: 'varias', faltan_datos: false, pregunta: null, resumen: 'x',
+                parametros: { acciones: [{ accion: 'crear_evento', parametros: { titulo: 'X', fecha: '2026-12-04', expedienteId: null, expedienteRef: '123/2025' } }, { accion: 'crear_evento', parametros: { titulo: 'X', fecha: '2026-12-04', expedienteRef: 'No existe 999' } }] } });
+        });
+        await page.fill('#voz-input', 'recordatorio en el 123 y en otro que no existe');
+        await page.click('#voz-enviar');
+        await page.waitForTimeout(1200);
+        verificar('asistente: si un expediente no se identifica, no hace nada y lo dice', /no hice nada/.test(await page.textContent('#voz-chat')) && /No existe 999/.test(await page.textContent('#voz-chat')));
+        igual('asistente: ni pide confirmar ni crea nada', [await page.isVisible('#voz-confirmacion'), await page.evaluate(async () => (await obtenerEventos()).length)], [false, 0]);
+        igual('asistente: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
 async function probarAccesibilidadCelular(navegador) {
     const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     await contexto.addInitScript(() => {
@@ -5673,6 +5850,8 @@ async function main() {
         await probarSitioPublico(navegador);
         await probarAvisoPrivacidad(navegador);
         await probarAceptacionVisible(navegador);
+        await probarApartadoOtros(navegador);
+        await probarAsistenteVarias(navegador);
 
     } finally {
         await navegador.close();
