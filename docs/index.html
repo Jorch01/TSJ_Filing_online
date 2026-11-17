@@ -1017,6 +1017,7 @@
                 <button type="button" class="tribunal-opcion activa" aria-current="page" onclick="navegarA('busqueda')">🏢 TSJ Quintana Roo</button>
                 <button type="button" class="tribunal-opcion" onclick="navegarA('pjf')">🏛️ PJF Federal</button>
                 <button type="button" class="tribunal-opcion" id="btn-estrados-laborales-tsj" onclick="ESTRADOS_LABORALES.abrir()" title="Estrados del Tribunal de Conciliación y Arbitraje y de las Juntas (sitio de la Secretaría del Trabajo)">👷 Laboral Q. Roo</button>
+                <button type="button" class="tribunal-opcion" onclick="navegarA('otros')" title="Asuntos ante otras autoridades: otros estados, tribunales administrativos, IMSS, SAT, notarías…">📋 Otros</button>
             </div>
 
             <!-- Pestañas del TSJ, igual que las del PJF -->
@@ -1419,6 +1420,7 @@
                 <button type="button" class="tribunal-opcion" onclick="navegarA('busqueda')">🏢 TSJ Quintana Roo</button>
                 <button type="button" class="tribunal-opcion activa" aria-current="page" onclick="navegarA('pjf')">🏛️ PJF Federal</button>
                 <button type="button" class="tribunal-opcion" id="btn-estrados-laborales-pjf" onclick="ESTRADOS_LABORALES.abrir()" title="Estrados del Tribunal de Conciliación y Arbitraje y de las Juntas (sitio de la Secretaría del Trabajo)">👷 Laboral Q. Roo</button>
+                <button type="button" class="tribunal-opcion" onclick="navegarA('otros')" title="Asuntos ante otras autoridades: otros estados, tribunales administrativos, IMSS, SAT, notarías…">📋 Otros</button>
             </div>
 
             <!-- Tabs de navegación interna PJF -->
@@ -1735,6 +1737,139 @@
                 </div>
             </div>
 
+        </section>
+
+        <!-- Página Otros: asuntos ante autoridades que no son el TSJ, el PJF ni los
+             tribunales laborales de Quintana Roo (institución OTRO). No tienen
+             consulta automática: aquí se llevan los asuntos, fechas, notas y
+             pendientes, igual que los demás. -->
+        <section class="page" id="page-otros">
+            <div class="page-header">
+                <div>
+                    <h2>Tribunales</h2>
+                    <p class="subtitle">Asuntos ante otras autoridades: tribunales de otros estados, tribunales administrativos, IMSS, SAT, notarías, dependencias y más</p>
+                </div>
+            </div>
+            <!-- Un solo apartado para todos los tribunales: se cambia aquí. -->
+            <div class="tribunal-selector" role="group" aria-label="Tribunal">
+                <button type="button" class="tribunal-opcion" onclick="navegarA('busqueda')">🏢 TSJ Quintana Roo</button>
+                <button type="button" class="tribunal-opcion" onclick="navegarA('pjf')">🏛️ PJF Federal</button>
+                <button type="button" class="tribunal-opcion" onclick="ESTRADOS_LABORALES.abrir()" title="Estrados del Tribunal de Conciliación y Arbitraje y de las Juntas (sitio de la Secretaría del Trabajo)">👷 Laboral Q. Roo</button>
+                <button type="button" class="tribunal-opcion activa" aria-current="page" onclick="navegarA('otros')">📋 Otros</button>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>📋 Mis Expedientes de Otras Autoridades</h3>
+                    <div class="header-buttons">
+                        <div class="tooltip-container">
+                            <button class="btn btn-secondary btn-sm" onclick="descargarTemplateExpedientes()">
+                                📄 Descargar Template
+                            </button>
+                            <div class="tooltip-content tooltip-bottom tooltip-right">
+                                <h4>Carga masiva de expedientes</h4>
+                                <p>Es <strong>el mismo template</strong> que en Expedientes: un solo archivo para lo estatal, lo federal y lo demás.</p>
+                                <p>Para un asunto de otra autoridad pon "OTRO" como institución y, en el juzgado, el nombre de la autoridad (por ejemplo "Tribunal de Justicia Administrativa de Yucatán" o "IMSS").</p>
+                            </div>
+                        </div>
+                        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('import-otros-csv').click()">
+                            📥 Importar CSV
+                        </button>
+                        <input type="file" id="import-otros-csv" accept=".csv,.xlsx,.xls" style="display:none" onchange="importarExpedientes(event)">
+                        <button class="btn btn-primary btn-sm" onclick="navegarA('expedientes'); cambiarInstitucionACrear('OTRO')">
+                            ➕ Nuevo Expediente
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <p class="section-desc">Estas autoridades no tienen consulta automática de estrados: aquí llevas tus asuntos con sus fechas, notas y pendientes, y los agrupas en carpetas como cualquier otro expediente.</p>
+
+                    <!-- Filtros y vista -->
+                    <div class="filters-section" id="filtros-expedientes-otros" style="margin-bottom: 1rem;">
+                        <div class="search-box">
+                            <span class="search-icon">🔍</span>
+                            <input type="text" id="buscar-expediente-otros" placeholder="Buscar en otras autoridades..." aria-label="Buscar expedientes de otras autoridades" oninput="filtrarExpedientesOtrosDebounced()">
+                        </div>
+                        <select id="filtro-autoridad-otros" onchange="filtrarExpedientesOtros()" title="Filtrar por autoridad" aria-label="Filtrar por autoridad">
+                            <option value="">Todas las autoridades</option>
+                        </select>
+                        <select id="filtro-carpeta-otros" onchange="filtrarExpedientesOtros()" title="Filtrar por carpeta" aria-label="Filtrar por carpeta">
+                            <option value="">Todas las carpetas</option>
+                        </select>
+                        <button class="btn btn-sm btn-secondary" onclick="abrirGestionCarpetas()" title="Crear, editar o eliminar carpetas">📁 Carpetas</button>
+                        <div class="view-toggle">
+                            <button class="view-btn otros-view-btn active" data-view="cards" onclick="cambiarVistaExpedientesOtros('cards')" title="Vista tarjetas" aria-label="Vista tarjetas">
+                                <span>▦</span>
+                            </button>
+                            <button class="view-btn otros-view-btn" data-view="table" onclick="cambiarVistaExpedientesOtros('table')" title="Vista tabla" aria-label="Vista tabla">
+                                <span>☰</span>
+                            </button>
+                        </div>
+                        <span class="results-count" id="count-expedientes-otros">0 expedientes</span>
+                    </div>
+
+                    <!-- Lista Cards -->
+                    <div class="expedientes-grid" id="lista-expedientes-otros">
+                        <div class="empty-state">
+                            <span class="empty-icon">📋</span>
+                            <h3>No hay expedientes de otras autoridades</h3>
+                            <p>Agrega un asunto que no sea del TSJ ni federal.</p>
+                        </div>
+                    </div>
+
+                    <!-- Lista Tabla -->
+                    <div class="expedientes-table-container" id="tabla-expedientes-otros" style="display: none;">
+                        <table class="expedientes-table">
+                            <thead>
+                                <tr>
+                                    <th>Tipo</th>
+                                    <th>Número/Nombre</th>
+                                    <th>Autoridad</th>
+                                    <th>Categoría</th>
+                                    <th>Comentario</th>
+                                    <th>Fecha</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabla-expedientes-body-otros">
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Sección Archivo -->
+                    <div class="archivo-section" id="archivo-section-otros" style="display: none;">
+                        <div class="archivo-header">
+                            <h3>📦 Archivo de Otras Autoridades</h3>
+                            <button class="btn btn-secondary btn-sm" onclick="cerrarArchivoOtros()">Volver a Otros</button>
+                        </div>
+                        <div class="filters-section" style="margin-bottom: 1rem;">
+                            <div class="search-box">
+                                <span class="search-icon">🔍</span>
+                                <input type="text" id="buscar-archivo-otros" placeholder="Buscar en archivo..." aria-label="Buscar en el archivo" oninput="filtrarArchivoOtros()">
+                            </div>
+                            <select id="filtro-motivo-archivo-otros" onchange="filtrarArchivoOtros()" aria-label="Filtrar por motivo">
+                                <option value="">Todos los motivos</option>
+                                <option value="concluido">Concluido</option>
+                                <option value="abandonado">Abandonado</option>
+                                <option value="otro">Otro</option>
+                            </select>
+                            <span class="results-count" id="count-archivo-otros">0 archivados</span>
+                        </div>
+                        <div class="expedientes-grid" id="lista-archivo-otros">
+                            <div class="empty-state">
+                                <span class="empty-icon">📦</span>
+                                <h3>Archivo vacío</h3>
+                                <p>No hay expedientes de otras autoridades archivados</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Botón para abrir el archivo -->
+                    <div class="archivo-toggle" id="archivo-toggle-otros">
+                        <button class="btn btn-outline" onclick="abrirArchivoOtros()">📦 Ver Archivo <span id="count-archivo-badge-otros" class="badge" style="display:none;">0</span></button>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <!-- Página IMPI Marcas -->

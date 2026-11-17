@@ -109,7 +109,8 @@ console.log('\nEn la app');
 {
     const html = fs.readFileSync(path.join(__dirname, 'docs', 'index.html'), 'utf8');
     verificar('el script se carga', html.includes('<script src="js/estrados-laborales.js"></script>'));
-    verificar('Tribunales tiene la opción laboral', (html.match(/ESTRADOS_LABORALES\.abrir\(\)/g) || []).length === 2);
+    // Una por cada selector de tribunal: TSJ, PJF y Otros.
+    verificar('Tribunales tiene la opción laboral', (html.match(/ESTRADOS_LABORALES\.abrir\(\)/g) || []).length === 3);
     verificar('funciona sin internet', /'js\/estrados-laborales\.js'/.test(fs.readFileSync(path.join(__dirname, 'docs', 'sw.js'), 'utf8')));
     const fuente = fs.readFileSync(path.join(__dirname, 'docs', 'js', 'estrados-laborales.js'), 'utf8');
     verificar('la ventana explica el límite de 15 días', /periodo de 15 días como máximo/.test(fuente) && /periodos de 15 días<\/strong> como máximo/.test(fuente));

@@ -367,7 +367,7 @@ function configurarNavegacion() {
 // última que se usó. 'busqueda' y 'pjf' siguen existiendo por dentro, así que
 // los atajos, el asistente y los enlaces que ya las usan no cambian.
 const CLAVE_TRIBUNAL = 'tribunal_actual';
-const PAGINAS_TRIBUNALES = ['busqueda', 'pjf'];
+const PAGINAS_TRIBUNALES = ['busqueda', 'pjf', 'otros'];
 
 function navegarA(pagina) {
     if (pagina === 'tribunales') {
@@ -413,6 +413,8 @@ function navegarA(pagina) {
         prepararPaginaTSJ();
     } else if (pagina === 'pjf') {
         cargarCatalogosPJF();
+    } else if (pagina === 'otros') {
+        prepararPaginaOtros();
     } else if (pagina === 'laboral') {
         if (typeof prepararCalculadoraLaboral === 'function') prepararCalculadoraLaboral();
     } else if (pagina === 'estadisticas') {
@@ -970,6 +972,9 @@ async function cargarExpedientes() {
     if (typeof cargarExpedientesTSJ === 'function') {
         cargarExpedientesTSJ().catch(e => Logger.warn('Expedientes TSJ:', e));
     }
+    if (typeof cargarExpedientesOtros === 'function') {
+        cargarExpedientesOtros().catch(e => Logger.warn('Expedientes Otros:', e));
+    }
 
     let expedientes = await obtenerExpedientes();
     const lista = document.getElementById('lista-expedientes');
@@ -1294,7 +1299,7 @@ async function cargarCarpetasUI() {
         ftTSJ.innerHTML = optsHTML;
         if (prev) ftTSJ.value = prev;
     }
-    for (const id of ['filtro-carpeta-pjf', 'filtro-carpeta-tsj']) {
+    for (const id of ['filtro-carpeta-pjf', 'filtro-carpeta-tsj', 'filtro-carpeta-otros']) {
         const ft = document.getElementById(id);
         if (!ft) continue;
         const prev = ft.value;
@@ -10660,6 +10665,220 @@ async function filtrarArchivoTSJ() {
 
 async function actualizarBadgeArchivoTSJ() {
     return _actualizarBadgeArchivoComun('count-archivo-badge-tsj', false, 'TSJ');
+}
+
+// ==================== OTROS EXPEDIENTES ====================
+// Asuntos ante autoridades que no son el TSJ, el PJF ni los tribunales laborales
+// de Quintana Roo (institución 'OTRO': tribunales de otros estados, tribunales
+// administrativos, IMSS, SAT, notarías…). No tienen consulta automática de
+// estrados, pero se llevan igual que los demás —carpetas, notas, pendientes,
+// calendario, archivo—, con la autoridad en el lugar del juzgado.
+
+let vistaExpedientesOtros = (() => {
+    try { return localStorage.getItem('vistaExpedientesOtros') || 'cards'; } catch (e) { return 'cards'; }
+})();
+
+function _esExpedienteOtro(exp) {
+    return !!exp && exp.institucion === 'OTRO';
+}
+
+// La autoridad se guarda en "juzgado". Sin ella, se agrupan bajo un mismo nombre.
+const AUTORIDAD_SIN_NOMBRE = 'Autoridad no especificada';
+function _autoridadDeOtro(exp) {
+    return String(exp.juzgado || '').trim() || AUTORIDAD_SIN_NOMBRE;
+}
+
+// El selector de autoridades ofrece las que ya hay capturadas, sin repetir.
+function _poblarFiltroAutoridadesOtros(otros) {
+    const select = document.getElementById('filtro-autoridad-otros');
+    if (!select) return;
+    const autoridades = [...new Set(otros.map(_autoridadDeOtro))]
+        .sort((a, b) => a.localeCompare(b, 'es'));
+    const previa = select.value;
+    select.innerHTML = '<option value="">Todas las autoridades</option>' +
+        autoridades.map(a => `<option value="${escapeText(a)}">${escapeText(a)}</option>`).join('');
+    // Si la autoridad elegida ya no existe (se archivó el último), el filtro se suelta.
+    if (previa && autoridades.includes(previa)) select.value = previa;
+}
+
+// Pinta la lista con los filtros que haya: cargar y filtrar son lo mismo.
+async function cargarExpedientesOtros() {
+    const lista = document.getElementById('lista-expedientes-otros');
+    if (!lista) return;
+    const count = document.getElementById('count-expedientes-otros');
+    const tablaBody = document.getElementById('tabla-expedientes-body-otros');
+
+    const todos = await obtenerExpedientes();
+    // El orden por defecto es el mismo en todas las listas.
+    let otros = _ordenarExpedientesTSJ(todos.filter(_esExpedienteOtro));
+    const totalOtros = otros.length;
+    _poblarFiltroAutoridadesOtros(otros);
+
+    // Límite compartido entre tribunales, igual que en las demás listas.
+    const esPremium = estadoPremium && estadoPremium.activo;
+    let limitados = false;
+    if (!esPremium) {
+        const cupo = Math.max(0, PREMIUM_CONFIG.limiteExpedientes - (todos.length - totalOtros));
+        if (totalOtros > cupo) {
+            otros = otros.slice(0, cupo);
+            limitados = true;
+        }
+    }
+
+    const busqueda = _normalizarBusqueda(document.getElementById('buscar-expediente-otros')?.value || '');
+    const carpetaFiltro = document.getElementById('filtro-carpeta-otros')?.value || '';
+    const autoridadFiltro = document.getElementById('filtro-autoridad-otros')?.value || '';
+    let visibles = otros;
+    if (autoridadFiltro) {
+        visibles = visibles.filter(e => _autoridadDeOtro(e) === autoridadFiltro);
+    }
+    if (carpetaFiltro === '__sin__') {
+        visibles = visibles.filter(e => e.carpetaId === undefined || e.carpetaId === null);
+    } else if (carpetaFiltro) {
+        const cid = parseInt(carpetaFiltro, 10);
+        visibles = visibles.filter(e => e.carpetaId === cid);
+    }
+    if (busqueda) {
+        const indice = await obtenerIndiceBusqueda();
+        visibles = visibles.filter(e => _expedienteEncajaEnBusqueda(e, busqueda, indice));
+    }
+    const filtrando = !!(busqueda || carpetaFiltro || autoridadFiltro);
+
+    if (totalOtros === 0) {
+        lista.innerHTML = `
+            <div class="empty-state">
+                <span class="empty-icon">📋</span>
+                <h3>No hay expedientes de otras autoridades</h3>
+                <p>Aquí van los asuntos que no son del TSJ ni federales: un tribunal de otro estado, un tribunal administrativo, el IMSS, el SAT, una notaría…</p>
+                <button class="btn btn-primary" onclick="navegarA('expedientes'); cambiarInstitucionACrear('OTRO')">
+                    ➕ Agregar Expediente
+                </button>
+            </div>`;
+        if (tablaBody) tablaBody.innerHTML = '';
+        if (count) count.textContent = '0 expedientes';
+    } else if (visibles.length === 0) {
+        lista.innerHTML = limitados && !filtrando
+            ? `<div style="background: #fff3cd; padding: 0.75rem; border-radius: 6px; font-size: 0.875rem;">
+                ⚠️ El límite gratuito de ${PREMIUM_CONFIG.limiteExpedientes} expedientes compartidos ya está completo con expedientes de otros tribunales.
+                <a href="#" onclick="mostrarSeccion('configuracion'); return false;">Activar Premium</a> para expedientes ilimitados.
+            </div>`
+            : `<div class="empty-state">
+                <span class="empty-icon">🔍</span>
+                <h3>Sin resultados</h3>
+                <p>No se encontraron expedientes de otras autoridades con esos filtros</p>
+            </div>`;
+        if (tablaBody) tablaBody.innerHTML = '';
+        if (count) count.textContent = '0 expedientes';
+    } else {
+        const advertencia = limitados ? `
+            <div style="background: #fff3cd; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.5rem; font-size: 0.8rem;">
+                ⚠️ Mostrando solo ${otros.length} de ${totalOtros} expedientes (límite compartido de ${PREMIUM_CONFIG.limiteExpedientes} entre tribunales).
+                <a href="#" onclick="mostrarSeccion('configuracion'); return false;">Activar Premium</a>
+            </div>` : '';
+
+        // Reordenar solo tiene sentido con la lista completa a la vista.
+        const reordenable = !filtrando;
+        lista.innerHTML = advertencia + visibles.map((exp, index) =>
+            renderTarjetaExpedienteHTML(exp, {
+                institucion: 'OTRO',
+                categoriaDefault: 'Otros/Varios',
+                draggable: reordenable,
+                orden: exp.orden || index
+            })
+        ).join('');
+        if (reordenable) inicializarDragAndDropPJF('lista-expedientes-otros');
+
+        if (tablaBody) {
+            tablaBody.innerHTML = visibles.map(exp =>
+                renderFilaExpedienteHTML(exp, { institucion: 'OTRO', categoriaDefault: 'Otros/Varios', showInstColumn: false })
+            ).join('');
+        }
+
+        if (count) {
+            count.textContent = filtrando
+                ? `${visibles.length} de ${totalOtros} expediente${totalOtros !== 1 ? 's' : ''}`
+                : limitados
+                    ? `${otros.length} de ${totalOtros} expediente${totalOtros !== 1 ? 's' : ''} (limitado)`
+                    : `${totalOtros} expediente${totalOtros !== 1 ? 's' : ''}`;
+        }
+    }
+
+    aplicarVistaExpedientesOtros();
+    actualizarBadgeArchivoOtros();
+    // Archivar, restaurar o borrar repintan esta lista: el archivo abierto se repinta con ella.
+    if (document.getElementById('archivo-section-otros')?.style.display === 'block') filtrarArchivoOtros();
+}
+
+const filtrarExpedientesOtros = cargarExpedientesOtros;
+let _filtrarOtrosTimer = null;
+function filtrarExpedientesOtrosDebounced() {
+    clearTimeout(_filtrarOtrosTimer);
+    _filtrarOtrosTimer = setTimeout(() => filtrarExpedientesOtros(), 150);
+}
+
+function cambiarVistaExpedientesOtros(vista) {
+    vistaExpedientesOtros = vista;
+    try { localStorage.setItem('vistaExpedientesOtros', vista); } catch (e) {}
+    aplicarVistaExpedientesOtros();
+}
+
+function aplicarVistaExpedientesOtros() {
+    document.querySelectorAll('.otros-view-btn').forEach(btn =>
+        btn.classList.toggle('active', btn.dataset.view === vistaExpedientesOtros));
+
+    // Con el archivo abierto, la lista queda oculta hasta volver.
+    const archivoAbierto = document.getElementById('archivo-section-otros')?.style.display === 'block';
+    const listaCards = document.getElementById('lista-expedientes-otros');
+    const tabla = document.getElementById('tabla-expedientes-otros');
+    const enTabla = vistaExpedientesOtros === 'table';
+    if (listaCards) listaCards.style.display = archivoAbierto || enTabla ? 'none' : 'grid';
+    if (tabla) tabla.style.display = archivoAbierto || !enTabla ? 'none' : 'block';
+}
+
+// Al entrar a la página: la lista, con los catálogos de carpetas al día.
+function prepararPaginaOtros() {
+    cargarExpedientesOtros();
+}
+
+// ---------- Archivo de Otros ----------
+
+function abrirArchivoOtros() {
+    document.getElementById('archivo-section-otros').style.display = 'block';
+    document.getElementById('archivo-toggle-otros').style.display = 'none';
+    document.getElementById('filtros-expedientes-otros').style.display = 'none';
+    aplicarVistaExpedientesOtros();
+    cargarArchivoOtros();
+}
+
+function cerrarArchivoOtros() {
+    document.getElementById('archivo-section-otros').style.display = 'none';
+    document.getElementById('archivo-toggle-otros').style.display = 'block';
+    document.getElementById('filtros-expedientes-otros').style.display = '';
+    aplicarVistaExpedientesOtros();
+}
+
+async function cargarArchivoOtros() {
+    return _cargarArchivoComun({
+        listaId: 'lista-archivo-otros',
+        countId: 'count-archivo-otros',
+        soloInstitucion: 'OTRO',
+        mensajeVacio: 'No hay expedientes de otras autoridades archivados'
+    });
+}
+
+async function filtrarArchivoOtros() {
+    return _filtrarArchivoComun({
+        listaId: 'lista-archivo-otros',
+        countId: 'count-archivo-otros',
+        soloInstitucion: 'OTRO',
+        busquedaId: 'buscar-archivo-otros',
+        motivoId: 'filtro-motivo-archivo-otros',
+        mensajeSinResultados: 'No se encontraron expedientes archivados con esos filtros'
+    });
+}
+
+async function actualizarBadgeArchivoOtros() {
+    return _actualizarBadgeArchivoComun('count-archivo-badge-otros', false, 'OTRO');
 }
 
 // ==================== PJF EXPEDIENTES ====================

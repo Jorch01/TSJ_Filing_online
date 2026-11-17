@@ -98,9 +98,9 @@ function crearSandbox() {
     vm.runInContext(fs.readFileSync(path.join(JS, 'acciones-core.js'), 'utf8'), sb, { filename: 'acciones-core.js' });
 
     // Del asistente: estado, ayudantes, deshacer y la sección de eventos.
-    vm.runInContext('var pilaDeshacer = []; var conversacion = [];', sb);
+    vm.runInContext('var pilaDeshacer = []; var loteDeshacer = null; var conversacion = [];', sb);
     for (const n of ['normalizar', 'pad', 'normalizarHora', 'fechaLocalISO', 'toast',
-                     'registrarDeshacer', 'accDeshacer', 'ErrorAviso', 'agendaParaElModelo']) {
+                     'registrarDeshacer', 'accDeshacer', 'revertirEntrada', 'enLote', 'ErrorAviso', 'agendaParaElModelo']) {
         vm.runInContext(extraerIndentado(VOZ, n), sb, { filename: 'voice-assistant.js:' + n });
     }
     for (const n of ['TOPE_AGENDA', 'DIAS_SEMANA']) {
