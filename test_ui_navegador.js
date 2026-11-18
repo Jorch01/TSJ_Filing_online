@@ -3837,12 +3837,29 @@ async function probarQueNoSePierdenDatos(navegador) {
             igual('datos: subida que no llegó: el cambio queda pendiente', (await resumen(a.pagina)).pendienteSync, true);
             igual('datos: y la nube no tiene nada a medias', nube.bloque(), '');
 
+            // Cambio local + sincronización fallida: alerta permanente, visible
+            // en cualquier sección y con su botón para sincronizar.
+            const alertaSync = (p) => p.evaluate(() => {
+                const el = document.getElementById('alerta-sync');
+                const btn = el && el.querySelector('.alerta-sync-btn');
+                return {
+                    visible: !!el && !el.hidden && el.offsetHeight > 0,
+                    boton: !!btn && btn.offsetHeight > 0 && !btn.disabled,
+                    cerrable: !!el && !!el.querySelector('[aria-label="Cerrar"], .btn-close')
+                };
+            });
+            igual('alerta: tras fallar la subida con cambios, se muestra la alerta permanente',
+                await alertaSync(a.pagina), { visible: true, boton: true, cerrable: false });
+            await a.pagina.evaluate(() => navegarA('calendario'));
+            igual('alerta: sigue visible al cambiar de sección', (await alertaSync(a.pagina)).visible, true);
+
             // El servidor escribe, pero la respuesta no vuelve (se cortó al
             // final). El reintento choca con la versión nueva, vuelve a bajar y
             // termina bien, sin duplicar.
             a.fallos.guardar_sync = 'despues';
             await sincronizar(a.pagina);
             igual('datos: respuesta perdida: tras reintentar ya no queda pendiente', (await resumen(a.pagina)).pendienteSync, false);
+            igual('alerta: al sincronizar bien, la alerta desaparece', (await alertaSync(a.pagina)).visible, false);
             const b = await abrir(nube);
             await sincronizar(b.pagina);
             igual('datos: el otro dispositivo recibe el expediente una sola vez', (await resumen(b.pagina)).expedientes, ['200/2026']);

@@ -530,3 +530,44 @@ a:hover { color: var(--text-primary); }
 .dialogo-ia-consentimiento h3 { margin-top: 0; }
 .dialogo-ia-consentimiento p { font-size: 0.92rem; line-height: 1.5; margin: 0 0 0.6rem; }
 .dialogo-ia-consentimiento .dialogo-botones { display: flex; gap: 0.5rem; justify-content: flex-end; flex-shrink: 0; margin-top: 1rem; }
+
+/* ==================== ALERTA: CAMBIOS SIN SINCRONIZAR ==================== */
+/* Franja que no se puede cerrar: hay cambios de este dispositivo que no
+   llegaron a la nube y el último intento falló. Se queda pegada arriba al
+   desplazarse (debajo de la barra superior en el celular). */
+.alerta-sync {
+    position: sticky;
+    top: 76px;
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    margin: 0 0 1.25rem;
+    padding: 0.85rem 1rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--urgente-tinta);
+    background: var(--urgente-fondo);
+    color: var(--urgente-tinta);
+    box-shadow: var(--shadow-md);
+}
+.alerta-sync[hidden] { display: none; }
+.alerta-sync-ico { flex: 0 0 auto; width: 24px; height: 24px; }
+.alerta-sync-texto { flex: 1 1 auto; min-width: 0; font-size: 0.92rem; line-height: 1.4; }
+.alerta-sync-texto strong { font-weight: 700; }
+.alerta-sync-detalle { display: block; margin-top: 0.2rem; font-size: 0.8rem; opacity: 0.85; overflow-wrap: anywhere; }
+.alerta-sync-detalle[hidden] { display: none; }
+.alerta-sync-btn { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
+.alerta-sync-btn .ico { width: 18px; height: 18px; }
+
+@media (min-width: 1024px) {
+    .alerta-sync { top: 0.75rem; }
+}
+
+@media (max-width: 600px) {
+    .alerta-sync { flex-wrap: wrap; align-items: flex-start; }
+    .alerta-sync { gap: 0.5rem 0.7rem; padding: 0.7rem 0.85rem; }
+    .alerta-sync-texto { flex-basis: calc(100% - 2.5rem); font-size: 0.86rem; }
+    /* Pegada arriba en una pantalla chica: el detalle técnico, en una línea. */
+    .alerta-sync-detalle { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+    .alerta-sync-btn { width: 100%; justify-content: center; min-height: 44px; }
+}
