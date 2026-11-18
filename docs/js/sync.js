@@ -101,6 +101,101 @@ function actualizarBadgePendiente() {
     if (badge) {
         badge.style.display = hayPendienteSync() ? 'inline-flex' : 'none';
     }
+    actualizarAlertaSync();
+}
+
+// ==================== ALERTA PERMANENTE: CAMBIOS SIN SUBIR ====================
+// Si hay cambios de este dispositivo que no llegaron a la nube y el último
+// intento falló, se muestra una franja arriba del contenido, en todas las
+// secciones, hasta que una sincronización termine bien. No se puede cerrar:
+// mientras exista, los demás dispositivos no ven esos cambios. Sobrevive a
+// recargar la página porque el fallo se guarda en localStorage.
+const SYNC_FALLO_KEY = 'sync_fallo';
+
+function registrarFalloSync(mensaje) {
+    try {
+        localStorage.setItem(SYNC_FALLO_KEY, JSON.stringify({ ts: Date.now(), mensaje: String(mensaje || '') }));
+    } catch (e) {}
+    actualizarAlertaSync();
+}
+
+function limpiarFalloSync() {
+    try { localStorage.removeItem(SYNC_FALLO_KEY); } catch (e) {}
+    actualizarAlertaSync();
+}
+
+function ultimoFalloSync() {
+    try {
+        const raw = localStorage.getItem(SYNC_FALLO_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+}
+
+function debeMostrarseAlertaSync() {
+    if (typeof estadoPremium === 'undefined' || !estadoPremium || !estadoPremium.activo || !estadoPremium.codigo) return false;
+    return hayPendienteSync() && !!ultimoFalloSync();
+}
+
+function _asegurarAlertaSync() {
+    let alerta = document.getElementById('alerta-sync');
+    if (alerta) return alerta;
+    const main = document.querySelector('.app-main');
+    if (!main) return null;
+    alerta = document.createElement('div');
+    alerta.id = 'alerta-sync';
+    alerta.className = 'alerta-sync';
+    alerta.setAttribute('role', 'alert');
+    alerta.hidden = true;
+    alerta.innerHTML =
+        '<svg class="ico alerta-sync-ico" aria-hidden="true"><use href="#i-alerta"></use></svg>' +
+        '<div class="alerta-sync-texto">' +
+            '<strong>Hay cambios sin sincronizar.</strong> ' +
+            '<span>Lo que guardaste en este dispositivo no ha llegado a la nube y los demás no lo ven. ' +
+            'Sincroniza en cuanto tengas conexión.</span>' +
+            '<span class="alerta-sync-detalle"></span>' +
+        '</div>' +
+        '<button type="button" class="btn btn-primary alerta-sync-btn">' +
+            '<svg class="ico" aria-hidden="true"><use href="#i-sincronizar"></use></svg>' +
+            '<span class="alerta-sync-btn-texto">Sincronizar ahora</span>' +
+        '</button>';
+    alerta.querySelector('.alerta-sync-btn').addEventListener('click', () => {
+        Promise.resolve(sincronizarDatos()).catch(() => { /* se avisa desde la sincronización */ });
+    });
+    main.insertBefore(alerta, main.firstChild);
+    return alerta;
+}
+
+function actualizarAlertaSync() {
+    if (typeof document === 'undefined' || !document.querySelector) return;
+    const mostrar = debeMostrarseAlertaSync();
+    let alerta = document.getElementById('alerta-sync');
+    if (!mostrar) {
+        if (alerta) alerta.hidden = true;
+        document.body && document.body.classList.remove('con-alerta-sync');
+        return;
+    }
+    alerta = _asegurarAlertaSync();
+    if (!alerta) return;
+    const fallo = ultimoFalloSync();
+    const detalle = alerta.querySelector('.alerta-sync-detalle');
+    if (detalle) {
+        let texto = '';
+        if (fallo && fallo.ts) {
+            texto = 'Último intento: ' + new Date(fallo.ts).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
+            if (fallo.mensaje) texto += ' — ' + fallo.mensaje;
+        }
+        detalle.textContent = texto;
+        detalle.hidden = !texto;
+    }
+    const enCurso = typeof syncState !== 'undefined' && syncState.syncInProgress;
+    const btn = alerta.querySelector('.alerta-sync-btn');
+    if (btn) {
+        btn.disabled = !!enCurso;
+        const t = btn.querySelector('.alerta-sync-btn-texto');
+        if (t) t.textContent = enCurso ? 'Sincronizando…' : 'Sincronizar ahora';
+    }
+    alerta.hidden = false;
+    document.body && document.body.classList.add('con-alerta-sync');
 }
 
 // Helper para usar desde app.js tras guardar/eliminar/archivar:
@@ -432,6 +527,7 @@ async function sincronizarDatos(opciones = {}) {
 
         syncState.lastSync = Date.now();
         localStorage.setItem('sync_last_sync', syncState.lastSync.toString());
+        limpiarFalloSync();
 
         // Solo se da por subido lo que existía al empezar. Una nota guardada
         // mientras viajaba la subida no iba en ella: antes se borraba el aviso
@@ -448,10 +544,12 @@ async function sincronizarDatos(opciones = {}) {
     } catch (error) {
         console.error('Error en sincronización:', error);
         actualizarUISync('error', error.message);
+        registrarFalloSync(error.message);
         if (!silencioso) mostrarToast('Error: ' + error.message, 'error');
     } finally {
         syncState.syncInProgress = false;
         liberarLockSync();
+        actualizarAlertaSync();
     }
 
     if (repetirSync) {
@@ -1910,6 +2008,8 @@ function actualizarUISync(estado, mensaje = '') {
         btnSync.disabled = estado === 'syncing';
     }
 
+    actualizarAlertaSync();
+
     if (lastSyncEl && syncState.lastSync) {
         const fecha = new Date(syncState.lastSync);
         lastSyncEl.textContent = fecha.toLocaleString('es-MX');
@@ -1997,6 +2097,7 @@ window.addEventListener('online', () => {
 });
 
 function actualizarVisibilidadSync() {
+    actualizarAlertaSync();
     const syncSection = document.getElementById('sync-section');
     if (syncSection) {
         // Siempre visible pero con mensaje si no es premium
