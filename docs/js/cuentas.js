@@ -964,9 +964,9 @@
         return !!ov && !ov.hidden;
     }
 
-    // La app no sincroniza sola cada cierto tiempo: lo hace al abrir, al
-    // guardar y al volver a la pestaña. Con las cuentas abiertas se pregunta a
-    // la nube de vez en cuando, para que lo que registre un colega aparezca
+    // sync.js ya baja los cambios de la nube cada minuto con la app visible,
+    // pero se salta la vuelta si hay un formulario abierto. Con las cuentas
+    // abiertas se pregunta aparte, para que lo que registre un colega aparezca
     // sin tener que cerrar y abrir.
     const INTERVALO_SYNC_MS = 2 * 60 * 1000;
     let temporizadorSync = null;
