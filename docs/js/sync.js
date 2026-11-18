@@ -372,15 +372,20 @@ async function _intentoSincronizar() {
     };
 }
 
-async function sincronizarDatos() {
+async function sincronizarDatos(opciones = {}) {
+    // silencioso: la pidió la app sola (al volver a la pestaña o cada cierto
+    // tiempo), no el usuario. No se le avisa con toasts de lo que no pidió;
+    // el estado queda igual en el indicador de Configuración.
+    const silencioso = !!(opciones && opciones.silencioso);
+
     // Verificar premium
     if (!estadoPremium.activo || !estadoPremium.codigo) {
-        mostrarToast('Necesitas una licencia Premium activa', 'warning');
+        if (!silencioso) mostrarToast('Necesitas una licencia Premium activa', 'warning');
         return;
     }
 
     if (syncState.syncInProgress) {
-        mostrarToast('Sincronización en progreso...', 'info');
+        if (!silencioso) mostrarToast('Sincronización en progreso...', 'info');
         return;
     }
 
@@ -443,7 +448,7 @@ async function sincronizarDatos() {
     } catch (error) {
         console.error('Error en sincronización:', error);
         actualizarUISync('error', error.message);
-        mostrarToast('Error: ' + error.message, 'error');
+        if (!silencioso) mostrarToast('Error: ' + error.message, 'error');
     } finally {
         syncState.syncInProgress = false;
         liberarLockSync();
@@ -1941,16 +1946,47 @@ function inicializarSync() {
     }
 }
 
-// Cuando el usuario vuelve a la pestaña/app después de tenerla en segundo
-// plano, si hay un sync pendiente lo reintentamos. Esto cubre iOS Safari que
-// aborta fetch en background pero conserva el estado de la app.
-document.addEventListener('visibilitychange', () => {
+// ==================== DESCARGA AUTOMÁTICA DE CAMBIOS AJENOS ====================
+// Antes la app solo SUBÍA sola (al guardar) y solo BAJABA si el usuario
+// pulsaba "Sincronizar ahora" o tenía activado "Sincronizar al iniciar" y
+// recargaba. Al volver a la pestaña solo se sincronizaba si había cambios
+// LOCALES pendientes. Resultado: un expediente dado de alta en el iPhone
+// nunca aparecía en la pestaña ya abierta de la computadora.
+//
+// Ahora, con la app visible, se pregunta a la nube cada INTERVALO_DESCARGA_MS
+// y al volver a la pestaña. Cada consulta es una sola lectura: si no hay nada
+// nuevo, no se sube nada (ver huellaContenido en _intentoSincronizar).
+const INTERVALO_DESCARGA_MS = 60 * 1000;
+// Al volver a la pestaña no se repite si la última fue hace muy poco.
+const ESPERA_MINIMA_DESCARGA_MS = 20 * 1000;
+
+function _hayFormularioAbierto() {
+    // Con un formulario abierto no se repinta la lista por debajo: el usuario
+    // está editando y lo que guarde se sube al cerrar.
+    const modal = document.getElementById('modal-overlay');
+    return !!(modal && modal.classList.contains('active'));
+}
+
+function sincronizarEnSegundoPlano(motivo, { forzar = false } = {}) {
     if (document.visibilityState !== 'visible') return;
-    if (!hayPendienteSync()) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     if (syncState.syncInProgress) return;
     if (typeof estadoPremium === 'undefined' || !estadoPremium.activo || !estadoPremium.codigo) return;
-    sincronizarDatos().catch(e => console.warn('Sync al volver a foreground falló:', e && e.message ? e.message : e));
+    if (_hayFormularioAbierto()) return;
+    if (!forzar && syncState.lastSync && (Date.now() - syncState.lastSync) < ESPERA_MINIMA_DESCARGA_MS) return;
+    sincronizarDatos({ silencioso: true })
+        .catch(e => console.warn('Sync automática (' + motivo + ') falló:', e && e.message ? e.message : e));
+}
+
+// Al volver a la pestaña/app: si hay algo local pendiente (iOS Safari aborta
+// fetch en background) se sube ya; si no, se bajan los cambios de los otros
+// dispositivos.
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    sincronizarEnSegundoPlano('al volver a la pestaña', { forzar: hayPendienteSync() });
 });
+
+setInterval(() => sincronizarEnSegundoPlano('periódica'), INTERVALO_DESCARGA_MS);
 
 // Al volver la conexión (se trabajó sin internet), se sube lo pendiente.
 window.addEventListener('online', () => {
@@ -1992,7 +2028,8 @@ async function guardarConfigSync() {
 
 // Cargar configuración de sincronización
 function cargarConfigSync() {
-    const syncOnLoad = localStorage.getItem('sync_on_load') === 'true';
+    // Activado por omisión: solo se apaga si el usuario lo apagó.
+    const syncOnLoad = localStorage.getItem('sync_on_load') !== 'false';
     const syncOnSave = localStorage.getItem('sync_on_save') === 'true';
 
     const checkOnLoad = document.getElementById('sync-on-load');
@@ -2009,14 +2046,14 @@ function cargarConfigSync() {
 async function verificarSyncAlCargar() {
     if (!estadoPremium.activo) return;
 
-    const syncOnLoad = localStorage.getItem('sync_on_load') === 'true';
+    const syncOnLoad = localStorage.getItem('sync_on_load') !== 'false';
     if (!syncOnLoad) return;
 
     // Esperar un poco para que la app termine de cargar
     setTimeout(async () => {
         try {
             if (syncState.syncInProgress) return;
-            await sincronizarDatos();
+            await sincronizarDatos({ silencioso: true });
         } catch (error) {
             console.log('Sync al iniciar falló:', error.message);
         }
