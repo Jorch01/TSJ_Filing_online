@@ -52,6 +52,7 @@ function crearSandbox() {
         hablar: (t) => { estado.dicho.push(t); },
         panelAbierto: () => false,
         iniciarEscucha: () => {},
+        seguirEscuchando: () => {},
         ejecutarAccion: async (r) => { estado.ejecutadas.push(r); },
         resolverExpedienteDeParametros: async (p) =>
             estado.expedientes.find(e => e.id === p.expedienteId || e.numero === p.expedienteRef) || null

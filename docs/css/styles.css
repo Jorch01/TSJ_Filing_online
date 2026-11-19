@@ -4376,6 +4376,10 @@ textarea:focus {
 }
 .voz-lista { margin: 0.4rem 0 0 1.1rem; padding: 0; }
 .voz-lista li { margin-bottom: 0.25rem; }
+/* Resumen de pendientes del asistente: una sección por urgencia. */
+.voz-pend-seccion { margin-top: 0.55rem; }
+.voz-pend-seccion > strong { font-size: 0.85rem; }
+.voz-pend-vencidos > strong { color: var(--danger, #b42318); }
 
 .voz-ejemplos { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
 .voz-chip {

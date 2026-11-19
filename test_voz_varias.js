@@ -106,6 +106,7 @@ function crearSandbox({ falla } = {}) {
         hablar: () => {},
         panelAbierto: () => false,
         iniciarEscucha: () => {},
+        seguirEscuchando: () => {},
         pedirConfirmacion: (r, resumen, detalles) => { estado.confirmaciones.push({ r, resumen, detalles }); },
         informarFallo: (e) => { estado.mensajes.push('FALLO: ' + e.message); }
     };

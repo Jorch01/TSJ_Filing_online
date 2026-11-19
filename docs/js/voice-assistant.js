@@ -35,7 +35,12 @@
 
     const TTS_KEY = 'voz_tts_activado';          // localStorage: respuestas habladas
     const RATE_KEY = 'voz_tts_velocidad';        // localStorage: velocidad de la voz
-    const AUTO_KEY = 'voz_auto_escucha';         // localStorage: escuchar al abrir el panel
+    // localStorage: «manos libres» (escuchar sin tocar el micrófono: al abrir el
+    // panel y después de cada pregunta). Apagado por omisión: el micrófono solo
+    // se enciende al tocarlo. La clave anterior (voz_auto_escucha) estaba
+    // encendida por omisión y se descarta, para que nadie lo herede sin pedirlo.
+    const AUTO_KEY = 'voz_manos_libres';
+    try { localStorage.removeItem('voz_auto_escucha'); } catch (e) { /* sin almacenamiento */ }
     // El modelo ya no se elige aquí: lo lleva llamarIA(), que lo lee de la
     // configuración y lo sustituye solo si el proveedor lo retira. Tener el
     // nombre escrito en este archivo fue lo que dejó mudo al asistente cuando
@@ -120,6 +125,19 @@
             ]
         },
         {
+            titulo: '✅ Pendientes',
+            items: [
+                'Dame un resumen de mis pendientes',
+                '¿Qué se me vence esta semana?',
+                '¿Qué tengo vencido?',
+                'Mis pendientes urgentes',
+                '¿Qué me falta del 123/2025?',
+                'Los pendientes de AHO',
+                'Recuérdame contestar la demanda del 123/2025 el viernes',
+                'Ya contesté la demanda'
+            ]
+        },
+        {
             titulo: '🔍 Búsquedas',
             items: [
                 'Busca mis expedientes de divorcio',
@@ -171,7 +189,7 @@
         'Puedes pedir lo mismo para varios expedientes en una sola orden: "un recordatorio el viernes en todos los asuntos de AHO" (de una carpeta, un cliente o un tipo de asunto) o nombrándolos. Antes de guardar te enseño la lista completa, y "deshaz lo último" los revierte todos juntos.',
         'Para cambiar un evento basta con decir cuál y qué cambia: "pospón una semana la audiencia del 123/2025", "agrégale a la descripción…". Antes de guardar te enseño el antes y el después.',
         'Di "deshaz lo último" para revertir la acción más reciente hecha por el asistente.',
-        'Con 🔊/🔇 activas o silencias mis respuestas habladas; en Configuración puedes ajustar la velocidad de la voz y la escucha automática.',
+        'Con 🔊/🔇 activas o silencias mis respuestas habladas; en Configuración puedes ajustar la velocidad de la voz y activar «manos libres» (que te escuche sin tocar el micrófono).',
         'También puedes escribir la instrucción en el campo de texto de abajo.'
     ];
 
@@ -385,7 +403,7 @@
             });
         }
         if (cfgAuto) {
-            cfgAuto.checked = localStorage.getItem(AUTO_KEY) !== '0';
+            cfgAuto.checked = escuchaManosLibres();
             cfgAuto.addEventListener('change', () => {
                 localStorage.setItem(AUTO_KEY, cfgAuto.checked ? '1' : '0');
             });
@@ -499,8 +517,9 @@
         if (!chat.childElementCount) {
             mostrarBienvenida();
         }
-        // Arrancar escucha de inmediato (configurable en Configuración)
-        if (localStorage.getItem(AUTO_KEY) !== '0') iniciarEscucha();
+        // El micrófono solo se enciende al tocarlo, salvo que se haya elegido
+        // «manos libres» en Configuración.
+        if (escuchaManosLibres()) iniciarEscucha();
     }
 
     function cerrarPanel() {
@@ -605,6 +624,19 @@
 
     function claseWebSpeech() {
         return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+    }
+
+    // ¿Escuchar sin que se toque el micrófono? Solo con «manos libres».
+    function escuchaManosLibres() {
+        try { return localStorage.getItem(AUTO_KEY) === '1'; } catch (e) { return false; }
+    }
+
+    // Después de una pregunta o de pedir confirmación: con «manos libres» se
+    // vuelve a escuchar; si no, se dice cómo contestar, sin abrir el micrófono.
+    function seguirEscuchando() {
+        if (!panelAbierto()) return;
+        if (escuchaManosLibres()) { iniciarEscucha(); return; }
+        setStatus('🎙️ Toca el micrófono para contestar, o escribe abajo.', false);
     }
 
     function alternarMicrofono() {
@@ -879,7 +911,7 @@
         if (r.faltan_datos && r.pregunta) {
             estado = Estado.ESPERANDO_DATO;
             agregarMensaje('asistente', '❓ ' + esc(r.pregunta));
-            hablar(r.pregunta, () => { if (panelAbierto()) iniciarEscucha(); });
+            hablar(r.pregunta, seguirEscuchando);
             return;
         }
 
@@ -922,7 +954,7 @@
         estado = Estado.ESPERANDO_CONFIRMACION;
         mostrarConfirmacion(resumen, detalles);
         // La flecha del "antes → después" no se lee bien en voz alta.
-        hablar(resumen.replace(/\s*→\s*/g, ', pasa a ') + '. ¿Confirmas?', () => { if (panelAbierto()) iniciarEscucha(); });
+        hablar(resumen.replace(/\s*→\s*/g, ', pasa a ') + '. ¿Confirmas?', seguirEscuchando);
     }
 
     function mostrarConfirmacion(resumen, detalles) {
@@ -1748,31 +1780,6 @@
         return `Marqué "${pendiente.titulo}" como terminado.`;
     }
 
-    async function accConsultarPendientes(p) {
-        const todos = await obtenerPendientes().catch(() => []);
-        let abiertos = todos.filter(x => !x.completado);
-        const expFiltro = await resolverExpedienteDeParametros(p, 'consultar_pendientes');
-        if (expFiltro) abiertos = abiertos.filter(x => x.expedienteId === expFiltro.id);
-        if (abiertos.length === 0) return 'No tienes pendientes por hacer.';
-
-        // Primero lo que tiene fecha, y de eso lo más cercano.
-        abiertos.sort((a, b) => {
-            const fa = a.fechaLimite ? new Date(a.fechaLimite).getTime() : Infinity;
-            const fb = b.fechaLimite ? new Date(b.fechaLimite).getTime() : Infinity;
-            return fa - fb;
-        });
-        const lista = abiertos.slice(0, 8).map(x => {
-            const dias = typeof diasParaPendiente === 'function' ? diasParaPendiente(x) : null;
-            if (dias === null) return x.titulo;
-            if (dias < 0) return `${x.titulo} (vencido)`;
-            if (dias === 0) return `${x.titulo} (hoy)`;
-            if (dias === 1) return `${x.titulo} (mañana)`;
-            return `${x.titulo} (en ${dias} días)`;
-        }).join('; ');
-        const resto = abiertos.length > 8 ? ` y ${abiertos.length - 8} más` : '';
-        return `Tienes ${abiertos.length} pendiente${abiertos.length !== 1 ? 's' : ''}: ${lista}${resto}.`;
-    }
-
     // Identifica el pendiente del que habla el usuario: por id, o por título
     // entre los que están por hacer.
     async function _resolverPendiente(p) {
@@ -1789,6 +1796,214 @@
         if (coincidencias.length === 1) return coincidencias[0];
         if (coincidencias.length === 0) throw new Error(`No encontré un pendiente que diga "${p.titulo}"`);
         throw new Error(`Tengo ${coincidencias.length} pendientes que coinciden: ${coincidencias.slice(0, 4).map(x => x.titulo).join('; ')}. ¿Cuál?`);
+    }
+
+    // ==================== RESUMEN DE PENDIENTES ====================
+    // "Dame un resumen de mis pendientes", "¿qué se me vence esta semana?", "los
+    // pendientes urgentes de AHO". La app junta y ordena todos los pendientes;
+    // el modelo solo dice qué filtros quiere, porque no ve los pendientes (no
+    // caben en el prompt). Antes salía una lista plana de ocho títulos, sin
+    // expediente ni fecha, y pedirle "un resumen" se quedaba sin respuesta.
+
+    // Periodos por días que faltan para la fecha límite (los vencidos entran
+    // siempre: lo que venció ayer también es "de esta semana").
+    const PERIODOS_PENDIENTES = { vencidos: -1, hoy: 0, semana: 7, mes: 30 };
+    const PRIORIDADES_RESUMEN = { alta: 0, media: 1, baja: 2 };
+    const TOPE_POR_SECCION = 6;
+
+    const SECCIONES_PENDIENTES = [
+        { clave: 'vencidos', titulo: 'Vencidos' },
+        { clave: 'hoy', titulo: 'Para hoy' },
+        { clave: 'semana', titulo: 'Esta semana' },
+        { clave: 'despues', titulo: 'Más adelante' },
+        { clave: 'sinFecha', titulo: 'Sin fecha' }
+    ];
+
+    // Días que faltan (negativo = vencido) contando por días del calendario.
+    function diasParaFecha(fechaISO, hoyMs) {
+        if (!fechaISO) return null;
+        const limite = new Date(fechaISO);
+        if (isNaN(limite.getTime())) return null;
+        limite.setHours(0, 0, 0, 0);
+        const hoy = new Date(hoyMs);
+        hoy.setHours(0, 0, 0, 0);
+        return Math.round((limite - hoy) / 864e5);
+    }
+
+    function seccionDeDias(dias) {
+        if (dias === null) return 'sinFecha';
+        if (dias < 0) return 'vencidos';
+        if (dias === 0) return 'hoy';
+        if (dias <= 7) return 'semana';
+        return 'despues';
+    }
+
+    function cuandoVence(dias, fechaISO) {
+        if (dias === null) return 'sin fecha';
+        if (dias < 0) return `venció hace ${-dias} día${dias === -1 ? '' : 's'}`;
+        if (dias === 0) return 'vence hoy';
+        if (dias === 1) return 'vence mañana';
+        const fecha = new Date(fechaISO).toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' });
+        return dias <= 7 ? `vence en ${dias} días (${fecha})` : `vence el ${fecha}`;
+    }
+
+    /**
+     * El resumen de los pendientes por hacer. Puro: no toca la base ni la pantalla.
+     * etiquetaDe(p): el número o nombre del expediente del pendiente ('' si no tiene).
+     * filtros: { expedienteIds: Set|null, prioridad: 'alta'|'media'|'baja'|null,
+     *            periodo: 'vencidos'|'hoy'|'semana'|'mes'|null }
+     * → { total, conteos: { vencidos, hoy, semana, despues, sinFecha, alta }, secciones }
+     *   secciones: solo las que tienen algo, en orden de urgencia; cada pendiente
+     *   con { titulo, expediente, prioridad, dias, cuando }.
+     */
+    function resumirPendientes(pendientes, etiquetaDe, hoyMs, filtros = {}) {
+        const limite = filtros.periodo && PERIODOS_PENDIENTES[filtros.periodo] !== undefined
+            ? PERIODOS_PENDIENTES[filtros.periodo] : null;
+        const elegidos = [];
+        for (const p of pendientes || []) {
+            if (!p || p.completado) continue;
+            if (filtros.expedienteIds && !filtros.expedienteIds.has(p.expedienteId)) continue;
+            if (filtros.prioridad && p.prioridad !== filtros.prioridad) continue;
+            const dias = diasParaFecha(p.fechaLimite, hoyMs);
+            if (limite !== null && (dias === null || dias > limite)) continue;
+            elegidos.push({
+                titulo: String(p.titulo || '').trim() || '(sin título)',
+                expediente: etiquetaDe ? etiquetaDe(p) : '',
+                prioridad: PRIORIDADES_RESUMEN[p.prioridad] !== undefined ? p.prioridad : '',
+                dias,
+                cuando: cuandoVence(dias, p.fechaLimite),
+                fecha: p.fechaLimite || ''
+            });
+        }
+
+        // Por urgencia: sección (vencidos, hoy, semana…), y dentro de cada una lo
+        // de más prioridad y lo que vence antes, primero.
+        const rango = (x) => SECCIONES_PENDIENTES.findIndex(s => s.clave === seccionDeDias(x.dias));
+        const orden = (x) => PRIORIDADES_RESUMEN[x.prioridad] !== undefined ? PRIORIDADES_RESUMEN[x.prioridad] : 3;
+        const dia = (x) => x.dias === null ? Infinity : x.dias;
+        elegidos.sort((a, b) => (rango(a) - rango(b)) || (orden(a) - orden(b)) || (dia(a) - dia(b)));
+
+        const conteos = { vencidos: 0, hoy: 0, semana: 0, despues: 0, sinFecha: 0, alta: 0 };
+        const porSeccion = new Map(SECCIONES_PENDIENTES.map(s => [s.clave, []]));
+        for (const x of elegidos) {
+            const clave = seccionDeDias(x.dias);
+            conteos[clave]++;
+            if (x.prioridad === 'alta') conteos.alta++;
+            porSeccion.get(clave).push(x);
+        }
+        const secciones = SECCIONES_PENDIENTES
+            .filter(s => porSeccion.get(s.clave).length)
+            .map(s => ({ clave: s.clave, titulo: s.titulo, items: porSeccion.get(s.clave) }));
+        return { total: elegidos.length, conteos, secciones };
+    }
+
+    function plural2(n, uno, varios) { return n + ' ' + (n === 1 ? uno : varios); }
+
+    // "de AHO, con prioridad alta, que vencen esta semana": lo que se pidió.
+    function describirFiltrosPendientes(filtros, alcance) {
+        const partes = [];
+        if (alcance) partes.push(alcance);
+        if (filtros.prioridad) partes.push('con prioridad ' + filtros.prioridad);
+        const periodo = { vencidos: 'ya vencidos', hoy: 'para hoy', semana: 'para esta semana', mes: 'para este mes' }[filtros.periodo];
+        if (periodo) partes.push(periodo);
+        return partes.join(', ');
+    }
+
+    // Lo que se dice en voz alta: las cifras y lo tres más urgentes.
+    function textoHabladoResumen(r, descripcion) {
+        const c = r.conteos;
+        const cifras = [];
+        if (c.vencidos) cifras.push(plural2(c.vencidos, 'vencido', 'vencidos'));
+        if (c.hoy) cifras.push(c.hoy + ' para hoy');
+        if (c.semana) cifras.push(c.semana + ' para esta semana');
+        if (c.despues) cifras.push(c.despues + ' más adelante');
+        if (c.sinFecha) cifras.push(c.sinFecha + ' sin fecha');
+        const junta = (xs) => xs.length > 1 ? xs.slice(0, -1).join(', ') + ' y ' + xs[xs.length - 1] : (xs[0] || '');
+        let texto = `Tienes ${plural2(r.total, 'pendiente', 'pendientes')}${descripcion ? ' ' + descripcion : ''}: ${junta(cifras)}.`;
+        if (c.alta) texto += ` ${c.alta === 1 ? 'Uno es' : c.alta + ' son'} de prioridad alta.`;
+        const urgentes = r.secciones.flatMap(s => s.items).slice(0, 3)
+            .map(x => x.titulo + (x.expediente ? ', del ' + x.expediente : '') + (x.dias !== null ? ', ' + x.cuando : ''));
+        if (urgentes.length) texto += ' Lo más urgente: ' + urgentes.join('; ') + '.';
+        return texto;
+    }
+
+    // Lo que se ve en el chat: las cifras y cada sección con sus pendientes.
+    function htmlResumenPendientes(r, descripcion) {
+        const icono = { alta: '🔴 ', media: '🟡 ', baja: '🔵 ' };
+        let html = `✅ <strong>${esc(plural2(r.total, 'pendiente', 'pendientes'))} por hacer${descripcion ? ' ' + esc(descripcion) : ''}</strong>`;
+        const c = r.conteos;
+        const cifras = [['vencidos', c.vencidos], ['para hoy', c.hoy], ['esta semana', c.semana], ['más adelante', c.despues], ['sin fecha', c.sinFecha]]
+            .filter(([, n]) => n).map(([t, n]) => n + ' ' + t);
+        if (c.alta) cifras.push(c.alta + ' de prioridad alta');
+        if (cifras.length) html += '<br><small>' + esc(cifras.join(' · ')) + '</small>';
+        for (const s of r.secciones) {
+            html += `<div class="voz-pend-seccion voz-pend-${s.clave}"><strong>${esc(s.titulo)} (${s.items.length})</strong><ul class="voz-lista">`;
+            for (const x of s.items.slice(0, TOPE_POR_SECCION)) {
+                html += '<li>' + (icono[x.prioridad] || '') + esc(x.titulo) +
+                    (x.expediente ? ' — <span class="voz-tag">' + esc(x.expediente) + '</span>' : '') +
+                    (x.dias !== null ? ' <small>' + esc(x.cuando) + '</small>' : '') + '</li>';
+            }
+            html += '</ul>';
+            if (s.items.length > TOPE_POR_SECCION) html += `<small class="voz-mas">y ${s.items.length - TOPE_POR_SECCION} más</small>`;
+            html += '</div>';
+        }
+        return html;
+    }
+
+    async function accConsultarPendientes(p) {
+        const todos = await obtenerPendientes().catch(() => []);
+        const expedientesPorId = await mapaDeExpedientes();
+
+        // ¿De qué? De un expediente, de un grupo (cliente, carpeta…) o de todo.
+        let expedienteIds = null;
+        let alcance = '';
+        const exp = await resolverExpedienteDeParametros(p, 'consultar_pendientes');
+        if (exp) {
+            expedienteIds = new Set([exp.id]);
+            alcance = 'del ' + (exp.numero || exp.nombre || 'expediente');
+        } else {
+            const grupo = textoLimpio(p.paraTodosLosDe);
+            if (grupo && typeof buscarExpedientesDeGrupo === 'function') {
+                const miembros = await buscarExpedientesDeGrupo(grupo);
+                if (!miembros.length) {
+                    throw ErrorAviso(`No encontré expedientes de “${grupo}” (busqué en carpetas, clientes, tipos de asunto, responsables y comentarios).`);
+                }
+                expedienteIds = new Set(miembros.map(m => m.expediente.id));
+                alcance = 'de ' + grupo;
+            }
+        }
+        const filtros = {
+            expedienteIds,
+            prioridad: PRIORIDADES_RESUMEN[p.prioridad] !== undefined ? p.prioridad : null,
+            periodo: PERIODOS_PENDIENTES[p.periodo] !== undefined ? p.periodo : null
+        };
+        const etiquetaDe = (pend) => {
+            const e = pend.expedienteId != null ? expedientesPorId.get(pend.expedienteId) : null;
+            return (e && (e.numero || e.nombre)) || pend.expedienteTexto || '';
+        };
+
+        const r = resumirPendientes(todos, etiquetaDe, Date.now(), filtros);
+        const descripcion = describirFiltrosPendientes(filtros, alcance);
+        if (!r.total) {
+            const msg = `No tienes pendientes por hacer${descripcion ? ' ' + descripcion : ''}.`;
+            agregarMensaje('asistente', esc(msg));
+            hablar(msg);
+            conversacion = [];
+            return '';
+        }
+
+        const div = agregarMensaje('asistente', htmlResumenPendientes(r, descripcion));
+        if (div && typeof navegarA === 'function') {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'voz-chip';
+            b.textContent = 'Abrir Pendientes';
+            b.addEventListener('click', () => { cerrarPanel(); navegarA('pendientes'); });
+            div.appendChild(b);
+        }
+        hablar(textoHabladoResumen(r, descripcion));
+        conversacion = [];
+        return '';
     }
 
     // ==================== VARIAS ACCIONES A LA VEZ ====================
@@ -2058,7 +2273,7 @@
             agregarMensaje('asistente', '❓ ' + esc(e.message));
             const ultimo = conversacion[conversacion.length - 1];
             if (ultimo && ultimo.role === 'assistant') ultimo.content += '\nNo se ejecutó nada. ' + e.message;
-            hablar(e.message, () => { if (panelAbierto()) iniciarEscucha(); });
+            hablar(e.message, seguirEscuchando);
             return;
         }
         pedirConfirmacion({ ...r, _plan: plan }, plan.resumen, plan.detalles);
@@ -2800,7 +3015,7 @@
         const reunidos = datosLaboralesReunidos(datos);
         agregarMensaje('asistente', '🧮 ❓ ' + esc(pregunta) +
             (reunidos.length ? '<br><small class="voz-motivo">Llevo: ' + esc(reunidos.join(' · ')) + '</small>' : ''));
-        hablar(pregunta, () => { if (panelAbierto()) iniciarEscucha(); });
+        hablar(pregunta, seguirEscuchando);
     }
 
     async function accCalcularLaboral(p) {
@@ -2936,7 +3151,7 @@
                 if (normalizar(texto).split(' ').length <= 4) {
                     const msg = 'No identifiqué esa cuenta. Dime su número o su nombre, o «cancelar».';
                     agregarMensaje('asistente', esc(msg));
-                    hablar(msg, () => { if (panelAbierto()) iniciarEscucha(); });
+                    hablar(msg, seguirEscuchando);
                     return true;
                 }
                 eleccionCuenta = null;
@@ -3029,7 +3244,7 @@
         const dicho = cat.items.length
             ? (cat.items.length === 1 ? 'Hay una cuenta: ' + cat.items[0].nombre + '. ¿La abro?' : `Hay ${cat.items.length} cuentas. ${pregunta}`)
             : encabezado.replace(/^\S+\s/, '') + ' ' + pregunta;
-        hablar(dicho, () => { if (panelAbierto() && eleccionCuenta) iniciarEscucha(); });
+        hablar(dicho, () => { if (eleccionCuenta) seguirEscuchando(); });
     }
 
     async function responderEleccionCuenta(r) {
@@ -3062,7 +3277,7 @@
             case 'ambigua': {
                 const msg = 'Coinciden varias: ' + r.candidatos.map(c => c.numero + '. ' + c.nombre).join(', ') + '. ¿Cuál?';
                 agregarMensaje('asistente', esc(msg));
-                hablar(msg, () => { if (panelAbierto()) iniciarEscucha(); });
+                hablar(msg, seguirEscuchando);
                 return;
             }
         }
@@ -3243,7 +3458,9 @@ ACCIONES DISPONIBLES y sus parámetros:
     - Una tarea del expediente ("recuérdame contestar la demanda del 123/2025", "apúntame revisar el acuerdo"). La fecha es OPCIONAL: solo ponla si el usuario la dice. Con fecha, además queda agendada.
     - La prioridad también es opcional: ponla solo si el usuario la expresa ("es urgente" → alta, "cuando se pueda" → baja). Si no dice nada, déjala vacía.
 8c. "completar_pendiente": {pendienteId:número o null, titulo:texto o null} — marca un pendiente como terminado ("ya contesté la demanda", "marca como hecho lo de la promoción"). Usa el título tal como lo diga el usuario si no hay id.
-8d. "consultar_pendientes": {expedienteId:número o null, expedienteRef:texto o null} — lee los pendientes por hacer ("¿qué tengo pendiente?", "qué me falta del 123/2025").
+8d. "consultar_pendientes": {expedienteId:número o null, expedienteRef:texto o null, paraTodosLosDe:texto o null, prioridad:"alta"|"media"|"baja" o null, periodo:"vencidos"|"hoy"|"semana"|"mes" o null} — RESUMEN de los pendientes por hacer: cuántos hay vencidos, para hoy, para la semana y sin fecha, y lo más urgente de cada grupo con su expediente.
+    - Para "dame un resumen de mis pendientes", "¿qué tengo pendiente?", "qué me falta del 123/2025", "¿qué se me vence esta semana?" (periodo "semana"), "¿qué tengo vencido?" ("vencidos"), "para hoy" ("hoy"; incluye lo vencido), "mis pendientes urgentes" (prioridad "alta"), "los pendientes de AHO" (paraTodosLosDe:"AHO", como en "varias").
+    - Todo es opcional: sin filtros, el resumen de todos. Tú no ves los pendientes; la app los reúne todos. NUNCA digas que no puedes resumir o consultar los pendientes.
 9. "mover_a_carpeta": {expedienteId:número o null, expedienteRef:texto o null, carpetaId:número o null} — asigna un expediente a una carpeta de la lista CARPETAS (null = quitarlo de su carpeta). Si la carpeta mencionada no existe, pregunta.
 10. "abrir_expediente": {expedienteId:número o null, expedienteRef:texto o null} — navega hasta el expediente y lo resalta ("abre el expediente 123/2025", "muéstrame el caso de Juan Pérez", "ábreme el 123").
 11. "deshacer": {} — revierte la última acción hecha por el asistente ("deshaz lo último", "revierte eso").
