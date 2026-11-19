@@ -982,8 +982,29 @@ function _discriminanteAsunto(exp) {
     if (institucion === 'PJF') {
         return [exp.pjfOrgId, exp.pjfTipoAsunto].map(_normalizarIdentidadExpediente).join('/');
     }
-    if (institucion === 'OTRO') return _normalizarIdentidadExpediente(exp.tipo);
+    // El nombre de la autoridad lo teclea cada quien («IMSS» puede ser Cancún o
+    // Mérida) y su numeración no es única: el tipo de asunto y el cliente, si
+    // están, son lo que dice que dos asuntos con el mismo número no son uno.
+    if (institucion === 'OTRO') return [exp.tipo, exp.cliente].map(_normalizarIdentidadExpediente).join('/');
     return '';
+}
+
+// Con lo que se guarda un expediente cuyo órgano no se conoce todavía: «PJF - Por
+// determinar», «Autoridad no especificada», «Por determinar» o nada. Es el mismo
+// texto para todos, así que no dice de qué órgano es un asunto.
+const _RE_ORGANO_SIN_DETERMINAR = /por determinar|sin determinar|no especificad|no identificad|desconocid/;
+
+/**
+ * ¿Este expediente no tiene órgano (o autoridad) conocido? Sin él, el juzgado
+ * no identifica nada: dos asuntos sin relación que comparten número (el «45/2026»
+ * es de lo más común) llevan el mismo texto de relleno y parecían el mismo.
+ * Un expediente federal con el id de su órgano sí lo tiene, aunque el texto
+ * diga otra cosa. sync.js tiene su copia (organoSinDeterminar).
+ */
+function _organoSinDeterminar(exp) {
+    if (exp && (exp.institucion || 'TSJ') === 'PJF' && exp.pjfOrgId) return false;
+    const juzgado = _normalizarIdentidadExpediente(exp && exp.juzgado);
+    return !juzgado || _RE_ORGANO_SIN_DETERMINAR.test(juzgado);
 }
 
 /**
@@ -1003,6 +1024,10 @@ async function eliminarExpedientesDuplicados() {
         // juzgado.
         if (!_normalizarIdentidadExpediente(exp.numero) &&
             !_normalizarIdentidadExpediente(exp.nombre)) continue;
+
+        // Y sin órgano conocido el juzgado tampoco identifica: lo mismo, no se
+        // borra por una coincidencia de número y de un texto de relleno.
+        if (_organoSinDeterminar(exp)) continue;
 
         const clave = _claveIdentidadExpediente(exp);
         if (!expedientesPorClave.has(clave)) {

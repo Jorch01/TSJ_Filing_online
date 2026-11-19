@@ -6325,6 +6325,53 @@ function _claveExpediente(exp) {
     return `${identificador}|${juzgado}`;
 }
 
+// El tipo de asunto federal de una fila o de un expediente guardado, para compararlo.
+function _tipoAsuntoParaImportar(valor) {
+    return String(valor == null ? '' : valor).trim().toLowerCase();
+}
+
+/**
+ * La clave del asunto al que pertenece una fila del archivo.
+ *
+ * Varias filas del mismo expediente son un solo asunto (aportan sus pendientes
+ * y audiencias), pero en el PJF un mismo tribunal puede tener un amparo directo
+ * y un recurso de revisión con el mismo número: si dos filas traen un
+ * tipo_asunto_id distinto son dos asuntos, no «filas repetidas». Una fila que
+ * no dice el tipo cabe en cualquier asunto de ese número y órgano (el primero).
+ * `gruposPorBase`: Map(base → [{ clave, tipo }]), que se va llenando.
+ */
+function _claveAsuntoDeFila(base, tipo, gruposPorBase) {
+    let grupos = gruposPorBase.get(base);
+    if (!grupos) { grupos = []; gruposPorBase.set(base, grupos); }
+    if (!tipo) {
+        if (grupos.length) return grupos[0].clave;
+        grupos.push({ clave: base, tipo: '' });
+        return base;
+    }
+    const mismo = grupos.find(g => g.tipo === tipo);
+    if (mismo) return mismo.clave;
+    // Un asunto que hasta ahora no decía su tipo lo adopta de esta fila.
+    const sinTipo = grupos.find(g => !g.tipo);
+    if (sinTipo) { sinTipo.tipo = tipo; return sinTipo.clave; }
+    const clave = grupos.length ? `${base}~${tipo}` : base;
+    grupos.push({ clave, tipo });
+    return clave;
+}
+
+/**
+ * ¿Cuál de los expedientes ya registrados (los de esa misma clave) es el asunto
+ * del archivo? Cada uno casa con un solo asunto (`usados`). Con tipo en la fila,
+ * primero el del mismo tipo; después uno que no diga el suyo (puede ser el
+ * mismo). Sin tipo en la fila, cualquiera, como siempre. Los activos van antes
+ * que los archivados.
+ */
+function _casarExistenteConAsunto(existentes, tipo, usados) {
+    const libres = (existentes || []).filter(x => !usados.has(x.id));
+    const elegir = (lista) => lista.find(x => !x.archivado) || lista[0] || null;
+    const exacto = tipo ? elegir(libres.filter(x => x.tipo === tipo)) : null;
+    return exacto || elegir(libres.filter(x => !tipo || !x.tipo));
+}
+
 /**
  * Resuelve los nombres de carpeta del CSV a carpetaId, creando las que no
  * existan. Devuelve { mapa: Map(claveNormalizada -> id), creadas: n }.
@@ -6524,16 +6571,18 @@ async function importarExpedientes(event) {
         const archivados = typeof obtenerExpedientesArchivados === 'function'
             ? await obtenerExpedientesArchivados().catch(() => []) : [];
 
-        const idPorClave = new Map();
-        const clavesArchivadas = new Set();
-        activos.forEach(e => idPorClave.set(_claveExpediente(e), e.id));
-        archivados.forEach(e => {
-            const clave = _claveExpediente(e);
-            if (!idPorClave.has(clave)) {
-                idPorClave.set(clave, e.id);
-                clavesArchivadas.add(clave);
-            }
-        });
+        // Lo ya registrado, por número/nombre y órgano. Con el tipo de asunto
+        // federal de cada uno: dos asuntos del mismo número y tribunal pueden
+        // ser de tipos distintos.
+        const existentesPorBase = new Map();
+        const registrar = (e, archivado) => {
+            const base = _claveExpediente(e);
+            if (!existentesPorBase.has(base)) existentesPorBase.set(base, []);
+            existentesPorBase.get(base).push({ id: e.id, archivado, tipo: _tipoAsuntoParaImportar(e.pjfTipoAsunto) });
+        };
+        activos.forEach(e => registrar(e, false));
+        archivados.forEach(e => registrar(e, true));
+        const gruposPorBase = new Map();
 
         datos.forEach((fila, index) => {
             const numeroFila = index + 2;
@@ -6566,11 +6615,13 @@ async function importarExpedientes(event) {
                 return;
             }
 
-            const clave = _claveExpediente({
+            const base = _claveExpediente({
                 numero: tipo === 'numero' ? expediente : '',
                 nombre: tipo === 'nombre' ? expediente : '',
                 juzgado: destino.juzgado
             });
+            const tipoFila = _tipoAsuntoParaImportar(destino.pjfTipoAsunto);
+            const clave = _claveAsuntoDeFila(base, tipoFila, gruposPorBase);
 
             if (!asuntos.has(clave)) {
                 const nuevo = {
@@ -6590,8 +6641,10 @@ async function importarExpedientes(event) {
                     expediente: nuevo,
                     etiqueta: expediente,
                     carpetaNombre: (fila.carpeta || '').trim(),
-                    idExistente: idPorClave.has(clave) ? idPorClave.get(clave) : null,
-                    estaArchivado: clavesArchivadas.has(clave),
+                    base,
+                    // Se casa con lo ya registrado cuando todas las filas están agrupadas.
+                    idExistente: null,
+                    estaArchivado: false,
                     pendientes: [],
                     eventos: []
                 });
@@ -6604,12 +6657,31 @@ async function importarExpedientes(event) {
             }
 
             const asunto = asuntos.get(clave);
+            // Un asunto que no decía su tipo de asunto federal lo toma de otra fila suya.
+            if (destino.pjfTipoAsunto && !asunto.expediente.pjfTipoAsunto) asunto.expediente.pjfTipoAsunto = destino.pjfTipoAsunto;
             const extras = _extrasDeFila(fila, numeroFila);
             errores.push(...extras.errores);
             fechasDescartadas += extras.fechasDescartadas;
             if (extras.pendiente) asunto.pendientes.push(extras.pendiente);
             if (extras.evento) asunto.eventos.push(extras.evento);
         });
+
+        // Con todas las filas agrupadas, cada asunto se casa con lo ya registrado:
+        // primero los que dicen su tipo de asunto, luego los demás.
+        const usados = new Set();
+        const asuntosPorBase = new Map();
+        for (const a of asuntos.values()) {
+            if (!asuntosPorBase.has(a.base)) asuntosPorBase.set(a.base, []);
+            asuntosPorBase.get(a.base).push(a);
+        }
+        for (const [base, lista] of asuntosPorBase) {
+            const existentes = existentesPorBase.get(base) || [];
+            const orden = lista.filter(a => a.expediente.pjfTipoAsunto).concat(lista.filter(a => !a.expediente.pjfTipoAsunto));
+            for (const a of orden) {
+                const x = _casarExistenteConAsunto(existentes, _tipoAsuntoParaImportar(a.expediente.pjfTipoAsunto), usados);
+                if (x) { a.idExistente = x.id; a.estaArchivado = x.archivado; usados.add(x.id); }
+            }
+        }
 
         const todos = [...asuntos.values()];
         const nuevos = todos.filter(a => a.idExistente === null);
@@ -7910,6 +7982,61 @@ async function _ubicarExpedienteIA(exp, tipoAsuntoIA) {
     return exp;
 }
 
+/**
+ * ¿Este expediente es del mismo órgano que el que leyó la IA en un acuerdo?
+ * `candidato` ya viene ubicado (_ubicarExpedienteIA): con el juzgado del
+ * catálogo si se reconoció, la institución corregida y, si es federal, el id
+ * del órgano y el tipo de asunto.
+ */
+function _mismoOrganoParaIA(guardado, candidato) {
+    if ((guardado.institucion || 'TSJ') !== (candidato.institucion || 'TSJ')) return false;
+    if (candidato.institucion === 'PJF') {
+        const mismo = guardado.pjfOrgId && candidato.pjfOrgId
+            ? String(guardado.pjfOrgId) === String(candidato.pjfOrgId)
+            : _normalizarIdentidadExpediente(guardado.juzgado) === _normalizarIdentidadExpediente(candidato.juzgado);
+        if (!mismo) return false;
+        // En un mismo tribunal hay un amparo directo y un recurso de revisión con
+        // el mismo número: el tipo solo distingue si los dos lo tienen.
+        return !(guardado.pjfTipoAsunto && candidato.pjfTipoAsunto &&
+            String(guardado.pjfTipoAsunto) !== String(candidato.pjfTipoAsunto));
+    }
+    return _normalizarIdentidadExpediente(guardado.juzgado) === _normalizarIdentidadExpediente(candidato.juzgado);
+}
+
+/**
+ * ¿A cuál de mis expedientes corresponde el que leyó la IA en un acuerdo?
+ *
+ * El número solo no lo dice: cada juzgado numera desde 1 cada año y, en el PJF,
+ * cada tipo de asunto lleva su propia numeración. Antes se vinculaba al primer
+ * expediente con ese número, de cualquier juzgado o tribunal, y las fechas y
+ * notas del acuerdo acababan en el asunto de otro órgano.
+ *
+ *  - Con órgano conocido (el del acuerdo), se vincula al del mismo órgano; si no
+ *    hay, solo a uno que tampoco tenga órgano conocido (puede ser el mismo asunto
+ *    dado de alta sin él). Con el mismo número en otro órgano es otro asunto.
+ *  - Sin órgano en el acuerdo no hay con qué distinguir: con un solo expediente
+ *    de ese número se vincula (como siempre); con varios no se adivina.
+ *
+ * `soloInstitucion`: restringe a una institución (la pestaña del PJF).
+ * → { existente, ambiguos }: a cuál vincular (o null) y, si hay varios posibles
+ *   y no se sabe cuál, cuáles (no se vincula ni se crea otro).
+ */
+function _elegirExpedienteDeIA(expedientes, candidato, soloInstitucion) {
+    const texto = String(candidato.numero || candidato.nombre || '').trim().toLowerCase();
+    if (!texto) return { existente: null, ambiguos: [] };
+    const mismoTexto = (e) => (e.numero && e.numero.trim().toLowerCase() === texto) ||
+        (e.nombre && e.nombre.trim().toLowerCase() === texto);
+    let posibles = (expedientes || []).filter(e => mismoTexto(e) &&
+        (!soloInstitucion || e.institucion === soloInstitucion));
+
+    if (!_organoSinDeterminar(candidato)) {
+        const delOrgano = posibles.filter(e => _mismoOrganoParaIA(e, candidato));
+        posibles = delOrgano.length ? delOrgano : posibles.filter(e => _organoSinDeterminar(e));
+    }
+    if (posibles.length <= 1) return { existente: posibles[0] || null, ambiguos: [] };
+    return { existente: null, ambiguos: posibles };
+}
+
 async function guardarResultadosIA() {
     if (!resultadosIAActuales) return;
 
@@ -7929,27 +8056,31 @@ async function guardarResultadosIA() {
     // Si hay un expediente (personalizado o extraído por IA), crearlo/vincularlo automáticamente
     if (resultado.expedienteTexto && !resultado.expedienteId) {
         try {
-            // Verificar si ya existe un expediente con ese número
-            const expedientes = await obtenerExpedientes();
-            const existente = expedientes.find(e =>
-                (e.numero && e.numero.toLowerCase() === resultado.expedienteTexto.toLowerCase()) ||
-                (e.nombre && e.nombre.toLowerCase() === resultado.expedienteTexto.toLowerCase())
-            );
+            // El expediente que se crearía, ya ubicado en su órgano: con él se
+            // decide si ya existe. El número solo no basta (ver _elegirExpedienteDeIA).
+            const nuevoExp = {
+                numero: resultado.expedienteTexto,
+                juzgado: juzgadoExtraido || 'Por determinar',
+                categoria: 'General',
+                institucion: institucionExtraida,
+                comentario: `Creado automáticamente desde análisis IA${juzgadoExtraido ? ' - ' + juzgadoExtraido : ''}`
+            };
+            await _ubicarExpedienteIA(nuevoExp, resultado.tipo_asunto);
+            // El tipo de asunto federal solo cuenta si el acuerdo lo dice: sin él el
+            // catálogo supone «amparo directo», y esa suposición no es un dato.
+            const paraVincular = resultado.tipo_asunto ? nuevoExp : { ...nuevoExp, pjfTipoAsunto: undefined };
+            const { existente, ambiguos } = _elegirExpedienteDeIA(await obtenerExpedientes(), paraVincular);
 
-            if (existente) {
+            if (ambiguos.length) {
+                // Varios expedientes con ese número y el acuerdo no dice de cuál órgano:
+                // no se adivina. Las fechas y notas se guardan sueltas, con el número.
+                mostrarToast(`Tienes ${ambiguos.length} expedientes con el número "${resultado.expedienteTexto}" y el acuerdo no dice de cuál es: se guardó sin vincular. Elige el expediente al analizar para vincularlo.`, 'warning');
+            } else if (existente) {
                 // Ya existe, usar su ID
                 resultado.expedienteId = existente.id;
                 mostrarToast(`Expediente "${resultado.expedienteTexto}" ya existe, vinculando...`, 'info');
             } else {
                 // Crear nuevo expediente con datos extraídos por IA
-                const nuevoExp = {
-                    numero: resultado.expedienteTexto,
-                    juzgado: juzgadoExtraido || 'Por determinar',
-                    categoria: 'General',
-                    institucion: institucionExtraida,
-                    comentario: `Creado automáticamente desde análisis IA${juzgadoExtraido ? ' - ' + juzgadoExtraido : ''}`
-                };
-                await _ubicarExpedienteIA(nuevoExp, resultado.tipo_asunto);
                 institucionExtraida = nuevoExp.institucion;
                 const idNuevo = await agregarExpediente(nuevoExp);
                 resultado.expedienteId = idNuevo;
@@ -11860,25 +11991,27 @@ async function guardarResultadosIAPJF() {
     // Create/link PJF expediente
     if (resultado.expedienteTexto && !resultado.expedienteId) {
         try {
-            const expedientes = await obtenerExpedientes();
-            const existente = expedientes.find(e =>
-                e.institucion === 'PJF' &&
-                ((e.numero && e.numero.toLowerCase() === resultado.expedienteTexto.toLowerCase()) ||
-                 (e.nombre && e.nombre.toLowerCase() === resultado.expedienteTexto.toLowerCase()))
-            );
+            // El expediente que se crearía, con su órgano y tipo de asunto del
+            // catálogo: con él se decide si ya existe (el número solo no basta).
+            const nuevoExp = {
+                numero: resultado.expedienteTexto,
+                juzgado: juzgadoExtraido || 'PJF - Por determinar',
+                categoria: 'PJF Federal',
+                institucion: 'PJF',
+                comentario: `Creado desde análisis IA PJF${juzgadoExtraido ? ' - ' + juzgadoExtraido : ''}`
+            };
+            await _completarExpedientePJFNuevo(nuevoExp, resultado.tipo_asunto);
+            // El tipo de asunto solo cuenta si el acuerdo lo dice: sin él el catálogo
+            // supone «amparo directo», y esa suposición no es un dato.
+            const paraVincular = resultado.tipo_asunto ? nuevoExp : { ...nuevoExp, pjfTipoAsunto: undefined };
+            const { existente, ambiguos } = _elegirExpedienteDeIA(await obtenerExpedientes(), paraVincular, 'PJF');
 
-            if (existente) {
+            if (ambiguos.length) {
+                mostrarToast(`Tienes ${ambiguos.length} expedientes PJF con el número "${resultado.expedienteTexto}" y el acuerdo no dice de cuál es: se guardó sin vincular. Elige el expediente al analizar para vincularlo.`, 'warning');
+            } else if (existente) {
                 resultado.expedienteId = existente.id;
                 mostrarToast(`Expediente PJF "${resultado.expedienteTexto}" ya existe, vinculando...`, 'info');
             } else {
-                const nuevoExp = {
-                    numero: resultado.expedienteTexto,
-                    juzgado: juzgadoExtraido || 'PJF - Por determinar',
-                    categoria: 'PJF Federal',
-                    institucion: 'PJF',
-                    comentario: `Creado desde análisis IA PJF${juzgadoExtraido ? ' - ' + juzgadoExtraido : ''}`
-                };
-                await _completarExpedientePJFNuevo(nuevoExp, resultado.tipo_asunto);
                 const idNuevo = await agregarExpediente(nuevoExp);
                 resultado.expedienteId = idNuevo;
                 guardados++;

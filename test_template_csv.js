@@ -140,7 +140,8 @@ const NECESARIO_DE_APP = [
     '_buscarOrganoPJFPorNombre', '_resolverDestinoFila',
     // Importación
     '_TIPOS_CSV_NUMERO', '_TIPOS_CSV_NOMBRE', '_tipoBusquedaDesdeCSV',
-    '_esFilaEjemploTemplate', '_claveExpediente', '_claveNombreCarpetaLocal',
+    '_esFilaEjemploTemplate', '_claveExpediente', '_tipoAsuntoParaImportar', '_claveAsuntoDeFila',
+    '_casarExistenteConAsunto', '_claveNombreCarpetaLocal',
     '_resolverCarpetasDeImportacion', '_aplicarLimitePlanAImportacion',
     'mostrarInformeImportacion', '_PRIORIDADES_CSV', '_TIPOS_EVENTO_CSV',
     '_extrasDeFila', 'importarExpedientes', '_contarPorInstitucion',

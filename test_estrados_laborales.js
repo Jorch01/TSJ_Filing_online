@@ -86,6 +86,19 @@ console.log('\nExpedientes laborales en la app');
     igual('Junta Especial de Cozumel', u({ juzgado: 'Junta Especial de Conciliación y Arbitraje Cozumel' }), 'JECA Cozumel');
     igual('Junta Especial de Playa del Carmen', u({ juzgado: 'JECA Playa del Carmen' }), 'JECA Playa');
     igual('Junta Especial 2 de Benito Juárez', u({ juzgado: 'Junta Especial 2 Benito Juárez' }), 'JECA 2 BJ');
+    igual('Junta Especial Número Dos', u({ juzgado: 'Junta Especial Número Dos de Benito Juárez' }), 'JECA 2 BJ');
+    igual('JECA 2 BJ', u({ juzgado: 'JECA 2 BJ' }), 'JECA 2 BJ');
+    igual('Segunda Junta Especial', u({ juzgado: 'Segunda Junta Especial de Conciliación y Arbitraje de Benito Juárez' }), 'JECA 2 BJ');
+    igual('Junta Especial Benito Juárez 2 (el número al final)', u({ juzgado: 'Junta Especial Benito Juárez 2' }), 'JECA 2 BJ');
+    igual('Junta Especial 1 → la primera', u({ juzgado: 'Junta Especial 1 Benito Juárez' }), 'JECA 1 BJ');
+
+    // Cuál es la Junta lo dice su nombre, no el número del expediente ni lo que
+    // diga un comentario: un «2/2026» de la Junta 1 acababa consultándose en la 2.
+    igual('el número 2/2026 no lo pasa a la Junta 2', u({ institucion: 'OTRO', juzgado: 'Junta Especial 1 Benito Juárez', numero: '2/2026' }), 'JECA 1 BJ');
+    igual('ni "dos testigos" en el comentario', u({ institucion: 'OTRO', juzgado: 'Junta Especial Benito Juárez', numero: '30/2026', comentario: 'ofrecer dos testigos' }), 'JECA 1 BJ');
+    igual('ni un 2 en el nombre de las partes', u({ institucion: 'OTRO', juzgado: 'Junta Especial 1 Benito Juárez', nombre: 'Pérez vs 2 empresas' }), 'JECA 1 BJ');
+    igual('sin el nombre en la autoridad se mira lo demás (el TCA por su prefijo)', u({ institucion: 'OTRO', juzgado: 'Autoridad no especificada', numero: 'DIT-21/2026' }), 'TCA');
+    igual('un expediente del TSJ nunca es laboral aunque el comentario hable de una Junta', u({ institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN', numero: '5/2026', comentario: 'Viene de la Junta Local de Conciliación' }), null);
     igual('un juzgado civil no', u({ institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN', numero: '174/2026' }), null);
     igual('un expediente federal no', u({ institucion: 'PJF', juzgado: 'Tribunal Colegiado en Materia de Trabajo' }), null);
 }

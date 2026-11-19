@@ -288,13 +288,37 @@
      * Especial y su ciudad.
      */
     function unidadDeExpediente(exp) {
-        if (!exp || exp.institucion === 'PJF') return null;
-        const t = nucleo().normalizar([exp.juzgado, exp.nombre, exp.numero, exp.comentario, exp.institucionOtra, exp.organo].filter(Boolean).join(' '));
+        // Un expediente del TSJ es de un juzgado del catálogo del Poder Judicial,
+        // no del TCA ni de una Junta; y uno federal tampoco.
+        if (!exp || exp.institucion === 'PJF' || exp.institucion === 'TSJ') return null;
+        const normalizar = nucleo().normalizar;
+        // Cuál es el órgano lo dice la autoridad (el juzgado). Solo si ahí no hay
+        // nada que reconocer se mira el resto: antes se juntaba todo en un texto,
+        // y el «2» del número 2/2026, o un «dos testigos» en el comentario, pasaba
+        // un expediente de la Junta Especial 1 a la 2, con la consulta puesta en
+        // la unidad equivocada.
+        const autoridad = normalizar([exp.juzgado, exp.institucionOtra, exp.organo].filter(Boolean).join(' '));
+        return unidadEn(autoridad, true) ||
+            unidadEn(normalizar([exp.numero, exp.nombre, exp.comentario].filter(Boolean).join(' ')), false);
+    }
+
+    /**
+     * La unidad que nombra un texto ya normalizado. `ordinal`: si el texto es el
+     * de la autoridad, se mira también cuál de las dos Juntas Especiales de
+     * Benito Juárez es, y solo por el número que lleva junto a su nombre.
+     */
+    function unidadEn(t, ordinal) {
+        if (!t) return null;
         if (/junta especial|\bjeca\b/.test(t)) {
             if (/cozumel/.test(t)) return UNIDADES[4];
             if (/playa del carmen|solidaridad/.test(t)) return UNIDADES[5];
-            if (/\b(2|dos|segunda)\b/.test(t)) return UNIDADES[3];
-            return UNIDADES[2];
+            // «Junta Especial 2», «JECA 2 BJ», «Junta Especial Número Dos», «Junta
+            // Especial Benito Juárez 2» o «Segunda Junta Especial». Un número que
+            // no está pegado al nombre de la junta no cuenta.
+            const juntaDos = ordinal && (
+                /(junta especial|\bjeca)[^0-9]{0,40}?\b(2|dos|ii|segunda)\b/.test(t) ||
+                /\b(segunda|2da|2a|dos)\s+junta especial/.test(t));
+            return juntaDos ? UNIDADES[3] : UNIDADES[2];
         }
         if (/junta local|\bjlca\b/.test(t)) return UNIDADES[1];
         if (/conciliacion y arbitraje|\btca\b|\bdit-?\s*\d/.test(t)) return UNIDADES[0];

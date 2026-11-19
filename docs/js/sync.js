@@ -1340,8 +1340,18 @@ function normalizarNumeroExpediente(numero) {
 function discriminanteAsunto(exp) {
     const institucion = (exp && exp.institucion) || 'TSJ';
     if (institucion === 'PJF') return `${normalizarTexto(exp.pjfOrgId)}/${normalizarTexto(exp.pjfTipoAsunto)}`;
-    if (institucion === 'OTRO') return normalizarTexto(exp.tipo);
+    if (institucion === 'OTRO') return `${normalizarTexto(exp.tipo)}/${normalizarTexto(exp.cliente)}`;
     return '';
+}
+
+// ¿Sin órgano (o autoridad) conocido? El texto de relleno con que se guardan
+// («PJF - Por determinar», «Autoridad no especificada») es el mismo para todos
+// y no dice de qué órgano es un asunto. Es la misma regla que _organoSinDeterminar
+// en database.js.
+function organoSinDeterminar(exp) {
+    if (exp && (exp.institucion || 'TSJ') === 'PJF' && exp.pjfOrgId) return false;
+    const juzgado = normalizarTexto(exp && exp.juzgado);
+    return !juzgado || /pordeterminar|sindeterminar|noespecificad|noidentificad|desconocid/.test(juzgado);
 }
 
 // Detectar si dos expedientes son potencialmente duplicados
@@ -1352,6 +1362,11 @@ function sonExpedientesDuplicados(exp1, exp2) {
     // al que se le puso o cambió el tipo de asunto en otro dispositivo.
     const mismaAlta = !!exp1.fechaCreacion && exp1.fechaCreacion === exp2.fechaCreacion;
     if (!mismaAlta && discriminanteAsunto(exp1) !== discriminanteAsunto(exp2)) {
+        return { esDuplicado: false, confianza: 0, razon: null };
+    }
+    // Sin órgano conocido, dos altas por separado con el mismo número no se
+    // pueden dar por el mismo asunto.
+    if (!mismaAlta && (organoSinDeterminar(exp1) || organoSinDeterminar(exp2))) {
         return { esDuplicado: false, confianza: 0, razon: null };
     }
 

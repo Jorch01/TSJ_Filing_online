@@ -51,17 +51,19 @@ function crearEntorno(expedientes) {
     vm.createContext(sandbox);
 
     const db = fs.readFileSync(path.join(JS, 'database.js'), 'utf8');
-    for (const n of ['_normalizarIdentidadExpediente', '_discriminanteAsunto', '_claveIdentidadExpediente',
-                     'eliminarExpedientesDuplicados']) {
+    for (const n of ['_normalizarIdentidadExpediente', '_discriminanteAsunto', '_RE_ORGANO_SIN_DETERMINAR', '_organoSinDeterminar',
+                     '_claveIdentidadExpediente', 'eliminarExpedientesDuplicados']) {
         vm.runInContext(extraerDeclaracion(db, n, 'database.js'), sandbox, { filename: `database.js:${n}` });
     }
 
     const app = fs.readFileSync(path.join(JS, 'app.js'), 'utf8');
-    vm.runInContext(extraerDeclaracion(app, '_esMismoAsuntoPJF', 'app.js'), sandbox, { filename: 'app.js:_esMismoAsuntoPJF' });
+    for (const n of ['_esMismoAsuntoPJF', '_mismoOrganoParaIA', '_elegirExpedienteDeIA']) {
+        vm.runInContext(extraerDeclaracion(app, n, 'app.js'), sandbox, { filename: `app.js:${n}` });
+    }
 
     const sync = fs.readFileSync(path.join(JS, 'sync.js'), 'utf8');
     for (const n of ['normalizarTexto', 'normalizarNumeroExpediente',
-                     'claveExpediente', 'discriminanteAsunto', 'sonExpedientesDuplicados']) {
+                     'claveExpediente', 'discriminanteAsunto', 'organoSinDeterminar', 'sonExpedientesDuplicados']) {
         vm.runInContext(extraerDeclaracion(sync, n, 'sync.js'), sandbox, { filename: `sync.js:${n}` });
     }
     return { sandbox, estado };
@@ -165,10 +167,36 @@ async function pruebaNoBorraAsuntosDistintos() {
     r = await barrer([pjf(1, { pjfTipoAsunto: '4' }), pjf(2, { pjfTipoAsunto: '4', pjfOrgId: '999' })]);
     igual('PJF: otro órgano con el mismo nombre (otro id) es otro asunto', r.quedan, [1, 2]);
 
+    // Cuando el órgano no se sabe, el expediente se guarda con un texto de relleno
+    // («PJF - Por determinar», «Autoridad no especificada»). Ese texto es el mismo
+    // para todos, así que dos asuntos sin relación que comparten número parecían
+    // el mismo y el barrido borraba uno. Sin órgano no hay forma de saberlo.
+    r = await barrer([
+        exp(1, { numero: '45/2026', institucion: 'PJF', juzgado: 'PJF - Por determinar', comentario: 'Asunto de Pérez' }),
+        exp(2, { numero: '45/2026', institucion: 'PJF', juzgado: 'PJF - Por determinar' })
+    ]);
+    igual('PJF sin órgano: dos asuntos con el mismo número no se toman por uno', r.quedan, [1, 2]);
+    r = await barrer([
+        exp(1, { numero: '123/2026', institucion: 'OTRO', juzgado: 'Autoridad no especificada', comentario: 'IMSS' }),
+        exp(2, { numero: '123/2026', institucion: 'OTRO', juzgado: 'Autoridad no especificada', comentario: 'SAT' })
+    ]);
+    igual('Otros sin autoridad: dos asuntos con el mismo número no se toman por uno', r.quedan, [1, 2]);
+    r = await barrer([
+        exp(1, { numero: '77/2026', institucion: 'TSJ', juzgado: 'Por determinar' }),
+        exp(2, { numero: '77/2026', institucion: 'TSJ', juzgado: 'Por determinar' })
+    ]);
+    igual('TSJ creado por la IA sin órgano: tampoco', r.quedan, [1, 2]);
+    r = await barrer([exp(1, { numero: '88/2026', institucion: 'OTRO', juzgado: '' }), exp(2, { numero: '88/2026', institucion: 'OTRO', juzgado: '' })]);
+    igual('un juzgado vacío tampoco identifica', r.quedan, [1, 2]);
+
     // Fuera del PJF no hay catálogo de tipos: el que el usuario escribe distingue.
     const imss = (id, campos) => exp(id, { numero: '45/2026', institucion: 'OTRO', juzgado: 'IMSS', ...campos });
     r = await barrer([imss(1, { tipo: 'Queja' }), imss(2, { tipo: 'Revisión' })]);
     igual('Otros: mismo número y autoridad con otro tipo de asunto es otro asunto', r.quedan, [1, 2]);
+    r = await barrer([imss(1, { cliente: 'Constructora Alfa' }), imss(2, { cliente: 'Hotel Beta' })]);
+    igual('Otros: mismo número y autoridad pero de otro cliente es otro asunto (el «IMSS» de Cancún y el de Mérida)', r.quedan, [1, 2]);
+    r = await barrer([imss(1, { cliente: 'Constructora Alfa', comentario: 'con datos' }), imss(2, { cliente: 'Constructora Alfa' })]);
+    igual('Otros: dos altas idénticas (mismo cliente) siguen siendo una', r.quedan, [1]);
 
     // Mientras que el tipo de asunto de un expediente del TSJ es solo una etiqueta
     // y el juzgado ya numera todos sus juicios: ahí no distingue nada.
@@ -251,6 +279,20 @@ function pruebaFusionSync() {
         !dup(exp(1, { numero: '902/2025' }),
              exp(2, { numero: '902/2025', juzgado: 'JUZGADO SEGUNDO CIVIL CANCUN' })));
 
+    // Sin órgano conocido (texto de relleno), dos altas con el mismo número no son el mismo asunto.
+    verificar('sync: PJF sin órgano, dos altas por separado con el mismo número NO se fusionan',
+        !dup(exp(1, { numero: '45/2026', institucion: 'PJF', juzgado: 'PJF - Por determinar', fechaCreacion: '2026-01-01T10:00:00Z' }),
+             exp(2, { numero: '45/2026', institucion: 'PJF', juzgado: 'PJF - Por determinar', fechaCreacion: '2026-02-02T10:00:00Z' })));
+    verificar('sync: Otros sin autoridad, tampoco',
+        !dup(exp(1, { numero: '123/2026', institucion: 'OTRO', juzgado: 'Autoridad no especificada', fechaCreacion: '2026-01-01T10:00:00Z' }),
+             exp(2, { numero: '123/2026', institucion: 'OTRO', juzgado: 'Autoridad no especificada', fechaCreacion: '2026-02-02T10:00:00Z' })));
+    verificar('sync: pero el MISMO registro sin órgano en dos dispositivos sigue siendo uno',
+        dup(exp(1, { numero: '45/2026', institucion: 'PJF', juzgado: 'PJF - Por determinar', fechaCreacion: '2026-03-03T10:00:00Z' }),
+            exp(2, { numero: '45/2026', institucion: 'PJF', juzgado: 'PJF - Por determinar', comentario: 'editado', fechaCreacion: '2026-03-03T10:00:00Z' })));
+    verificar('sync: Otros, mismo número y autoridad de otro cliente, no se fusionan',
+        !dup(exp(1, { numero: '45/2026', institucion: 'OTRO', juzgado: 'IMSS', cliente: 'Alfa' }),
+             exp(2, { numero: '45/2026', institucion: 'OTRO', juzgado: 'IMSS', cliente: 'Beta' })));
+
     // El mismo número y órgano con otro tipo de asunto son dos asuntos del PJF.
     const pjf = (id, campos) => exp(id, { numero: '577/2026', institucion: 'PJF', juzgado: 'Tribunal X', pjfOrgId: '321', ...campos });
     verificar('sync: PJF, mismo número y órgano con otro tipo de asunto NO se fusionan',
@@ -276,7 +318,13 @@ function pruebaFusionSync() {
         pjf(3, { pjfTipoAsunto: '4' }), pjf(4, { pjfTipoAsunto: '9' }), pjf(5, {}), pjf(6, { pjfTipoAsunto: '4', pjfOrgId: '999' }),
         exp(7, { numero: '2/2026', institucion: 'OTRO', juzgado: 'IMSS', tipo: 'Queja' }),
         exp(8, { numero: '2/2026', institucion: 'OTRO', juzgado: 'IMSS', tipo: 'Revisión' }),
-        exp(9, { numero: '2/2026', institucion: 'OTRO', juzgado: 'IMSS' })
+        exp(9, { numero: '2/2026', institucion: 'OTRO', juzgado: 'IMSS' }),
+        exp(10, { numero: '2/2026', institucion: 'OTRO', juzgado: 'IMSS', cliente: 'Alfa' }),
+        exp(11, { numero: '3/2026', institucion: 'PJF', juzgado: 'PJF - Por determinar' }),
+        exp(12, { numero: '3/2026', institucion: 'OTRO', juzgado: 'Autoridad no especificada' }),
+        exp(13, { numero: '3/2026', institucion: 'TSJ', juzgado: 'Por determinar' }),
+        exp(14, { numero: '3/2026', institucion: 'OTRO', juzgado: '' }),
+        pjf(15, { juzgado: 'PJF - Por determinar' })
     ];
     let coinciden = true;
     for (const a of casos) for (const b of casos) {
@@ -284,7 +332,15 @@ function pruebaFusionSync() {
         const nube = sandbox.discriminanteAsunto(a) === sandbox.discriminanteAsunto(b);
         if (local !== nube) { coinciden = false; }
     }
-    verificar('las dos copias de la regla (database.js y sync.js) coinciden', coinciden);
+    verificar('las dos copias de la regla de lo que distingue un asunto (database.js y sync.js) coinciden', coinciden);
+    let coincidenOrgano = true;
+    for (const a of casos) {
+        if (sandbox._organoSinDeterminar(a) !== sandbox.organoSinDeterminar(a)) coincidenOrgano = false;
+    }
+    verificar('las dos copias de la regla de órgano sin determinar coinciden', coincidenOrgano);
+    verificar('un órgano federal con id no es "sin determinar" aunque el texto lo diga', !sandbox._organoSinDeterminar(pjf(16, { juzgado: 'PJF - Por determinar' })));
+    verificar('y sin id sí', sandbox._organoSinDeterminar(exp(17, { institucion: 'PJF', juzgado: 'PJF - Por determinar' })));
+    verificar('un juzgado del catálogo del TSJ nunca', !sandbox._organoSinDeterminar(exp(18, { numero: '1/2026' })));
 }
 
 // ==================== "BUSCAR Y GUARDAR" DEL PJF ====================
@@ -310,12 +366,73 @@ function pruebaGuardarPJF() {
         !mismo({ ...guardado, pjfOrgId: undefined }, nuevo({ orgId: '', orgNombre: 'Otro tribunal' })));
 }
 
+// ==================== A QUÉ EXPEDIENTE PERTENECE UN ACUERDO LEÍDO POR LA IA ====================
+
+function pruebaVinculoIA() {
+    const { sandbox } = crearEntorno([]);
+    const elegir = (guardados, candidato, soloInstitucion) => {
+        const r = sandbox._elegirExpedienteDeIA(guardados, candidato, soloInstitucion);
+        return { existente: r.existente ? r.existente.id : null, ambiguos: r.ambiguos.map(e => e.id) };
+    };
+    const PRIMERO = 'JUZGADO PRIMERO CIVIL CANCUN', SEGUNDO = 'JUZGADO SEGUNDO FAMILIAR CANCUN';
+    const tsj = (id, num, juz) => exp(id, { numero: num, institucion: 'TSJ', juzgado: juz });
+    const cand = (num, juz, extra) => ({ numero: num, institucion: 'TSJ', juzgado: juz, ...extra });
+
+    // Cada juzgado numera desde 1 cada año: el 123/2025 del Segundo no es el del Primero.
+    igual('IA: el mismo número de otro juzgado NO se vincula (es otro asunto)',
+        elegir([tsj(1, '123/2025', PRIMERO)], cand('123/2025', SEGUNDO)), { existente: null, ambiguos: [] });
+    igual('IA: el mismo número del mismo juzgado sí', elegir([tsj(1, '123/2025', PRIMERO)], cand('123/2025', PRIMERO)), { existente: 1, ambiguos: [] });
+    igual('IA: entre dos juzgados con el mismo número, el del acuerdo',
+        elegir([tsj(1, '123/2025', PRIMERO), tsj(2, '123/2025', SEGUNDO)], cand('123/2025', SEGUNDO)), { existente: 2, ambiguos: [] });
+    igual('IA: mayúsculas y acentos no importan',
+        elegir([tsj(1, '123/2025', PRIMERO)], cand('123/2025', 'Juzgado Primero Civil Cancún')), { existente: 1, ambiguos: [] });
+
+    // El acuerdo no siempre dice el órgano.
+    igual('IA: sin órgano en el acuerdo y un solo expediente con ese número, se vincula (como siempre)',
+        elegir([tsj(1, '123/2025', PRIMERO)], cand('123/2025', 'Por determinar')), { existente: 1, ambiguos: [] });
+    igual('IA: sin órgano y varios con ese número, no se adivina',
+        elegir([tsj(1, '123/2025', PRIMERO), tsj(2, '123/2025', SEGUNDO)], cand('123/2025', 'Por determinar')), { existente: null, ambiguos: [1, 2] });
+    igual('IA: con órgano y un expediente que se dio de alta sin él, se vincula a ese',
+        elegir([tsj(1, '123/2025', 'Por determinar')], cand('123/2025', PRIMERO)), { existente: 1, ambiguos: [] });
+    igual('IA: pero si hay uno del mismo órgano, manda ese sobre el que no tiene órgano',
+        elegir([tsj(1, '123/2025', 'Por determinar'), tsj(2, '123/2025', PRIMERO)], cand('123/2025', PRIMERO)), { existente: 2, ambiguos: [] });
+    igual('IA: sin ningún expediente con ese número no hay nada que vincular',
+        elegir([tsj(1, '999/2025', PRIMERO)], cand('123/2025', PRIMERO)), { existente: null, ambiguos: [] });
+
+    // Federal: órgano por id y tipo de asunto.
+    const TCA = 'Tribunal Colegiado en Materia Administrativa del Vigésimo Circuito';
+    const pjf = (id, tipo, org) => exp(id, { numero: '577/2026', institucion: 'PJF', juzgado: TCA, pjfOrgId: org || '321', pjfTipoAsunto: tipo });
+    const candPjf = (extra) => ({ numero: '577/2026', institucion: 'PJF', juzgado: TCA, pjfOrgId: '321', ...extra });
+    igual('IA PJF: el recurso de revisión se vincula al recurso, no al amparo del mismo número y tribunal',
+        elegir([pjf(1, '4'), pjf(2, '9')], candPjf({ pjfTipoAsunto: '9' })), { existente: 2, ambiguos: [] });
+    igual('IA PJF: un tipo que no tengo en ese tribunal es otro asunto',
+        elegir([pjf(1, '4')], candPjf({ pjfTipoAsunto: '9' })), { existente: null, ambiguos: [] });
+    igual('IA PJF: sin tipo en el acuerdo y dos asuntos del mismo número y tribunal, no se adivina',
+        elegir([pjf(1, '4'), pjf(2, '9')], candPjf({})), { existente: null, ambiguos: [1, 2] });
+    igual('IA PJF: el mismo número en otro órgano es otro asunto',
+        elegir([pjf(1, '4', '999')], candPjf({ pjfTipoAsunto: '4' })), { existente: null, ambiguos: [] });
+    igual('IA PJF: sin tipo en el acuerdo y un solo asunto, se vincula',
+        elegir([pjf(1, '4')], candPjf({})), { existente: 1, ambiguos: [] });
+    igual('IA PJF: el tipo guardado como nada se vincula con cualquiera (podía ser el mismo)',
+        elegir([pjf(1, undefined)], candPjf({ pjfTipoAsunto: '9' })), { existente: 1, ambiguos: [] });
+
+    // Instituciones distintas con el mismo número no son el mismo asunto.
+    igual('IA: un expediente del TSJ y uno federal con el mismo número son distintos',
+        elegir([tsj(1, '577/2026', PRIMERO)], candPjf({})), { existente: null, ambiguos: [] });
+    igual('IA: la pestaña del PJF solo mira los federales',
+        elegir([tsj(1, '577/2026', 'Por determinar'), pjf(2, '4')], candPjf({ pjfTipoAsunto: '4' }), 'PJF'), { existente: 2, ambiguos: [] });
+    // Por nombre de las partes.
+    igual('IA: también por el nombre de las partes',
+        elegir([exp(1, { nombre: 'Juan Pérez', juzgado: PRIMERO })], cand('juan pérez', PRIMERO)), { existente: 1, ambiguos: [] });
+}
+
 (async () => {
     const pruebas = [
         ['no borrar asuntos distintos', pruebaNoBorraAsuntosDistintos],
         ['sí borrar duplicados reales', pruebaSiBorraDuplicadosReales],
         ['la fusión de la sincronización', pruebaFusionSync],
-        ['"Buscar y guardar" del PJF', pruebaGuardarPJF]
+        ['"Buscar y guardar" del PJF', pruebaGuardarPJF],
+        ['a qué expediente pertenece un acuerdo leído por la IA', pruebaVinculoIA]
     ];
     for (const [nombre, fn] of pruebas) {
         try { await fn(); }
