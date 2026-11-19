@@ -1354,6 +1354,18 @@ function organoSinDeterminar(exp) {
     return !juzgado || /pordeterminar|sindeterminar|noespecificad|noidentificad|desconocid/.test(juzgado);
 }
 
+// ¿Falta algo para saber que dos expedientes con estos datos son el mismo asunto?
+// Sin órgano, o sin tipo de asunto en el PJF, o sin tipo ni cliente en otras
+// autoridades, el número y el órgano no bastan para asegurarlo. Es la misma regla
+// que _asuntoSinIdentificar en database.js.
+function asuntoSinIdentificar(exp) {
+    if (organoSinDeterminar(exp)) return true;
+    const institucion = (exp && exp.institucion) || 'TSJ';
+    if (institucion === 'PJF') return !normalizarTexto(exp.pjfTipoAsunto);
+    if (institucion === 'OTRO') return !normalizarTexto(exp.tipo) && !normalizarTexto(exp.cliente);
+    return false;
+}
+
 // Detectar si dos expedientes son potencialmente duplicados
 function sonExpedientesDuplicados(exp1, exp2) {
     // Dos altas por separado con el mismo número y órgano pero de distinto tipo
@@ -1364,9 +1376,9 @@ function sonExpedientesDuplicados(exp1, exp2) {
     if (!mismaAlta && discriminanteAsunto(exp1) !== discriminanteAsunto(exp2)) {
         return { esDuplicado: false, confianza: 0, razon: null };
     }
-    // Sin órgano conocido, dos altas por separado con el mismo número no se
-    // pueden dar por el mismo asunto.
-    if (!mismaAlta && (organoSinDeterminar(exp1) || organoSinDeterminar(exp2))) {
+    // Si faltan datos para asegurar que son el mismo asunto (sin órgano, sin tipo
+    // de asunto federal…), dos altas por separado no se dan por una.
+    if (!mismaAlta && (asuntoSinIdentificar(exp1) || asuntoSinIdentificar(exp2))) {
         return { esDuplicado: false, confianza: 0, razon: null };
     }
 

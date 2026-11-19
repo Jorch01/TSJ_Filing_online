@@ -1008,6 +1008,32 @@ function _organoSinDeterminar(exp) {
 }
 
 /**
+ * ¿Falta algo para saber que dos expedientes con estos datos son el mismo asunto?
+ * El barrido borra la copia: solo debe hacerlo cuando el sistema puede asegurar
+ * que lo es, no cuando coinciden unos datos que no bastan para decirlo.
+ *
+ * - Sin órgano conocido, no (ver _organoSinDeterminar).
+ * - PJF sin tipo de asunto, no: cada tipo lleva su propia numeración, así que
+ *   un mismo número en el mismo tribunal puede ser un amparo directo y un
+ *   recurso de revisión, y el formulario deja el tipo en blanco (no lo supone).
+ * - Otras autoridades sin tipo ni cliente, no: el nombre de la autoridad lo
+ *   teclea cada quien y su numeración no es única.
+ * - TSJ sí: el juzgado, del catálogo, numera todos sus juicios en una serie.
+ * Ante la duda queda un duplicado a la vista, que se borra a mano; lo que no
+ * tiene vuelta es borrar un asunto que el usuario acaba de capturar.
+ * sync.js tiene su copia (asuntoSinIdentificar).
+ */
+function _asuntoSinIdentificar(exp) {
+    if (_organoSinDeterminar(exp)) return true;
+    const institucion = (exp && exp.institucion) || 'TSJ';
+    if (institucion === 'PJF') return !_normalizarIdentidadExpediente(exp.pjfTipoAsunto);
+    if (institucion === 'OTRO') {
+        return !_normalizarIdentidadExpediente(exp.tipo) && !_normalizarIdentidadExpediente(exp.cliente);
+    }
+    return false;
+}
+
+/**
  * Quita los expedientes que están repetidos de forma literal, conservando el
  * más completo. Devuelve la lista de lo que quitó —{ conservado, eliminado }—
  * para que quien lo llame pueda decírselo al usuario: borrar un expediente en
@@ -1025,9 +1051,10 @@ async function eliminarExpedientesDuplicados() {
         if (!_normalizarIdentidadExpediente(exp.numero) &&
             !_normalizarIdentidadExpediente(exp.nombre)) continue;
 
-        // Y sin órgano conocido el juzgado tampoco identifica: lo mismo, no se
-        // borra por una coincidencia de número y de un texto de relleno.
-        if (_organoSinDeterminar(exp)) continue;
+        // Y si faltan datos para saber que dos son el mismo asunto (sin órgano, sin
+        // tipo de asunto federal…), tampoco: no se borra por una coincidencia que
+        // no basta para asegurarlo.
+        if (_asuntoSinIdentificar(exp)) continue;
 
         const clave = _claveIdentidadExpediente(exp);
         if (!expedientesPorClave.has(clave)) {
