@@ -224,6 +224,17 @@ async function inicializarApp() {
         }
     }
 
+    // Antes de sincronizar y de cualquier barrido: un expediente que se ve aquí
+    // no debe quedar bajo una lápida que lo borraría en la próxima sincronización.
+    if (typeof rescatarExpedientesBajoLapida === 'function') {
+        try {
+            const rescatados = await rescatarExpedientesBajoLapida();
+            if (rescatados > 0) Logger.log(`Se protegieron ${rescatados} expediente(s) de un borrado que no se pidió`);
+        } catch (e) {
+            console.warn('No se pudo revisar los borrados pendientes:', e);
+        }
+    }
+
     await cargarEstadisticas();
     // Los pendientes van antes que los expedientes: la tarjeta de cada
     // expediente pinta cuántos tiene por hacer leyendo pendientesCache, así
@@ -11438,6 +11449,32 @@ async function handleDropPJF(e) {
 
 // ==================== PJF SEARCH AND SAVE ====================
 
+/**
+ * ¿Este expediente guardado es el mismo asunto federal que se está dando de alta?
+ *
+ * El número no basta: cada tipo de asunto lleva su propia numeración, así que
+ * un tribunal puede tener a la vez un amparo directo 577/2026 y un recurso de
+ * revisión 577/2026, y el mismo número puede existir en otro órgano. Antes se
+ * comparaba solo el número, y el segundo asunto no se guardaba ("ya está
+ * guardado"). Es el mismo asunto cuando coinciden número y órgano y los tipos
+ * de asunto no son distintos; el tipo solo distingue si los dos lo tienen,
+ * porque uno sin tipo puede ser ese mismo asunto dado de alta sin elegirlo.
+ */
+function _esMismoAsuntoPJF(guardado, nuevo) {
+    if (!guardado || guardado.institucion !== 'PJF' || !guardado.numero) return false;
+    if (guardado.numero.trim().toLowerCase() !== String(nuevo.numero || '').trim().toLowerCase()) return false;
+
+    // Mismo órgano: por id si los dos lo tienen; si no, por su nombre.
+    const mismoOrgano = guardado.pjfOrgId && nuevo.orgId
+        ? String(guardado.pjfOrgId) === String(nuevo.orgId)
+        : _normalizarIdentidadExpediente(guardado.juzgado) === _normalizarIdentidadExpediente(nuevo.orgNombre);
+    if (!mismoOrgano) return false;
+
+    if (guardado.pjfTipoAsunto && nuevo.tipoAsunto &&
+        String(guardado.pjfTipoAsunto) !== String(nuevo.tipoAsunto)) return false;
+    return true;
+}
+
 async function ejecutarBusquedaPJFyGuardar() {
     const orgSelect = document.getElementById('pjf-organismo');
     const orgId = orgSelect.value;
@@ -11449,24 +11486,23 @@ async function ejecutarBusquedaPJFyGuardar() {
         return;
     }
 
-    // Check if this expediente already exists
+    // El tipo de asunto elegido (o escrito a mano): cada tipo lleva su propia numeración.
+    const selectTipo = document.getElementById('pjf-tipo-asunto');
+    const manualTipo = document.getElementById('pjf-tipo-asunto-manual-input');
+    let tipoAsuntoGuardado = selectTipo?.value || '';
+    if (tipoAsuntoGuardado === '__manual__' || !tipoAsuntoGuardado) {
+        tipoAsuntoGuardado = manualTipo?.value.trim() || '';
+    }
+
+    // ¿Ya está guardado? El número solo no lo dice.
     const expedientes = await obtenerExpedientes();
-    const existente = expedientes.find(e =>
-        e.numero && e.numero.toLowerCase() === expediente.toLowerCase() &&
-        e.institucion === 'PJF'
-    );
+    const existente = expedientes.find(e => _esMismoAsuntoPJF(e, {
+        numero: expediente, orgId, orgNombre, tipoAsunto: tipoAsuntoGuardado
+    }));
 
     if (existente) {
         mostrarToast(`El expediente PJF "${expediente}" ya está guardado`, 'info');
     } else {
-        // Create new PJF expediente
-        const selectTipo = document.getElementById('pjf-tipo-asunto');
-        const manualTipo = document.getElementById('pjf-tipo-asunto-manual-input');
-        let tipoAsuntoGuardado = selectTipo?.value || '';
-        if (tipoAsuntoGuardado === '__manual__' || !tipoAsuntoGuardado) {
-            tipoAsuntoGuardado = manualTipo?.value.trim() || '';
-        }
-
         const nuevoExp = {
             numero: expediente,
             juzgado: orgNombre,
