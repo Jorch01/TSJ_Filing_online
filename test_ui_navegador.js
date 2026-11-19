@@ -3186,6 +3186,108 @@ async function probarAsistenteVarias(navegador) {
     }
 }
 
+/**
+ * Dos asuntos del PJF con el mismo número ante el mismo órgano pero de distinto
+ * tipo de asunto (un amparo directo y un recurso de revisión 577/2026 del mismo
+ * tribunal) son asuntos distintos. El barrido de duplicados, que corre en cada
+ * repintado de la lista, los tomaba por uno solo y borraba el recién agregado.
+ */
+async function probarAsuntosConMismoNumero(navegador) {
+    console.log('\nAsuntos con el mismo número y órgano, de distinto tipo');
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 850 } });
+    await contexto.addInitScript(() => { try { localStorage.setItem('tour_bienvenida_visto', '1'); } catch (e) {} });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/index.html`, { waitUntil: 'load' });
+        await page.waitForFunction(() => typeof crearExpedienteCore === 'function' && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+        await page.waitForTimeout(800);
+        const r = await page.evaluate(async () => {
+            const pausa = (ms) => new Promise(res => setTimeout(res, ms));
+            const avisos = [];
+            const original = mostrarToast;
+            window.mostrarToast = (m, t) => { avisos.push(m); return original(m, t); };
+            const TCA = 'Tribunal Colegiado en Materia Administrativa del Vigésimo Circuito';
+            const base = { numero: '577/2026', institucion: 'PJF', juzgado: TCA, pjfOrgId: '321' };
+            await crearExpedienteCore({ ...base, pjfTipoAsunto: '4', comentario: 'Amparo directo' });
+            await cargarExpedientes();
+            // El expediente nuevo: el recurso de revisión del mismo número y órgano.
+            const idRecurso = await crearExpedienteCore({ ...base, pjfTipoAsunto: '9', comentario: 'Recurso de revisión' });
+            await cargarExpedientes();
+            await cargarExpedientes();
+            await pausa(300);
+            const out = {};
+            const todos = await obtenerExpedientes();
+            out.quedan = todos.filter(e => e.numero === '577/2026').map(e => e.comentario).sort();
+            out.recursoSigue = todos.some(e => e.id === idRecurso);
+            out.avisoDeBorrado = avisos.filter(m => /repetid/i.test(m));
+            navegarA('pjf'); cambiarTabPJF('expedientes');
+            await pausa(500);
+            out.enLista = [...document.querySelectorAll('#lista-expedientes-pjf .expediente-titulo')].map(e => e.textContent.trim());
+
+            // Lo que SÍ es una copia idéntica sigue quitándose, y se avisa.
+            await crearExpedienteCore({ ...base, pjfTipoAsunto: '9', comentario: 'Recurso de revisión (copia)' });
+            await cargarExpedientes();
+            await pausa(300);
+            out.trasCopia = (await obtenerExpedientes()).filter(e => e.numero === '577/2026').length;
+            out.avisoCopia = avisos.filter(m => /repetid/i.test(m)).length;
+            return out;
+        });
+        igual('asuntos con mismo número: los dos siguen en la base tras repintar la lista', r.quedan, ['Amparo directo', 'Recurso de revisión']);
+        igual('asuntos con mismo número: el recién agregado no desaparece', r.recursoSigue, true);
+        igual('asuntos con mismo número: y no se anuncia ningún borrado', r.avisoDeBorrado, []);
+        igual('asuntos con mismo número: se ven los dos en Expedientes PJF', r.enLista, ['577/2026', '577/2026']);
+        igual('asuntos con mismo número: una copia idéntica sí se sigue quitando', r.trasCopia, 2);
+
+        // La lápida de un borrado lleva solo número, nombre y juzgado: al sincronizar
+        // se llevaba también al otro asunto (o a la copia que se queda) si no se
+        // había editado después.
+        const s = await page.evaluate(async () => {
+            const pausa = (ms) => new Promise(res => setTimeout(res, ms));
+            const out = {};
+            const base = { numero: '900/2026', institucion: 'PJF', juzgado: 'Tribunal Colegiado Prueba', pjfOrgId: '777' };
+            const idAmparo = await crearExpedienteCore({ ...base, pjfTipoAsunto: '4', comentario: 'Amparo' });
+            const idRecurso = await crearExpedienteCore({ ...base, pjfTipoAsunto: '9', comentario: 'Recurso' });
+            await pausa(30);
+            // Se borra a mano uno de los dos.
+            await eliminarExpediente(idRecurso, true);
+            const lapidas = await obtenerEliminados();
+            const clavesEliminadas = new Map(lapidas.map(l => [l.clave, l.fecha]));
+            // Lo que haría otro dispositivo, o este mismo al volver la lápida de la nube.
+            const fusion = fusionarExpedientes(await obtenerExpedientes(), [], clavesEliminadas);
+            out.fusionConserva = fusion.filter(e => e.numero === '900/2026').map(e => e.comentario);
+            await aplicarEliminacionesRemotas(lapidas);
+            out.trasAplicar = (await obtenerExpedientes()).filter(e => e.numero === '900/2026').map(e => e.comentario);
+
+            // Una lápida que el error ya dejó: el expediente se ve aquí y lo borraría la nube.
+            const idViejo = await crearExpedienteCore({ numero: '901/2026', institucion: 'PJF', juzgado: 'Tribunal Colegiado Prueba', pjfOrgId: '777', pjfTipoAsunto: '4' });
+            await pausa(30);
+            await registrarEliminacion('expediente', { numero: '901/2026', juzgado: 'Tribunal Colegiado Prueba' });
+            out.rescatados = await rescatarExpedientesBajoLapida();
+            out.segundoRescate = await rescatarExpedientesBajoLapida();
+            await aplicarEliminacionesRemotas(await obtenerEliminados());
+            out.rescatadoSigue = (await obtenerExpedientes()).some(e => e.id === idViejo);
+
+            // Y un borrado legítimo —el único con esos datos— sigue llegando a una copia vieja sin editar.
+            const idCopia = await crearExpedienteCore({ numero: '902/2026', institucion: 'PJF', juzgado: 'Tribunal Colegiado Prueba', pjfOrgId: '777' });
+            await pausa(30);
+            await registrarEliminacion('expediente', { numero: '902/2026', juzgado: 'Tribunal Colegiado Prueba' });
+            await aplicarEliminacionesRemotas(await obtenerEliminados());
+            out.borradoLegitimo = !(await obtenerExpedientes()).some(e => e.id === idCopia);
+            return out;
+        });
+        igual('lápidas: al sincronizar, el asunto que no se borró no se va con la lápida del otro', s.fusionConserva, ['Amparo']);
+        igual('lápidas: ni al aplicar los borrados de la nube', s.trasAplicar, ['Amparo']);
+        igual('lápidas: un expediente que ya quedó bajo una lápida se rescata al abrir la app', [s.rescatados, s.segundoRescate, s.rescatadoSigue], [1, 0, true]);
+        igual('lápidas: un borrado legítimo sigue llegando a una copia vieja sin editar', s.borradoLegitimo, true);
+        verificar('asuntos con mismo número: y se avisa de ello', r.avisoCopia === 1, `avisos: ${r.avisoCopia}`);
+        igual('asuntos con mismo número: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
 async function probarAccesibilidadCelular(navegador) {
     const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     await contexto.addInitScript(() => {
@@ -5869,6 +5971,7 @@ async function main() {
         await probarAceptacionVisible(navegador);
         await probarApartadoOtros(navegador);
         await probarAsistenteVarias(navegador);
+        await probarAsuntosConMismoNumero(navegador);
 
     } finally {
         await navegador.close();

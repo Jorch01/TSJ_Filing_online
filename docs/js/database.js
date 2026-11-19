@@ -471,13 +471,14 @@ async function eliminarExpediente(id, permanente = false) {
     // Obtener datos del expediente antes de eliminar para registrar
     const expediente = await obtenerExpediente(id);
 
-    if (permanente) {
-        return new Promise(async (resolve, reject) => {
-            // Registrar eliminación para sincronización
-            if (expediente) {
-                await registrarEliminacion('expediente', expediente);
-            }
+    // El borrado se registra para sincronizar (también el suave).
+    if (expediente) {
+        await registrarEliminacion('expediente', expediente);
+    }
 
+    let resultado;
+    if (permanente) {
+        await new Promise((resolve, reject) => {
             const transaction = db.transaction(['expedientes'], 'readwrite');
             const store = transaction.objectStore('expedientes');
             const request = store.delete(id);
@@ -486,12 +487,84 @@ async function eliminarExpediente(id, permanente = false) {
             request.onerror = () => reject(request.error);
         });
     } else {
-        // Soft delete también se registra
-        if (expediente) {
-            await registrarEliminacion('expediente', expediente);
-        }
-        return actualizarExpediente(id, { activo: false });
+        resultado = await actualizarExpediente(id, { activo: false });
     }
+
+    // Lo que identifica un borrado es el contenido (número, nombre, juzgado), no
+    // el id: la lápida alcanza a CUALQUIER otro expediente con ese mismo contenido.
+    if (expediente) await _protegerHermanosDeExpediente(expediente);
+    return resultado;
+}
+
+// La clave con la que se registra y se aplica el borrado de un expediente:
+// la misma de registrarEliminacion() y aplicarEliminacionesRemotas().
+function _claveBorradoExpediente(exp) {
+    const numero = (exp.numero || '').trim().toLowerCase();
+    const nombre = (exp.nombre || '').trim().toLowerCase();
+    const juzgado = (exp.juzgado || '').trim().toLowerCase();
+    return `exp|${numero}|${nombre}|${juzgado}`;
+}
+
+/**
+ * Tras borrar un expediente, protege a los que comparten su clave de borrado.
+ *
+ * La lápida de un borrado lleva solo número, nombre y juzgado, así que al
+ * sincronizar también se llevaría a cualquier otro expediente con esos mismos
+ * datos que no se haya editado después: la copia que se queda al quitar un
+ * duplicado, o el otro asunto del mismo número y órgano de distinto tipo
+ * (un amparo directo y un recurso de revisión 577/2026). Cada dispositivo
+ * decide con la misma regla —el borrado solo manda sobre lo que no se editó
+ * después—, así que basta con editarlos ahora para que sobrevivan en todos.
+ */
+async function _protegerHermanosDeExpediente(eliminado) {
+    const clave = _claveBorradoExpediente(eliminado);
+    const [activos, archivados] = await Promise.all([
+        obtenerExpedientes().catch(() => []),
+        typeof obtenerExpedientesArchivados === 'function' ? obtenerExpedientesArchivados().catch(() => []) : []
+    ]);
+    const hermanos = activos.concat(archivados)
+        .filter(otro => otro.id !== eliminado.id && _claveBorradoExpediente(otro) === clave);
+    if (!hermanos.length) return;
+    // El borrado solo manda si es posterior o simultáneo a la última edición:
+    // una pausa mínima asegura que la edición quede estrictamente después.
+    await new Promise(resolver => setTimeout(resolver, 5));
+    for (const otro of hermanos) {
+        await actualizarExpediente(otro.id, {});   // sella la edición: es posterior al borrado
+    }
+}
+
+/**
+ * Rescata los expedientes que ya están bajo una lápida que los borraría en la
+ * próxima sincronización sin que nadie lo haya pedido.
+ *
+ * Una lápida con fecha posterior a la última edición de un expediente que sigue
+ * aquí es una contradicción: el usuario lo ve y lo conserva. Salía de quitar un
+ * duplicado (o de borrar un asunto del mismo número y órgano) con versiones que
+ * no sellaban a los demás, y volvía de la nube a llevárselos. Se corre al abrir
+ * la app, antes de sincronizar. Devuelve cuántos rescató.
+ */
+async function rescatarExpedientesBajoLapida() {
+    const [eliminados, activos, archivados] = await Promise.all([
+        obtenerEliminados().catch(() => []),
+        obtenerExpedientes().catch(() => []),
+        typeof obtenerExpedientesArchivados === 'function' ? obtenerExpedientesArchivados().catch(() => []) : []
+    ]);
+    const lapidas = new Map();
+    for (const e of eliminados) {
+        // Sin fecha no se puede saber quién es más reciente: se deja como estaba.
+        if (e && e.tipo === 'expediente' && e.fecha) lapidas.set(e.clave, e.fecha);
+    }
+    if (!lapidas.size) return 0;
+
+    let rescatados = 0;
+    for (const exp of activos.concat(archivados)) {
+        const fecha = lapidas.get(_claveBorradoExpediente(exp));
+        if (fecha && _borradoMandaSobre(fecha, exp)) {
+            await actualizarExpediente(exp.id, {});
+            rescatados++;
+        }
+    }
+    return rescatados;
 }
 
 // Registrar eliminación para sincronización
@@ -872,15 +945,45 @@ function _normalizarIdentidadExpediente(valor) {
  *
  * La categoría no entra: se calcula a partir del juzgado, así que no distingue
  * nada. La institución sí, porque un expediente del TSJ y uno federal son
- * registros separados aunque compartan número.
+ * registros separados aunque compartan número. Y el tipo de asunto también,
+ * donde numera por separado (ver _discriminanteAsunto): un "Amparo directo
+ * 577/2026" y un "Recurso de revisión 577/2026" del mismo tribunal son dos
+ * asuntos, y el barrido borraba uno al dar de alta el segundo.
  */
 function _claveIdentidadExpediente(exp) {
     return [
         _normalizarIdentidadExpediente(exp.numero),
         _normalizarIdentidadExpediente(exp.nombre),
         _normalizarIdentidadExpediente(exp.juzgado),
-        _normalizarIdentidadExpediente(exp.institucion || 'TSJ')
+        _normalizarIdentidadExpediente(exp.institucion || 'TSJ'),
+        _discriminanteAsunto(exp)
     ].join('|');
+}
+
+/**
+ * Lo que distingue a un asunto de otro CON EL MISMO NÚMERO ante el mismo órgano.
+ *
+ * - PJF: cada tipo de asunto lleva su propia numeración, así que un tribunal
+ *   puede tener a la vez un amparo directo 577/2026 y un recurso de revisión
+ *   577/2026. Los distingue el tipo de asunto del catálogo (pjfTipoAsunto) y el
+ *   órgano por su id (dos órganos pueden llamarse igual).
+ * - Otras autoridades: no hay catálogo, pero el tipo que el usuario escribe
+ *   (queja, revisión…) hace la misma función.
+ * - TSJ: el juzgado numera todos sus juicios en una sola serie, así que número
+ *   y juzgado ya identifican el asunto, y el tipo es solo una etiqueta.
+ *
+ * Vacío y con valor cuentan como distintos: ante la duda no se funden, porque
+ * un duplicado a la vista se borra a mano y un asunto fundido o borrado no.
+ * sync.js tiene su copia (discriminanteAsunto); las pruebas vigilan que
+ * coincidan.
+ */
+function _discriminanteAsunto(exp) {
+    const institucion = (exp && exp.institucion) || 'TSJ';
+    if (institucion === 'PJF') {
+        return [exp.pjfOrgId, exp.pjfTipoAsunto].map(_normalizarIdentidadExpediente).join('/');
+    }
+    if (institucion === 'OTRO') return _normalizarIdentidadExpediente(exp.tipo);
+    return '';
 }
 
 /**

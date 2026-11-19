@@ -1332,8 +1332,29 @@ function normalizarNumeroExpediente(numero) {
     return n;
 }
 
+// Lo que distingue a dos asuntos con el mismo número ante el mismo órgano: en el
+// PJF, el tipo de asunto (amparo directo, recurso de revisión…) y el id del
+// órgano; en otras autoridades, el tipo que escribió el usuario. En el TSJ el
+// juzgado numera todos sus juicios en una serie, así que no hace falta.
+// Es la misma regla que _discriminanteAsunto en database.js.
+function discriminanteAsunto(exp) {
+    const institucion = (exp && exp.institucion) || 'TSJ';
+    if (institucion === 'PJF') return `${normalizarTexto(exp.pjfOrgId)}/${normalizarTexto(exp.pjfTipoAsunto)}`;
+    if (institucion === 'OTRO') return normalizarTexto(exp.tipo);
+    return '';
+}
+
 // Detectar si dos expedientes son potencialmente duplicados
 function sonExpedientesDuplicados(exp1, exp2) {
+    // Dos altas por separado con el mismo número y órgano pero de distinto tipo
+    // de asunto son dos asuntos: fusionarlos hacía desaparecer uno. Lo único que
+    // los une a pesar de eso es ser el MISMO registro —misma fecha de alta—,
+    // al que se le puso o cambió el tipo de asunto en otro dispositivo.
+    const mismaAlta = !!exp1.fechaCreacion && exp1.fechaCreacion === exp2.fechaCreacion;
+    if (!mismaAlta && discriminanteAsunto(exp1) !== discriminanteAsunto(exp2)) {
+        return { esDuplicado: false, confianza: 0, razon: null };
+    }
+
     // Misma clave exacta = definitivamente duplicados
     if (claveExpediente(exp1) === claveExpediente(exp2)) {
         return { esDuplicado: true, confianza: 1, razon: 'clave_exacta' };
