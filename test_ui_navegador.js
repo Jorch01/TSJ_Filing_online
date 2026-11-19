@@ -3467,6 +3467,99 @@ async function probarVinculoDeAnalisisIA(navegador) {
     }
 }
 
+/**
+ * Asistente: el micrófono solo se enciende al tocarlo (antes se encendía solo al
+ * abrir el panel y después de cada pregunta), salvo con «manos libres»; y
+ * «dame un resumen de mis pendientes» da un resumen por urgencia.
+ */
+async function probarAsistenteMicrofonoYPendientes(navegador) {
+    console.log('\nAsistente: micrófono al tocarlo y resumen de pendientes');
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 850 } });
+    await contexto.addInitScript(() => {
+        try {
+            localStorage.setItem('tour_bienvenida_visto', '1');
+            localStorage.setItem('voz_tts_activado', '0');
+            // Quien tenía activada la escucha automática de antes no debe heredarla.
+            localStorage.setItem('voz_auto_escucha', '1');
+        } catch (e) {}
+        // Un reconocimiento de voz de mentira que cuenta cuántas veces se enciende.
+        window.__micEncendidos = 0;
+        window.SpeechRecognition = class {
+            start() { window.__micEncendidos++; setTimeout(() => this.onstart && this.onstart(), 0); }
+            stop() { setTimeout(() => this.onend && this.onend(), 0); }
+        };
+    });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/index.html`, { waitUntil: 'load' });
+        await page.waitForFunction(() => typeof crearPendienteCore === 'function' && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+        await page.waitForTimeout(800);
+        await page.evaluate(async () => {
+            await guardarConfig('ia_api_key', 'CLAVE-DE-PRUEBA');
+            window.__respuesta = { accion: 'crear_evento', parametros: { titulo: 'Audiencia' }, faltan_datos: true, pregunta: '¿Para qué día?', resumen: '' };
+            window.llamarIA = async () => JSON.stringify(window.__respuesta);
+        });
+        const mic = () => page.evaluate(() => window.__micEncendidos);
+        const pausa = (ms) => page.waitForTimeout(ms);
+
+        await page.click('#voz-fab');
+        await page.waitForSelector('#voz-input', { state: 'visible' });
+        await pausa(400);
+        igual('micrófono: no se enciende solo al abrir el asistente (aunque estuviera activada la opción vieja)', await mic(), 0);
+
+        await page.fill('#voz-input', 'agenda una audiencia');
+        await page.click('#voz-enviar');
+        await pausa(900);
+        igual('micrófono: tampoco después de que el asistente pregunta algo', await mic(), 0);
+        verificar('micrófono: y se dice cómo contestar', /Toca el micrófono para contestar/.test(await page.textContent('#voz-status')), await page.textContent('#voz-status'));
+
+        await page.click('#voz-mic');
+        await pausa(200);
+        igual('micrófono: se enciende al tocarlo', await mic(), 1);
+        await page.click('#voz-mic');
+        await pausa(300);
+
+        // Con «manos libres» sí escucha solo al abrir.
+        verificar('micrófono: la opción de Configuración viene apagada', await page.evaluate(() => !document.getElementById('voz-cfg-auto').checked));
+        await page.evaluate(() => { const c = document.getElementById('voz-cfg-auto'); c.checked = true; c.dispatchEvent(new Event('change')); });
+        await page.click('#voz-cerrar');
+        await pausa(200);
+        await page.click('#voz-fab');
+        await pausa(400);
+        igual('micrófono: con «manos libres» escucha al abrir', await mic(), 2);
+        await page.evaluate(() => { const c = document.getElementById('voz-cfg-auto'); c.checked = false; c.dispatchEvent(new Event('change')); });
+        await page.click('#voz-mic');
+        await pausa(300);
+
+        // El resumen de pendientes.
+        await page.evaluate(async () => {
+            const id = await crearExpedienteCore({ numero: '123/2025', institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' });
+            const d = (n) => { const x = new Date(); x.setDate(x.getDate() + n); x.setHours(12, 0, 0, 0); return x.toISOString(); };
+            await crearPendienteCore({ expedienteId: id, titulo: 'Contestar la demanda', prioridad: 'alta', fechaLimite: d(-2) });
+            await crearPendienteCore({ expedienteId: id, titulo: 'Revisar acuerdo', fechaLimite: d(3) });
+            await crearPendienteCore({ titulo: 'Pedir copias', prioridad: '' });
+            window.__respuesta = { accion: 'consultar_pendientes', parametros: {}, faltan_datos: false, pregunta: null, resumen: 'Resumen' };
+        });
+        await page.fill('#voz-input', 'dame un resumen de mis pendientes');
+        await page.click('#voz-enviar');
+        await pausa(900);
+        const chat = await page.textContent('#voz-chat');
+        verificar('resumen: dice cuántos hay por hacer', /3 pendientes por hacer/.test(chat), chat.slice(-400));
+        verificar('resumen: con sus cifras', /1 vencidos · 1 esta semana · 1 sin fecha · 1 de prioridad alta/.test(chat), chat.slice(-400));
+        verificar('resumen: por secciones, con el expediente', /Vencidos \(1\)/.test(chat) && /Contestar la demanda — 123\/2025/.test(chat) && /Sin fecha \(1\)/.test(chat), chat.slice(-400));
+        igual('resumen: sin errores en la respuesta', /No pude|⚠️/.test(chat.slice(-300)), false);
+        await page.click('#voz-chat button:has-text("Abrir Pendientes")');
+        await pausa(300);
+        igual('resumen: el botón lleva a Pendientes y cierra el asistente',
+            await page.evaluate(() => [document.getElementById('page-pendientes').classList.contains('active'), document.getElementById('voz-panel').classList.contains('activo')]), [true, false]);
+        igual('asistente: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
 async function probarAccesibilidadCelular(navegador) {
     const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     await contexto.addInitScript(() => {
@@ -6153,6 +6246,7 @@ async function main() {
         await probarAsuntosConMismoNumero(navegador);
         await probarImportacionPorTipoDeAsunto(navegador);
         await probarVinculoDeAnalisisIA(navegador);
+        await probarAsistenteMicrofonoYPendientes(navegador);
 
     } finally {
         await navegador.close();
