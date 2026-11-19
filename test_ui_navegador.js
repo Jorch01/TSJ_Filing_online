@@ -3288,6 +3288,185 @@ async function probarAsuntosConMismoNumero(navegador) {
     }
 }
 
+/**
+ * Importar un CSV con dos filas del mismo tribunal y el mismo número pero de
+ * distinto tipo de asunto federal (un amparo directo y un recurso de revisión
+ * 577/2026): son dos asuntos. Se importaba uno solo y el otro se contaba como
+ * «fila repetida». Y volver a importar el mismo archivo no debe duplicar nada.
+ */
+async function probarImportacionPorTipoDeAsunto(navegador) {
+    console.log('\nImportación: mismo número y tribunal, distinto tipo de asunto');
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 850 } });
+    await contexto.addInitScript(() => { try { localStorage.setItem('tour_bienvenida_visto', '1'); } catch (e) {} });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/index.html`, { waitUntil: 'load' });
+        await page.waitForFunction(() => typeof importarExpedientes === 'function' && typeof db !== 'undefined' && !!db, { timeout: 20000 });
+        await page.waitForTimeout(800);
+        const r = await page.evaluate(async () => {
+            window.confirm = () => true;
+            window.mostrarInformeImportacion = () => {};
+            if (typeof asegurarCatalogosPJF === 'function') await asegurarCatalogosPJF();
+            await cargarCatalogosPJF().catch(() => {});
+            const org = String(pjfOrganismos[0].id), org2 = String(pjfOrganismos[1].id);
+            const importar = async (filas) => {
+                const csv = 'expediente,tipo,institucion,juzgado,organismo_id,tipo_asunto_id,comentario,pendiente\n' + filas.join('\n') + '\n';
+                await importarExpedientes({ target: { files: [new File([csv], 'prueba.csv', { type: 'text/csv' })], value: '' } });
+            };
+            const de = async (numero) => (await obtenerExpedientes()).filter(e => e.numero === numero)
+                .map(e => (e.pjfTipoAsunto || '-') + ':' + (e.comentario || '')).sort();
+            const out = {};
+
+            // 1) Dos tipos de asunto en el mismo tribunal y número.
+            await importar([`577/2026,numero,PJF,,${org},10,Amparo directo,`, `577/2026,numero,PJF,,${org},9,Recurso de revisión,`]);
+            out.dosTipos = await de('577/2026');
+            // 2) El mismo archivo otra vez no duplica nada.
+            await importar([`577/2026,numero,PJF,,${org},10,Amparo directo,`, `577/2026,numero,PJF,,${org},9,Recurso de revisión,`]);
+            out.reimportado = await de('577/2026');
+
+            // 3) Varias filas del mismo asunto sin tipo siguen siendo uno (y aportan pendientes).
+            await importar([`600/2026,numero,PJF,,${org},,Primero,Revisar`, `600/2026,numero,PJF,,${org},,Segundo,Contestar`]);
+            out.sinTipo = await de('600/2026');
+            out.pendientes = (await obtenerPendientes()).filter(p => ['Revisar', 'Contestar'].includes(p.titulo)).length;
+
+            // 4) Una fila sin tipo y otra del mismo asunto con tipo: es uno, con el tipo.
+            await importar([`610/2026,numero,PJF,,${org},,Sin tipo,`, `610/2026,numero,PJF,,${org},10,Con tipo,`]);
+            out.adopta = await de('610/2026');
+
+            // 5) Ya registrado sin tipo (de antes) y el archivo trae el tipo: es el mismo.
+            await crearExpedienteCore({ numero: '620/2026', institucion: 'PJF', juzgado: pjfOrganismos[0].nombre, pjfOrgId: org });
+            await importar([`620/2026,numero,PJF,,${org},10,Del archivo,`]);
+            out.yaSinTipo = await de('620/2026');
+
+            // 6) Ya registrado con otro tipo: el del archivo es otro asunto.
+            await crearExpedienteCore({ numero: '630/2026', institucion: 'PJF', juzgado: pjfOrganismos[0].nombre, pjfOrgId: org, pjfTipoAsunto: '10', comentario: 'Amparo guardado' });
+            await importar([`630/2026,numero,PJF,,${org},9,Recurso del archivo,`]);
+            out.otroTipo = await de('630/2026');
+
+            // 7) El mismo número en otro tribunal es otro asunto (como siempre).
+            await importar([`640/2026,numero,PJF,,${org},10,Aquí,`, `640/2026,numero,PJF,,${org2},10,Allá,`]);
+            out.otroTribunal = await de('640/2026');
+            return out;
+        });
+        igual('importar: dos tipos de asunto del mismo número y tribunal son dos asuntos', r.dosTipos, ['10:Amparo directo', '9:Recurso de revisión']);
+        igual('importar: el mismo archivo otra vez no duplica nada', r.reimportado, ['10:Amparo directo', '9:Recurso de revisión']);
+        igual('importar: varias filas del mismo asunto sin tipo siguen siendo uno', r.sinTipo.length, 1);
+        igual('importar: y aportan sus pendientes', r.pendientes, 2);
+        igual('importar: una fila sin tipo y otra del mismo asunto con tipo son uno, con el tipo', r.adopta.length === 1 && r.adopta[0].startsWith('10:'), true);
+        igual('importar: lo ya registrado sin tipo se reconoce (no se duplica)', r.yaSinTipo, ['-:']);
+        igual('importar: lo ya registrado con otro tipo no se confunde con el del archivo', r.otroTipo, ['10:Amparo guardado', '9:Recurso del archivo']);
+        igual('importar: el mismo número en otro tribunal es otro asunto', r.otroTribunal.length, 2);
+        igual('importar: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
+/**
+ * Análisis de un acuerdo con IA: a qué expediente se vincula. El número solo no
+ * lo dice —cada juzgado numera desde 1 cada año y, en el PJF, cada tipo de
+ * asunto lleva su propia numeración—, pero se vinculaba al primer expediente con
+ * ese número, de cualquier juzgado: las fechas y notas del acuerdo acababan en
+ * el asunto de otro órgano.
+ */
+async function probarVinculoDeAnalisisIA(navegador) {
+    console.log('\nAnálisis con IA: a qué expediente se vincula');
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 850 } });
+    await contexto.addInitScript(() => { try { localStorage.setItem('tour_bienvenida_visto', '1'); } catch (e) {} });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/index.html`, { waitUntil: 'load' });
+        await page.waitForFunction(() => typeof guardarResultadosIA === 'function' && typeof db !== 'undefined' && !!db, { timeout: 20000 });
+        await page.waitForTimeout(800);
+        const r = await page.evaluate(async () => {
+            const avisos = [];
+            const original = mostrarToast;
+            window.mostrarToast = (m, t) => { avisos.push(m); return original(m, t); };
+            const out = {};
+            const notasDe = async (numero) => (await obtenerNotas()).filter(n => n.numeroExpediente === numero || n.expedienteTexto === numero);
+            const analizarTSJ = async (extra) => {
+                avisos.length = 0;
+                resultadosIAActuales = { numero_expediente: '123/2025', institucion: 'TSJ', fechas: [], puntos_importantes: [], acciones_requeridas: [],
+                    montos: [{ concepto: 'Prueba', cantidad: '1' }], resumen: 'x', tipo_acuerdo: 'auto', ...extra };
+                await guardarResultadosIA();
+            };
+            // El acuerdo trae el nombre del juzgado como lo escribió el tribunal; la app lo
+            // reconoce y lo guarda con el del catálogo.
+            const PRIMERO = 'JUZGADO PRIMERO CIVIL CANCUN', SEGUNDO = 'JUZGADO SEGUNDO DE LO FAMILIAR CANCUN';
+            const SEGUNDO_EN_EL_ACUERDO = 'Juzgado Segundo Familiar de Cancún';
+            const idA = await crearExpedienteCore({ numero: '123/2025', institucion: 'TSJ', juzgado: PRIMERO, comentario: 'Mío' });
+
+            // 1) El mismo número en OTRO juzgado: es otro asunto.
+            await analizarTSJ({ juzgado_origen: SEGUNDO_EN_EL_ACUERDO });
+            const tras1 = (await obtenerExpedientes()).filter(e => e.numero === '123/2025');
+            out.otroJuzgado = { expedientes: tras1.map(e => e.juzgado).sort(), notaEnElMio: (await obtenerNotas()).filter(n => n.expedienteId === idA).length };
+            const idB = (tras1.find(e => e.juzgado === SEGUNDO) || {}).id;
+            out.notaEnElNuevo = (await obtenerNotas()).filter(n => n.expedienteId === idB).length;
+
+            // 2) El mismo juzgado: se vincula al que ya existe, sin crear otro.
+            await analizarTSJ({ juzgado_origen: PRIMERO });
+            out.mismoJuzgado = { cuantos: (await obtenerExpedientes()).filter(e => e.numero === '123/2025').length, notaEnElMio: (await obtenerNotas()).filter(n => n.expedienteId === idA).length };
+
+            // 3) Sin órgano en el acuerdo y dos expedientes con ese número: no se adivina.
+            await analizarTSJ({ juzgado_origen: null });
+            out.ambiguo = {
+                cuantos: (await obtenerExpedientes()).filter(e => e.numero === '123/2025').length,
+                suelta: (await obtenerNotas()).filter(n => n.expedienteTexto === '123/2025' && (n.expedienteId == null)).length,
+                aviso: avisos.some(m => /Tienes 2 expedientes con el número "123\/2025"/.test(m))
+            };
+
+            // 4) Sin órgano y un solo expediente con ese número: se vincula, como siempre.
+            const idC = await crearExpedienteCore({ numero: '45/2025', institucion: 'TSJ', juzgado: PRIMERO });
+            await analizarTSJ({ numero_expediente: '45/2025', juzgado_origen: null });
+            out.unico = { cuantos: (await obtenerExpedientes()).filter(e => e.numero === '45/2025').length, vinculada: (await obtenerNotas()).filter(n => n.expedienteId === idC).length };
+
+            // ---- PJF: tipo de asunto en un mismo tribunal ----
+            await asegurarCatalogosPJF();
+            const org = pjfOrganismos.find(o => /tribunal colegiado en materia administrativa del vig/i.test(o.nombre));
+            const federal = async (tipo) => { const e = { numero: '577/2026', juzgado: org.nombre, institucion: 'PJF', categoria: 'PJF Federal' }; await _completarExpedientePJFNuevo(e, tipo); return crearExpedienteCore(e); };
+            const idAmparo = await federal('Amparo Directo');
+            const idRecurso = await federal('Recurso de revisión');
+            const analizarPJF = async (extra) => {
+                avisos.length = 0;
+                resultadosIAPJFActuales = { numero_expediente: '577/2026', juzgado_origen: org.nombre, fechas: [], puntos_importantes: [], acciones_requeridas: [],
+                    montos: [{ concepto: 'Prueba', cantidad: '1' }], resumen: 'x', tipo_acuerdo: 'auto', ...extra };
+                await guardarResultadosIAPJF();
+            };
+            const cuantosPJF = async () => (await obtenerExpedientes()).filter(e => e.numero === '577/2026').length;
+
+            await analizarPJF({ tipo_asunto: 'Recurso de revisión' });
+            out.recurso = { cuantos: await cuantosPJF(), alRecurso: (await obtenerNotas()).filter(n => n.expedienteId === idRecurso).length, alAmparo: (await obtenerNotas()).filter(n => n.expedienteId === idAmparo).length };
+            await analizarPJF({ tipo_asunto: 'Queja' });
+            out.queja = { cuantos: await cuantosPJF(), alAmparoOAlRecurso: (await obtenerNotas()).filter(n => n.expedienteId === idAmparo || n.expedienteId === idRecurso).length };
+            // Sin tipo, el catálogo supone «amparo directo»: eso no es un dato, y hay dos asuntos de ese número.
+            const antes = await cuantosPJF();
+            await analizarPJF({ tipo_asunto: null });
+            out.sinTipo = { creo: (await cuantosPJF()) - antes, aviso: avisos.some(m => /expedientes PJF con el número "577\/2026"/.test(m)) };
+            // El mismo número en otro tribunal federal.
+            const otro = pjfOrganismos.find(o => /tribunal colegiado/i.test(o.nombre) && o.id !== org.id);
+            await analizarPJF({ tipo_asunto: 'Amparo Directo', juzgado_origen: otro.nombre });
+            out.otroTribunal = (await obtenerExpedientes()).filter(e => e.numero === '577/2026' && String(e.pjfOrgId) === String(otro.id)).length;
+            return out;
+        });
+        igual('IA TSJ: el mismo número de otro juzgado crea otro expediente, con el nombre del catálogo', r.otroJuzgado.expedientes, ['JUZGADO PRIMERO CIVIL CANCUN', 'JUZGADO SEGUNDO DE LO FAMILIAR CANCUN']);
+        igual('IA TSJ: y la nota no queda en el expediente del otro juzgado', [r.otroJuzgado.notaEnElMio, r.notaEnElNuevo], [0, 1]);
+        igual('IA TSJ: el mismo juzgado se vincula al que ya existe, sin crear otro', r.mismoJuzgado, { cuantos: 2, notaEnElMio: 1 });
+        igual('IA TSJ: sin órgano y dos expedientes con ese número no se adivina: nota suelta y aviso', r.ambiguo, { cuantos: 2, suelta: 1, aviso: true });
+        igual('IA TSJ: sin órgano y un solo expediente con ese número, se vincula', r.unico, { cuantos: 1, vinculada: 1 });
+        igual('IA PJF: el recurso de revisión se vincula al recurso, no al amparo del mismo número y tribunal', r.recurso, { cuantos: 2, alRecurso: 1, alAmparo: 0 });
+        igual('IA PJF: una queja del mismo número y tribunal es otro asunto', r.queja, { cuantos: 3, alAmparoOAlRecurso: 1 });
+        igual('IA PJF: sin tipo en el acuerdo y varios asuntos del mismo número no se adivina', r.sinTipo, { creo: 0, aviso: true });
+        igual('IA PJF: el mismo número en otro tribunal es otro asunto', r.otroTribunal, 1);
+        igual('IA: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
 async function probarAccesibilidadCelular(navegador) {
     const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     await contexto.addInitScript(() => {
@@ -5972,6 +6151,8 @@ async function main() {
         await probarApartadoOtros(navegador);
         await probarAsistenteVarias(navegador);
         await probarAsuntosConMismoNumero(navegador);
+        await probarImportacionPorTipoDeAsunto(navegador);
+        await probarVinculoDeAnalisisIA(navegador);
 
     } finally {
         await navegador.close();

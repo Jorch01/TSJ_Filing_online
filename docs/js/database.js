@@ -982,8 +982,55 @@ function _discriminanteAsunto(exp) {
     if (institucion === 'PJF') {
         return [exp.pjfOrgId, exp.pjfTipoAsunto].map(_normalizarIdentidadExpediente).join('/');
     }
-    if (institucion === 'OTRO') return _normalizarIdentidadExpediente(exp.tipo);
+    // El nombre de la autoridad lo teclea cada quien («IMSS» puede ser Cancún o
+    // Mérida) y su numeración no es única: el tipo de asunto y el cliente, si
+    // están, son lo que dice que dos asuntos con el mismo número no son uno.
+    if (institucion === 'OTRO') return [exp.tipo, exp.cliente].map(_normalizarIdentidadExpediente).join('/');
     return '';
+}
+
+// Con lo que se guarda un expediente cuyo órgano no se conoce todavía: «PJF - Por
+// determinar», «Autoridad no especificada», «Por determinar» o nada. Es el mismo
+// texto para todos, así que no dice de qué órgano es un asunto.
+const _RE_ORGANO_SIN_DETERMINAR = /por determinar|sin determinar|no especificad|no identificad|desconocid/;
+
+/**
+ * ¿Este expediente no tiene órgano (o autoridad) conocido? Sin él, el juzgado
+ * no identifica nada: dos asuntos sin relación que comparten número (el «45/2026»
+ * es de lo más común) llevan el mismo texto de relleno y parecían el mismo.
+ * Un expediente federal con el id de su órgano sí lo tiene, aunque el texto
+ * diga otra cosa. sync.js tiene su copia (organoSinDeterminar).
+ */
+function _organoSinDeterminar(exp) {
+    if (exp && (exp.institucion || 'TSJ') === 'PJF' && exp.pjfOrgId) return false;
+    const juzgado = _normalizarIdentidadExpediente(exp && exp.juzgado);
+    return !juzgado || _RE_ORGANO_SIN_DETERMINAR.test(juzgado);
+}
+
+/**
+ * ¿Falta algo para saber que dos expedientes con estos datos son el mismo asunto?
+ * El barrido borra la copia: solo debe hacerlo cuando el sistema puede asegurar
+ * que lo es, no cuando coinciden unos datos que no bastan para decirlo.
+ *
+ * - Sin órgano conocido, no (ver _organoSinDeterminar).
+ * - PJF sin tipo de asunto, no: cada tipo lleva su propia numeración, así que
+ *   un mismo número en el mismo tribunal puede ser un amparo directo y un
+ *   recurso de revisión, y el formulario deja el tipo en blanco (no lo supone).
+ * - Otras autoridades sin tipo ni cliente, no: el nombre de la autoridad lo
+ *   teclea cada quien y su numeración no es única.
+ * - TSJ sí: el juzgado, del catálogo, numera todos sus juicios en una serie.
+ * Ante la duda queda un duplicado a la vista, que se borra a mano; lo que no
+ * tiene vuelta es borrar un asunto que el usuario acaba de capturar.
+ * sync.js tiene su copia (asuntoSinIdentificar).
+ */
+function _asuntoSinIdentificar(exp) {
+    if (_organoSinDeterminar(exp)) return true;
+    const institucion = (exp && exp.institucion) || 'TSJ';
+    if (institucion === 'PJF') return !_normalizarIdentidadExpediente(exp.pjfTipoAsunto);
+    if (institucion === 'OTRO') {
+        return !_normalizarIdentidadExpediente(exp.tipo) && !_normalizarIdentidadExpediente(exp.cliente);
+    }
+    return false;
 }
 
 /**
@@ -1003,6 +1050,11 @@ async function eliminarExpedientesDuplicados() {
         // juzgado.
         if (!_normalizarIdentidadExpediente(exp.numero) &&
             !_normalizarIdentidadExpediente(exp.nombre)) continue;
+
+        // Y si faltan datos para saber que dos son el mismo asunto (sin órgano, sin
+        // tipo de asunto federal…), tampoco: no se borra por una coincidencia que
+        // no basta para asegurarlo.
+        if (_asuntoSinIdentificar(exp)) continue;
 
         const clave = _claveIdentidadExpediente(exp);
         if (!expedientesPorClave.has(clave)) {

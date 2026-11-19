@@ -1340,8 +1340,30 @@ function normalizarNumeroExpediente(numero) {
 function discriminanteAsunto(exp) {
     const institucion = (exp && exp.institucion) || 'TSJ';
     if (institucion === 'PJF') return `${normalizarTexto(exp.pjfOrgId)}/${normalizarTexto(exp.pjfTipoAsunto)}`;
-    if (institucion === 'OTRO') return normalizarTexto(exp.tipo);
+    if (institucion === 'OTRO') return `${normalizarTexto(exp.tipo)}/${normalizarTexto(exp.cliente)}`;
     return '';
+}
+
+// ¿Sin órgano (o autoridad) conocido? El texto de relleno con que se guardan
+// («PJF - Por determinar», «Autoridad no especificada») es el mismo para todos
+// y no dice de qué órgano es un asunto. Es la misma regla que _organoSinDeterminar
+// en database.js.
+function organoSinDeterminar(exp) {
+    if (exp && (exp.institucion || 'TSJ') === 'PJF' && exp.pjfOrgId) return false;
+    const juzgado = normalizarTexto(exp && exp.juzgado);
+    return !juzgado || /pordeterminar|sindeterminar|noespecificad|noidentificad|desconocid/.test(juzgado);
+}
+
+// ¿Falta algo para saber que dos expedientes con estos datos son el mismo asunto?
+// Sin órgano, o sin tipo de asunto en el PJF, o sin tipo ni cliente en otras
+// autoridades, el número y el órgano no bastan para asegurarlo. Es la misma regla
+// que _asuntoSinIdentificar en database.js.
+function asuntoSinIdentificar(exp) {
+    if (organoSinDeterminar(exp)) return true;
+    const institucion = (exp && exp.institucion) || 'TSJ';
+    if (institucion === 'PJF') return !normalizarTexto(exp.pjfTipoAsunto);
+    if (institucion === 'OTRO') return !normalizarTexto(exp.tipo) && !normalizarTexto(exp.cliente);
+    return false;
 }
 
 // Detectar si dos expedientes son potencialmente duplicados
@@ -1352,6 +1374,11 @@ function sonExpedientesDuplicados(exp1, exp2) {
     // al que se le puso o cambió el tipo de asunto en otro dispositivo.
     const mismaAlta = !!exp1.fechaCreacion && exp1.fechaCreacion === exp2.fechaCreacion;
     if (!mismaAlta && discriminanteAsunto(exp1) !== discriminanteAsunto(exp2)) {
+        return { esDuplicado: false, confianza: 0, razon: null };
+    }
+    // Si faltan datos para asegurar que son el mismo asunto (sin órgano, sin tipo
+    // de asunto federal…), dos altas por separado no se dan por una.
+    if (!mismaAlta && (asuntoSinIdentificar(exp1) || asuntoSinIdentificar(exp2))) {
         return { esDuplicado: false, confianza: 0, razon: null };
     }
 
