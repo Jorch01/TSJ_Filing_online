@@ -5480,50 +5480,62 @@ async function main() {
 
         // ---- Lo que ya estaba agendado sale del calendario al abrir la app ----
         // Pendientes que una versión anterior agendó: al abrir la app se
-        // quitan del calendario (siguen en Pendientes) y se avisa.
-        await page.evaluate(async () => {
-            const idP = await agregarPendiente({ titulo: 'Agendado por una versión anterior',
-                fechaLimite: new Date(2027, 6, 8).toISOString(), completado: false, eventoId: null });
-            const idE = await agregarEvento({ titulo: 'Agendado por una versión anterior', tipo: 'recordatorio',
-                fechaInicio: new Date(2027, 6, 8).toISOString(), todoElDia: true,
-                descripcion: 'Pendiente del expediente.', pendienteId: idP, alerta: true });
-            await actualizarPendiente(idP, { eventoId: idE });
-            await agregarEvento({ titulo: 'Restaurado sin vínculo', tipo: 'recordatorio',
-                fechaInicio: new Date(2027, 6, 9).toISOString(), todoElDia: true, descripcion: 'Pendiente del expediente.' });
-            await agregarEvento({ titulo: 'Audiencia que se queda', tipo: 'audiencia',
-                fechaInicio: new Date(2027, 6, 8, 10).toISOString(), todoElDia: false });
-        });
-        const otraPestana = await contexto.newPage();
-        otraPestana.on('pageerror', e => erroresPagina.push(e.message));
-        // El aviso dura 3 segundos: se anota en cuanto aparece.
-        await otraPestana.addInitScript(() => {
-            window.__avisos = [];
-            const mirar = () => {
-                const c = document.getElementById('toast-container');
-                if (!c) { setTimeout(mirar, 20); return; }
-                new MutationObserver(() => {
-                    for (const n of c.children) if (!window.__avisos.includes(n.textContent)) window.__avisos.push(n.textContent);
-                }).observe(c, { childList: true });
-            };
-            mirar();
-        });
-        await otraPestana.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
-        await otraPestana.waitForFunction(async () => typeof obtenerEventos === 'function' && typeof db !== 'undefined' && !!db &&
-            !(await obtenerEventos()).some(e => e.titulo === 'Agendado por una versión anterior'), { timeout: 20000 }).catch(() => {});
-        const alAbrir = await otraPestana.evaluate(async () => {
-            const eventos = await obtenerEventos();
-            const p = (await obtenerPendientes()).find(x => x.titulo === 'Agendado por una versión anterior');
-            return {
-                quedan: ['Agendado por una versión anterior', 'Restaurado sin vínculo', 'Audiencia que se queda']
-                    .map(t => eventos.some(e => e.titulo === t)),
-                pendiente: p ? { eventoId: p.eventoId, conFecha: !!p.fechaLimite } : null,
-                aviso: (window.__avisos || []).join(' | ')
-            };
-        });
-        await otraPestana.close();
-        igual('al abrir: los pendientes agendados salen del calendario y la audiencia se queda', alAbrir.quedan, [false, false, true]);
-        igual('al abrir: el pendiente sigue en Pendientes, con su fecha y sin vínculo', alAbrir.pendiente, { eventoId: null, conFecha: true });
-        verificar('al abrir: se avisa cuántos se quitaron', /Se quitaron 2 pendientes del calendario/.test(alAbrir.aviso), alAbrir.aviso);
+        // quitan del calendario (siguen en Pendientes) y se avisa. En un
+        // navegador aparte, sin la sincronización que configuraron las pruebas
+        // anteriores: la sincronización también limpia (sin aviso) y podría
+        // adelantarse al arranque.
+        const ctxLimpio = await navegador.newContext({ viewport: { width: 1280, height: 800 } });
+        try {
+            const sembrar = await ctxLimpio.newPage();
+            sembrar.on('pageerror', e => erroresPagina.push(e.message));
+            await sembrar.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+            await sembrar.waitForFunction(() => typeof agregarPendiente === 'function' && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+            await sembrar.waitForTimeout(1500);
+            await sembrar.evaluate(async () => {
+                const idP = await agregarPendiente({ titulo: 'Agendado por una versión anterior',
+                    fechaLimite: new Date(2027, 6, 8).toISOString(), completado: false, eventoId: null });
+                const idE = await agregarEvento({ titulo: 'Agendado por una versión anterior', tipo: 'recordatorio',
+                    fechaInicio: new Date(2027, 6, 8).toISOString(), todoElDia: true,
+                    descripcion: 'Pendiente del expediente.', pendienteId: idP, alerta: true });
+                await actualizarPendiente(idP, { eventoId: idE });
+                await agregarEvento({ titulo: 'Restaurado sin vínculo', tipo: 'recordatorio',
+                    fechaInicio: new Date(2027, 6, 9).toISOString(), todoElDia: true, descripcion: 'Pendiente del expediente.' });
+                await agregarEvento({ titulo: 'Audiencia que se queda', tipo: 'audiencia',
+                    fechaInicio: new Date(2027, 6, 8, 10).toISOString(), todoElDia: false });
+            });
+
+            const otraPestana = await ctxLimpio.newPage();
+            otraPestana.on('pageerror', e => erroresPagina.push(e.message));
+            // El aviso dura 3 segundos: se anota en cuanto aparece.
+            await otraPestana.addInitScript(() => {
+                window.__avisos = [];
+                const mirar = () => {
+                    const c = document.getElementById('toast-container');
+                    if (!c) { setTimeout(mirar, 20); return; }
+                    new MutationObserver(() => {
+                        for (const n of c.children) if (!window.__avisos.includes(n.textContent)) window.__avisos.push(n.textContent);
+                    }).observe(c, { childList: true });
+                };
+                mirar();
+            });
+            await otraPestana.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+            await otraPestana.waitForFunction(() => (window.__avisos || []).some(t => /del calendario/.test(t)), { timeout: 15000 }).catch(() => {});
+            const alAbrir = await otraPestana.evaluate(async () => {
+                const eventos = await obtenerEventos();
+                const p = (await obtenerPendientes()).find(x => x.titulo === 'Agendado por una versión anterior');
+                return {
+                    quedan: ['Agendado por una versión anterior', 'Restaurado sin vínculo', 'Audiencia que se queda']
+                        .map(t => eventos.some(e => e.titulo === t)),
+                    pendiente: p ? { eventoId: p.eventoId, conFecha: !!p.fechaLimite } : null,
+                    aviso: (window.__avisos || []).join(' | ')
+                };
+            });
+            igual('al abrir: los pendientes agendados salen del calendario y la audiencia se queda', alAbrir.quedan, [false, false, true]);
+            igual('al abrir: el pendiente sigue en Pendientes, con su fecha y sin vínculo', alAbrir.pendiente, { eventoId: null, conFecha: true });
+            verificar('al abrir: se avisa cuántos se quitaron', /Se quitaron 2 pendientes del calendario/.test(alAbrir.aviso), alAbrir.aviso);
+        } finally {
+            await ctxLimpio.close();
+        }
 
         // ---- Búsqueda rápida de expedientes en Inicio (SOLO MÓVIL) ----
         // En escritorio no debe aparecer: ahí el menú está a la vista y hay
