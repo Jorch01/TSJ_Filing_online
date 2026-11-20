@@ -3853,7 +3853,7 @@ async function guardarPendiente(event) {
 
         mostrarToast(
             id ? 'Pendiente actualizado'
-               : (datos.fechaLimite ? 'Pendiente creado y agendado' : 'Pendiente creado'),
+               : 'Pendiente creado',
             'success');
         cerrarModal();
     } catch (error) {

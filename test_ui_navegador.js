@@ -5495,6 +5495,18 @@ async function main() {
         });
         const otraPestana = await contexto.newPage();
         otraPestana.on('pageerror', e => erroresPagina.push(e.message));
+        // El aviso dura 3 segundos: se anota en cuanto aparece.
+        await otraPestana.addInitScript(() => {
+            window.__avisos = [];
+            const mirar = () => {
+                const c = document.getElementById('toast-container');
+                if (!c) { setTimeout(mirar, 20); return; }
+                new MutationObserver(() => {
+                    for (const n of c.children) if (!window.__avisos.includes(n.textContent)) window.__avisos.push(n.textContent);
+                }).observe(c, { childList: true });
+            };
+            mirar();
+        });
         await otraPestana.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
         await otraPestana.waitForFunction(async () => typeof obtenerEventos === 'function' && typeof db !== 'undefined' && !!db &&
             !(await obtenerEventos()).some(e => e.titulo === 'Agendado por una versión anterior'), { timeout: 20000 }).catch(() => {});
@@ -5505,7 +5517,7 @@ async function main() {
                 quedan: ['Agendado por una versión anterior', 'Restaurado sin vínculo', 'Audiencia que se queda']
                     .map(t => eventos.some(e => e.titulo === t)),
                 pendiente: p ? { eventoId: p.eventoId, conFecha: !!p.fechaLimite } : null,
-                aviso: document.getElementById('toast-container').textContent
+                aviso: (window.__avisos || []).join(' | ')
             };
         });
         await otraPestana.close();
