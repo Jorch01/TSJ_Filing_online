@@ -560,7 +560,16 @@ async function rescatarExpedientesBajoLapida() {
     for (const exp of activos.concat(archivados)) {
         const fecha = lapidas.get(_claveBorradoExpediente(exp));
         if (fecha && _borradoMandaSobre(fecha, exp)) {
-            await actualizarExpediente(exp.id, {});
+            // El sello tiene que quedar DESPUÉS del borrado. Si cae en el mismo
+            // milisegundo que la lápida (recién escrita), empata, el borrado
+            // sigue mandando y la siguiente sincronización se lo llevaría: se
+            // espera un instante y se vuelve a sellar.
+            for (let intento = 0; intento < 3; intento++) {
+                await actualizarExpediente(exp.id, {});
+                const sellado = await obtenerExpediente(exp.id).catch(() => null);
+                if (!sellado || !_borradoMandaSobre(fecha, sellado)) break;
+                await new Promise(r => setTimeout(r, 5));
+            }
             rescatados++;
         }
     }
