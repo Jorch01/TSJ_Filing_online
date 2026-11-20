@@ -201,26 +201,23 @@ async function inicializarApp() {
         try { await cargarCarpetasUI(); } catch (e) { console.warn('No se cargaron carpetas:', e); }
     }
 
-    // Antes de pintar nada: todo pendiente con fecha debe estar agendado. Se
-    // repasa aquí porque un pendiente puede haber entrado por un camino que no
-    // crea su evento (un respaldo importado, lo que bajó de otro dispositivo,
-    // o de una versión anterior a este vínculo), y así el calendario ya sale
-    // completo en el primer pintado, sin repintarse a medias después.
-    if (typeof sincronizarPendientesConCalendarioCore === 'function') {
+    // Antes de pintar nada: los pendientes ya no van al calendario, y los que
+    // se agendaron con versiones anteriores (o los que vuelvan con un
+    // respaldo o desde un dispositivo sin actualizar) se quitan aquí, para
+    // que el calendario salga limpio en el primer pintado.
+    if (typeof sacarPendientesDelCalendarioCore === 'function') {
         try {
-            const repaso = await sincronizarPendientesConCalendarioCore();
-            // Si aparecen fechas nuevas en el calendario, se dice: ver surgir
-            // eventos que uno no puso deja pensando que la app inventa cosas.
-            // Solo pasa la primera vez, porque después ya no hay nada que
-            // recoger.
-            if (repaso.creados > 0) {
-                mostrarToast(repaso.creados === 1
-                    ? 'Se agendó 1 pendiente que tenía fecha y no estaba en el calendario'
-                    : `Se agendaron ${repaso.creados} pendientes que tenían fecha y no estaban en el calendario`,
+            const limpieza = await sacarPendientesDelCalendarioCore();
+            // Se dice: ver desaparecer fechas del calendario sin explicación
+            // deja pensando que se perdieron. Solo pasa la primera vez.
+            if (limpieza.retirados > 0) {
+                mostrarToast(limpieza.retirados === 1
+                    ? 'Se quitó 1 pendiente del calendario: sigue en Pendientes con su fecha'
+                    : `Se quitaron ${limpieza.retirados} pendientes del calendario: siguen en Pendientes con su fecha`,
                     'info');
             }
         } catch (e) {
-            console.warn('No se pudo repasar el calendario de los pendientes:', e);
+            console.warn('No se pudieron sacar los pendientes del calendario:', e);
         }
     }
 
@@ -3684,7 +3681,7 @@ async function mostrarFormularioPendiente(id = null, expedienteIdPrefijado = nul
                     <input type="datetime-local" id="pendiente-fecha" value="${valorFecha}">
                 </div>
             </div>
-            <small class="form-hint">Con fecha, el pendiente se agenda solo en el calendario y te avisa. Si le pones hora, se agenda a esa hora; si la dejas en 00:00, como día completo. Sin fecha, es solo una tarea del expediente.</small>
+            <small class="form-hint">La fecha límite se ve en Pendientes y te avisa por correo si tienes los recordatorios activados. Los pendientes no se agendan en el calendario: ahí van las audiencias y tus citas. Si la dejas en 00:00, cuenta como el día completo.</small>
         </form>
     `;
     document.getElementById('modal-footer').innerHTML = `
@@ -3877,7 +3874,7 @@ async function togglePendiente(id, completado) {
 async function confirmarEliminarPendiente(id) {
     const pendiente = await obtenerPendiente(id);
     if (!pendiente) return;
-    if (!confirm(`¿Eliminar el pendiente "${pendiente.titulo}"?\n\nSi tiene fecha, también se quitará del calendario.`)) return;
+    if (!confirm(`¿Eliminar el pendiente "${pendiente.titulo}"?`)) return;
     try {
         await eliminarPendienteCore(id);
         mostrarToast('Pendiente eliminado', 'success');
@@ -5304,6 +5301,30 @@ function _avisoSigueVigente(enviadoEn, evento) {
     return enviadoEn >= (Date.parse(sellos.fechaInicio) || 0);
 }
 
+/**
+ * Un pendiente con fecha límite, con la forma de un evento para el aviso por
+ * correo. La fecha que cuenta para saber si un aviso ya enviado sigue
+ * valiendo es la de la fecha límite (si se pospuso, toca avisar de nuevo).
+ */
+function _pendienteComoAviso(pendiente, expediente) {
+    const sellos = pendiente._fieldTimestamps || {};
+    const limite = new Date(pendiente.fechaLimite);
+    const todoElDia = typeof pendiente.todoElDia === 'boolean'
+        ? pendiente.todoElDia
+        : (isNaN(limite.getTime()) || (limite.getHours() === 0 && limite.getMinutes() === 0));
+    return {
+        id: pendiente.id,
+        esPendiente: true,
+        titulo: pendiente.titulo,
+        fechaInicio: pendiente.fechaLimite,
+        todoElDia,
+        descripcion: pendiente.descripcion || '',
+        expediente: expediente || '',
+        fechaCreacion: pendiente.fechaCreacion,
+        _fieldTimestamps: sellos.fechaLimite ? { fechaInicio: sellos.fechaLimite } : {}
+    };
+}
+
 // Hora con la que se anota un aviso enviado: la del reloj de sincronización,
 // el mismo con el que se sellan los cambios de fecha, para poder compararlas
 // aunque el reloj del dispositivo vaya adelantado o atrasado.
@@ -5342,10 +5363,25 @@ async function verificarRecordatoriosPendientes(silencioso) {
     let pendientes = [];
     let enviados = 0;
 
-    for (const evento of eventos) {
-        // Solo procesar eventos con alerta activada
-        if (!evento.alerta) continue;
+    // Audiencias y citas del calendario (las que tienen alerta), y los
+    // pendientes con fecha límite: ya no están en el calendario, pero su
+    // fecha sigue avisando igual que una audiencia.
+    const pendientesConFecha = typeof obtenerPendientes === 'function'
+        ? (await obtenerPendientes().catch(() => [])).filter(p => p && !p.completado && p.fechaLimite)
+        : [];
+    const etiquetaExpediente = new Map();
+    if (pendientesConFecha.length) {
+        for (const e of await obtenerExpedientes().catch(() => [])) etiquetaExpediente.set(e.id, e.numero || e.nombre || '');
+    }
+    const avisables = [
+        ...eventos.filter(e => e.alerta).map(evento => ({ evento, prefijo: String(evento.id) })),
+        ...pendientesConFecha.map(p => ({
+            evento: _pendienteComoAviso(p, etiquetaExpediente.get(p.expedienteId) || p.expedienteTexto || ''),
+            prefijo: `pendiente_${p.id}`
+        }))
+    ];
 
+    for (const { evento, prefijo } of avisables) {
         const fechaEvento = _diaLocalDeEvento(evento);
         if (!fechaEvento) continue;
         fechaEvento.setHours(0, 0, 0, 0);
@@ -5356,13 +5392,13 @@ async function verificarRecordatoriosPendientes(silencioso) {
 
         // Usar umbrales en lugar de comparación exacta para no perder ventanas
         // La clave incluye el tipo de umbral (no el número exacto de días) para deduplicar
-        const yaAvisado = (umbral) => _avisoSigueVigente(recordatoriosEnviados[`${evento.id}_${umbral}`], evento);
+        const yaAvisado = (umbral) => _avisoSigueVigente(recordatoriosEnviados[`${prefijo}_${umbral}`], evento);
         if (config.unDia && diasRestantes <= 1 && !yaAvisado('umbral1')) {
-            pendientes.push({ evento, diasRestantes, clave: `${evento.id}_umbral1` });
+            pendientes.push({ evento, diasRestantes, clave: `${prefijo}_umbral1` });
         } else if (config.tresDias && diasRestantes <= 3 && !yaAvisado('umbral3')) {
-            pendientes.push({ evento, diasRestantes, clave: `${evento.id}_umbral3` });
+            pendientes.push({ evento, diasRestantes, clave: `${prefijo}_umbral3` });
         } else if (config.unaSemana && diasRestantes <= 7 && !yaAvisado('umbral7')) {
-            pendientes.push({ evento, diasRestantes, clave: `${evento.id}_umbral7` });
+            pendientes.push({ evento, diasRestantes, clave: `${prefijo}_umbral7` });
         }
     }
 
@@ -5436,12 +5472,11 @@ async function enviarRecordatorioEvento(evento, diasRestantes, serviceId, public
         horaTexto = `${horas}:${minutos}`;
     }
 
-    const lineasMensaje = [
-        'RECORDATORIO DE EVENTO',
-        '',
-        `Evento: ${evento.titulo}`,
-        `Fecha: ${fechaEvento}`
-    ];
+    const lineasMensaje = evento.esPendiente
+        ? ['RECORDATORIO DE PENDIENTE', '', `Pendiente: ${evento.titulo}`]
+        : ['RECORDATORIO DE EVENTO', '', `Evento: ${evento.titulo}`];
+    if (evento.expediente) lineasMensaje.push(`Expediente: ${evento.expediente}`);
+    lineasMensaje.push(`${evento.esPendiente ? 'Fecha límite' : 'Fecha'}: ${fechaEvento}`);
     if (horaTexto) lineasMensaje.push(`Hora: ${horaTexto}`);
     lineasMensaje.push(`Faltan: ${diasTexto}`);
     lineasMensaje.push('');
@@ -5453,7 +5488,9 @@ async function enviarRecordatorioEvento(evento, diasRestantes, serviceId, public
     const asuntoHora = horaTexto ? ` ${horaTexto}` : '';
     const templateParams = {
         to_email: emailDestino,
-        subject: `📅 Recordatorio: ${evento.titulo}${asuntoHora} en ${diasTexto}`,
+        subject: evento.esPendiente
+            ? `✅ Pendiente: ${evento.titulo}${asuntoHora} vence en ${diasTexto}`
+            : `📅 Recordatorio: ${evento.titulo}${asuntoHora} en ${diasTexto}`,
         message: lineasMensaje.join('\n').trim(),
         from_name: 'TSJ Filing Online'
     };
@@ -5599,12 +5636,11 @@ async function importarDatos(event) {
 
             await importarTodosDatos(datosAImportar, true);
 
-            // Un respaldo puede traer pendientes con fecha cuyo evento no vino
-            // (respaldos anteriores no lo guardaban vinculado): se repasa para
-            // que ninguna fecha se quede fuera del calendario al restaurar.
-            if (typeof sincronizarPendientesConCalendarioCore === 'function') {
-                try { await sincronizarPendientesConCalendarioCore(); }
-                catch (e) { console.warn('No se pudo repasar el calendario de los pendientes:', e); }
+            // Un respaldo de antes trae los pendientes agendados en el
+            // calendario: se sacan, como al arrancar.
+            if (typeof sacarPendientesDelCalendarioCore === 'function') {
+                try { await sacarPendientesDelCalendarioCore(); }
+                catch (e) { console.warn('No se pudieron sacar los pendientes del calendario:', e); }
             }
 
             await cargarExpedientes();
@@ -5958,7 +5994,7 @@ async function descargarTemplateExpedientes() {
     csv += '#\n';
     csv += '# ---------- PENDIENTE (tarea del expediente) ----------\n';
     csv += '#   pendiente            - Qué hay que hacer      [opcional]\n';
-    csv += '#   pendiente_fecha      - Fecha límite; si la pones, aparece en el calendario\n';
+    csv += '#   pendiente_fecha      - Fecha límite (opcional); se ve en Pendientes, no en el calendario\n';
     csv += '#   pendiente_prioridad  - alta | media | baja    [opcional]\n';
     csv += '#\n';
     csv += '# ---------- AUDIENCIA / FECHA DEL CALENDARIO ----------\n';
@@ -6467,8 +6503,8 @@ const _TIPOS_EVENTO_CSV = {
 function _extrasDeFila(fila, numeroFila) {
     const errores = [];
     const extras = {};
-    // Se cuentan aparte: un pendiente que entra sin su fecha no llega al
-    // calendario, y perdido entre los demás avisos no se ve. Es justo lo que
+    // Se cuentan aparte: un pendiente que entra sin su fecha límite no avisa
+    // de nada, y perdido entre los demás avisos no se ve. Es justo lo que
     // pasó con las fechas que Excel exporta en formatos que no se aceptaban.
     let fechasDescartadas = 0;
 
@@ -6483,7 +6519,7 @@ function _extrasDeFila(fila, numeroFila) {
         if (fecha && fecha.error) {
             fechasDescartadas++;
             errores.push(`Fila ${numeroFila}: el pendiente "${tituloPendiente}" se creará SIN FECHA ` +
-                         `y no aparecerá en el calendario — ${fecha.error}`);
+                         `y sin fecha límite — ${fecha.error}`);
         } else if (fecha) {
             pendiente.fechaLimite = fecha.iso;
             pendiente.todoElDia = fecha.todoElDia;
@@ -6820,7 +6856,7 @@ async function importarExpedientes(event) {
         if (fechasDescartadas > 0) {
             resumen.push(`📆 ${fechasDescartadas} fecha${fechasDescartadas !== 1 ? 's no se entendieron' : ' no se entendió'}: ` +
                 `${fechasDescartadas !== 1 ? 'esos pendientes están' : 'ese pendiente está'} creado${fechasDescartadas !== 1 ? 's' : ''} ` +
-                `pero sin fecha, así que no aparece${fechasDescartadas !== 1 ? 'n' : ''} en el calendario. Revisa el detalle de abajo.`);
+                `pero sin fecha límite, así que no te avisará${fechasDescartadas !== 1 ? 'n' : ''} de nada. Revisa el detalle de abajo.`);
         }
         if (errores.length > 0) resumen.push(`⚠️ ${errores.length} filas con algún problema (abajo el detalle).`);
         if (aviso) aviso.trim().split('\n').filter(Boolean).forEach(l => resumen.push(l));
@@ -6869,8 +6905,8 @@ function _contarPorInstitucion(asuntos) {
 
 /**
  * Da de alta los pendientes y las fechas de calendario de cada asunto, ya con
- * el id del expediente al que cuelgan. Un pendiente con fecha límite genera
- * además su evento en el calendario: de eso se encarga crearPendienteCore.
+ * el id del expediente al que cuelgan. Los pendientes no van al calendario:
+ * solo las audiencias y fechas de la columna "audiencia".
  */
 async function _crearExtrasDeImportacion(asuntos, errores) {
     let pendientes = 0, eventos = 0;
@@ -7708,6 +7744,55 @@ function construirEventoIA(fecha, contexto) {
     };
 }
 
+/**
+ * Una fecha del acuerdo que NO es audiencia (un plazo, un vencimiento, algo
+ * que hay que hacer) es un pendiente con fecha límite, no un evento: el
+ * calendario es solo para audiencias y citas. Lleva el mismo contexto del
+ * acuerdo que llevaría el evento, para saber de dónde salió.
+ */
+function construirPendienteIA(fecha, contexto) {
+    const { expedienteId, expedienteTexto, juzgadoOrigen, tipoAcuerdo, resumen } = contexto;
+    const hora = parsearHoraIA(fecha.hora);
+    // Sin hora, las 00:00: así se guarda en Pendientes un día completo.
+    const limite = new Date(`${fecha.fecha}T${hora || '00:00'}`);
+    if (isNaN(limite.getTime())) {
+        throw new Error(`Fecha inválida del análisis IA: ${fecha.fecha} ${fecha.hora || ''}`);
+    }
+    const lineas = [];
+    if (juzgadoOrigen) lineas.push(`🏛️ Órgano: ${juzgadoOrigen}`);
+    if (tipoAcuerdo) lineas.push(`📝 Tipo de acuerdo: ${tipoAcuerdo}`);
+    if (resumen) lineas.push(`📄 Resumen: ${resumen}`);
+    lineas.push('— Extraído automáticamente del análisis IA');
+    const nombreTipo = fecha.tipo === 'vencimiento' ? 'Vencimiento' : 'Recordatorio';
+    return {
+        titulo: String(fecha.descripcion || '').trim() || `${nombreTipo} del acuerdo`,
+        descripcion: lineas.join('\n'),
+        expedienteId: expedienteId || null,
+        expedienteTexto: expedienteId ? null : (expedienteTexto || null),
+        fechaLimite: limite.toISOString(),
+        todoElDia: !hora,
+        prioridad: ''
+    };
+}
+
+// ¿Esta fecha del acuerdo va al calendario? Solo las audiencias.
+function _fechaIAVaAlCalendario(fecha) {
+    return !!fecha && fecha.tipo === 'audiencia';
+}
+
+/**
+ * Guarda una fecha del análisis IA donde le toca: la audiencia en el
+ * calendario y lo demás en Pendientes. Devuelve 'evento' o 'pendiente'.
+ */
+async function guardarFechaIA(fecha, contexto) {
+    if (_fechaIAVaAlCalendario(fecha)) {
+        await agregarEvento(construirEventoIA(fecha, contexto));
+        return 'evento';
+    }
+    await crearPendienteCore(construirPendienteIA(fecha, contexto));
+    return 'pendiente';
+}
+
 // Normaliza la hora que devuelve el LLM a formato 24h "HH:MM".
 // Acepta variaciones comunes ("10:30", "10:30 AM", "10:30:00", "10", "10:30hrs",
 // "14h00") y descarta basura. Devuelve null si no hay hora válida — eso permite
@@ -7875,7 +7960,7 @@ function mostrarResultadosIA(resultado) {
                     <input type="checkbox" id="ia-fecha-${i}" checked>
                     <label for="ia-fecha-${i}">
                         <strong>${escapeText(fecha.tipo?.toUpperCase() || '')}:</strong> ${escapeText(fecha.descripcion)}
-                        <br><small>📆 ${fechaStr}</small>
+                        <br><small>📆 ${fechaStr} · ${_fechaIAVaAlCalendario(fecha) ? 'va al calendario' : 'va a Pendientes'}</small>
                     </label>
                 </div>
             `;
@@ -8103,16 +8188,17 @@ async function guardarResultadosIA() {
         expedienteLabel = numExpExtraido;
     }
 
-    // Guardar eventos/fechas seleccionados con hora normalizada y todo el
-    // contexto del acuerdo (tipo, resumen, órgano) — así al abrir el evento
-    // desde el calendario se ve de qué expediente y acuerdo proviene.
+    // Guardar las fechas seleccionadas con hora normalizada y todo el
+    // contexto del acuerdo (tipo, resumen, órgano) — así al abrirlas se ve de
+    // qué expediente y acuerdo provienen. Las audiencias van al calendario y
+    // los plazos a Pendientes (ver guardarFechaIA).
     if (resultado.fechas) {
         for (let i = 0; i < resultado.fechas.length; i++) {
             const checkbox = document.getElementById(`ia-fecha-${i}`);
             if (checkbox && checkbox.checked) {
                 const fecha = resultado.fechas[i];
                 try {
-                    const evento = construirEventoIA(fecha, {
+                    await guardarFechaIA(fecha, {
                         expedienteId: resultado.expedienteId,
                         expedienteTexto: resultado.expedienteTexto || numExpExtraido,
                         expedienteLabel,
@@ -8121,7 +8207,6 @@ async function guardarResultadosIA() {
                         tipoAcuerdo: resultado.tipo_acuerdo,
                         resumen: resultado.resumen
                     });
-                    await agregarEvento(evento);
                     guardados++;
                 } catch (e) {
                     Logger.error('Error al guardar evento:', e);
@@ -9572,11 +9657,13 @@ async function verDetalleExpediente(expedienteId) {
         eventosDeExpediente(expedienteId)
     ]);
 
-    // Un pendiente con fecha lleva su propio evento en el calendario. Aquí el
-    // pendiente ya sale arriba con su fecha, así que repetirlo abajo sería
-    // contar dos veces la misma cosa en la misma ventana.
+    // Los pendientes ya no van al calendario, pero uno que llega de un
+    // dispositivo sin actualizar puede traer todavía su evento hasta la
+    // siguiente limpieza. Aquí el pendiente ya sale arriba con su fecha, así
+    // que repetirlo abajo sería contar dos veces la misma cosa.
     const espejos = new Set(pendientes.map(p => p.eventoId).filter(id => id != null));
-    const eventos = todosLosEventos.filter(e => !espejos.has(e.id));
+    const eventos = todosLosEventos.filter(e => !espejos.has(e.id) &&
+        !(typeof esEventoDePendienteCore === 'function' && esEventoDePendienteCore(e)));
 
     const abiertos = pendientes.filter(p => !p.completado);
     const hechos = pendientes.filter(p => p.completado);
@@ -9746,7 +9833,7 @@ const TIPOS_REPORTE = {
         titulo: '🐞 Reportar un problema',
         intro: 'Cuéntame qué pasó y qué esperabas que pasara. Cuanto más concreto, antes lo puedo reproducir y arreglar.',
         etiqueta: '¿Qué ha pasado?',
-        ejemplo: 'Ejemplo: al importar el template con 200 expedientes, los pendientes se crean pero no aparecen en el calendario. Uso Chrome en Windows.'
+        ejemplo: 'Ejemplo: al importar el template con 200 expedientes, las audiencias se crean pero no aparecen en el calendario. Uso Chrome en Windows.'
     },
     mejora: {
         titulo: '💡 Sugerir una mejora',
@@ -11928,7 +12015,7 @@ function mostrarResultadosIAPJF(resultado) {
                     <input type="checkbox" id="ia-pjf-fecha-${i}" checked>
                     <label for="ia-pjf-fecha-${i}">
                         <strong>${escapeText(fecha.tipo?.toUpperCase() || '')}:</strong> ${escapeText(fecha.descripcion)}
-                        <br><small>📆 ${fechaStr}</small>
+                        <br><small>📆 ${fechaStr} · ${_fechaIAVaAlCalendario(fecha) ? 'va al calendario' : 'va a Pendientes'}</small>
                     </label>
                 </div>
             `;
@@ -12039,7 +12126,7 @@ async function guardarResultadosIAPJF() {
             if (checkbox && checkbox.checked) {
                 const fecha = resultado.fechas[i];
                 try {
-                    const evento = construirEventoIA(fecha, {
+                    await guardarFechaIA(fecha, {
                         expedienteId: resultado.expedienteId,
                         expedienteTexto: resultado.expedienteTexto || numExpExtraido,
                         expedienteLabel,
@@ -12048,7 +12135,6 @@ async function guardarResultadosIAPJF() {
                         tipoAcuerdo: resultado.tipo_acuerdo,
                         resumen: resultado.resumen
                     });
-                    await agregarEvento(evento);
                     guardados++;
                 } catch (e) {
                     Logger.error('Error al guardar evento PJF:', e);

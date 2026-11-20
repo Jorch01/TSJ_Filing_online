@@ -13,8 +13,8 @@
  *      OTRO evento con el mismo id y, al aplicarlas, ganaba la última escrita:
  *      el cambio se deshacía solo. Ahora las versiones del mismo evento se
  *      reconocen por su id y su fecha de creación, y se funden.
- *   2. Mover en el calendario el evento de un pendiente no duraba: el siguiente
- *      cambio al pendiente lo reescribía con la fecha vieja.
+ *   2. Los pendientes ya no van al calendario: con fecha no crean evento, y el
+ *      que traen de antes se quita al tocarlos.
  *   3. El análisis IA escribe la hora en el título ("10:00 — Audiencia"): al
  *      mover la hora, el calendario seguía diciendo las 10:00.
  *   4. Google Calendar recibía los eventos de todo el día con el fin igual al
@@ -208,49 +208,31 @@ function crearSandboxCore() {
 
 async function pruebaEventoDePendiente() {
     const { sb, estado } = crearSandboxCore();
+
+    // Un pendiente con fecha ya no se agenda: el calendario es para audiencias y citas.
     const idP = await sb.crearPendienteCore({
         titulo: 'Contestar demanda', fechaLimite: iso(2026, 10, 5), todoElDia: true, prioridad: 'media'
     });
-    const eventoId = estado.pendientes[0].eventoId;
-    const evento = () => estado.eventos.find(e => e.id === eventoId);
-    verificar('pendiente: tiene su evento en el calendario', !!evento());
+    igual('pendiente: con fecha no crea evento', estado.eventos.length, 0);
+    igual('pendiente: ni vínculo', estado.pendientes[0].eventoId, null);
+    igual('pendiente: conserva su fecha límite', estado.pendientes[0].fechaLimite, iso(2026, 10, 5));
 
-    // Se mueve el evento en el calendario...
-    await sb.actualizarEventoCore(eventoId, { fechaInicio: iso(2026, 10, 9) });
-    igual('pendiente: toma la fecha nueva de su evento', estado.pendientes[0].fechaLimite, iso(2026, 10, 9));
-
-    // ...y después se toca el pendiente: antes esto regresaba el evento al día 5.
+    // Uno que trae su espejo de antes lo pierde en cuanto se toca.
+    const idEspejo = await sb.agregarEvento({ titulo: 'Contestar demanda', tipo: 'recordatorio',
+        fechaInicio: iso(2026, 10, 5), todoElDia: true, pendienteId: idP, descripcion: 'Pendiente del expediente.' });
+    await sb.actualizarPendiente(idP, { eventoId: idEspejo });
     await sb.actualizarPendienteCore(idP, { prioridad: 'alta' });
-    igual('pendiente: cambiarle la prioridad ya no regresa el evento a la fecha vieja',
-        evento().fechaInicio, iso(2026, 10, 9));
+    igual('pendiente: al editarlo, su evento de antes sale del calendario', estado.eventos.length, 0);
+    igual('pendiente: y se suelta el vínculo', estado.pendientes[0].eventoId, null);
+    igual('pendiente: el cambio pedido sí se guarda', estado.pendientes[0].prioridad, 'alta');
 
-    // Tipo y alerta puestos a mano en el calendario sobreviven a una edición del pendiente.
-    await sb.actualizarEventoCore(eventoId, { tipo: 'vencimiento', alerta: false });
-    await sb.actualizarPendienteCore(idP, { descripcion: 'con pruebas' });
-    igual('pendiente: el tipo puesto en el calendario se respeta', evento().tipo, 'vencimiento');
-    igual('pendiente: y la alerta también', evento().alerta, false);
-    igual('pendiente: su detalle sí llega a la descripción del evento',
-        evento().descripcion, 'Pendiente del expediente.\n\ncon pruebas');
-
-    // Título y descripción editados en el evento llegan al pendiente.
-    await sb.actualizarEventoCore(eventoId, { titulo: 'Contestar la demanda (urgente)' });
-    igual('pendiente: el título cambiado en el calendario llega al pendiente',
-        estado.pendientes[0].titulo, 'Contestar la demanda (urgente)');
-    await sb.actualizarEventoCore(eventoId, { descripcion: 'Pendiente del expediente.\n\nllevar copias' });
-    igual('pendiente: y la descripción, sin el encabezado automático', estado.pendientes[0].descripcion, 'llevar copias');
-
-    // Con hora deja de ser de día completo, en los dos lados.
-    await sb.actualizarEventoCore(eventoId, { fechaInicio: iso(2026, 10, 9, 11, 30), todoElDia: false });
-    igual('pendiente: la hora puesta en el calendario llega al pendiente',
-        [estado.pendientes[0].fechaLimite, estado.pendientes[0].todoElDia], [iso(2026, 10, 9, 11, 30), false]);
-
-    // Un vínculo roto no autoriza a tocar un pendiente ajeno.
-    const idAjeno = await sb.agregarPendiente({ titulo: 'Ajeno', fechaLimite: iso(2026, 11, 1), eventoId: 999 });
-    const idSuelto = await sb.crearEventoCore({ titulo: 'Suelto', tipo: 'otro', fechaInicio: iso(2026, 10, 20) });
-    await sb.actualizarEvento(idSuelto, { pendienteId: idAjeno });
+    // Mover un evento ya no reescribe ningún pendiente, aunque diga que es suyo.
+    const idSuelto = await sb.crearEventoCore({ titulo: 'Junta', tipo: 'otro', fechaInicio: iso(2026, 10, 20) });
+    await sb.actualizarEvento(idSuelto, { pendienteId: idP });
+    await sb.actualizarPendiente(idP, { eventoId: idSuelto });
     await sb.actualizarEventoCore(idSuelto, { fechaInicio: iso(2026, 10, 21) });
-    igual('pendiente: uno que no apunta de vuelta al evento no se toca',
-        estado.pendientes.find(p => p.id === idAjeno).fechaLimite, iso(2026, 11, 1));
+    igual('pendiente: mover un evento no cambia la fecha de un pendiente',
+        estado.pendientes[0].fechaLimite, iso(2026, 10, 5));
 }
 
 async function pruebaHoraEscritaEnElTitulo() {
@@ -335,7 +317,7 @@ function pruebaFormularioYRecordatorios() {
     const app = leer('app.js');
     const sb = { Date, isNaN, parseInt, String };
     vm.createContext(sb);
-    for (const n of ['valorFechaHoraLocal', '_parsearFechaLocal', '_diaLocalDeEvento', '_avisoSigueVigente']) {
+    for (const n of ['valorFechaHoraLocal', '_parsearFechaLocal', '_diaLocalDeEvento', '_avisoSigueVigente', '_pendienteComoAviso']) {
         vm.runInContext(extraer(app, n, 'app.js'), sb, { filename: 'app.js:' + n });
     }
 
@@ -364,6 +346,20 @@ function pruebaFormularioYRecordatorios() {
     // dispositivo vaya atrasado respecto al sello, el aviso vale y no se repite.
     const sinMover = { fechaCreacion: '2026-09-20T10:00:00.000Z', _fieldTimestamps: { fechaInicio: '2026-09-20T10:00:00.000Z' } };
     igual('recordatorio: un evento que nunca se movió no repite el aviso', sb._avisoSigueVigente(cambio - 60000, sinMover), true);
+
+    // Los pendientes ya no están en el calendario, pero su fecha límite avisa igual.
+    const pend = { id: 7, titulo: 'Contestar demanda', fechaLimite: iso(2026, 10, 5, 20), todoElDia: false,
+        descripcion: 'con pruebas', fechaCreacion: '2026-09-01T10:00:00.000Z',
+        _fieldTimestamps: { fechaLimite: '2026-09-20T10:00:00.000Z' } };
+    const aviso = sb._pendienteComoAviso(pend, '123/2025');
+    igual('pendiente: avisa en el día de su fecha límite', sb._diaLocalDeEvento(aviso).getDate(), 5);
+    igual('pendiente: el aviso dice que es un pendiente y de qué expediente', [aviso.esPendiente, aviso.expediente, aviso.titulo],
+        [true, '123/2025', 'Contestar demanda']);
+    igual('pendiente: con hora no es de día completo', aviso.todoElDia, false);
+    igual('pendiente: si se pospuso después del aviso, se vuelve a avisar', sb._avisoSigueVigente(cambio - 1000, aviso), false);
+    igual('pendiente: si no, no se repite', sb._avisoSigueVigente(cambio + 1000, aviso), true);
+    const antiguo = sb._pendienteComoAviso({ id: 8, titulo: 'Viejo', fechaLimite: iso(2026, 10, 5) });
+    igual('pendiente: uno antiguo a las 00:00 cuenta como día completo', antiguo.todoElDia, true);
 }
 
 function pruebaNavegacionDeMeses() {

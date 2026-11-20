@@ -587,8 +587,8 @@ async function pruebaPendienteConFechaSigueAgendando() {
     await guardar(sandbox);
 
     igual('el pendiente se crea', estado.pendientes.length, 1);
-    igual('y sigue creando su evento de calendario', estado.eventos.length, 1);
-    verificar('el evento queda vinculado', estado.pendientes[0].eventoId === estado.eventos[0].id);
+    igual('con su fecha límite', !!estado.pendientes[0].fechaLimite, true);
+    igual('pero no va al calendario (es solo para audiencias y citas)', estado.eventos.length, 0);
     igual('todo sube en una sola sincronización', estado.sincronizaciones, 1);
 }
 

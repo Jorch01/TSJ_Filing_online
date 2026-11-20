@@ -876,8 +876,7 @@ async function eliminarDependenciasDeExpediente(expedienteId) {
         await eliminarEvento(e.id).catch(() => {});
         // La copia en Google Calendar no se va sola.
         try {
-            if (typeof GCAL !== 'undefined' && GCAL.estaConectado && GCAL.estaConectado() &&
-                e.googleCalEventId && GCAL.hookEliminarEvento) {
+            if (typeof GCAL !== 'undefined' && e.googleCalEventId && GCAL.hookEliminarEvento) {
                 GCAL.hookEliminarEvento(e.googleCalEventId);
             }
         } catch (err) { /* que falle el calendario no debe frenar el borrado */ }
@@ -1879,13 +1878,16 @@ async function _importarTodosDatos(datos, sobrescribir = false) {
     }
 
     // Importar eventos. Cada uno recibe un id nuevo, así que se anota la
-    // traducción: los pendientes con fecha apuntan al suyo y hay que poder
-    // rehacer ese vínculo con los ids de aquí.
+    // traducción: en los respaldos de antes, cada pendiente con fecha apunta
+    // a su evento espejo del calendario, y hay que poder reconocerlo con los
+    // ids de aquí para que la limpieza posterior lo quite.
     const mapaEventos = new Map();
+    const pendienteDelEvento = new Map();   // id nuevo del evento → id original de su pendiente
     for (const evento of datos.eventos || []) {
         const idOriginal = evento.id;
         delete evento.id;
         // El pendiente al que espeja aún no existe; se reengancha más abajo.
+        const pendienteOriginal = evento.pendienteId;
         delete evento.pendienteId;
         const sellos = _sellosDe(evento);
         const nuevoId = await agregarEvento(remapearExpediente(evento));
@@ -1893,14 +1895,17 @@ async function _importarTodosDatos(datos, sobrescribir = false) {
         if (idOriginal !== undefined && idOriginal !== null) {
             mapaEventos.set(idOriginal, nuevoId);
         }
+        if (pendienteOriginal != null) pendienteDelEvento.set(nuevoId, pendienteOriginal);
     }
 
-    // Importar pendientes. Un pendiente con fecha lleva un evento espejo en el
-    // calendario; ese vínculo se traduce a los ids nuevos en vez de tirarlo.
-    // Tirándolo, el respaldo se restauraba a medias: el evento quedaba suelto
-    // en el calendario y el pendiente, sin nada agendado, hasta que alguien lo
-    // editara a mano.
+    // Importar pendientes. Los pendientes ya no van al calendario, pero un
+    // respaldo de antes trae su evento espejo. El vínculo se traduce a los ids
+    // nuevos SOLO si el evento lo confirma (apuntaba de vuelta a ese mismo
+    // pendiente): así sacarPendientesDelCalendarioCore, que corre al terminar
+    // la restauración, quita los espejos y nunca un evento al que un vínculo
+    // viejo apuntara por error.
     for (const pendiente of datos.pendientes || []) {
+        const idOriginal = pendiente.id;
         delete pendiente.id;
         const eventoOriginal = pendiente.eventoId;
         pendiente.eventoId = mapaEventos.has(eventoOriginal)
@@ -1909,7 +1914,8 @@ async function _importarTodosDatos(datos, sobrescribir = false) {
         const sellos = _sellosDe(pendiente);
         const nuevoId = await agregarPendiente(remapearExpediente(pendiente));
         await _restaurarSellos('pendientes', nuevoId, sellos);
-        if (pendiente.eventoId != null) {
+        if (pendiente.eventoId != null && idOriginal != null &&
+            pendienteDelEvento.get(pendiente.eventoId) === idOriginal) {
             await actualizarEvento(pendiente.eventoId, { pendienteId: nuevoId }).catch(() => {});
         }
     }

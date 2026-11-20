@@ -115,17 +115,8 @@ async function crearEventoCore(datos) {
     return nuevoId;
 }
 
-/**
- * Actualiza un evento. Ajusta el color si cambia el tipo y no se indicó color.
- *
- * Si el evento es el reflejo de un pendiente, el cambio de fecha, hora, título
- * o descripción se lleva también al pendiente. Sin eso, mover el evento en el
- * calendario no duraba: el siguiente cambio al pendiente —subirle la
- * prioridad, pasarlo a otra carpeta— lo reescribía con la fecha vieja.
- * opciones.reflejarEnPendiente:false lo evita cuando el cambio viene
- * precisamente del pendiente.
- */
-async function actualizarEventoCore(id, cambios, opciones = {}) {
+/** Actualiza un evento. Ajusta el color si cambia el tipo y no se indicó color. */
+async function actualizarEventoCore(id, cambios) {
     const aplicar = { ...cambios };
     if (aplicar.tipo && !aplicar.color && CORE_COLORES_EVENTOS[aplicar.tipo]) {
         aplicar.color = CORE_COLORES_EVENTOS[aplicar.tipo];
@@ -135,7 +126,6 @@ async function actualizarEventoCore(id, cambios, opciones = {}) {
     _coreReajustarHoraEscrita(actual, aplicar);
 
     await actualizarEvento(id, aplicar);
-    if (opciones.reflejarEnPendiente !== false) await _coreReflejarEventoEnPendiente(actual, aplicar);
     await _coreRefrescarUI();
     await _coreSincronizar();
     await _coreGcalGuardar(id);
@@ -186,45 +176,14 @@ function _coreReajustarHoraEscrita(actual, aplicar) {
     }
 }
 
-/** Lleva al pendiente vinculado lo que se cambió en su evento de calendario. */
-async function _coreReflejarEventoEnPendiente(evento, cambios) {
-    if (evento.pendienteId == null || typeof obtenerPendiente !== 'function') return;
-    try {
-        const pendiente = await obtenerPendiente(evento.pendienteId);
-        // El vínculo tiene que ir en los dos sentidos: un pendienteId heredado
-        // de un respaldo viejo no autoriza a tocar un pendiente ajeno.
-        if (!pendiente || pendiente.eventoId !== evento.id) return;
-
-        const reflejo = {};
-        if (cambios.fechaInicio !== undefined && cambios.fechaInicio !== pendiente.fechaLimite) {
-            reflejo.fechaLimite = cambios.fechaInicio;
-        }
-        if (cambios.todoElDia !== undefined && !!cambios.todoElDia !== _corePendienteEsTodoElDia(pendiente)) {
-            reflejo.todoElDia = !!cambios.todoElDia;
-        }
-        if (cambios.titulo && cambios.titulo.trim() && cambios.titulo.trim() !== pendiente.titulo) {
-            reflejo.titulo = cambios.titulo.trim();
-        }
-        if (cambios.descripcion !== undefined) {
-            const detalle = _corePendienteDetalleDeDescripcion(cambios.descripcion);
-            if (detalle !== (pendiente.descripcion || '')) reflejo.descripcion = detalle;
-        }
-        if (Object.keys(reflejo).length) await actualizarPendiente(pendiente.id, reflejo);
-    } catch (e) {
-        // Que falle el reflejo no puede tumbar el cambio del evento, que es lo
-        // que el usuario pidió.
-        console.error('[CORE] No se pudo reflejar el cambio en el pendiente:', e);
-    }
-}
-
 /** Elimina un evento (incluida su copia en Google Calendar si aplica). */
 async function eliminarEventoCore(id) {
     const evento = (await obtenerEventos()).find(e => e.id === id);
     if (!evento) throw new Error('Evento no encontrado');
     await eliminarEvento(id);
     try {
-        if (typeof GCAL !== 'undefined' && GCAL.estaConectado && GCAL.estaConectado() &&
-            evento.googleCalEventId && GCAL.hookEliminarEvento) {
+        // Sin conexión con Google, GCAL lo anota y lo borra allá al conectar.
+        if (typeof GCAL !== 'undefined' && evento.googleCalEventId && GCAL.hookEliminarEvento) {
             GCAL.hookEliminarEvento(evento.googleCalEventId);
         }
     } catch (e) {
@@ -395,14 +354,18 @@ async function eliminarNotaCore(id) {
 }
 
 // ==================== PENDIENTES ====================
-// Un pendiente es una tarea de un expediente. La fecha límite es opcional;
-// cuando existe, se mantiene un evento de calendario vinculado para que el
-// pendiente aparezca en el calendario, dispare alerta y viaje a Google
-// Calendar sin duplicar esa maquinaria. El vínculo va en pendiente.eventoId,
-// y el evento lleva pendienteId de vuelta.
-
-/** Tipo de evento con el que se refleja un pendiente en el calendario. */
-const CORE_TIPO_EVENTO_PENDIENTE = 'recordatorio';
+// Un pendiente es una tarea de un expediente, con fecha límite opcional.
+//
+// Los pendientes NO van al calendario: el calendario es para las audiencias y
+// las citas que agenda el usuario. La fecha límite de un pendiente se ve en
+// Pendientes, entra en el resumen del asistente y avisa por correo como
+// cualquier evento (verificarRecordatoriosPendientes, en app.js).
+//
+// Antes cada pendiente con fecha llevaba un evento "espejo" en el calendario
+// (pendiente.eventoId ↔ evento.pendienteId, con la descripción "Pendiente del
+// expediente."). Llenaban el calendario de recordatorios amarillos que no
+// eran citas; sacarPendientesDelCalendarioCore los retira, y los vínculos que
+// todavía traiga un pendiente se sueltan al tocarlo.
 
 // Prioridades válidas, de más a menos urgente. Cualquier otro valor (incluida
 // la cadena vacía) significa "sin asignar", que es un estado legítimo: no todo
@@ -413,86 +376,53 @@ function normalizarPrioridadCore(valor) {
     return CORE_PRIORIDADES_PENDIENTE.includes(valor) ? valor : '';
 }
 
+// Con esto empezaba la descripción de todo espejo. Sirve para reconocer los
+// que perdieron el vínculo (un respaldo viejo los restauraba sueltos).
 const _CORE_BASE_DESCRIPCION_PENDIENTE = 'Pendiente del expediente.';
 
-function _corePendienteDescripcionEvento(datos) {
-    const base = _CORE_BASE_DESCRIPCION_PENDIENTE;
-    return datos.descripcion ? base + '\n\n' + datos.descripcion : base;
+/** ¿El evento es el reflejo en el calendario de un pendiente? */
+function esEventoDePendienteCore(evento) {
+    if (!evento) return false;
+    if (evento.pendienteId != null) return true;
+    return String(evento.descripcion || '').trim().startsWith(_CORE_BASE_DESCRIPCION_PENDIENTE);
 }
 
-// Lo contrario: de la descripción del evento, el detalle que va al pendiente.
-function _corePendienteDetalleDeDescripcion(descripcion) {
-    const texto = String(descripcion || '').trim();
-    if (texto.startsWith(_CORE_BASE_DESCRIPCION_PENDIENTE)) {
-        return texto.slice(_CORE_BASE_DESCRIPCION_PENDIENTE.length).trim();
-    }
-    return texto;
-}
-
-/**
- * ¿El pendiente marca un día entero o una hora concreta? El dato se guarda
- * desde que existe el vínculo con el calendario, pero los pendientes antiguos
- * —y los que llegan de un respaldo viejo— no lo traen, y ahí se deduce de la
- * propia fecha: las 00:00 son un día señalado ("para el 20"), no una cita a
- * medianoche.
- */
-function _corePendienteEsTodoElDia(pendiente) {
-    if (typeof pendiente.todoElDia === 'boolean') return pendiente.todoElDia;
-    const d = new Date(pendiente.fechaLimite);
-    if (isNaN(d.getTime())) return true;
-    return d.getHours() === 0 && d.getMinutes() === 0;
+// Un espejo al que el usuario cambió a mano el tipo a audiencia y le puso
+// hora ya no es el reflejo de una tarea: es una audiencia que él agendó. Se
+// queda en el calendario, sin vínculo; borrarlo no tendría vuelta atrás.
+function _coreEspejoVueltoAudiencia(evento) {
+    return evento.tipo === 'audiencia' && !evento.todoElDia;
 }
 
 /**
- * Crea, actualiza o elimina el evento de calendario que refleja un pendiente,
- * según tenga o no fecha límite. Devuelve el eventoId resultante (o null).
- * Nunca propaga errores: que falle el calendario no debe impedir guardar el
- * pendiente, que es lo que el usuario pidió.
+ * Quita del calendario el evento que un pendiente traía de antes. Solo toca
+ * lo que es DEMOSTRABLEMENTE su reflejo: un eventoId heredado de un respaldo
+ * viejo puede apuntar a una audiencia real, y esa se queda. No propaga
+ * errores: que falle el calendario no debe impedir guardar el pendiente.
+ * El llamador pone eventoId:null en el pendiente.
  */
-async function _corePendienteSincronizarEvento(pendiente, eventoIdActual) {
-    const debeExistir = !!pendiente.fechaLimite && !pendiente.completado;
-
+async function _coreRetirarEventoDePendiente(pendiente) {
+    if (!pendiente || pendiente.eventoId == null) return;
     try {
-        if (!debeExistir) {
-            if (eventoIdActual) await eliminarEventoCore(eventoIdActual).catch(() => {});
-            return null;
+        const evento = (await obtenerEventos()).find(e => e.id === pendiente.eventoId);
+        if (!evento) return;
+        const esSuyo = evento.pendienteId === pendiente.id ||
+            (evento.pendienteId == null && esEventoDePendienteCore(evento));
+        if (!esSuyo) return;
+        if (_coreEspejoVueltoAudiencia(evento)) {
+            await actualizarEvento(evento.id, { pendienteId: null });
+        } else {
+            await eliminarEventoCore(evento.id);
         }
-
-        const datosEvento = {
-            titulo: pendiente.titulo,
-            tipo: CORE_TIPO_EVENTO_PENDIENTE,
-            fechaInicio: pendiente.fechaLimite,
-            todoElDia: _corePendienteEsTodoElDia(pendiente),
-            expedienteId: pendiente.expedienteId != null ? pendiente.expedienteId : null,
-            expedienteTexto: pendiente.expedienteTexto || null,
-            descripcion: _corePendienteDescripcionEvento(pendiente),
-            alerta: true
-        };
-
-        if (eventoIdActual) {
-            // El evento pudo haberse borrado desde el calendario: si ya no
-            // está, se crea uno nuevo en vez de fallar.
-            const existe = (await obtenerEventos()).some(e => e.id === eventoIdActual);
-            if (existe) {
-                // Tipo y alerta no son datos del pendiente: se fijan al crear
-                // el evento y después son del evento. Reenviarlos deshacía lo
-                // que se hubiera cambiado a mano en el calendario.
-                const { tipo, alerta, ...delPendiente } = datosEvento;
-                await actualizarEventoCore(eventoIdActual, delPendiente, { reflejarEnPendiente: false });
-                return eventoIdActual;
-            }
-        }
-
-        return await crearEventoCore(datosEvento);
     } catch (e) {
-        console.error('[CORE] Error sincronizando el evento del pendiente:', e);
-        return eventoIdActual || null;
+        console.error('[CORE] No se pudo quitar del calendario el evento del pendiente:', e);
     }
 }
 
 /**
  * Crea un pendiente. Espera: { titulo, descripcion?, expedienteId?,
- * expedienteTexto?, fechaLimite?(ISO), todoElDia? }. Devuelve el id nuevo.
+ * expedienteTexto?, fechaLimite?(ISO), todoElDia?, prioridad?, origen? }.
+ * Devuelve el id nuevo.
  */
 async function crearPendienteCore(datos) {
     if (!datos || !datos.titulo || !datos.titulo.trim()) {
@@ -515,22 +445,13 @@ async function crearPendienteCore(datos) {
     // importación lo reconoce y lo actualiza en vez de duplicarlo.
     if (datos.origen && typeof datos.origen === 'object') pendiente.origen = { ...datos.origen };
 
-    const nuevoId = await _coreEnLoteEjecutar(async () => {
-        const id = await agregarPendiente(pendiente);
-        const eventoId = await _corePendienteSincronizarEvento(pendiente, null);
-        if (eventoId) {
-            await actualizarPendiente(id, { eventoId });
-            await actualizarEvento(eventoId, { pendienteId: id }).catch(() => {});
-        }
-        return id;
-    });
-
+    const nuevoId = await agregarPendiente(pendiente);
     await _coreRefrescarUI();
     await _coreSincronizar();
     return nuevoId;
 }
 
-/** Actualiza un pendiente y reajusta su evento de calendario. */
+/** Actualiza un pendiente. */
 async function actualizarPendienteCore(id, cambios) {
     const actual = await obtenerPendiente(id);
     if (!actual) throw new Error('Pendiente no encontrado');
@@ -544,49 +465,45 @@ async function actualizarPendienteCore(id, cambios) {
     }
 
     await _coreEnLoteEjecutar(async () => {
-        const actualizado = await actualizarPendiente(id, aplicar);
-        const eventoId = await _corePendienteSincronizarEvento(actualizado, actual.eventoId || null);
-        if (eventoId !== (actual.eventoId || null)) {
-            await actualizarPendiente(id, { eventoId });
-            if (eventoId) await actualizarEvento(eventoId, { pendienteId: id }).catch(() => {});
+        if (actual.eventoId != null) {
+            await _coreRetirarEventoDePendiente(actual);
+            aplicar.eventoId = null;
         }
+        await actualizarPendiente(id, aplicar);
     });
 
     await _coreRefrescarUI();
     await _coreSincronizar();
 }
 
-/**
- * Marca un pendiente como terminado (o lo reabre). Al terminarlo se retira su
- * evento del calendario; al reabrirlo se vuelve a crear si conserva fecha.
- */
+/** Marca un pendiente como terminado (o lo reabre). */
 async function completarPendienteCore(id, completado = true) {
     const actual = await obtenerPendiente(id);
     if (!actual) throw new Error('Pendiente no encontrado');
 
     await _coreEnLoteEjecutar(async () => {
-        const actualizado = await actualizarPendiente(id, {
+        const aplicar = {
             completado: !!completado,
             fechaCompletado: completado ? new Date().toISOString() : null
-        });
-        const eventoId = await _corePendienteSincronizarEvento(actualizado, actual.eventoId || null);
-        if (eventoId !== (actual.eventoId || null)) {
-            await actualizarPendiente(id, { eventoId });
-            if (eventoId) await actualizarEvento(eventoId, { pendienteId: id }).catch(() => {});
+        };
+        if (actual.eventoId != null) {
+            await _coreRetirarEventoDePendiente(actual);
+            aplicar.eventoId = null;
         }
+        await actualizarPendiente(id, aplicar);
     });
 
     await _coreRefrescarUI();
     await _coreSincronizar();
 }
 
-/** Elimina un pendiente y, con él, su evento de calendario. */
+/** Elimina un pendiente (y el evento que traía de antes, si lo tiene). */
 async function eliminarPendienteCore(id) {
     const actual = await obtenerPendiente(id);
     if (!actual) throw new Error('Pendiente no encontrado');
 
     await _coreEnLoteEjecutar(async () => {
-        if (actual.eventoId) await eliminarEventoCore(actual.eventoId).catch(() => {});
+        await _coreRetirarEventoDePendiente(actual);
         await eliminarPendiente(id);
     });
 
@@ -596,38 +513,29 @@ async function eliminarPendienteCore(id) {
 }
 
 /**
- * Repasa TODOS los pendientes y deja el calendario al día: el que tiene fecha
- * y sigue abierto debe estar agendado, y el que ya se terminó no debe seguir
- * ocupando sitio.
+ * Saca del calendario los eventos que reflejaban pendientes y suelta los
+ * vínculos que queden. Corre al arrancar, al restaurar un respaldo y en cada
+ * sincronización, porque un espejo puede volver por cualquiera de esos
+ * caminos (un respaldo viejo, o un dispositivo que todavía no se actualizó y
+ * lo vuelve a crear). Los pendientes no se tocan más que para soltar el
+ * vínculo: su fecha, prioridad y detalle siguen en Pendientes.
  *
- * Dar de alta un pendiente ya crea su evento, pero hay caminos por los que uno
- * entra a la base sin pasar por ahí y su fecha se quedaba solo en la lista de
- * pendientes, sin llegar nunca al calendario:
- *
- *   - Pendientes de antes de que existiera el vínculo con el calendario.
- *   - Los de un respaldo importado (el evento llegaba suelto, sin vínculo).
- *   - Los que bajan de otro dispositivo si su evento no vino en el mismo lote.
- *   - Aquellos cuyo evento se borró a mano desde el calendario.
- *
- * Es conservadora a propósito: crea lo que falta y reengancha lo que ya
- * existía, pero NO reescribe un evento que está puesto, porque pudo ajustarse
- * a mano desde el calendario y esto no es quién para deshacerlo.
+ * Se queda el espejo que el usuario convirtió a mano en audiencia con hora
+ * (ver _coreEspejoVueltoAudiencia), sin vínculo, y cualquier evento al que un
+ * pendiente apuntara sin ser su espejo.
  *
  * No propaga errores: es una puesta a punto de fondo, y que falle no puede
  * tumbar el arranque ni una sincronización.
  *
  * @param {{sincronizar?: boolean}} [opciones] sincronizar:false no dispara la
  *        subida a la nube al terminar. Lo usa el propio sync, que ya está en
- *        mitad de una vuelta y sube lo repasado en esa misma vuelta; llamarla
- *        desde dentro solo chocaría con el sync en curso.
- * @returns {Promise<{creados:number, revinculados:number, retirados:number}>}
+ *        mitad de una vuelta y sube lo repasado en esa misma vuelta.
+ * @returns {Promise<{retirados:number, conservados:number, soltados:number}>}
+ *        retirados: eventos quitados del calendario; conservados: espejos
+ *        vueltos audiencia que se quedan; soltados: pendientes desvinculados.
  */
-async function sincronizarPendientesConCalendarioCore(opciones = {}) {
-    const resumen = { creados: 0, revinculados: 0, retirados: 0 };
-    // El resumen cuenta lo que se ve en el calendario; esto cuenta TODO lo que
-    // se tocó en la base, vínculos sueltos incluidos, que también hay que
-    // repintar y subir.
-    let cambios = 0;
+async function sacarPendientesDelCalendarioCore(opciones = {}) {
+    const resumen = { retirados: 0, conservados: 0, soltados: 0 };
     if (typeof obtenerPendientes !== 'function' || typeof obtenerEventos !== 'function') {
         return resumen;
     }
@@ -636,69 +544,41 @@ async function sincronizarPendientesConCalendarioCore(opciones = {}) {
     try {
         [pendientes, eventos] = await Promise.all([obtenerPendientes(), obtenerEventos()]);
     } catch (e) {
-        console.error('[CORE] No se pudo repasar el calendario de los pendientes:', e);
+        console.error('[CORE] No se pudo revisar el calendario de los pendientes:', e);
         return resumen;
-    }
-
-    const eventosPorId = new Map((eventos || []).map(e => [e.id, e]));
-    // Espejos que siguen en el calendario pero cuyo pendiente perdió el vínculo.
-    // Sin esto, la pasada crearía un evento nuevo al lado del que ya estaba y
-    // el usuario acabaría viendo la misma fecha dos veces.
-    const espejoPorPendiente = new Map();
-    for (const e of eventos || []) {
-        if (e.pendienteId != null && !espejoPorPendiente.has(e.pendienteId)) {
-            espejoPorPendiente.set(e.pendienteId, e);
-        }
     }
 
     try {
         await _coreEnLoteEjecutar(async () => {
-            for (const p of pendientes || []) {
-                const debeEstarAgendado = !!p.fechaLimite && !p.completado;
-                const agendado = p.eventoId != null ? eventosPorId.get(p.eventoId) : null;
-
-                if (debeEstarAgendado) {
-                    if (agendado) continue;   // ya está en el calendario
-
-                    const huerfano = espejoPorPendiente.get(p.id);
-                    if (huerfano) {
-                        await actualizarPendiente(p.id, { eventoId: huerfano.id }).catch(() => {});
-                        resumen.revinculados++;
-                        cambios++;
-                        continue;
+            for (const e of eventos || []) {
+                if (!esEventoDePendienteCore(e)) continue;
+                if (_coreEspejoVueltoAudiencia(e)) {
+                    if (e.pendienteId != null) {
+                        await actualizarEvento(e.id, { pendienteId: null }).catch(() => {});
+                        resumen.conservados++;
                     }
-
-                    const eventoId = await _corePendienteSincronizarEvento(p, null);
-                    if (eventoId) {
-                        await actualizarPendiente(p.id, { eventoId }).catch(() => {});
-                        await actualizarEvento(eventoId, { pendienteId: p.id }).catch(() => {});
-                        resumen.creados++;
-                        cambios++;
-                    }
-                } else if (agendado) {
-                    // Terminado o sin fecha: su espejo ya no representa nada.
-                    //
-                    // Pero solo se borra lo que es DEMOSTRABLEMENTE su espejo,
-                    // es decir, lo que apunta de vuelta al pendiente. Un
-                    // eventoId heredado de un respaldo viejo puede haber caído
-                    // sobre el id de una audiencia real, y borrarla no tiene
-                    // vuelta atrás; deshacer el vínculo sí. Ante la duda, se
-                    // suelta el vínculo y el evento se queda.
-                    if (agendado.pendienteId === p.id) {
-                        await eliminarEventoCore(agendado.id).catch(() => {});
-                        resumen.retirados++;
-                    }
-                    await actualizarPendiente(p.id, { eventoId: null }).catch(() => {});
-                    cambios++;
+                    continue;
                 }
+                try {
+                    await eliminarEventoCore(e.id);
+                    resumen.retirados++;
+                } catch (err) {
+                    console.error('[CORE] No se pudo quitar del calendario un pendiente:', err);
+                }
+            }
+            for (const p of pendientes || []) {
+                if (p.eventoId == null) continue;
+                await actualizarPendiente(p.id, { eventoId: null }).catch(() => {});
+                resumen.soltados++;
             }
         });
     } catch (e) {
-        console.error('[CORE] Error repasando el calendario de los pendientes:', e);
+        console.error('[CORE] Error sacando los pendientes del calendario:', e);
     }
 
-    // Solo se molesta a la UI y a la nube si de verdad cambió algo.
-    if (cambios > 0) {
+    // Solo se molesta a la UI y a la nube si de verdad cambió algo: esto
+    // corre en cada arranque y en cada sincronización.
+    if (resumen.retirados || resumen.conservados || resumen.soltados) {
         await _coreRefrescarUI();
         if (opciones.sincronizar !== false) await _coreSincronizar();
     }
