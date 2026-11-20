@@ -1160,21 +1160,15 @@ async function probarCalendarioEnCancun(navegador) {
         igual('meses: desde el 31 de octubre, "siguiente" es noviembre', varios.siguiente, 'Noviembre 2026');
         igual('meses: y "anterior" es septiembre', varios.anterior, 'Septiembre 2026');
 
-        // ---- El evento de un pendiente ----
+        // ---- Un pendiente no va al calendario ----
         const pend = await page.evaluate(async () => {
-            const nueva = new Date(2026, 9, 9).toISOString();
+            const antes = (await obtenerEventos()).length;
             const idP = await crearPendienteCore({ titulo: 'Contestar demanda (UI)',
                 fechaLimite: new Date(2026, 9, 5).toISOString(), todoElDia: true });
-            const p = await obtenerPendiente(idP);
-            await actualizarEventoCore(p.eventoId, { fechaInicio: nueva });
             await actualizarPendienteCore(idP, { prioridad: 'alta' });
-            return {
-                pendiente: (await obtenerPendiente(idP)).fechaLimite === nueva,
-                evento: (await obtenerEvento(p.eventoId)).fechaInicio === nueva
-            };
+            return { nuevos: (await obtenerEventos()).length - antes, eventoId: (await obtenerPendiente(idP)).eventoId };
         });
-        igual('pendiente: moverlo en el calendario lo mueve también en pendientes', pend.pendiente, true);
-        igual('pendiente: y subirle la prioridad ya no lo regresa a la fecha vieja', pend.evento, true);
+        igual('pendiente: con fecha no crea nada en el calendario', pend, { nuevos: 0, eventoId: null });
 
         // ---- El asistente de punta a punta, con el modelo simulado ----
         const voz = await page.evaluate(async () => {
@@ -2134,7 +2128,7 @@ async function probarSeguimientoSemanal(navegador) {
         const revisar = lista.find(p => /29-sep/.test(p.titulo));
         igual('seguimiento: cuelgan de su expediente, con fecha y prioridad',
             [revisar.exp, revisar.local, revisar.prioridad], [ids.lopez, F('2026-10-23'), 'alta']);
-        verificar('seguimiento: y con fecha quedan en el calendario', !!revisar.eventoId);
+        igual('seguimiento: los pendientes no van al calendario (solo sus audiencias)', revisar.eventoId || null, null);
         const audiencias = () => page.evaluate(async () => (await obtenerEventos())
             .filter(e => e.titulo === 'Audiencia de desahogo de pruebas')
             .map(e => ({ tipo: e.tipo, exp: e.expedienteId, hora: new Date(e.fechaInicio).getHours() })));
@@ -4337,7 +4331,7 @@ async function probarQueNoSePierdenDatos(navegador) {
                     expedientes: exps.map(e => e.numero).sort(),
                     ids: new Set(exps.map(e => e.id)).size === exps.length,
                     notas: (await obtenerNotas()).map(n => `${n.titulo}→${num(n.expedienteId)}`).sort(),
-                    pendientes: (await obtenerPendientes()).map(p => `${p.titulo}→${num(p.expedienteId)}→${(eventos.find(e => e.id === p.eventoId) || {}).fechaInicio ? 'agendado' : 'sin fecha'}`).sort()
+                    pendientes: (await obtenerPendientes()).map(p => `${p.titulo}→${num(p.expedienteId)}→${p.fechaLimite ? 'con fecha' : 'sin fecha'}${eventos.some(e => e.id === p.eventoId || e.pendienteId === p.id) ? ' y agendado' : ''}`).sort()
                 };
             });
             for (const [nombre, d] of [['computadora', pc], ['teléfono', tel]]) {
@@ -4346,8 +4340,8 @@ async function probarQueNoSePierdenDatos(navegador) {
                 igual(`ids: en la ${nombre} ningún id se repite`, v.ids, true);
                 igual(`ids: en la ${nombre} cada nota sigue en su expediente`, v.notas,
                     ['Contestar demanda→11/2026', 'Ofrecer pruebas→12/2026']);
-                igual(`ids: en la ${nombre} cada pendiente, en su expediente y agendado`, v.pendientes,
-                    ['Copias certificadas→11/2026→agendado', 'Ratificar perito→12/2026→agendado']);
+                igual(`ids: en la ${nombre} cada pendiente, en su expediente, con su fecha y fuera del calendario`, v.pendientes,
+                    ['Copias certificadas→11/2026→con fecha', 'Ratificar perito→12/2026→con fecha']);
             }
             // Y se quedan quietos: otra vuelta no cambia nada ni vuelve a subir.
             const antes = nube.bloque();
@@ -4450,7 +4444,14 @@ async function probarQueNoSePierdenDatos(navegador) {
             const b = await abrir(nube);
             await b.pagina.evaluate(() => { estadoPremium.activo = false; estadoPremium.codigo = null; });
             const r = await b.pagina.evaluate(async (d) => {
+                // Como lo traía un respaldo de antes: el pendiente con su evento
+                // espejo en el calendario. Al restaurar, el espejo se quita.
+                const pOrig = d.pendientes.find(x => x.titulo === 'Presentar alegatos');
+                d.eventos.push({ id: 99901, titulo: 'Presentar alegatos', tipo: 'recordatorio', fechaInicio: pOrig.fechaLimite,
+                    todoElDia: true, expedienteId: pOrig.expedienteId, descripcion: 'Pendiente del expediente.', pendienteId: pOrig.id });
+                pOrig.eventoId = 99901;
                 await importarTodosDatos(d, true);
+                const limpieza = await sacarPendientesDelCalendarioCore();
                 const exps = [...await obtenerExpedientes(), ...await obtenerExpedientesArchivados()];
                 const porId = new Map(exps.map(e => [e.id, e]));
                 const carpetas = await obtenerCarpetas();
@@ -4465,7 +4466,8 @@ async function probarQueNoSePierdenDatos(navegador) {
                     notaEn: (porId.get((notas.find(n => n.titulo === 'Nota del archivado') || {}).expedienteId) || {}).numero,
                     eventoEn: (porId.get((eventos.find(ev => ev.titulo === 'Audiencia constitucional') || {}).expedienteId) || {}).numero,
                     pendienteEn: p && (porId.get(p.expedienteId) || {}).numero,
-                    espejo: !!espejo && espejo.pendienteId === p.id,
+                    espejo: !!espejo || eventos.some(ev => ev.titulo === 'Presentar alegatos'),
+                    retirados: limpieza.retirados,
                     sellosConservados: exps.find(e => e.numero === '600/2026').fechaCreacion === d.expedientes.find(e => e.numero === '600/2026').fechaCreacion
                 };
             }, exportado);
@@ -4474,7 +4476,7 @@ async function probarQueNoSePierdenDatos(navegador) {
             igual('respaldo: la nota del archivado sigue en su expediente', r.notaEn, '601/2026');
             igual('respaldo: el evento sigue en su expediente', r.eventoEn, '600/2026');
             igual('respaldo: el pendiente sigue en su expediente', r.pendienteEn, '600/2026');
-            igual('respaldo: y con su evento en el calendario, vinculado', r.espejo, true);
+            igual('respaldo: y su evento de antes sale del calendario', [r.espejo, r.retirados], [false, 1]);
             igual('respaldo: se conservan las fechas originales', r.sellosConservados, true);
 
             // Una importación que falla a medias deja todo como estaba.
@@ -5437,40 +5439,19 @@ async function main() {
 
         await page.evaluate(() => { history.replaceState(null, '', location.pathname); });
 
-        // ---- Un pendiente con hora se agenda A SU HORA ----
-        // El <input type="datetime-local"> siempre devuelve hora, y el
-        // formulario no la pasaba: todo pendiente acababa en el calendario
-        // como "todo el día", también el que se puso para las 11:45.
+        // ---- Los pendientes no van al calendario ----
+        // El calendario es para las audiencias y las citas. Un pendiente con
+        // fecha y hora la conserva (el <input type="datetime-local"> siempre
+        // devuelve hora; 00:00 es el día completo), pero no se agenda.
         await page.evaluate(() => navegarA('pendientes'));
         await page.waitForTimeout(400);
         await page.evaluate(() => mostrarFormularioPendiente());
         await page.waitForTimeout(400);
-        await page.fill('#pendiente-titulo', 'Audiencia con hora');
+        const ayudaPendiente = await page.textContent('#pendiente-form');
+        await page.fill('#pendiente-titulo', 'Pendiente con hora');
         await page.fill('#pendiente-fecha', '2027-06-15T11:45');
         await page.evaluate(() => document.getElementById('pendiente-form').requestSubmit());
         await page.waitForTimeout(700);
-
-        const conHora = await page.evaluate(async () => {
-            const ev = (await obtenerEventos()).find(e => e.titulo === 'Audiencia con hora');
-            const p = (await obtenerPendientes()).find(x => x.titulo === 'Audiencia con hora');
-            if (!ev || !p) return null;
-            const f = new Date(ev.fechaInicio);
-            return {
-                todoElDia: ev.todoElDia,
-                hora: f.getHours(), minutos: f.getMinutes(),
-                vinculado: p.eventoId === ev.id,
-                deVuelta: ev.pendienteId === p.id
-            };
-        });
-
-        verificar('pendiente con hora: se agenda en el calendario', !!conHora, 'no se creó el evento');
-        igual('pendiente con hora: NO se agenda como día completo', conHora && conHora.todoElDia, false);
-        igual('pendiente con hora: se agenda a las 11:45',
-            conHora && [conHora.hora, conHora.minutos], [11, 45]);
-        igual('pendiente con hora: queda vinculado a su evento', conHora && conHora.vinculado, true);
-        igual('pendiente con hora: y el evento sabe de quién es', conHora && conHora.deVuelta, true);
-
-        // Y el mismo formulario sin hora sigue agendando el día entero.
         await page.evaluate(() => mostrarFormularioPendiente());
         await page.waitForTimeout(400);
         await page.fill('#pendiente-titulo', 'Vence el plazo');
@@ -5478,40 +5459,83 @@ async function main() {
         await page.evaluate(() => document.getElementById('pendiente-form').requestSubmit());
         await page.waitForTimeout(700);
 
-        const sinHora = await page.evaluate(async () =>
-            (await obtenerEventos()).find(e => e.titulo === 'Vence el plazo') || null);
-        igual('pendiente sin hora: se agenda como día completo',
-            sinHora && sinHora.todoElDia, true);
-
-        // ---- Ninguna fecha se queda fuera del calendario ----
-        // Un pendiente puede entrar a la base sin pasar por el formulario (un
-        // respaldo importado, lo que baja de otro dispositivo). El repaso del
-        // arranque tiene que recogerlo.
-        const rescatado = await page.evaluate(async () => {
-            const id = await agregarPendiente({
-                titulo: 'Llegó de un respaldo',
-                fechaLimite: new Date(2027, 6, 8, 0, 0).toISOString(),
-                completado: false,
-                eventoId: null
-            });
-            const antes = (await obtenerEventos()).some(e => e.titulo === 'Llegó de un respaldo');
-            const resumen = await sincronizarPendientesConCalendarioCore();
-            const ev = (await obtenerEventos()).find(e => e.titulo === 'Llegó de un respaldo');
-            const p = (await obtenerPendiente(id));
-
-            // Repasar otra vez no puede duplicarlo.
-            await sincronizarPendientesConCalendarioCore();
-            const cuantos = (await obtenerEventos())
-                .filter(e => e.titulo === 'Llegó de un respaldo').length;
-
-            return { antes, creados: resumen.creados, agendado: !!ev, vinculado: p.eventoId === (ev || {}).id, cuantos };
+        const delFormulario = await page.evaluate(async () => {
+            const eventos = await obtenerEventos();
+            const ver = async (titulo) => {
+                const p = (await obtenerPendientes()).find(x => x.titulo === titulo);
+                if (!p) return null;
+                const f = new Date(p.fechaLimite);
+                return { hora: [f.getHours(), f.getMinutes()], todoElDia: p.todoElDia, eventoId: p.eventoId,
+                    enCalendario: eventos.some(e => e.titulo === titulo) };
+            };
+            return { conHora: await ver('Pendiente con hora'), sinHora: await ver('Vence el plazo') };
         });
+        verificar('pendiente: el formulario explica que no va al calendario',
+            /no se agendan en el calendario/.test(ayudaPendiente), ayudaPendiente);
+        igual('pendiente con hora: se guarda a las 11:45, no como día completo',
+            delFormulario.conHora && [delFormulario.conHora.hora, delFormulario.conHora.todoElDia], [[11, 45], false]);
+        igual('pendiente sin hora: cuenta como el día completo', delFormulario.sinHora && delFormulario.sinHora.todoElDia, true);
+        igual('pendientes: ninguno llega al calendario',
+            [delFormulario.conHora, delFormulario.sinHora].map(x => x && [x.enCalendario, x.eventoId]), [[false, null], [false, null]]);
 
-        igual('rescate: sin repaso no estaba en el calendario', rescatado.antes, false);
-        igual('rescate: el repaso lo agenda', rescatado.creados >= 1, true);
-        igual('rescate: y aparece en el calendario', rescatado.agendado, true);
-        igual('rescate: con su vínculo puesto', rescatado.vinculado, true);
-        igual('rescate: repasar dos veces no lo duplica', rescatado.cuantos, 1);
+        // ---- Lo que ya estaba agendado sale del calendario al abrir la app ----
+        // Pendientes que una versión anterior agendó: al abrir la app se
+        // quitan del calendario (siguen en Pendientes) y se avisa. En un
+        // navegador aparte, sin la sincronización que configuraron las pruebas
+        // anteriores: la sincronización también limpia (sin aviso) y podría
+        // adelantarse al arranque.
+        const ctxLimpio = await navegador.newContext({ viewport: { width: 1280, height: 800 } });
+        try {
+            const sembrar = await ctxLimpio.newPage();
+            sembrar.on('pageerror', e => erroresPagina.push(e.message));
+            await sembrar.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+            await sembrar.waitForFunction(() => typeof agregarPendiente === 'function' && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+            await sembrar.waitForTimeout(1500);
+            await sembrar.evaluate(async () => {
+                const idP = await agregarPendiente({ titulo: 'Agendado por una versión anterior',
+                    fechaLimite: new Date(2027, 6, 8).toISOString(), completado: false, eventoId: null });
+                const idE = await agregarEvento({ titulo: 'Agendado por una versión anterior', tipo: 'recordatorio',
+                    fechaInicio: new Date(2027, 6, 8).toISOString(), todoElDia: true,
+                    descripcion: 'Pendiente del expediente.', pendienteId: idP, alerta: true });
+                await actualizarPendiente(idP, { eventoId: idE });
+                await agregarEvento({ titulo: 'Restaurado sin vínculo', tipo: 'recordatorio',
+                    fechaInicio: new Date(2027, 6, 9).toISOString(), todoElDia: true, descripcion: 'Pendiente del expediente.' });
+                await agregarEvento({ titulo: 'Audiencia que se queda', tipo: 'audiencia',
+                    fechaInicio: new Date(2027, 6, 8, 10).toISOString(), todoElDia: false });
+            });
+
+            const otraPestana = await ctxLimpio.newPage();
+            otraPestana.on('pageerror', e => erroresPagina.push(e.message));
+            // El aviso dura 3 segundos: se anota en cuanto aparece.
+            await otraPestana.addInitScript(() => {
+                window.__avisos = [];
+                const mirar = () => {
+                    const c = document.getElementById('toast-container');
+                    if (!c) { setTimeout(mirar, 20); return; }
+                    new MutationObserver(() => {
+                        for (const n of c.children) if (!window.__avisos.includes(n.textContent)) window.__avisos.push(n.textContent);
+                    }).observe(c, { childList: true });
+                };
+                mirar();
+            });
+            await otraPestana.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+            await otraPestana.waitForFunction(() => (window.__avisos || []).some(t => /del calendario/.test(t)), { timeout: 15000 }).catch(() => {});
+            const alAbrir = await otraPestana.evaluate(async () => {
+                const eventos = await obtenerEventos();
+                const p = (await obtenerPendientes()).find(x => x.titulo === 'Agendado por una versión anterior');
+                return {
+                    quedan: ['Agendado por una versión anterior', 'Restaurado sin vínculo', 'Audiencia que se queda']
+                        .map(t => eventos.some(e => e.titulo === t)),
+                    pendiente: p ? { eventoId: p.eventoId, conFecha: !!p.fechaLimite } : null,
+                    aviso: (window.__avisos || []).join(' | ')
+                };
+            });
+            igual('al abrir: los pendientes agendados salen del calendario y la audiencia se queda', alAbrir.quedan, [false, false, true]);
+            igual('al abrir: el pendiente sigue en Pendientes, con su fecha y sin vínculo', alAbrir.pendiente, { eventoId: null, conFecha: true });
+            verificar('al abrir: se avisa cuántos se quitaron', /Se quitaron 2 pendientes del calendario/.test(alAbrir.aviso), alAbrir.aviso);
+        } finally {
+            await ctxLimpio.close();
+        }
 
         // ---- Búsqueda rápida de expedientes en Inicio (SOLO MÓVIL) ----
         // En escritorio no debe aparecer: ahí el menú está a la vista y hay

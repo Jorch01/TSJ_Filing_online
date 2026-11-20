@@ -412,19 +412,19 @@ async function _intentoSincronizar() {
         datosFinales = fusionarDatos(datosLocalesActualizados, datosRemotos);
         await aplicarDatosLocalmente(datosFinales);
 
-        // Lo fusionado puede traer un pendiente con fecha cuyo evento no vino
-        // en el mismo lote. Se agenda AQUÍ, antes de decidir qué se sube, para
-        // que el evento nuevo viaje en esta misma vuelta; hacerlo después lo
-        // dejaría esperando a la siguiente sincronización.
-        if (typeof sincronizarPendientesConCalendarioCore === 'function') {
+        // Lo fusionado puede traer pendientes agendados en el calendario por
+        // un dispositivo que todavía no se actualizó. Se sacan AQUÍ, antes de
+        // decidir qué se sube, para que la limpieza viaje en esta misma
+        // vuelta; hacerlo después la dejaría esperando a la siguiente.
+        if (typeof sacarPendientesDelCalendarioCore === 'function') {
             try {
-                const repaso = await sincronizarPendientesConCalendarioCore({ sincronizar: false });
-                if (repaso && (repaso.creados || repaso.revinculados || repaso.retirados)) {
+                const limpieza = await sacarPendientesDelCalendarioCore({ sincronizar: false });
+                if (limpieza && (limpieza.retirados || limpieza.conservados || limpieza.soltados)) {
                     datosFinales = await obtenerTodosLosDatos();
                     datosFinales.metadata = datosLocales.metadata;
                 }
             } catch (e) {
-                console.warn('No se pudo repasar el calendario de los pendientes:', e);
+                console.warn('No se pudieron sacar los pendientes del calendario:', e);
             }
         }
 

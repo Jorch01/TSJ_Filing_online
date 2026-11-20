@@ -430,8 +430,8 @@ async function main() {
         verificar('fecha: texto libre se rechaza', !!(f('la próxima semana') || {}).error);
     });
 
-    // ---------- 6. Pendientes y su reflejo en el calendario ----------
-    await bloque('6. Pendientes y su reflejo en el calendario', async () => {
+    // ---------- 6. Pendientes (no van al calendario) ----------
+    await bloque('6. Pendientes (no van al calendario)', async () => {
         const { sandbox, estado } = crearEntorno();
         cargarCodigoReal(sandbox);
 
@@ -453,13 +453,10 @@ async function main() {
         igual('pendientes: la prioridad se guarda', conFecha.prioridad, 'alta');
         igual('pendientes: queda ligado a su expediente',
             conFecha.expedienteId, estado.expedientes.find(e => e.numero === '9001/2025').id);
-        verificar('pendientes: el que tiene fecha llega al calendario', !!conFecha.eventoId);
-        igual('pendientes: el que no tiene fecha no ocupa el calendario', sinFecha.eventoId, null);
-        igual('pendientes: solo un evento en el calendario', estado.eventos.length, 1);
-
-        const evento = estado.eventos[0];
-        igual('pendientes: el evento apunta de vuelta al pendiente', evento.pendienteId, conFecha.id);
-        igual('pendientes: el evento cae en la fecha límite', new Date(evento.fechaInicio).getDate(), 15);
+        igual('pendientes: la fecha límite se guarda', new Date(conFecha.fechaLimite).getDate(), 15);
+        igual('pendientes: el que no tiene fecha queda sin fecha', sinFecha.fechaLimite || null, null);
+        igual('pendientes: ninguno va al calendario', estado.eventos.length, 0);
+        igual('pendientes: ni queda vinculado a un evento', [conFecha.eventoId, sinFecha.eventoId], [null, null]);
     });
 
     // ---------- 7. Audiencias ----------
@@ -585,15 +582,15 @@ async function main() {
         verificar('errores: y se destaca arriba, no solo en el detalle',
             /no se entendió|no se entendieron/.test(JSON.stringify(informe.resumen)),
             JSON.stringify(informe.resumen));
-        verificar('errores: el aviso explica que no llega al calendario',
-            /calendario/.test(JSON.stringify(informe.resumen)), JSON.stringify(informe.resumen));
+        verificar('errores: el aviso explica que se queda sin fecha límite',
+            /sin fecha límite/.test(JSON.stringify(informe.resumen)), JSON.stringify(informe.resumen));
         verificar('errores: la audiencia sin fecha se avisa', /necesita fecha/.test(txt), txt);
 
         // Un dato malo no debe tumbar el expediente entero
         igual('errores: el pendiente con fecha rota se crea igual, sin fecha',
             estado.pendientes.filter(p => p.titulo === 'Con fecha rota').length, 1);
-        igual('errores: y no ocupa el calendario',
-            estado.pendientes.find(p => p.titulo === 'Con fecha rota').eventoId, null);
+        igual('errores: y sin fecha límite',
+            estado.pendientes.find(p => p.titulo === 'Con fecha rota').fechaLimite || null, null);
         igual('errores: entran los 3 expedientes válidos', estado.expedientes.length, 3);
         igual('errores: y son los que se esperaba',
             estado.expedientes.map(e => e.numero), ['9001/2025', '9005/2025', '9006/2025']);
@@ -731,7 +728,7 @@ async function main() {
         igual('caso real: se crea una sola carpeta compartida',
             estado.carpetas.map(c => c.nombre), ['Cliente ACME']);
         igual('caso real: el pendiente se crea', estado.pendientes.length, 1);
-        igual('caso real: y llegan 2 fechas al calendario (pendiente + audiencia)', estado.eventos.length, 2);
+        igual('caso real: y solo la audiencia llega al calendario', estado.eventos.length, 1);
         igual('caso real: se sincroniza con los otros dispositivos',
             estado.sincronizaciones > 0, true);
     });
@@ -756,7 +753,7 @@ async function main() {
 
         igual('lote: se crean los 30 expedientes', estado.expedientes.length, 30);
         igual('lote: y sus 30 pendientes', estado.pendientes.length, 30);
-        igual('lote: y sus 60 eventos (audiencia + reflejo del pendiente)', estado.eventos.length, 60);
+        igual('lote: y solo sus 30 audiencias en el calendario', estado.eventos.length, 30);
 
         // Lo que importa: cada crearPendienteCore y cada crearEventoCore
         // sincroniza al terminar. Sin agrupar toda la importación en un lote,

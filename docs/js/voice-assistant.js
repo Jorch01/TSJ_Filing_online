@@ -99,9 +99,9 @@
                 'Agrégale a la descripción de la audiencia del viernes: llevar testigos',
                 'Cambia la descripción del vencimiento del 15 a "presentar alegatos"',
                 'Mueve las audiencias del lunes al martes a la misma hora',
-                'Crea un recordatorio para el viernes en todos los asuntos de AHO',
+                'Agenda una cita con el cliente el martes a las 5 en el 123/2025',
                 'Agenda el vencimiento del jueves en el 123/2025 y en el 45/2026',
-                'Elimina el recordatorio del lunes',
+                'Elimina la cita del lunes',
                 '¿Qué audiencias tengo esta semana?'
             ]
         },
@@ -134,6 +134,7 @@
                 '¿Qué me falta del 123/2025?',
                 'Los pendientes de AHO',
                 'Recuérdame contestar la demanda del 123/2025 el viernes',
+                'Ponme un recordatorio para el viernes en todos los asuntos de AHO',
                 'Ya contesté la demanda'
             ]
         },
@@ -186,7 +187,7 @@
         'Para un finiquito o liquidación dime lo que sepas; te pido lo que falte (cómo terminó, fechas, salario) hasta poder calcular, y luego puedes ajustarlo: "¿y si fueron 6 meses de juicio?".',
         'Si mencionas un expediente de tu catálogo, uso su juzgado guardado automáticamente en las búsquedas.',
         'Puedes pedir varias búsquedas en una sola orden: varios tipos de asunto ("la queja y el amparo directo"), "en todos los tipos de asunto", varios órganos, o asuntos del TSJ y del PJF juntos. Antes de abrir te enseño la lista.',
-        'Puedes pedir lo mismo para varios expedientes en una sola orden: "un recordatorio el viernes en todos los asuntos de AHO" (de una carpeta, un cliente o un tipo de asunto) o nombrándolos. Antes de guardar te enseño la lista completa, y "deshaz lo último" los revierte todos juntos.',
+        'Puedes pedir lo mismo para varios expedientes en una sola orden: "un recordatorio el viernes en todos los asuntos de AHO" (de una carpeta, un cliente o un tipo de asunto) o nombrándolos. Los recordatorios quedan en Pendientes, no en el calendario. Antes de guardar te enseño la lista completa, y "deshaz lo último" los revierte todos juntos.',
         'Para cambiar un evento basta con decir cuál y qué cambia: "pospón una semana la audiencia del 123/2025", "agrégale a la descripción…". Antes de guardar te enseño el antes y el después.',
         'Di "deshaz lo último" para revertir la acción más reciente hecha por el asistente.',
         'Con 🔊/🔇 activas o silencias mis respuestas habladas; en Configuración puedes ajustar la velocidad de la voz y activar «manos libres» (que te escuche sin tocar el micrófono).',
@@ -1740,8 +1741,7 @@
         return `Nota "${p.titulo}" creada.`;
     }
 
-    // Un pendiente con fecha queda además agendado: el núcleo mantiene su
-    // evento de calendario.
+    // Un pendiente no va al calendario: su fecha límite se ve en Pendientes.
     async function accCrearPendiente(p) {
         if (!p.titulo) throw new Error('Falta qué hay que hacer');
 
@@ -1766,9 +1766,10 @@
         registrarDeshacer({ tipo: 'pendiente_creado', id: nuevoId, etiqueta: `pendiente "${p.titulo}"` });
         toast('Pendiente creado', 'success');
         const conPrioridad = p.prioridad ? ` con prioridad ${p.prioridad}` : '';
-        return fechaLimite
-            ? `Pendiente "${p.titulo}" creado${conPrioridad} y agendado.`
-            : `Pendiente "${p.titulo}" creado${conPrioridad}.`;
+        if (!fechaLimite) return `Pendiente "${p.titulo}" creado${conPrioridad}.`;
+        const cuando = new Date(fechaLimite).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) +
+            (normalizarHora(p.hora) ? ' a las ' + normalizarHora(p.hora) : '');
+        return `Pendiente "${p.titulo}" creado${conPrioridad}, para el ${cuando}.`;
     }
 
     async function accCompletarPendiente(p) {
@@ -2007,7 +2008,9 @@
     }
 
     // ==================== VARIAS ACCIONES A LA VEZ ====================
-    // "Ponme un recordatorio el jueves en los tres asuntos de AHO": el modelo
+    // "Ponme un recordatorio el jueves en los tres asuntos de AHO" (un
+    // pendiente en cada uno, no un evento: los pendientes no van al
+    // calendario): el modelo
     // manda UNA acción "varias" con una entrada por expediente, o con una sola
     // que lleva paraTodosLosDe para un grupo entero (una carpeta, un cliente…).
     // Igual que los cambios a eventos, primero se prepara TODO —cuál expediente
@@ -3430,6 +3433,7 @@ RESPONDE SIEMPRE Y ÚNICAMENTE CON UN OBJETO JSON (sin texto adicional) con esta
 ACCIONES DISPONIBLES y sus parámetros:
 
 1. "crear_evento": {titulo, tipo:"audiencia"|"vencimiento"|"recordatorio"|"otro", fecha:"YYYY-MM-DD", hora:"HH:MM" o null, todoElDia:bool, expedienteId:número o null, expedienteRef:texto o null, expedienteTexto:texto o null, descripcion:""}
+   - El CALENDARIO es solo para audiencias y citas: lo que pasa a una hora (audiencia, cita, reunión, diligencia, comparecencia) o lo que el usuario pide expresamente AGENDAR ("agenda…", "ponlo en el calendario"). Un recordatorio de algo que hay que HACER ("recuérdame…", "ponme un recordatorio de…", "apúntame…") NO es un evento: es crear_pendiente, con la fecha si la dice.
    - Si menciona un expediente, resuélvelo contra el catálogo y usa su id en expedienteId. Si no está en el catálogo, pon el texto en expedienteTexto.
    - Si no dice hora → todoElDia=true. Obligatorios: titulo y fecha.
 2. "editar_evento": {ediciones:[{eventoId:número o null, buscar:{texto, fecha:"YYYY-MM-DD", hora:"HH:MM", expediente, tipo} o null, cambios:{...}}]}
@@ -3455,7 +3459,7 @@ ACCIONES DISPONIBLES y sus parámetros:
 7. "archivar_expediente": {expedienteId:número o null, expedienteRef:texto o null, motivo:"concluido"|"suspendido"|"otro"}
 8. "crear_nota": {titulo, contenido, expedienteId:número o null, expedienteRef:texto o null, expedienteTexto o null}
 8b. "crear_pendiente": {titulo, descripcion o "", expedienteId:número o null, expedienteRef:texto o null, expedienteTexto o null, prioridad:"alta"|"media"|"baja" o "", fecha:"YYYY-MM-DD" o null, hora:"HH:MM" o null}
-    - Una tarea del expediente ("recuérdame contestar la demanda del 123/2025", "apúntame revisar el acuerdo"). La fecha es OPCIONAL: solo ponla si el usuario la dice. Con fecha, además queda agendada.
+    - Una tarea del expediente ("recuérdame contestar la demanda del 123/2025", "apúntame revisar el acuerdo", "ponme un recordatorio el viernes de llamar al perito"). La fecha es OPCIONAL: solo ponla si el usuario la dice. Los pendientes NO van al calendario: su fecha límite se ve en Pendientes y avisa por correo.
     - La prioridad también es opcional: ponla solo si el usuario la expresa ("es urgente" → alta, "cuando se pueda" → baja). Si no dice nada, déjala vacía.
 8c. "completar_pendiente": {pendienteId:número o null, titulo:texto o null} — marca un pendiente como terminado ("ya contesté la demanda", "marca como hecho lo de la promoción"). Usa el título tal como lo diga el usuario si no hay id.
 8d. "consultar_pendientes": {expedienteId:número o null, expedienteRef:texto o null, paraTodosLosDe:texto o null, prioridad:"alta"|"media"|"baja" o null, periodo:"vencidos"|"hoy"|"semana"|"mes" o null} — RESUMEN de los pendientes por hacer: cuántos hay vencidos, para hoy, para la semana y sin fecha, y lo más urgente de cada grupo con su expediente.
@@ -3529,9 +3533,10 @@ CÓMO DECIDIR ENTRE ESTRADOS DEL TSJ Y DEL PJF (importante):
 18. "varias": {acciones:[{accion, parametros}]} — LO MISMO para VARIOS expedientes, o varias cosas distintas en una sola orden. Dentro de "acciones" solo caben: crear_evento, crear_pendiente, crear_nota, mover_a_carpeta, archivar_expediente, cada una con los parámetros que tendría sola.
     - NUNCA digas que no puedes hacer algo para varios expedientes a la vez, ni pidas que lo repita uno por uno: usa "varias". La app te lo prepara completo y le enseña la lista al usuario antes de guardar nada.
     - Expedientes CONCRETOS (los nombra, o los identificas con claridad en el catálogo): una entrada por expediente, cada una con su expedienteId (o expedienteRef si no lo ves en el catálogo).
-      · "ponme un recordatorio el jueves de enviar el escrito en el 123/2025 y en el 45/2026" → acciones:[{accion:"crear_evento", parametros:{titulo:"Enviar el escrito", tipo:"recordatorio", fecha:"<fecha del jueves>", expedienteId:12}}, {accion:"crear_evento", parametros:{titulo:"Enviar el escrito", tipo:"recordatorio", fecha:"<fecha del jueves>", expedienteId:15}}].
+      · "ponme un recordatorio el jueves de enviar el escrito en el 123/2025 y en el 45/2026" → acciones:[{accion:"crear_pendiente", parametros:{titulo:"Enviar el escrito", fecha:"<fecha del jueves>", expedienteId:12}}, {accion:"crear_pendiente", parametros:{titulo:"Enviar el escrito", fecha:"<fecha del jueves>", expedienteId:15}}].
     - UN GRUPO ENTERO ("los de AHO", "todos los de la carpeta García", "todos los asuntos de ese cliente"): NO los enumeres. Pon UNA entrada con "paraTodosLosDe": el nombre del grupo, y los demás parámetros de la acción SIN expedienteId. La app busca TODOS los expedientes activos cuya carpeta, cliente, tipo de asunto, responsable, categoría o comentario sea ese texto y repite la acción en cada uno.
-      · "crea un recordatorio para el viernes en todos los asuntos de AHO" → acciones:[{accion:"crear_evento", parametros:{titulo:"Recordatorio", tipo:"recordatorio", fecha:"<fecha del viernes>", paraTodosLosDe:"AHO"}}].
+      · "crea un recordatorio para el viernes de revisar acuerdos en todos los asuntos de AHO" → acciones:[{accion:"crear_pendiente", parametros:{titulo:"Revisar acuerdos", fecha:"<fecha del viernes>", paraTodosLosDe:"AHO"}}].
+      · "agenda la audiencia del jueves a las 10 en el 123/2025 y en el 45/2026" → dos entradas crear_evento con tipo:"audiencia" y hora:"10:00".
       · En "paraTodosLosDe" pasa SOLO el nombre del grupo ("AHO"), sin palabras como "carpeta", "cliente" o "categoría".
     - Cosas distintas: "agenda la audiencia en el 123/2025 y deja una nota en el 45/2026" → una entrada crear_evento y una crear_nota.
     - Si el título del recordatorio no lo dijo, pregunta UNA vez (faltan_datos=true) en lugar de inventarlo.

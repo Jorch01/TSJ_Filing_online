@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 /**
- * Pruebas de que un pendiente con fecha SIEMPRE acaba en el calendario.
+ * Pruebas de que los pendientes NO van al calendario.
  *
  *   node test_pendientes_calendario.js
  *
- * Darlo de alta por el formulario ya lo agendaba, pero hay caminos por los que
- * un pendiente entra a la base sin pasar por ahí —un respaldo importado, lo
- * que baja de otro dispositivo, o pendientes de antes de que existiera el
- * vínculo— y su fecha se quedaba solo en la lista, sin llegar nunca al
- * calendario. De recogerlos se encarga sincronizarPendientesConCalendarioCore.
+ * El calendario es para las audiencias y las citas que agenda el usuario.
+ * Antes cada pendiente con fecha llevaba un evento "espejo" en el calendario
+ * y lo llenaba de recordatorios que no eran citas. Ahora:
  *
- * También se comprueba que la hora no se pierde: "para el 20 a las 10:00" es
- * una cita a las diez, no un día completo.
+ *   - Dar de alta, editar o terminar un pendiente no agenda nada.
+ *   - sacarPendientesDelCalendarioCore quita los espejos que ya había (con
+ *     vínculo o sin él, como los restauraba un respaldo viejo), sin tocar las
+ *     audiencias ni las citas, ni el pendiente más que su vínculo.
+ *   - Lo que se borra sin conexión con Google Calendar se borra allá al
+ *     conectar (gcal-sync.js).
  *
  * Corre sin dependencias: se carga el docs/js/acciones-core.js de verdad sobre
  * una base de datos simulada, así que si alguien cambia las reglas, falla.
@@ -34,6 +36,7 @@ function crearSandbox() {
         pendientes: [],
         eventos: [],
         eliminaciones: [],
+        gcalEliminados: [],
         refrescosUI: 0,
         sincronizaciones: 0
     };
@@ -97,7 +100,13 @@ function crearSandbox() {
         cargarNotas: async () => {},
         cargarEstadisticas: async () => {},
         renderizarCalendario: () => {},
-        marcarYSincronizar: async () => { estado.sincronizaciones++; }
+        marcarYSincronizar: async () => { estado.sincronizaciones++; },
+
+        // Google Calendar sin conectar: la copia de allá se anota para después.
+        GCAL: {
+            estaConectado: () => false,
+            hookEliminarEvento: (id) => { estado.gcalEliminados.push(id); }
+        }
     };
 
     sandbox.window = sandbox;
@@ -125,6 +134,17 @@ function cargarTieneHora() {
     return ctx.module.exports;
 }
 
+// Saca de app.js varias funciones de nivel superior y las corre en el sandbox.
+function cargarDeApp(sandbox, nombres) {
+    const lineas = fs.readFileSync(path.join(JS, 'app.js'), 'utf8').split('\n');
+    for (const nombre of nombres) {
+        const inicio = lineas.findIndex(l => new RegExp(`^(async )?function ${nombre}\\s*\\(`).test(l));
+        if (inicio === -1) throw new Error(`No se encontró ${nombre} en app.js (¿se renombró?)`);
+        const fin = lineas.findIndex((l, i) => i > inicio && /^}/.test(l));
+        vm.runInContext(lineas.slice(inicio, fin + 1).join('\n'), sandbox, { filename: 'app.js:' + nombre });
+    }
+}
+
 // ==================== ARNÉS ====================
 
 let pasadas = 0;
@@ -150,9 +170,9 @@ const fechaConHora = (h, m) => {
 
 // ==================== PRUEBAS ====================
 
-// La hora escrita en el formulario decide si el pendiente es una cita o un día
-// entero. El <input type="datetime-local"> siempre devuelve hora, así que sin
-// este criterio "para el 20" se agendaba como una cita a medianoche.
+// La hora escrita en el formulario decide si el pendiente es de un día entero
+// o de una hora. El <input type="datetime-local"> siempre devuelve hora, así
+// que sin este criterio "para el 20" quedaba como algo a medianoche.
 function pruebaLecturaDeLaHora() {
     const tieneHora = cargarTieneHora();
     igual('hora: "2026-09-20T10:30" lleva hora', tieneHora('2026-09-20T10:30'), true);
@@ -163,269 +183,195 @@ function pruebaLecturaDeLaHora() {
     igual('hora: un valor nulo no revienta', tieneHora(null), false);
 }
 
-// Lo que el formulario manda al núcleo tiene que llegar tal cual al evento.
-async function pruebaLaHoraLlegaAlCalendario() {
+// Lo que pidió el usuario: un pendiente con fecha ya no aparece en el calendario.
+async function pruebaCrearNoAgenda() {
     const { sandbox, estado } = crearSandbox();
 
+    const conHora = await sandbox.crearPendienteCore({
+        titulo: 'Presentar pruebas', fechaLimite: fechaConHora(10, 30), todoElDia: false
+    });
     await sandbox.crearPendienteCore({
-        titulo: 'Audiencia de pruebas',
-        fechaLimite: fechaConHora(10, 30),
-        todoElDia: false
+        titulo: 'Vence el plazo', fechaLimite: fechaConHora(0, 0), todoElDia: true
     });
 
-    igual('agenda: el pendiente con hora crea su evento', estado.eventos.length, 1);
-    igual('agenda: y NO se agenda como día completo', estado.eventos[0].todoElDia, false);
-    igual('agenda: conserva la hora exacta',
-        new Date(estado.eventos[0].fechaInicio).getHours(), 10);
-
-    await sandbox.crearPendienteCore({
-        titulo: 'Vence el plazo',
-        fechaLimite: fechaConHora(0, 0),
-        todoElDia: true
-    });
-
-    igual('agenda: sin hora se agenda como día completo', estado.eventos[1].todoElDia, true);
+    igual('alta: no se crea ningún evento', estado.eventos.length, 0);
+    igual('alta: ni queda vínculo', estado.pendientes.map(p => p.eventoId), [null, null]);
+    const p = estado.pendientes.find(x => x.id === conHora);
+    igual('alta: el pendiente conserva su fecha y hora', p.fechaLimite, fechaConHora(10, 30));
+    igual('alta: y si es de un día o de una hora', p.todoElDia, false);
 }
 
-// El caso que motivó todo: pendientes que ya estaban en la base con su fecha
-// pero sin nada en el calendario (respaldo importado, sync, versión anterior).
-async function pruebaRecogeLosQueSeQuedaronFuera() {
+// Editar, terminar y reabrir tampoco agendan nada.
+async function pruebaEditarNoAgenda() {
+    const { sandbox, estado } = crearSandbox();
+    const id = await sandbox.crearPendienteCore({ titulo: 'Sin fecha' });
+
+    await sandbox.actualizarPendienteCore(id, { fechaLimite: fechaConHora(9, 0), todoElDia: false });
+    igual('edición: ponerle fecha no lo agenda', estado.eventos.length, 0);
+    await sandbox.completarPendienteCore(id, true);
+    await sandbox.completarPendienteCore(id, false);
+    igual('edición: terminarlo y reabrirlo tampoco', estado.eventos.length, 0);
+    igual('edición: y la fecha sigue en el pendiente',
+        estado.pendientes[0].fechaLimite, fechaConHora(9, 0));
+}
+
+// El caso de todos los días: pendientes agendados por versiones anteriores.
+async function pruebaSacaLosEspejos() {
     const { sandbox, estado } = crearSandbox();
 
-    // Entra POR DEBAJO del núcleo, como lo hacen la importación y el sync.
-    const idViejo = await sandbox.agregarPendiente({
-        titulo: 'Contestar demanda',
-        fechaLimite: fechaConHora(0, 0),
-        completado: false,
-        eventoId: null
+    const idP = await sandbox.agregarPendiente({
+        titulo: 'Contestar demanda', descripcion: 'con pruebas', prioridad: 'alta',
+        fechaLimite: fechaConHora(0, 0), completado: false, eventoId: null
     });
-    // Uno sin fecha: no tiene nada que hacer en el calendario.
-    await sandbox.agregarPendiente({
-        titulo: 'Leer el expediente',
-        fechaLimite: null,
-        completado: false,
-        eventoId: null
+    const idE = await sandbox.agregarEvento({
+        titulo: 'Contestar demanda', tipo: 'recordatorio', fechaInicio: fechaConHora(0, 0), todoElDia: true,
+        descripcion: 'Pendiente del expediente.\n\ncon pruebas', pendienteId: idP, googleCalEventId: 'g-1'
     });
+    await sandbox.actualizarPendiente(idP, { eventoId: idE });
+    // Una audiencia y una cita de verdad, que se quedan.
+    const idAud = await sandbox.agregarEvento({ titulo: 'Audiencia de pruebas', tipo: 'audiencia',
+        fechaInicio: fechaConHora(10, 0), todoElDia: false });
+    const idCita = await sandbox.agregarEvento({ titulo: 'Cita con el cliente', tipo: 'otro',
+        fechaInicio: fechaConHora(17, 0), todoElDia: false });
 
-    igual('rescate: de entrada el calendario está vacío', estado.eventos.length, 0);
+    const r = await sandbox.sacarPendientesDelCalendarioCore();
 
-    const resumen = await sandbox.sincronizarPendientesConCalendarioCore();
-
-    igual('rescate: se agenda el que tenía fecha', resumen.creados, 1);
-    igual('rescate: y solo ese', estado.eventos.length, 1);
-    igual('rescate: el evento apunta de vuelta al pendiente',
-        estado.eventos[0].pendienteId, idViejo);
-    igual('rescate: y el pendiente al evento',
-        estado.pendientes.find(p => p.id === idViejo).eventoId, estado.eventos[0].id);
-    igual('rescate: hereda el título del pendiente',
-        estado.eventos[0].titulo, 'Contestar demanda');
-
-    // Sin el dato todoElDia guardado (pendientes antiguos), las 00:00 se leen
-    // como día señalado y no como una cita a medianoche.
-    igual('rescate: una fecha a las 00:00 se agenda como día completo',
-        estado.eventos[0].todoElDia, true);
+    igual('limpieza: se quita el pendiente del calendario', r.retirados, 1);
+    igual('limpieza: quedan la audiencia y la cita', estado.eventos.map(e => e.id), [idAud, idCita]);
+    const p = estado.pendientes.find(x => x.id === idP);
+    igual('limpieza: el pendiente sigue, sin vínculo', p.eventoId, null);
+    igual('limpieza: con su fecha, prioridad y detalle',
+        [p.fechaLimite, p.prioridad, p.descripcion], [fechaConHora(0, 0), 'alta', 'con pruebas']);
+    igual('limpieza: y se cuenta como suelto', r.soltados, 1);
+    igual('limpieza: su copia en Google Calendar también se borra (o se anota para borrarla)',
+        estado.gcalEliminados, ['g-1']);
 }
 
-// Un pendiente antiguo con hora tampoco debe acabar como "todo el día".
-async function pruebaRescateConservaLaHora() {
+// Un respaldo viejo restauraba el espejo sin vínculo; y el de un pendiente
+// ya terminado o borrado se quedaba huérfano. También se van.
+async function pruebaSacaLosSueltos() {
     const { sandbox, estado } = crearSandbox();
 
-    await sandbox.agregarPendiente({
-        titulo: 'Comparecencia',
-        fechaLimite: fechaConHora(9, 0),
-        completado: false,
-        eventoId: null
-    });
+    await sandbox.agregarEvento({ titulo: 'De un respaldo', tipo: 'recordatorio', fechaInicio: fechaConHora(0, 0),
+        todoElDia: true, descripcion: 'Pendiente del expediente.' });
+    await sandbox.agregarEvento({ titulo: 'De uno que ya no existe', tipo: 'recordatorio', fechaInicio: fechaConHora(0, 0),
+        todoElDia: true, descripcion: 'Pendiente del expediente.', pendienteId: 999 });
+    const idP = await sandbox.agregarPendiente({ titulo: 'Terminado', fechaLimite: fechaConHora(0, 0),
+        completado: true, eventoId: null });
+    await sandbox.agregarEvento({ titulo: 'Terminado', tipo: 'recordatorio', fechaInicio: fechaConHora(0, 0),
+        todoElDia: true, descripcion: 'Pendiente del expediente.', pendienteId: idP });
 
-    await sandbox.sincronizarPendientesConCalendarioCore();
-
-    igual('rescate: con hora NO se agenda como día completo',
-        estado.eventos[0].todoElDia, false);
-    igual('rescate: y respeta la hora que tenía',
-        new Date(estado.eventos[0].fechaInicio).getHours(), 9);
+    const r = await sandbox.sacarPendientesDelCalendarioCore();
+    igual('sueltos: se van los tres', r.retirados, 3);
+    igual('sueltos: el calendario queda vacío', estado.eventos.length, 0);
 }
 
-// Repasar dos veces no puede duplicar: el arranque, la importación y el sync
-// llaman a esto, y en un mismo rato pueden encadenarse.
-async function pruebaNoDuplica() {
-    const { sandbox, estado } = crearSandbox();
-
-    await sandbox.agregarPendiente({
-        titulo: 'Presentar alegatos',
-        fechaLimite: fechaConHora(0, 0),
-        completado: false,
-        eventoId: null
-    });
-
-    await sandbox.sincronizarPendientesConCalendarioCore();
-    const segundo = await sandbox.sincronizarPendientesConCalendarioCore();
-    const tercero = await sandbox.sincronizarPendientesConCalendarioCore();
-
-    igual('repaso: la segunda vuelta no crea nada', segundo.creados, 0);
-    igual('repaso: la tercera tampoco', tercero.creados, 0);
-    igual('repaso: sigue habiendo un solo evento', estado.eventos.length, 1);
-}
-
-// Al importar un respaldo el evento llegaba sin su vínculo. Si el repaso
-// creara otro al lado, el usuario vería la misma fecha dos veces.
-async function pruebaReenganchaEnVezDeDuplicar() {
-    const { sandbox, estado } = crearSandbox();
-
-    const idPendiente = await sandbox.agregarPendiente({
-        titulo: 'Audiencia inicial',
-        fechaLimite: fechaConHora(0, 0),
-        completado: false,
-        eventoId: null            // el vínculo se perdió
-    });
-    const idEvento = await sandbox.agregarEvento({
-        titulo: 'Audiencia inicial',
-        tipo: 'recordatorio',
-        fechaInicio: fechaConHora(0, 0),
-        todoElDia: true,
-        pendienteId: idPendiente   // el evento sí sabe de quién es
-    });
-
-    const resumen = await sandbox.sincronizarPendientesConCalendarioCore();
-
-    igual('reenganche: no se crea un evento nuevo', resumen.creados, 0);
-    igual('reenganche: se reengancha el que ya estaba', resumen.revinculados, 1);
-    igual('reenganche: sigue habiendo una sola fecha', estado.eventos.length, 1);
-    igual('reenganche: el pendiente apunta al evento de siempre',
-        estado.pendientes.find(p => p.id === idPendiente).eventoId, idEvento);
-}
-
-// Un pendiente que ya se terminó no debe seguir ocupando sitio en el
-// calendario, aunque su evento sobreviviera a una sincronización.
-async function pruebaRetiraLoTerminado() {
-    const { sandbox, estado } = crearSandbox();
-
-    const idPendiente = await sandbox.agregarPendiente({
-        titulo: 'Ya está hecho',
-        fechaLimite: fechaConHora(0, 0),
-        completado: true,
-        eventoId: null
-    });
-    const idEvento = await sandbox.agregarEvento({
-        titulo: 'Ya está hecho',
-        tipo: 'recordatorio',
-        fechaInicio: fechaConHora(0, 0),
-        todoElDia: true,
-        pendienteId: idPendiente     // es su espejo, y lo demuestra
-    });
-    await sandbox.actualizarPendiente(idPendiente, { eventoId: idEvento });
-
-    const resumen = await sandbox.sincronizarPendientesConCalendarioCore();
-
-    igual('terminados: se retira su fecha del calendario', resumen.retirados, 1);
-    igual('terminados: el calendario queda limpio', estado.eventos.length, 0);
-    igual('terminados: y el pendiente ya no apunta a nada',
-        estado.pendientes.find(p => p.id === idPendiente).eventoId, null);
-}
-
-// Un eventoId heredado de un respaldo viejo puede haber caído sobre el id de
-// una audiencia real. Borrarla no tiene vuelta atrás; soltar el vínculo sí.
+// Un eventoId heredado de un respaldo viejo puede apuntar a una audiencia
+// real. Borrarla no tiene vuelta atrás; soltar el vínculo sí.
 async function pruebaNoBorraLoQueNoEsSuEspejo() {
     const { sandbox, estado } = crearSandbox();
 
     const idAudiencia = await sandbox.agregarEvento({
-        titulo: 'Audiencia de desahogo de pruebas',
-        tipo: 'audiencia',
-        fechaInicio: fechaConHora(9, 0),
-        todoElDia: false
-        // sin pendienteId: NO es el espejo de nadie
+        titulo: 'Audiencia de desahogo de pruebas', tipo: 'audiencia',
+        fechaInicio: fechaConHora(0, 0), todoElDia: true
     });
     const idPendiente = await sandbox.agregarPendiente({
-        titulo: 'Pendiente terminado con un vínculo heredado',
-        fechaLimite: fechaConHora(0, 0),
-        completado: true,
-        eventoId: idAudiencia        // el vínculo apunta donde no debe
+        titulo: 'Pendiente con un vínculo heredado', fechaLimite: fechaConHora(0, 0),
+        completado: false, eventoId: idAudiencia
     });
 
-    const resumen = await sandbox.sincronizarPendientesConCalendarioCore();
-
-    igual('prudencia: no se borra un evento que no es su espejo', resumen.retirados, 0);
-    igual('prudencia: la audiencia sigue en el calendario', estado.eventos.length, 1);
-    igual('prudencia: intacta', estado.eventos[0].titulo, 'Audiencia de desahogo de pruebas');
+    const r = await sandbox.sacarPendientesDelCalendarioCore();
+    igual('prudencia: no se borra un evento que no es su espejo', r.retirados, 0);
+    igual('prudencia: la audiencia sigue en el calendario', estado.eventos.map(e => e.id), [idAudiencia]);
     igual('prudencia: pero el vínculo equivocado se suelta',
         estado.pendientes.find(p => p.id === idPendiente).eventoId, null);
+
+    // Lo mismo al editarlo o borrarlo.
+    await sandbox.actualizarPendiente(idPendiente, { eventoId: idAudiencia });
+    await sandbox.actualizarPendienteCore(idPendiente, { titulo: 'Otro título' });
+    await sandbox.actualizarPendiente(idPendiente, { eventoId: idAudiencia });
+    await sandbox.eliminarPendienteCore(idPendiente);
+    igual('prudencia: editarlo o borrarlo tampoco se lleva la audiencia', estado.eventos.length, 1);
 }
 
-// Un evento puesto a mano desde el calendario no se toca: el repaso solo
-// rellena huecos, no reescribe lo que alguien ya ajustó.
-async function pruebaNoPisaLoQueYaEstaba() {
+// El espejo que el usuario volvió audiencia con hora desde el calendario ya
+// es una audiencia que él agendó: se queda, sin vínculo.
+async function pruebaConservaLoQueSeVolvioAudiencia() {
     const { sandbox, estado } = crearSandbox();
 
-    const idEvento = await sandbox.agregarEvento({
-        titulo: 'Audiencia — sala 3, llevar copias',
-        tipo: 'audiencia',
-        fechaInicio: fechaConHora(11, 0),
-        todoElDia: false
-    });
-    await sandbox.agregarPendiente({
-        titulo: 'Audiencia',
-        fechaLimite: fechaConHora(9, 0),
-        completado: false,
-        eventoId: idEvento
-    });
+    const idP = await sandbox.agregarPendiente({ titulo: 'Audiencia', fechaLimite: fechaConHora(0, 0),
+        completado: false, eventoId: null });
+    const idE = await sandbox.agregarEvento({ titulo: 'Audiencia inicial — sala 3', tipo: 'audiencia',
+        fechaInicio: fechaConHora(11, 0), todoElDia: false, descripcion: 'Pendiente del expediente.', pendienteId: idP });
+    await sandbox.actualizarPendiente(idP, { eventoId: idE });
 
-    await sandbox.sincronizarPendientesConCalendarioCore();
+    const r = await sandbox.sacarPendientesDelCalendarioCore();
+    igual('audiencia: se queda en el calendario', estado.eventos.map(e => e.id), [idE]);
+    igual('audiencia: tal como la dejó el usuario', estado.eventos[0].titulo, 'Audiencia inicial — sala 3');
+    igual('audiencia: ya sin vínculo con el pendiente', [estado.eventos[0].pendienteId, estado.pendientes[0].eventoId], [null, null]);
+    igual('audiencia: se cuenta como conservada', [r.retirados, r.conservados], [0, 1]);
 
-    igual('respeto: el evento ajustado a mano conserva su título',
-        estado.eventos[0].titulo, 'Audiencia — sala 3, llevar copias');
-    igual('respeto: y su hora', new Date(estado.eventos[0].fechaInicio).getHours(), 11);
+    const otra = await sandbox.sacarPendientesDelCalendarioCore();
+    igual('audiencia: la siguiente vuelta ya no la toca', otra, { retirados: 0, conservados: 0, soltados: 0 });
 }
 
-// Si no hay nada que arreglar, no se molesta a la UI ni a la nube: esto corre
-// en CADA arranque y en cada sincronización.
-async function pruebaSilenciosaCuandoNoHayNadaQueHacer() {
+// Terminar o borrar un pendiente que trae su espejo de antes lo quita.
+async function pruebaTerminarOBorrarQuitaElEspejo() {
+    const { sandbox, estado } = crearSandbox();
+    const espejoDe = async (idP) => {
+        const idE = await sandbox.agregarEvento({ titulo: 'x', tipo: 'recordatorio', fechaInicio: fechaConHora(0, 0),
+            todoElDia: true, descripcion: 'Pendiente del expediente.', pendienteId: idP });
+        await sandbox.actualizarPendiente(idP, { eventoId: idE });
+    };
+
+    const a = await sandbox.agregarPendiente({ titulo: 'A', fechaLimite: fechaConHora(0, 0), completado: false, eventoId: null });
+    const b = await sandbox.agregarPendiente({ titulo: 'B', fechaLimite: fechaConHora(0, 0), completado: false, eventoId: null });
+    await espejoDe(a);
+    await espejoDe(b);
+
+    await sandbox.completarPendienteCore(a, true);
+    igual('terminar: su espejo sale del calendario', estado.eventos.length, 1);
+    igual('terminar: y queda sin vínculo', estado.pendientes.find(p => p.id === a).eventoId, null);
+    await sandbox.eliminarPendienteCore(b);
+    igual('borrar: su espejo también se va', estado.eventos.length, 0);
+}
+
+// Esto corre en CADA arranque y en cada sincronización: si no hay nada que
+// limpiar, no se molesta a la UI ni a la nube, y dos vueltas seguidas no hacen nada más.
+async function pruebaSilenciosaEIdempotente() {
     const { sandbox, estado } = crearSandbox();
 
-    await sandbox.agregarPendiente({
-        titulo: 'Sin fecha',
-        fechaLimite: null,
-        completado: false,
-        eventoId: null
-    });
+    await sandbox.agregarPendiente({ titulo: 'Con fecha', fechaLimite: fechaConHora(0, 0), completado: false, eventoId: null });
+    await sandbox.agregarEvento({ titulo: 'Audiencia', tipo: 'audiencia', fechaInicio: fechaConHora(9, 0), todoElDia: false });
 
     estado.sincronizaciones = 0;
     estado.refrescosUI = 0;
-    const resumen = await sandbox.sincronizarPendientesConCalendarioCore();
-
-    igual('silencio: no hubo nada que crear', resumen.creados, 0);
+    const r = await sandbox.sacarPendientesDelCalendarioCore();
+    igual('silencio: no hubo nada que quitar', r, { retirados: 0, conservados: 0, soltados: 0 });
     igual('silencio: no se repinta la interfaz', estado.refrescosUI, 0);
     igual('silencio: no se sube nada a la nube', estado.sincronizaciones, 0);
+    igual('silencio: y no se crea nada', estado.eventos.length, 1);
 }
 
-// El sync ya está en mitad de una vuelta cuando llama: si el repaso disparara
-// otra subida, chocaría con la que está en curso.
+// El sync ya está en mitad de una vuelta cuando llama: si la limpieza
+// disparara otra subida, chocaría con la que está en curso.
 async function pruebaNoSubeCuandoElSyncLoPide() {
-    const { sandbox, estado } = crearSandbox();
+    const conEspejo = async () => {
+        const caja = crearSandbox();
+        await caja.sandbox.agregarEvento({ titulo: 'Espejo', tipo: 'recordatorio', fechaInicio: fechaConHora(0, 0),
+            todoElDia: true, descripcion: 'Pendiente del expediente.', pendienteId: 50 });
+        caja.estado.sincronizaciones = 0;
+        return caja;
+    };
 
-    await sandbox.agregarPendiente({
-        titulo: 'Llegó de otro dispositivo',
-        fechaLimite: fechaConHora(0, 0),
-        completado: false,
-        eventoId: null
-    });
+    const desdeSync = await conEspejo();
+    const r = await desdeSync.sandbox.sacarPendientesDelCalendarioCore({ sincronizar: false });
+    igual('desde sync: el espejo se quita igual', r.retirados, 1);
+    igual('desde sync: pero no se dispara otra subida', desdeSync.estado.sincronizaciones, 0);
 
-    estado.sincronizaciones = 0;
-    const resumen = await sandbox.sincronizarPendientesConCalendarioCore({ sincronizar: false });
-
-    igual('desde sync: el evento se crea igual', resumen.creados, 1);
-    igual('desde sync: pero no se dispara otra subida', estado.sincronizaciones, 0);
-
-    // Y desde el arranque, donde nadie está sincronizando, sí se sube.
-    const otro = crearSandbox();
-    await otro.sandbox.agregarPendiente({
-        titulo: 'Arranque',
-        fechaLimite: fechaConHora(0, 0),
-        completado: false,
-        eventoId: null
-    });
-    otro.estado.sincronizaciones = 0;
-    await otro.sandbox.sincronizarPendientesConCalendarioCore();
-    igual('desde el arranque: sí se sube lo que se agendó',
-        otro.estado.sincronizaciones > 0, true);
+    const desdeArranque = await conEspejo();
+    await desdeArranque.sandbox.sacarPendientesDelCalendarioCore();
+    igual('desde el arranque: sí se sube la limpieza', desdeArranque.estado.sincronizaciones > 0, true);
 }
 
 // Que falle la base de datos no puede tumbar el arranque ni el sync.
@@ -439,37 +385,142 @@ async function pruebaNoTumbaNada() {
 
     let resumen = null;
     try {
-        resumen = await sandbox.sincronizarPendientesConCalendarioCore();
+        resumen = await sandbox.sacarPendientesDelCalendarioCore();
     } catch (e) {
         verificar('robustez: un fallo de la base no se propaga', false, e.message);
         return;
     }
-    igual('robustez: un fallo de la base no se propaga', resumen, { creados: 0, revinculados: 0, retirados: 0 });
+    igual('robustez: un fallo de la base no se propaga', resumen, { retirados: 0, conservados: 0, soltados: 0 });
     verificar('robustez: pero queda anotado en la consola', quejas.length > 0);
+}
+
+// La conexión con Google dura lo que la sesión. Lo que se borra en la app
+// mientras no hay conexión (como los pendientes que se sacan al arrancar)
+// se anota y se borra allá en cuanto se conecta.
+async function pruebaGoogleCalendarBorraAlConectar() {
+    const guardado = {};
+    const llamadas = [];
+    let callbackToken = null;
+    const sb = {
+        console, Date, JSON, Promise, Array, String, setTimeout,
+        location: { origin: 'https://ejemplo.test' },
+        localStorage: {
+            getItem: (k) => (k in guardado ? guardado[k] : null),
+            setItem: (k, v) => { guardado[k] = String(v); },
+            removeItem: (k) => { delete guardado[k]; }
+        },
+        document: { getElementById: () => ({}) },   // GSI "ya cargado"
+        fetch: async (url, opts) => {
+            llamadas.push(opts.method + ' ' + url.split('/').pop());
+            if (url.endsWith('/ya-no-estaba')) return { status: 410, ok: false, json: async () => ({ error: { message: 'Resource has been deleted' } }) };
+            if (url.endsWith('/falla')) return { status: 500, ok: false, json: async () => ({ error: { message: 'Backend Error' } }) };
+            return { status: 204, ok: true, json: async () => null };
+        }
+    };
+    sb.window = sb;
+    sb.google = { accounts: { oauth2: { initTokenClient: (cfg) => {
+        callbackToken = cfg.callback;
+        return { requestAccessToken: () => cfg.callback({ access_token: 't', expires_in: 3600 }) };
+    } } } };
+    vm.createContext(sb);
+    vm.runInContext(fs.readFileSync(path.join(JS, 'gcal-sync.js'), 'utf8') + '\nthis.GCAL = GCAL;', sb, { filename: 'gcal-sync.js' });
+    const GCAL = sb.GCAL;
+
+    sb.localStorage.setItem('gcal_client_id', 'cliente.apps.googleusercontent.com');
+    await GCAL.hookEliminarEvento('g-1');
+    await GCAL.hookEliminarEvento('ya-no-estaba');
+    await GCAL.hookEliminarEvento('falla');
+    await GCAL.hookEliminarEvento('g-1');
+    igual('google: sin conexión no se llama a Google', llamadas, []);
+    igual('google: se anota cada copia una sola vez', JSON.parse(guardado.gcal_por_eliminar), ['g-1', 'ya-no-estaba', 'falla']);
+
+    await GCAL.obtenerToken();
+    for (let i = 0; i < 5 && llamadas.length < 3; i++) await new Promise(r => setTimeout(r, 0));
+    await new Promise(r => setTimeout(r, 0));
+    igual('google: al conectar se borran allá', llamadas, ['DELETE g-1', 'DELETE ya-no-estaba', 'DELETE falla']);
+    igual('google: lo que falló se reintenta la próxima vez; lo que ya no estaba, no',
+        JSON.parse(guardado.gcal_por_eliminar || '[]'), ['falla']);
+
+    // Ya conectado, se borra al momento.
+    await GCAL.hookEliminarEvento('g-2');
+    igual('google: conectado, se borra en el acto', llamadas[llamadas.length - 1], 'DELETE g-2');
+
+    // Sin Google Calendar configurado no se anota nada.
+    delete guardado.gcal_client_id;
+    delete guardado.gcal_por_eliminar;
+    await GCAL.hookEliminarEvento('g-3');
+    igual('google: sin configurar no se anota nada', guardado.gcal_por_eliminar, undefined);
+    verificar('google: se usó el flujo de token', typeof callbackToken === 'function');
+}
+
+// El análisis IA de un acuerdo: la audiencia va al calendario; un plazo o un
+// "hay que hacer" va a Pendientes, con el contexto del acuerdo.
+async function pruebaAnalisisIA() {
+    const { sandbox, estado } = crearSandbox();
+    cargarDeApp(sandbox, ['parsearHoraIA', 'construirEventoIA', 'construirPendienteIA', '_fechaIAVaAlCalendario', 'guardarFechaIA']);
+    const ctx = { expedienteId: 7, expedienteTexto: '123/2025', expedienteLabel: '123/2025', institucion: 'TSJ',
+        juzgadoOrigen: 'Juzgado Primero Civil', tipoAcuerdo: 'auto', resumen: 'Se admite la demanda' };
+
+    const a = await sandbox.guardarFechaIA({ tipo: 'audiencia', fecha: '2026-12-03', hora: '10:30', descripcion: 'Audiencia de pruebas' }, ctx);
+    const v = await sandbox.guardarFechaIA({ tipo: 'vencimiento', fecha: '2026-12-10', hora: null, descripcion: 'Contestar la demanda' }, ctx);
+    const r = await sandbox.guardarFechaIA({ tipo: 'recordatorio', fecha: '2026-12-11', hora: '9:00', descripcion: '' }, ctx);
+
+    igual('IA: la audiencia va al calendario; lo demás, a Pendientes', [a, v, r], ['evento', 'pendiente', 'pendiente']);
+    igual('IA: en el calendario solo queda la audiencia', estado.eventos.map(e => e.tipo), ['audiencia']);
+    igual('IA: con su hora', new Date(estado.eventos[0].fechaInicio).getHours(), 10);
+    igual('IA: el plazo y el recordatorio son pendientes', estado.pendientes.length, 2);
+    const plazo = estado.pendientes.find(p => p.titulo === 'Contestar la demanda');
+    verificar('IA: el plazo es un pendiente con su título', !!plazo);
+    igual('IA: de su expediente', plazo.expedienteId, 7);
+    igual('IA: con la fecha límite, de día completo',
+        [new Date(plazo.fechaLimite).getDate(), new Date(plazo.fechaLimite).getHours(), plazo.todoElDia], [10, 0, true]);
+    verificar('IA: y el contexto del acuerdo', /Juzgado Primero Civil/.test(plazo.descripcion) && /Se admite la demanda/.test(plazo.descripcion),
+        plazo.descripcion);
+    const otro = estado.pendientes.find(p => p !== plazo);
+    igual('IA: sin descripción se le pone un título', otro.titulo, 'Recordatorio del acuerdo');
+    igual('IA: con hora no es de día completo', [new Date(otro.fechaLimite).getHours(), otro.todoElDia], [9, false]);
+
+    let fallo = null;
+    try { await sandbox.guardarFechaIA({ tipo: 'vencimiento', fecha: 'el lunes' }, ctx); } catch (e) { fallo = e; }
+    verificar('IA: una fecha rota se avisa en vez de guardar basura', !!fallo && estado.pendientes.length === 2);
+}
+
+// El asistente: un "recordatorio" de algo que hay que hacer es un pendiente.
+function pruebaAsistenteMandaRecordatoriosAPendientes() {
+    const voz = fs.readFileSync(path.join(JS, 'voice-assistant.js'), 'utf8');
+    verificar('asistente: sabe que el calendario es solo para audiencias y citas',
+        /El CALENDARIO es solo para audiencias y citas/.test(voz));
+    verificar('asistente: un recordatorio de hacer algo es crear_pendiente',
+        /NO es un evento: es crear_pendiente/.test(voz));
+    verificar('asistente: el ejemplo del grupo (AHO) crea pendientes, no eventos',
+        /todos los asuntos de AHO" → acciones:\[\{accion:"crear_pendiente"/.test(voz));
+    verificar('asistente: ya no promete agendar un pendiente', !/creado\$\{conPrioridad\} y agendado/.test(voz));
 }
 
 // ==================== EJECUCIÓN ====================
 
 (async () => {
-    console.log('\n  Pendientes con fecha → calendario\n');
+    console.log('\n  Los pendientes no van al calendario\n');
 
     pruebaLecturaDeLaHora();
-    await pruebaLaHoraLlegaAlCalendario();
-    await pruebaRecogeLosQueSeQuedaronFuera();
-    await pruebaRescateConservaLaHora();
-    await pruebaNoDuplica();
-    await pruebaReenganchaEnVezDeDuplicar();
-    await pruebaRetiraLoTerminado();
+    await pruebaCrearNoAgenda();
+    await pruebaEditarNoAgenda();
+    await pruebaSacaLosEspejos();
+    await pruebaSacaLosSueltos();
     await pruebaNoBorraLoQueNoEsSuEspejo();
-    await pruebaNoPisaLoQueYaEstaba();
-    await pruebaSilenciosaCuandoNoHayNadaQueHacer();
+    await pruebaConservaLoQueSeVolvioAudiencia();
+    await pruebaTerminarOBorrarQuitaElEspejo();
+    await pruebaSilenciosaEIdempotente();
     await pruebaNoSubeCuandoElSyncLoPide();
     await pruebaNoTumbaNada();
+    await pruebaGoogleCalendarBorraAlConectar();
+    await pruebaAnalisisIA();
+    pruebaAsistenteMandaRecordatoriosAPendientes();
 
     console.log(`  ${pasadas} pasadas, ${fallos.length} fallidas\n`);
     if (fallos.length > 0) {
         fallos.forEach(f => console.log('   ✗ ' + f));
         process.exit(1);
     }
-    console.log('  ✓ Ninguna fecha se queda fuera del calendario\n');
+    console.log('  ✓ En el calendario solo quedan audiencias y citas\n');
 })();

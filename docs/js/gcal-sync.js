@@ -77,6 +77,8 @@ const GCAL = (() => {
                         expiry_ms: Date.now() + (resp.expires_in - 60) * 1000
                     };
                     resolve(_token.access_token);
+                    // Lo que se borró en la app mientras no había conexión.
+                    vaciarColaDeEliminacion().catch(() => {});
                 }
             });
             _tokenClient.requestAccessToken({ prompt: '' });
@@ -361,8 +363,62 @@ const GCAL = (() => {
         await sincronizarEvento(evento);
     }
 
+    // La conexión con Google dura lo que la sesión: al recargar la app hay
+    // que volver a conectar. Lo que se borraba en la app mientras tanto dejaba
+    // su copia en Google Calendar para siempre (así se quedaban, por ejemplo,
+    // los pendientes que se sacan del calendario al arrancar). Se anota aquí
+    // y se borra allá en cuanto hay conexión.
+    const COLA_KEY = 'gcal_por_eliminar';
+
+    function leerColaDeEliminacion() {
+        try {
+            const cola = JSON.parse(localStorage.getItem(COLA_KEY) || '[]');
+            return Array.isArray(cola) ? cola.filter(id => typeof id === 'string' && id) : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function guardarColaDeEliminacion(cola) {
+        try {
+            if (cola.length) localStorage.setItem(COLA_KEY, JSON.stringify(cola));
+            else localStorage.removeItem(COLA_KEY);
+        } catch (e) { /* sin almacenamiento no hay cola; no es grave */ }
+    }
+
+    function encolarEliminacion(gcalEventId) {
+        if (!gcalEventId) return;
+        const cola = leerColaDeEliminacion();
+        if (!cola.includes(gcalEventId)) {
+            cola.push(gcalEventId);
+            guardarColaDeEliminacion(cola);
+        }
+    }
+
+    async function vaciarColaDeEliminacion() {
+        const cola = leerColaDeEliminacion();
+        if (!cola.length || !estaConectado()) return;
+        const quedan = [];
+        for (const id of cola) {
+            try {
+                await apiCall('DELETE', `${API_BASE}/${id}`);
+            } catch (err) {
+                // Si allá ya no estaba, no hay nada que reintentar; con
+                // cualquier otro error se intenta en la próxima conexión.
+                if (!/404|410|not found|deleted/i.test(err.message || '')) quedan.push(id);
+            }
+        }
+        // Lo que se anotó mientras se vaciaba la cola se conserva.
+        const nuevos = leerColaDeEliminacion().filter(id => !cola.includes(id));
+        guardarColaDeEliminacion([...quedan, ...nuevos]);
+    }
+
     async function hookEliminarEvento(gcalEventId) {
-        if (!estaConfigurado() || !estaConectado() || !gcalEventId) return;
+        if (!estaConfigurado() || !gcalEventId) return;
+        if (!estaConectado()) {
+            encolarEliminacion(gcalEventId);
+            return;
+        }
         await eliminarEventoGCal(gcalEventId);
     }
 
