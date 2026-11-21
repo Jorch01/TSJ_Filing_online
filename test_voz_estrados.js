@@ -129,6 +129,9 @@ function crearEntorno() {
     // El catálogo del TSJ, entero: tampoco hace nada al cargarse.
     vm.runInContext(fs.readFileSync(path.join(JS, 'juzgados.js'), 'utf8'),
         sandbox, { filename: 'juzgados.js' });
+    // Y las causas penales, que usan ese catálogo.
+    vm.runInContext(fs.readFileSync(path.join(JS, 'estrados-penales.js'), 'utf8'),
+        sandbox, { filename: 'estrados-penales.js' });
 
     return { sandbox, estado };
 }
@@ -526,6 +529,34 @@ async function pruebaVariosJuzgadosTSJ() {
     verificar('tsj: se dejan en una lista', /lista/.test(rt), rt);
 }
 
+// ==================== CAUSAS PENALES ====================
+
+// Los juzgados penales no publican en estrados: de la causa se buscan sus
+// tocas en las salas penales, por el número de la causa.
+async function pruebaCausaPenal() {
+    const { sandbox, estado } = crearEntorno();
+    const r = await sandbox.accBuscarTSJ({ valor: '339/2023', tipoBusqueda: 'numero', juzgado: 'juzgado penal oral de cancún' });
+    const ints = estado.ventanas.map(v => (/[?&]int=(\d+)/.exec(v.url) || [])[1]).sort();
+    igual('penal: se abre una búsqueda por sala penal', ints, ['171', '173', '177', '178', '179']);
+    verificar('penal: en el buscador de segunda instancia, con la causa',
+        estado.ventanas.every(v => /buscador_segunda\.php/.test(v.url) && v.url.includes('findexp=' + encodeURIComponent('339/2023'))),
+        JSON.stringify(estado.ventanas));
+    verificar('penal: y explica por qué no se abren los estrados del juzgado', /no publica acuerdos en estrados/.test(r), r);
+
+    // En las salas penales, sin decir juzgado: el número se limpia.
+    const amb = crearEntorno();
+    await amb.sandbox.accBuscarTSJ({ valor: 'C.A. 339/2023', ambito: 'penal' });
+    igual('penal: ámbito penal, las cinco salas', amb.estado.ventanas.length, 5);
+    verificar('penal: con número/año, sin prefijo',
+        amb.estado.ventanas.every(v => v.url.includes('findexp=' + encodeURIComponent('339/2023'))), JSON.stringify(amb.estado.ventanas));
+
+    // Un juzgado penal con otro civil en la misma orden: cada uno a lo suyo.
+    const mixto = crearEntorno();
+    await mixto.sandbox.accBuscarTSJ({ valor: '12/2026', juzgados: ['TRIBUNAL DE JUICIO ORAL CHETUMAL', 'JUZGADO CIVIL CHETUMAL'] });
+    igual('penal: el civil abre sus estrados y el penal las salas',
+        [mixto.estado.ventanas.filter(v => /buscador_primera/.test(v.url)).length, mixto.estado.ventanas.filter(v => /buscador_segunda/.test(v.url)).length], [1, 5]);
+}
+
 // ==================== VARIOS ASUNTOS EN UNA ORDEN ====================
 
 async function pruebaVariosAsuntos() {
@@ -690,6 +721,8 @@ function pruebaInstrucciones() {
     verificar('prompt: al dar de alta un federal se pasa el tipo de asunto',
         /"crear_expediente": \{[^}]*tipoAsunto/.test(voz));
     verificar('prompt: y se le dice que nunca pida un ID', /nunca le pidas al usuario un ID/.test(voz));
+    verificar('prompt: sabe que las causas penales se buscan en las salas penales',
+        /ambito:"todos"\|"primera"\|"segunda"\|"penal"/.test(voz) && /CAUSAS PENALES/.test(voz));
 }
 
 (async () => {
@@ -703,6 +736,7 @@ function pruebaInstrucciones() {
         ['varios tipos de asunto', pruebaVariosTipos],
         ['todos los tipos de asunto', pruebaTodosLosTipos],
         ['varios juzgados del TSJ', pruebaVariosJuzgadosTSJ],
+        ['causas penales', pruebaCausaPenal],
         ['varios asuntos en una orden', pruebaVariosAsuntos],
         ['dar de alta por voz', pruebaAltaPorVoz],
         ['cambiar de órgano por voz', pruebaCambiarDeOrgano],
