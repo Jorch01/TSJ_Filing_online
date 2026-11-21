@@ -6064,6 +6064,20 @@ body.cta-abierto #tour-menu, body.cta-abierto #tour-oferta, body.cta-abierto #re
 .estl-marcador a { cursor: grab; }
 @media (max-width: 640px) { .estl-campos { grid-template-columns: minmax(0, 1fr); } }
 
+/* Causas penales: tocas en las salas penales y agenda de audiencias */
+.estp { display: grid; gap: 0.9rem; min-width: 0; }
+.estp-nota { margin: 0; font-size: 0.86rem; color: var(--text-secondary); line-height: 1.5; }
+.estp-bloque { display: grid; gap: 0.5rem; padding-top: 0.6rem; border-top: 1px solid var(--border-color); min-width: 0; }
+.estp-bloque h4 { margin: 0; font-size: 0.95rem; }
+.estp-campo { display: grid; gap: 0.25rem; font-size: 0.82rem; font-weight: 500; color: var(--text-secondary); min-width: 0; }
+.estp-campo input, .estp-campo select { width: 100%; min-width: 0; }
+.estp-campos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem 0.8rem; }
+.estp-salas { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.estp-sala { display: inline-flex; align-items: center; gap: 0.3rem; border: 1px solid var(--border-color); border-radius: 999px; padding: 0.3rem 0.8rem; font-size: 0.82rem; color: var(--text-primary); text-decoration: none; background: var(--bg-primary); }
+.estp-sala:hover { border-color: var(--primary); color: var(--primary); }
+.estp-anteriores summary { cursor: pointer; font-size: 0.86rem; color: var(--text-secondary); margin-bottom: 0.4rem; }
+@media (max-width: 640px) { .estp-campos { grid-template-columns: minmax(0, 1fr); } }
+
 /* ==================== ESTADÍSTICAS ==================== */
 /* Colores de las gráficas, validados contra las superficies de la app
    (blanco y #131a24) con la paleta de referencia: azul y naranja para dos

@@ -278,8 +278,23 @@ function pruebaJuzgadoTSJ() {
         r('Juzgado Primero Familiar de Primera Instancia de Cancún'), null);
     igual('TSJ: sin materia', r('Tribunal Superior de Justicia del Estado de Quintana Roo'), null);
     igual('TSJ: un juzgado federal no es del TSJ', r('Juzgado Primero de Distrito en el Estado de Quintana Roo'), null);
-    igual('TSJ: ni un juzgado penal que no está en el catálogo',
-        r('Juzgado de Control del Sistema Penal Acusatorio de Cancún'), null);
+    // Los penales de primera instancia: el juzgado de control es el penal oral.
+    igual('TSJ: el juzgado de control es el penal oral de su ciudad',
+        r('Juzgado de Control del Sistema Penal Acusatorio de Cancún'), 'JUZGADO PENAL ORAL CANCUN');
+    igual('TSJ: el penal oral con todo su nombre',
+        r('Juzgado de Primera Instancia Penal Oral del Distrito Judicial de Playa del Carmen'), 'JUZGADO PENAL ORAL PLAYA');
+    igual('TSJ: el tribunal de juicio oral no es el juzgado de control',
+        r('Tribunal de Juicio Oral del Distrito Judicial de Chetumal'), 'TRIBUNAL DE JUICIO ORAL CHETUMAL');
+    igual('TSJ: Kantunilkín se reconoce también por su municipio',
+        r('Tribunal de Enjuiciamiento de Lázaro Cárdenas'), 'TRIBUNAL DE JUICIO ORAL KANTUNILKIN');
+    igual('TSJ: ejecución y ejecución para adolescentes no se confunden',
+        [r('Juzgado de Ejecución de Sentencias de Chetumal'), r('Juzgado de Ejecución de Medidas para Adolescentes de Chetumal')],
+        ['JUZGADO DE EJECUCION PENAL CHETUMAL', 'JUZGADO DE EJECUCION PARA ADOLESCENTES CHETUMAL']);
+    igual('TSJ: "Juzgados de Control y Tribunales de Juicio Oral" no dice cuál',
+        r('Juzgados de Control y Tribunales de Juicio Oral Penal de Cancún'), null);
+    igual('TSJ: un juzgado de juicio oral mercantil sigue siendo mercantil',
+        r('Juzgado de Juicio Oral Mercantil de Cancún'), 'JUZGADO ORAL MERCANTIL CANCUN');
+    igual('TSJ: sin ciudad, un penal oral no se adivina', r('Juzgado Penal Oral'), null);
     igual('TSJ: ni otra autoridad', r('Fiscalía Especializada Cancún'), null);
 }
 

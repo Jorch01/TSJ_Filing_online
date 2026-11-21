@@ -44,6 +44,7 @@ const ARCHIVOS_APP = [
     'js/estadisticas.js',
     'js/seguimiento.js',
     'js/estrados-laborales.js',
+    'js/estrados-penales.js',
     'js/sesiones-pjf.js',
     'js/instalar.js',
     'js/tour.js',

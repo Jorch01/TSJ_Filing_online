@@ -57,12 +57,13 @@ for (const ruta of paginas) {
     }
 }
 
-// Todos los juzgados del catálogo aparecen en la página de estrados.
+// Todos los juzgados del catálogo con estrados aparecen en la página de
+// estrados (los penales de primera instancia no publican ahí).
 const vm = require('vm');
 const ctx = {};
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(RAIZ, 'docs/js/juzgados.js'), 'utf8') + ';this.C=CATEGORIAS_JUZGADOS', ctx);
-const total = ctx.C.reduce((s, c) => s + c.juzgados.length, 0);
+const total = ctx.C.filter(c => !c.sinEstrados).reduce((s, c) => s + c.juzgados.length, 0);
 const estrados = generado['estrados-tsj-quintana-roo/index.html'];
 verificar('estrados: lista los 52 juzgados y salas del catálogo',
     (estrados.match(/<li>(?!<)/g) || []).length === total, `${(estrados.match(/<li>(?!<)/g) || []).length} de ${total}`);

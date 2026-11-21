@@ -2451,15 +2451,19 @@
             const btns = document.createElement('div');
             btns.className = 'voz-resultado-btns';
 
-            const puedeTSJ = (exp.institucion || 'TSJ') === 'TSJ' && exp.juzgado && typeof construirUrlBusqueda === 'function';
+            const penal = typeof ESTRADOS_PENALES !== 'undefined' && ESTRADOS_PENALES.juzgadoPenalDeExpediente(exp);
+            const puedeTSJ = !penal && (exp.institucion || 'TSJ') === 'TSJ' && exp.juzgado && typeof construirUrlBusqueda === 'function';
             const puedePJF = exp.institucion === 'PJF' && exp.pjfOrgId && exp.pjfTipoAsunto && typeof construirURLPJF === 'function';
-            if (puedeTSJ || puedePJF) {
+            if (puedeTSJ || puedePJF || penal) {
                 const b = document.createElement('button');
                 b.type = 'button';
                 b.className = 'voz-chip';
-                b.textContent = '🌐 Estrados';
+                b.textContent = penal ? '⚖️ Salas y agenda' : '🌐 Estrados';
                 b.addEventListener('click', () => {
-                    if (puedeTSJ) {
+                    if (penal) {
+                        cerrarPanel();
+                        ESTRADOS_PENALES.abrirDeExpediente(exp.id);
+                    } else if (puedeTSJ) {
                         const url = construirUrlBusqueda(exp.juzgado, exp.numero ? 'numero' : 'nombre', exp.numero || exp.nombre);
                         if (typeof abrirBusquedaPopup === 'function') abrirBusquedaPopup(url, exp.numero || exp.nombre);
                         else if (url) window.open(url, '_blank');
@@ -2702,7 +2706,12 @@
             if (sinResolver.length) plan.avisos.push(`no identifiqué "${sinResolver.join('", "')}"`);
         } else {
             // En todos los juzgados de un ámbito (se confirma antes de abrir).
-            const ambito = ['todos', 'primera', 'segunda'].includes(p.ambito) ? p.ambito : 'todos';
+            const ambito = ['todos', 'primera', 'segunda', 'penal'].includes(p.ambito) ? p.ambito : 'todos';
+            if (ambito === 'penal') {
+                consultasEnSalasPenales(plan, valor, tipo);
+                if (!plan.consultas.length) throw new Error('No hay salas penales disponibles');
+                return plan;
+            }
             if ((ambito === 'todos' || ambito === 'primera') && typeof JUZGADOS !== 'undefined') {
                 juzgados = juzgados.concat(Object.keys(JUZGADOS));
             }
@@ -2712,10 +2721,27 @@
             if (!juzgados.length) throw new Error('No hay juzgados disponibles para ese ámbito');
         }
         for (const juzgado of juzgados) {
+            // Un juzgado penal no publica en estrados: lo que se puede consultar
+            // de la causa son sus tocas en las salas penales.
+            if (typeof esJuzgadoPenalTSJ === 'function' && esJuzgadoPenalTSJ(juzgado)) {
+                plan.avisos.push(`${juzgado} no publica acuerdos en estrados: busco la causa en las salas penales, donde se publican sus tocas (su agenda de audiencias está en el botón ⚖️ del expediente)`);
+                consultasEnSalasPenales(plan, valor, tipo);
+                continue;
+            }
             const c = consultaTSJ(juzgado, tipo, valor);
             if (c) plan.consultas.push(c);
         }
         return plan;
+    }
+
+    // Las búsquedas de una causa penal en las salas penales que publican hoy.
+    function consultasEnSalasPenales(plan, valor, tipo) {
+        if (typeof ESTRADOS_PENALES === 'undefined') return;
+        const termino = tipo === 'nombre' ? valor : ESTRADOS_PENALES.causaDe(valor);
+        for (const b of ESTRADOS_PENALES.busquedasEnSalas(valor, tipo, { soloActuales: true })) {
+            if (plan.consultas.some(c => c.url === b.url)) continue;
+            plan.consultas.push({ institucion: 'TSJ', numero: termino, organo: b.nombre, tipo: '', etiqueta: `${termino} — tocas en ${b.nombre}`, url: b.url, ventana: null });
+        }
     }
 
     /**
@@ -3395,7 +3421,7 @@
             agenda = agendaParaElModelo(await obtenerEventos(), await mapaDeExpedientes(), Date.now());
         } catch (e) { /* base aún no lista */ }
 
-        const juzgadosTSJ = []
+        const juzgadosTSJ = typeof nombresCatalogoTSJ === 'function' ? nombresCatalogoTSJ() : []
             .concat(typeof JUZGADOS !== 'undefined' ? Object.keys(JUZGADOS) : [])
             .concat(typeof SALAS_SEGUNDA_INSTANCIA !== 'undefined' ? Object.keys(SALAS_SEGUNDA_INSTANCIA) : []);
 
@@ -3469,10 +3495,11 @@ ACCIONES DISPONIBLES y sus parámetros:
 10. "abrir_expediente": {expedienteId:número o null, expedienteRef:texto o null} — navega hasta el expediente y lo resalta ("abre el expediente 123/2025", "muéstrame el caso de Juan Pérez", "ábreme el 123").
 11. "deshacer": {} — revierte la última acción hecha por el asistente ("deshaz lo último", "revierte eso").
 12. "buscar_local": {consulta} — buscar en el catálogo local del usuario ("busca mis expedientes de divorcio", "¿tengo algo de Juan Pérez?", "qué tengo del 123"). Pasa la consulta TAL CUAL la dijo; la app la interpreta y ordena por relevancia.
-13. "buscar_tsj": {valor, tipoBusqueda:"numero"|"nombre", juzgado:nombre exacto de la lista o null, juzgados:[nombres exactos] o null, ambito:"todos"|"primera"|"segunda" o null, expedienteId:número o null, expedienteRef:texto o null}
+13. "buscar_tsj": {valor, tipoBusqueda:"numero"|"nombre", juzgado:nombre exacto de la lista o null, juzgados:[nombres exactos] o null, ambito:"todos"|"primera"|"segunda"|"penal" o null, expedienteId:número o null, expedienteRef:texto o null}
     - ESTRADOS DEL TSJ DE QUINTANA ROO (tribunal del estado). Si el usuario menciona un expediente de su catálogo, usa el juzgado guardado de ese expediente.
     - VARIOS JUZGADOS concretos: usa "juzgados" (lista de nombres EXACTOS de la lista) y deja "juzgado" en null. Si no especifica juzgado, deja los dos en null y usa ambito (default "todos").
     - En el TSJ no hay tipos de asunto: el buscador encuentra el número en cualquier tipo de juicio. "En todos los tipos de asunto" en un juzgado del TSJ es una búsqueda normal por número.
+    - CAUSAS PENALES: los juzgados penales (JUZGADO PENAL ORAL…, TRIBUNAL DE JUICIO ORAL…, adolescentes, ejecución) NO publican en estrados; de una causa se ven sus tocas en las salas penales, que se buscan por el número de la CAUSA (número/año), no por el del toca. "Busca la causa 339/2023", "¿hay algo de la causa penal…?", "en las salas penales" → ambito:"penal" (o el juzgado penal, si lo dice o es el del expediente). La app abre la búsqueda en cada sala penal.
 14. "buscar_pjf": {expedienteId:número o null, expedienteRef:texto o null, numero:texto o null, organismo:texto o null, organismos:[textos] o null, tipoAsunto:texto o null, tiposAsunto:[textos] o null}
     - ESTRADOS / LISTA DE ACUERDOS DEL PODER JUDICIAL DE LA FEDERACIÓN. Si el expediente está en el catálogo con tienePJF=true, usa su id.
     - Si el usuario dicta el órgano federal, pásalo TAL CUAL en "organismo" y el tipo de asunto tal como lo diga en "tipoAsunto"; la app los resuelve contra el catálogo oficial. Los ordinales dan igual: "27 circuito", "vigésimo séptimo circuito" y "XXVII circuito" valen los tres.

@@ -2199,6 +2199,102 @@ async function probarSeguimientoSemanal(navegador) {
 // copia simulada de la página de la Secretaría del Trabajo (mismos ids:
 // formulario, unidad, fechas con calendario y tabla de DataTables), el
 // marcador consulta periodo por periodo y deja en la tabla solo el expediente.
+/**
+ * Causas penales del TSJ: sus juzgados no publican en estrados. Un expediente
+ * penal ofrece, en vez de los estrados, sus tocas en las salas penales y la
+ * agenda de audiencias del juzgado.
+ */
+async function probarCausasPenales(navegador) {
+    console.log('\nCausas penales: salas y agenda');
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, locale: 'es-MX', timezoneId: 'America/Cancun' });
+    await contexto.addInitScript(() => { try { localStorage.setItem('tour_bienvenida_visto', '1'); } catch (e) {} });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => typeof crearExpedienteCore === 'function' && typeof db !== 'undefined' && !!db && window.ESTRADOS_PENALES,
+            { timeout: 15000 });
+        await page.waitForTimeout(800);
+
+        // Alta desde el formulario: el juzgado penal está en la lista.
+        const enLista = await page.evaluate(() => {
+            const sel = document.getElementById('expediente-juzgado');
+            return [...sel.querySelectorAll('option')].some(o => o.value === 'JUZGADO PENAL ORAL CANCUN');
+        });
+        igual('penal: el juzgado penal se puede elegir al dar de alta', enLista, true);
+
+        const r = await page.evaluate(async () => {
+            const abiertas = [];
+            window.open = (url) => { abiertas.push(url); return { focus() {} }; };
+            const id = await crearExpedienteCore({ numero: 'C.A. 339/2023', institucion: 'TSJ', juzgado: 'JUZGADO PENAL ORAL CANCUN' });
+            const civil = await crearExpedienteCore({ numero: '1/2026', institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' });
+            navegarA('expedientes');
+            await cargarExpedientes();
+            await new Promise(res => setTimeout(res, 300));
+            const html = document.body.innerHTML;
+            const out = {
+                boton: html.includes(`ESTRADOS_PENALES.abrirDeExpediente(${id}, event)`),
+                sinEstrados: !html.includes(`abrirEstradosExpediente(${id}, event)`),
+                civilConEstrados: html.includes(`abrirEstradosExpediente(${civil}, event)`),
+                categoria: (await obtenerExpediente(id)).categoria
+            };
+            await ESTRADOS_PENALES.abrirDeExpediente(id);
+            await new Promise(res => setTimeout(res, 200));
+            out.titulo = document.getElementById('modal-titulo').textContent;
+            out.salas = [...document.querySelectorAll('#estp-salas a')].map(a => new URL(a.href).searchParams.get('int') + ':' + new URL(a.href).searchParams.get('findexp'));
+            out.anteriores = document.querySelectorAll('#estp-anteriores a').length;
+            out.juzgado = document.getElementById('estp-juzgado').value;
+            document.getElementById('estp-fecha').value = '2026-11-24';
+            document.getElementById('estp-agenda').click();
+            out.agenda = abiertas[abiertas.length - 1] || null;
+            // Otra causa escrita en la ventana: los enlaces se rehacen.
+            const campo = document.getElementById('estp-valor');
+            campo.value = '45/2025';
+            campo.dispatchEvent(new Event('input'));
+            out.otra = [...document.querySelectorAll('#estp-salas a')].every(a => new URL(a.href).searchParams.get('findexp') === '45/2025');
+            cerrarModal();
+
+            // La búsqueda del TSJ con un juzgado penal abre la misma ventana.
+            navegarA('busqueda');
+            await new Promise(res => setTimeout(res, 300));
+            if (typeof poblarSelectJuzgados === 'function') poblarSelectJuzgados('tsj-juzgado');
+            document.getElementById('tsj-juzgado').value = 'TRIBUNAL DE JUICIO ORAL CHETUMAL';
+            document.getElementById('tsj-valor').value = '12/2026';
+            const antes = abiertas.length;
+            ejecutarBusquedaTSJ();
+            await new Promise(res => setTimeout(res, 200));
+            out.formulario = {
+                modal: document.getElementById('modal-overlay').classList.contains('active') && /12\/2026/.test(document.getElementById('modal-titulo').textContent),
+                juzgado: document.getElementById('estp-juzgado').value,
+                sinVentanas: abiertas.length === antes
+            };
+            cerrarModal();
+
+            // La búsqueda global no ofrece juzgados sin estrados.
+            if (typeof poblarCheckboxesJuzgados === 'function') poblarCheckboxesJuzgados();
+            out.enGlobal = !!document.querySelector('.juzgado-global-cb[value="JUZGADO PENAL ORAL CANCUN"]');
+            return out;
+        });
+        igual('penal: el expediente penal lleva el botón de salas y agenda', [r.boton, r.sinEstrados], [true, true]);
+        igual('penal: el civil sigue con sus estrados', r.civilConEstrados, true);
+        igual('penal: queda en la categoría penal', r.categoria, 'PENAL - Juzgados y Tribunales de Juicio Oral');
+        verificar('penal: la ventana dice la causa', /339\/2023/.test(r.titulo), r.titulo);
+        igual('penal: busca la causa limpia en las cinco salas penales', r.salas.sort(), ['171:339/2023', '173:339/2023', '177:339/2023', '178:339/2023', '179:339/2023']);
+        igual('penal: y aparte las salas anteriores', r.anteriores, 4);
+        igual('penal: con el juzgado del expediente ya elegido para la agenda', r.juzgado, 'JUZGADO PENAL ORAL CANCUN');
+        verificar('penal: la agenda abre la de su juzgado, desde la fecha elegida',
+            !!r.agenda && /audiencias\/index\.php\?juzgado=154&area_id=1&fecha=2026-11-24$/.test(r.agenda), r.agenda);
+        igual('penal: cambiar la causa en la ventana rehace las búsquedas', r.otra, true);
+        igual('penal: la búsqueda del TSJ con un juzgado penal abre la ventana, sin ventanas vacías',
+            r.formulario, { modal: true, juzgado: 'TRIBUNAL DE JUICIO ORAL CHETUMAL', sinVentanas: true });
+        igual('penal: la búsqueda global no ofrece los juzgados sin estrados', r.enGlobal, false);
+        igual('penal: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
 async function probarEstradosLaborales(navegador) {
     const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, locale: 'es-MX', timezoneId: 'America/Cancun' });
     const page = await contexto.newPage();
@@ -6248,6 +6344,7 @@ async function main() {
 
         // ---- Estrados laborales (TCA y Juntas) ----
         await probarEstradosLaborales(navegador);
+        await probarCausasPenales(navegador);
 
         // ---- Sesiones de los Tribunales Colegiados ----
         await probarSesionesPJF(navegador);

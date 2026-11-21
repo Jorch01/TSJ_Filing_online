@@ -64,6 +64,58 @@ const JUZGADOS = {
     'JUZGADO FAMILIAR PRIMERA INSTANCIA BACALAR': 188
 };
 
+// ===== JUZGADOS PENALES DE PRIMERA INSTANCIA (sistema acusatorio) =====
+// No publican acuerdos en los estrados electrónicos: ahí solo aparecen las
+// salas. Lo público de cada uno es su agenda de audiencias
+// (tsjqroo.gob.mx/audiencias), que usa OTRA numeración —la de `agenda`, con
+// area_id=1— y no trae número de causa ni partes. Lo que sí trae el número
+// de la causa son los tocas de las salas penales: su buscador busca en la
+// columna "Expediente", que es la causa del juzgado de origen.
+// `estrados`: el id en los estrados electrónicos, solo de los dos de Tulum,
+// los únicos que están en ese menú (sin publicaciones a la fecha).
+// Fuente: revisión de los sitios del TSJ, noviembre de 2026.
+const JUZGADOS_PENALES = {
+    'JUZGADO PENAL ORAL CANCUN': { agenda: 154 },
+    'TRIBUNAL DE JUICIO ORAL CANCUN': { agenda: 160 },
+    'JUZGADO PENAL ORAL PLAYA': { agenda: 145 },
+    'TRIBUNAL DE JUICIO ORAL PLAYA': { agenda: 146 },
+    'JUZGADO PENAL ORAL CHETUMAL': { agenda: 137 },
+    'TRIBUNAL DE JUICIO ORAL CHETUMAL': { agenda: 159 },
+    'JUZGADO DE ADOLESCENTES CHETUMAL': { agenda: 138 },
+    'JUZGADO DE EJECUCION PENAL CHETUMAL': { agenda: 139 },
+    'JUZGADO DE EJECUCION PARA ADOLESCENTES CHETUMAL': { agenda: 140 },
+    'JUZGADO PENAL ORAL COZUMEL': { agenda: 147 },
+    'TRIBUNAL DE JUICIO ORAL COZUMEL': { agenda: 161 },
+    'JUZGADO PENAL ORAL CARRILLO PUERTO': { agenda: 141 },
+    'TRIBUNAL DE JUICIO ORAL CARRILLO PUERTO': { agenda: 142 },
+    'JUZGADO PENAL ORAL ISLA MUJERES': { agenda: 155 },
+    'TRIBUNAL DE JUICIO ORAL ISLA MUJERES': { agenda: 163 },
+    'JUZGADO PENAL ORAL JOSE MARIA MORELOS': { agenda: 143 },
+    'TRIBUNAL DE JUICIO ORAL JOSE MARIA MORELOS': { agenda: 144 },
+    'JUZGADO PENAL ORAL KANTUNILKIN': { agenda: 156 },
+    'TRIBUNAL DE JUICIO ORAL KANTUNILKIN': { agenda: 162 },
+    'JUZGADO PENAL ORAL TULUM': { agenda: 166, estrados: 146 },
+    'TRIBUNAL DE JUICIO ORAL TULUM': { agenda: 167, estrados: 147 }
+};
+
+// Las salas penales donde se buscan los tocas de una causa, de las que
+// publican hoy. Las de `SALAS_PENALES_ANTERIORES` ya no salen en el menú de
+// los estrados, pero conservan lo publicado: sirven para asuntos de años
+// pasados. Su buscador no necesita areaId (no filtra; filtra `int`).
+const SALAS_PENALES = [
+    'SEGUNDA SALA PENAL ORAL',
+    'TERCERA SALA PENAL ORAL',
+    'OCTAVA SALA PENAL ORAL',
+    'NOVENA SALA PENAL ORAL',
+    'SEPTIMA SALA PENAL TRADICIONAL'
+];
+const SALAS_PENALES_ANTERIORES = [
+    { nombre: '4A SALA ESPECIALIZADA EN MATERIA PENAL ORAL', int: 142 },
+    { nombre: '9A SALA ESPECIALIZADA EN MATERIA PENAL ORAL', int: 135 },
+    { nombre: '8A SALA ESPECIALIZADA EN MATERIA PENAL', int: 116 },
+    { nombre: '3A SALA ESPECIALIZADA EN MATERIA PENAL TRADICIONAL', int: 102 }
+];
+
 // Mapeo de Salas de Segunda Instancia
 const SALAS_SEGUNDA_INSTANCIA = {
     'PRIMERA SALA CIVIL MERCANTIL Y FAMILIAR': 170,
@@ -176,6 +228,13 @@ const CATEGORIAS_JUZGADOS = [
         ]
     },
     {
+        // Sin estrados (ver JUZGADOS_PENALES): la búsqueda global los salta.
+        nombre: 'PENAL - Juzgados y Tribunales de Juicio Oral',
+        icono: '⚖️',
+        sinEstrados: true,
+        juzgados: Object.keys(JUZGADOS_PENALES)
+    },
+    {
         nombre: 'OTROS MUNICIPIOS',
         icono: '📍',
         juzgados: [
@@ -193,6 +252,19 @@ const CATEGORIAS_JUZGADOS = [
 ];
 
 // Funciones auxiliares
+
+/** Todos los nombres del catálogo del TSJ: juzgados, salas y juzgados penales. */
+function nombresCatalogoTSJ() {
+    return Object.keys(JUZGADOS)
+        .concat(Object.keys(SALAS_SEGUNDA_INSTANCIA))
+        .concat(Object.keys(JUZGADOS_PENALES));
+}
+
+/** ¿Es un juzgado penal de primera instancia (sin estrados propios)? */
+function esJuzgadoPenalTSJ(nombre) {
+    return !!nombre && Object.prototype.hasOwnProperty.call(JUZGADOS_PENALES, nombre);
+}
+
 function obtenerIdJuzgado(nombre) {
     return JUZGADOS[nombre] || SALAS_SEGUNDA_INSTANCIA[nombre];
 }
@@ -240,7 +312,7 @@ const ENLACES_NOMBRE_JUZGADO = new Set(['de', 'del', 'la', 'las', 'el', 'lo', 'l
  */
 function resolverJuzgadoTSJ(nombre) {
     if (!nombre) return null;
-    const todos = Object.keys(JUZGADOS).concat(Object.keys(SALAS_SEGUNDA_INSTANCIA));
+    const todos = nombresCatalogoTSJ();
     if (todos.includes(nombre)) return nombre;
 
     const objetivo = normalizarNombreJuzgado(nombre);
@@ -284,7 +356,9 @@ const CIUDADES_TSJ = [
     ['carrillo puerto', ['felipe carrillo puerto', 'carrillo puerto']],
     ['isla mujeres', ['isla mujeres']],
     ['tulum', ['tulum']],
-    ['bacalar', ['bacalar']]
+    ['bacalar', ['bacalar']],
+    ['jose maria morelos', ['jose maria morelos']],
+    ['kantunilkin', ['kantunilkin', 'lazaro cardenas']]
 ];
 
 const ORDINALES_TSJ = {
@@ -318,13 +392,29 @@ function rasgosJuzgadoTSJ(nombre) {
     const materias = MATERIAS_TSJ.filter(m => palabras.includes(m) || palabras.includes(m + 'es'));
     if (palabras.includes('trabajo') && !materias.includes('laboral')) materias.push('laboral');
 
+    // Los penales de primera instancia casi nunca dicen "penal": se nombran
+    // por lo que son. Solo cuenta si no se nombró otra materia: un "Juzgado
+    // de Juicio Oral Mercantil" sigue siendo mercantil.
+    const juicio = / (tribunal|juzgado|juez|jueza) (de )?(juicio oral|enjuiciamiento) /.test(t);
+    const control = / (juzgado|juez|jueza|jueces|juzgados) (de )?control /.test(t);
+    const adolescentes = / adolescentes? /.test(t);
+    const ejecucion = / ejecucion /.test(t);
+    const otraMateria = materias.some(m => m !== 'penal');
+    if (!otraMateria && (juicio || control || adolescentes || ejecucion) && !materias.includes('penal')) materias.push('penal');
+    const penal = !otraMateria && materias.includes('penal');
+
     return {
         sala: palabras.includes('sala'),
         ordinal,
         materias,
-        oral: palabras.some(p => /^oral(es|idad)?$/.test(p)),
+        oral: palabras.some(p => /^oral(es|idad)?$/.test(p)) || (penal && control),
         tradicional: palabras.includes('tradicional'),
-        ciudad
+        ciudad,
+        // Entre los penales: el tribunal de juicio oral no es el juzgado de
+        // control, ni el de adolescentes o el de ejecución son el penal oral.
+        juicio: penal && juicio && !control,
+        adolescentes: penal && adolescentes,
+        ejecucion: penal && ejecucion
     };
 }
 
@@ -332,7 +422,7 @@ let _catalogoRasgosTSJ = null;
 
 function _catalogoConRasgosTSJ() {
     if (!_catalogoRasgosTSJ) {
-        _catalogoRasgosTSJ = Object.keys(JUZGADOS).concat(Object.keys(SALAS_SEGUNDA_INSTANCIA))
+        _catalogoRasgosTSJ = nombresCatalogoTSJ()
             .map(nombre => ({ nombre, rasgos: rasgosJuzgadoTSJ(nombre) }));
     }
     return _catalogoRasgosTSJ;
@@ -371,6 +461,10 @@ function reconocerJuzgadoTSJ(texto) {
         if (r.ordinal === null && q.ordinal !== null && q.ordinal !== 1) continue;
         if (q.oral && !r.oral) continue;
         if (q.tradicional && !r.tradicional) continue;
+        if (r.adolescentes !== q.adolescentes || r.ejecucion !== q.ejecucion) continue;
+        // "Juzgados de Control y Tribunales de Juicio Oral" no dice cuál: el
+        // empate entre los dos deja la pregunta sin adivinar.
+        if (r.juicio !== q.juicio && !(q.materias.includes('penal') && / control /.test(' ' + normal + ' ') && / juicio oral /.test(' ' + normal + ' '))) continue;
 
         // Lo que no se escribió no descarta, pero pesa: "Juzgado Civil de
         // Cancún", sin número, queda empatado entre los cinco de allí.

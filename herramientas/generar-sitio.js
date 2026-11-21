@@ -41,7 +41,9 @@ function juzgadosTSJ() {
     vm.createContext(ctx);
     vm.runInContext(fs.readFileSync(path.join(RAIZ, 'docs/js/juzgados.js'), 'utf8') +
         ';this.__CAT = CATEGORIAS_JUZGADOS;', ctx);
-    return ctx.__CAT.map(c => ({ nombre: c.nombre, icono: c.icono, juzgados: [...c.juzgados] }));
+    // Los penales de primera instancia no tienen estrados (ver JUZGADOS_PENALES):
+    // esta página es de los juzgados y salas que sí publican ahí.
+    return ctx.__CAT.filter(c => !c.sinEstrados).map(c => ({ nombre: c.nombre, icono: c.icono, juzgados: [...c.juzgados] }));
 }
 
 function organosPJFQuintanaRoo() {
@@ -509,7 +511,9 @@ const PREGUNTAS_ESTRADOS = [
     ['¿Puedo revisar varios expedientes a la vez?',
         'Sí. Guarda tus expedientes y usa la selección masiva: se abren los estrados de todos los que marques, uno tras otro, para revisarlos de corrido.'],
     ['¿Incluye las salas de segunda instancia?',
-        'Sí, las salas civiles, mercantiles, familiares y penales del Tribunal, con su buscador de segunda instancia.']
+        'Sí, las salas civiles, mercantiles, familiares y penales del Tribunal, con su buscador de segunda instancia.'],
+    ['¿Y las causas penales?',
+        'Los juzgados penales del TSJ no publican sus acuerdos en los estrados electrónicos. De una causa penal se pueden consultar sus tocas en las salas penales, que se buscan por el número de la causa, y la agenda de audiencias del juzgado. TSJ Filing Online abre las dos cosas desde el expediente.']
 ];
 
 function paginaEstrados(cat) {

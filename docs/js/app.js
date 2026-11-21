@@ -2059,6 +2059,7 @@ function renderCardArchivado(exp) {
             <div class="expediente-actions">
                 ${urlEstradosExpediente(exp) ? `<button class="btn btn-sm btn-primary" onclick="abrirEstradosExpediente(${exp.id}, event)" title="Estrados electrónicos del TSJ">🌐</button>` : ''}
                 ${_botonEstradosLaborales(exp, true)}
+                ${_botonEstradosPenales(exp, true)}
                 ${_puedeBuscarEnPJF(exp, exp.institucion || 'TSJ') ? `<button class="btn btn-sm btn-primary" onclick="abrirBusquedaPJFGuardado(${exp.id}, event)" title="Publicaciones en el portal del PJF">🔍</button>` : ''}
                 <button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Ver historial">📜</button>
                 <button class="btn btn-sm btn-success" onclick="desarchivarExpediente(${exp.id}, event)" title="Restaurar">♻️</button>
@@ -2217,6 +2218,7 @@ function renderTarjetaExpedienteHTML(exp, opciones = {}) {
             actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirEstradosExpediente(${exp.id}, event)" title="Abrir los estrados electrónicos del TSJ para este expediente">🌐 Estrados</button>`;
         }
         actionsHTML += _botonEstradosLaborales(exp, false);
+        actionsHTML += _botonEstradosPenales(exp, false);
         actionsHTML += `<button class="btn btn-sm btn-info" onclick="verPendientesDeExpediente(${exp.id}, event)" title="Ver pendientes">✅</button>`;
         actionsHTML += `<button class="btn btn-sm btn-secondary" onclick="${editarFn}(${exp.id}, event)" title="Editar">✏️</button>`;
         actionsHTML += _menuMasAccionesHTML(exp.id, eliminarFn);
@@ -2269,6 +2271,7 @@ function renderFilaExpedienteHTML(exp, opciones = {}) {
         actionsHTML += `<button class="btn btn-sm btn-primary" onclick="abrirEstradosExpediente(${exp.id}, event)" title="Estrados electrónicos del TSJ">🌐</button>`;
     }
     actionsHTML += _botonEstradosLaborales(exp, true);
+    actionsHTML += _botonEstradosPenales(exp, true);
     actionsHTML += `<button class="btn btn-sm btn-info" onclick="verHistorialExpediente(${exp.id}, event)" title="Historial">📜</button>`;
     actionsHTML += `<button class="btn btn-sm btn-info" onclick="verTimelineExpediente(${exp.id}, event)" title="Timeline">📅</button>`;
     actionsHTML += `<button class="btn btn-sm btn-secondary" onclick="${editarFn}(${exp.id}, event)">✏️</button>`;
@@ -5005,6 +5008,18 @@ function _botonEstradosLaborales(exp, corto) {
     return `<button class="btn btn-sm btn-primary" onclick="ESTRADOS_LABORALES.abrirDeExpediente(${exp.id}, event)" title="Estrados del Tribunal de Conciliación y Arbitraje o de las Juntas">${corto ? '👷' : '👷 Estrados'}</button>`;
 }
 
+// Los juzgados penales del TSJ no publican en estrados: el botón abre la
+// ventana de la causa, con sus tocas en las salas penales y la agenda de
+// audiencias del juzgado (estrados-penales.js).
+function _esPenalTSJ(exp) {
+    return typeof ESTRADOS_PENALES !== 'undefined' && !!ESTRADOS_PENALES.juzgadoPenalDeExpediente(exp);
+}
+
+function _botonEstradosPenales(exp, corto) {
+    if (!_esPenalTSJ(exp)) return '';
+    return `<button class="btn btn-sm btn-primary" onclick="ESTRADOS_PENALES.abrirDeExpediente(${exp.id}, event)" title="Tocas de la causa en las salas penales y agenda de audiencias del juzgado">${corto ? '⚖️' : '⚖️ Salas y agenda'}</button>`;
+}
+
 async function abrirEstradosExpediente(id, event) {
     // La fila entera abre el detalle del expediente: sin esto, pulsar el botón
     // abriría además el modal por detrás.
@@ -5026,6 +5041,10 @@ async function abrirEstradosExpediente(id, event) {
     }
 
     const url = urlEstradosExpediente(exp);
+    if (!url && _esPenalTSJ(exp)) {
+        ESTRADOS_PENALES.abrirDeExpediente(exp.id);
+        return;
+    }
     if (!url) {
         mostrarToast(`No hay estrados del TSJ para "${exp.juzgado || 'un expediente sin juzgado'}"`, 'warning');
         return;
@@ -5966,7 +5985,7 @@ async function descargarTemplateExpedientes() {
     await cargarCatalogosPJF();
 
     const fecha = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: '2-digit', day: '2-digit' });
-    const totalTSJ = Object.keys(JUZGADOS).length + Object.keys(SALAS_SEGUNDA_INSTANCIA).length;
+    const totalTSJ = nombresCatalogoTSJ().length;
     const totalPJF = pjfOrganismos.length;
 
     let csv = '';
@@ -6213,7 +6232,7 @@ function _sugerirJuzgadoTSJ(texto) {
     if (tokens.length === 0) return null;
 
     let mejor = null;
-    for (const candidato of Object.keys(JUZGADOS).concat(Object.keys(SALAS_SEGUNDA_INSTANCIA))) {
+    for (const candidato of nombresCatalogoTSJ()) {
         const suyos = new Set(_tokensJuzgado(candidato));
         if (suyos.size === 0) continue;
         const comunes = tokens.filter(t => suyos.has(t)).length;
@@ -8377,8 +8396,9 @@ function detenerBusquedasAuto() {
 
 async function ejecutarBusquedaAhora() {
     const todosExpedientes = await obtenerExpedientes();
-    // Solo buscar en TSJQROO los expedientes TSJ (excluir PJF)
-    const expedientes = todosExpedientes.filter(exp => (exp.institucion || 'TSJ') === 'TSJ');
+    // Solo buscar en TSJQROO los expedientes TSJ (excluir PJF) que tienen
+    // estrados: los de un juzgado penal no publican ahí.
+    const expedientes = todosExpedientes.filter(exp => (exp.institucion || 'TSJ') === 'TSJ' && urlEstradosExpediente(exp));
 
     if (expedientes.length === 0) {
         mostrarToast('No hay expedientes TSJ para buscar', 'warning');
@@ -8449,6 +8469,7 @@ function poblarCheckboxesJuzgados() {
     if (container.children.length > 0) return; // ya poblado
     let html = '';
     for (const cat of CATEGORIAS_JUZGADOS) {
+        if (cat.sinEstrados) continue;   // los penales no publican en estrados
         html += `<div class="juzgado-grupo" style="margin-bottom:8px;">
             <div class="juzgado-grupo-titulo" style="font-weight:600; font-size:0.85rem; color:var(--primary-color,#2563eb); margin-bottom:4px; cursor:pointer;" onclick="toggleGrupoJuzgados(this)" title="Marcar o desmarcar los que se ven de este grupo">
                 ${cat.icono} ${cat.nombre} <span class="juzgado-grupo-cuenta" style="font-size:0.75rem; color:#888;">(${cat.juzgados.length})</span>
@@ -9710,7 +9731,9 @@ async function verDetalleExpediente(expedienteId) {
         ? `<button class="btn btn-primary" onclick="abrirEstradosExpediente(${exp.id});" title="Abrir los estrados electrónicos del TSJ">🌐 Estrados</button>`
         : (_esLaboralQRoo(exp)
             ? `<button class="btn btn-primary" onclick="ESTRADOS_LABORALES.abrirDeExpediente(${exp.id});" title="Estrados del Tribunal de Conciliación y Arbitraje o de las Juntas">👷 Estrados</button>`
-            : '');
+            : (_esPenalTSJ(exp)
+                ? `<button class="btn btn-primary" onclick="ESTRADOS_PENALES.abrirDeExpediente(${exp.id});" title="Tocas de la causa en las salas penales y agenda de audiencias del juzgado">⚖️ Salas y agenda</button>`
+                : ''));
     document.getElementById('modal-footer').innerHTML = `
         <button class="btn btn-secondary" onclick="cerrarModal()">Cerrar</button>
         ${botonEstrados}
@@ -10548,6 +10571,11 @@ function _datosConsultaTSJ() {
         return null;
     }
     const url = construirUrlBusqueda(juzgado, tipo, valor);
+    // Un juzgado penal no publica en estrados: se buscan los tocas de la
+    // causa en las salas penales.
+    if (!url && typeof esJuzgadoPenalTSJ === 'function' && esJuzgadoPenalTSJ(juzgado)) {
+        return { juzgado, valor, tipo, url: null, penal: true };
+    }
     if (!url) {
         mostrarToast(`No hay estrados del TSJ para "${juzgado}"`, 'warning');
         return null;
@@ -10555,9 +10583,19 @@ function _datosConsultaTSJ() {
     return { juzgado, valor, tipo, url };
 }
 
+// Lo que se abre con los datos de la consulta: los estrados, o la ventana de
+// la causa penal.
+function _abrirConsultaTSJ(datos) {
+    if (datos.penal && typeof ESTRADOS_PENALES !== 'undefined') {
+        ESTRADOS_PENALES.abrir({ valor: datos.valor, tipo: datos.tipo, juzgado: datos.juzgado });
+    } else {
+        abrirBusquedaPopup(datos.url, datos.valor);
+    }
+}
+
 function ejecutarBusquedaTSJ() {
     const datos = _datosConsultaTSJ();
-    if (datos) abrirBusquedaPopup(datos.url, datos.valor);
+    if (datos) _abrirConsultaTSJ(datos);
 }
 
 async function ejecutarBusquedaTSJyGuardar() {
@@ -10578,7 +10616,7 @@ async function ejecutarBusquedaTSJyGuardar() {
         mostrarToast(`Expediente "${datos.valor}" guardado`, 'success');
     }
 
-    abrirBusquedaPopup(datos.url, datos.valor);
+    _abrirConsultaTSJ(datos);
 }
 
 function limpiarFormularioTSJ() {
@@ -10825,7 +10863,7 @@ async function abrirExpedientesTSJSeleccionados() {
     }
     const { conUrl, sinUrl } = await _estradosSeleccionadosTSJ();
     if (conUrl.length === 0) {
-        mostrarToast('Ninguno de los seleccionados tiene un juzgado del catálogo del TSJ', 'warning');
+        mostrarToast('Ninguno de los seleccionados tiene estrados del TSJ (los juzgados penales no publican ahí: usa su botón ⚖️)', 'warning');
         return;
     }
     if (conUrl.length > 5 && !confirm(`Vas a abrir ${conUrl.length} ventanas. ¿Continuar?`)) return;
@@ -10836,7 +10874,7 @@ async function abrirExpedientesTSJSeleccionados() {
     });
     mostrarToast(
         `Abriendo ${conUrl.length} estrado${conUrl.length !== 1 ? 's' : ''}` +
-        (sinUrl > 0 ? `. ${sinUrl} sin juzgado del TSJ reconocido.` : '') +
+        (sinUrl > 0 ? `. ${sinUrl} sin estrados (juzgado penal o fuera del catálogo).` : '') +
         ' (Permite ventanas emergentes si el navegador las bloquea)',
         'success');
 }
