@@ -37,7 +37,11 @@ const raro = exp('Algo que no se reconoce');
 const elegir = (expedientes, pagina) => A.elegirVariante({ expedientes, pagina });
 
 // Partes (menos de 3 expedientes)
-verificar('sin expedientes: orientación general', elegir([], 'inicio') === 'parte_general');
+verificar('sin expedientes, grupo A: orientación general', elegir([], 'inicio') === 'parte_general');
+verificar('sin expedientes, grupo B: corresponsalía (prueba A/B)', A.elegirVariante({ expedientes: [], pagina: 'inicio', grupo: 'b' }) === 'abogado_nuevo');
+verificar('el grupo B no cambia a quien ya tiene expedientes', A.elegirVariante({ expedientes: [fam], grupo: 'b' }) === 'parte_familiar' && A.elegirVariante({ expedientes: [fam, civ, pen], grupo: 'b' }) === 'abogado_general');
+verificar('el grupo B no pisa la sección (IMPI, PJF, laboral)', ['impi', 'pjf', 'laboral'].every(p => A.elegirVariante({ expedientes: [], pagina: p, grupo: 'b' }) === elegir([], p)));
+verificar('abogado_nuevo dice lo mismo que abogado_general', A.VARIANTES.abogado_nuevo.texto === A.VARIANTES.abogado_general.texto);
 verificar('parte familiar', elegir([fam], 'expedientes') === 'parte_familiar');
 verificar('parte civil', elegir([civ], 'expedientes') === 'parte_civil');
 verificar('parte mercantil va con civil', elegir([mer]) === 'parte_civil');
