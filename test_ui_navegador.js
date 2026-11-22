@@ -746,7 +746,7 @@ async function probarSitioPublico(navegador) {
     const errores = [];
     page.on('pageerror', e => errores.push(e.message));
     try {
-        for (const ruta of ['/', '/estrados-tsj-quintana-roo/', '/expedientes-pjf-quintana-roo/', '/calculadora-finiquito-liquidacion/']) {
+        for (const ruta of ['/', '/estrados-tsj-quintana-roo/', '/expedientes-pjf-quintana-roo/', '/calculadora-finiquito-liquidacion/', '/calculadora-declaracion-uso-renovacion-marca/']) {
             const resp = await page.goto(`http://localhost:${PUERTO + 1}${ruta}`, { waitUntil: 'load' });
             const r = await page.evaluate(() => ({
                 h1: document.querySelector('h1')?.textContent || '',
@@ -778,9 +778,32 @@ async function probarSitioPublico(navegador) {
         });
         igual('sitio calculadora: calcula igual que la app', calc.total, calc.esperado);
         igual('sitio calculadora: guardar lleva a la app', calc.guardar, true);
+        // La de plazos de marca: con la fecha de otorgamiento, los plazos al momento.
+        await page.goto(`http://localhost:${PUERTO + 1}/calculadora-declaracion-uso-renovacion-marca/`, { waitUntil: 'load' });
+        const marca = await page.evaluate(async () => {
+            const antes = document.getElementById('pm-resultado').textContent;
+            const d = new Date(); d.setFullYear(d.getFullYear() - 3); d.setDate(d.getDate() - 10);
+            const iso = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            const el = document.getElementById('pm-concesion');
+            el.value = iso; el.dispatchEvent(new Event('input', { bubbles: true }));
+            await new Promise(res => setTimeout(res, 100));
+            const plazos = [...document.querySelectorAll('#pm-resultado .pm-plazo')].map(li => li.querySelector('strong').textContent + ': ' + li.querySelector('.pm-estado').textContent);
+            const ayuda = document.querySelector('#pm-resultado a[data-medir="servicio_sitio"]');
+            return {
+                antes, plazos,
+                ayuda: ayuda ? decodeURIComponent(ayuda.getAttribute('href')) : '',
+                motorIgual: JSON.stringify(calcularPlazosMarca({ concesion: iso }).plazos.map(p => p.desde)) ===
+                    JSON.stringify(CARTERA_MARCAS.plazosDe({ registro: '1', estatus: 'REGISTRADA', fechaConcesion: iso }, CARTERA_MARCAS.hoyTexto()).map(p => p.desde))
+            };
+        });
+        verificar('sitio plazos de marca: antes de escribir, pide la fecha', /Escribe la fecha en que se otorgó el registro/.test(marca.antes), marca.antes);
+        igual('sitio plazos de marca: declaración de uso en curso, renovación y gracia por venir', marca.plazos,
+            ['Declaración de uso: En curso', 'Renovación: Por venir', 'Renovación con periodo de gracia: Por venir']);
+        verificar('sitio plazos de marca: ofrece la ayuda de Empírica por WhatsApp', /^https:\/\/wa\.me\/\d+\?text=Hola, Empírica Legal Lab\. Usé la calculadora de plazos de marca: la declaración de uso/.test(marca.ayuda), marca.ayuda);
+        igual('sitio plazos de marca: calcula con el mismo motor que la cartera de la app', marca.motorIgual, true);
         // En el celular tampoco se desborda.
         await page.setViewportSize({ width: 390, height: 844 });
-        for (const ruta of ['/', '/calculadora-finiquito-liquidacion/']) {
+        for (const ruta of ['/', '/calculadora-finiquito-liquidacion/', '/calculadora-declaracion-uso-renovacion-marca/']) {
             await page.goto(`http://localhost:${PUERTO + 1}${ruta}`, { waitUntil: 'load' });
             igual(`sitio ${ruta} en celular: sin desbordarse`,
                 await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);

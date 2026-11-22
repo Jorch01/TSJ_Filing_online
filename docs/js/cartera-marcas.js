@@ -595,6 +595,9 @@
     if (typeof module !== 'undefined' && module.exports) module.exports = Motor;
     global.CARTERA_MARCAS = Motor;
     if (typeof document === 'undefined') return;
+    // En las páginas públicas (la calculadora de plazos de marca) solo hace
+    // falta el motor: ni pantalla de cartera ni base de datos.
+    if (document.body && document.body.classList.contains('sitio')) return;
 
     // ==================== ALMACÉN ====================
 

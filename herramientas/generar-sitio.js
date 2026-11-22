@@ -89,6 +89,13 @@ function planesPremium() {
 
 const pesos = (n) => '$' + n.toLocaleString('en-US') + ' MXN';
 
+// El WhatsApp de Empírica (PREMIUM_CONFIG.whatsappVentas): planes y servicios.
+function whatsappEmpirica() {
+    const m = /whatsappVentas: '(\d+)'/.exec(fs.readFileSync(path.join(RAIZ, 'docs/js/app.js'), 'utf8'));
+    if (!m) throw new Error('No se encontró el WhatsApp de ventas en docs/js/app.js');
+    return m[1];
+}
+
 // Las marcas que caben en la cartera sin Premium (PREMIUM_CONFIG.limiteMarcas).
 function limiteMarcas() {
     const m = /limiteMarcas: (\d+)/.exec(fs.readFileSync(path.join(RAIZ, 'docs/js/app.js'), 'utf8'));
@@ -220,6 +227,7 @@ function pie() {
                     <li><a href="/estrados-laborales-quintana-roo/">Estrados del TCA y las Juntas de Quintana Roo</a></li>
                     <li><a href="/calculadora-finiquito-liquidacion/">Calculadora de finiquito y liquidación</a></li>
                     <li><a href="/estudio-viabilidad-marca-impi/">Estudio de viabilidad de marca (IMPI)</a></li>
+                    <li><a href="${RUTA_PLAZOS_MARCA}">Declaración de uso y renovación de marca</a></li>
                     <li><a href="/#planes">Planes y precios</a></li>
                     <li><a href="/terminos-y-condiciones/">Términos y condiciones</a></li>
                     <li><a href="${PRIVACIDAD.RUTA}">Aviso de privacidad</a></li>
@@ -329,6 +337,7 @@ function paginaInicio(cat, pjf, lim, planes) {
         ['🎤', 'Asistente de voz', '"Agenda audiencia del 120/2026 el martes a las 10." Díctale y listo.'],
         ['🧭', 'Estudio de viabilidad de marca', 'MARCia, Marcanet y SIGA del IMPI en una sola búsqueda, también por logotipo: antecedentes parecidos por clase de Niza y un dictamen de riesgo en PDF.', '/estudio-viabilidad-marca-impi/'],
         ['🔰', 'Marcas, logotipos y cartera', 'Busca marcas por similitud, fonética, expediente, titular o logotipo; lleva la cartera de tus clientes con sus plazos de declaración de uso y renovación, y vigila las gacetas.'],
+        ['📅', 'Plazos de una marca', 'Calcula cuándo declarar el uso de una marca a los tres años y cuándo renovarla, con su periodo de gracia, según la LFPPI.', RUTA_PLAZOS_MARCA],
         ['📊', 'Estadísticas del despacho', 'Asuntos activos y cerrados, tiempos, resultados, clientes y responsables, con gráficas por periodo.'],
         ['📴', 'Funciona sin internet', 'Abre en el juzgado aunque no haya señal. Tus datos son tuyos y viven en tu dispositivo.']
     ];
@@ -988,7 +997,7 @@ function paginaViabilidad(lim, planes) {
                 <h2>Más herramientas del IMPI en la app</h2>
                 <ul class="sitio-lista">
                     <li><strong>Búsqueda en MARCia, SIGA y Marcanet</strong> por denominación, fonética, expediente, registro, titular o logotipo, o en las tres a la vez.</li>
-                    <li><strong>Cartera de marcas:</strong> las marcas de cada cliente con sus plazos de declaración de uso y renovación, avisos en tus pendientes y reporte en PDF.</li>
+                    <li><strong>Cartera de marcas:</strong> las marcas de cada cliente con sus plazos de declaración de uso y renovación, avisos en tus pendientes y reporte en PDF. <a href="${RUTA_PLAZOS_MARCA}">Calcula los plazos de una marca</a>.</li>
                     <li><strong>Reportes en PDF</strong> con membrete, listos para entregar, con las reservas del caso.</li>
                     <li><strong>Vigilancia de marcas:</strong> guarda búsquedas y recibe avisos cuando aparezcan publicaciones nuevas en las gacetas.</li>
                     <li><strong>Gratis:</strong> ${lim.viabilidad.limite} estudios de viabilidad y ${lim.busqueda.limite} búsquedas al mes. <a href="/#planes">Ver planes Premium</a>.</li>
@@ -1003,6 +1012,99 @@ ${faqHTML(preguntas)}
             </div>
         </section>
 ` + pie();
+}
+
+// ==================== PLAZOS DE MARCA (DECLARACIÓN DE USO Y RENOVACIÓN) ====================
+// Revisado contra el texto vigente de la LFPPI (última reforma DOF 03-04-2026)
+// y la Ley de la Propiedad Industrial abrogada. El cálculo es el de la cartera
+// de marcas de la app (docs/js/cartera-marcas.js), que carga la página.
+
+const RUTA_PLAZOS_MARCA = '/calculadora-declaracion-uso-renovacion-marca/';
+
+const PREGUNTAS_PLAZOS_MARCA = [
+    ['¿Cuándo debo presentar la declaración de uso de mi marca?',
+        'Dentro de los tres meses posteriores a que se cumplan tres años de otorgado el registro (artículo 233 de la LFPPI). Por ejemplo, si el registro se otorgó el 15 de marzo de 2023, la declaración se presenta del 15 de marzo al 15 de junio de 2026.'],
+    ['¿Qué pasa si no declaro el uso?',
+        'El registro caduca de pleno derecho, sin que el IMPI tenga que declararlo (artículo 233). Además, la protección continúa solo en los productos o servicios cuyo uso se declaró.'],
+    ['Mi marca se registró antes de 2018, ¿también debe declarar el uso a los tres años?',
+        'No. Los registros otorgados antes del 10 de agosto de 2018 están exceptuados de esa declaración (transitorio décimo primero de la LFPPI); solo se renuevan, y al renovar se declara el uso. Los otorgados desde esa fecha sí la presentan.'],
+    ['¿Cuándo se renueva una marca y desde cuándo corre su vigencia?',
+        'La vigencia es de diez años y se renueva por periodos iguales. Con la LFPPI se cuenta desde el otorgamiento (artículo 178); para las solicitudes presentadas antes del 5 de noviembre de 2020 se cuenta, como en la ley anterior, desde la presentación. La renovación se pide dentro de los seis meses anteriores al vencimiento (artículo 237).'],
+    ['¿Hay periodo de gracia para renovar?',
+        'Sí: el IMPI da trámite a las solicitudes de renovación presentadas dentro de los seis meses posteriores al fin de la vigencia (artículo 237). Vencido ese plazo sin pedirla, el registro caduca de pleno derecho (artículo 238).'],
+    ['¿Qué dice la ley después de la reforma de abril de 2026?',
+        'Con la reforma publicada en el Diario Oficial el 3 de abril de 2026, el artículo 237 establece que al pedir la renovación se declara el uso real y efectivo de la marca, indicando los productos o servicios; si no se declara, el IMPI requiere subsanarlo en dos meses y, si no se hace, el registro caduca. Si la renovación la presenta quien tiene un gravamen inscrito, no se declara el uso, y el IMPI debe resolver la renovación en un plazo máximo de tres meses.']
+];
+
+function paginaPlazosMarca(whatsapp) {
+    return cabeza({
+        ruta: RUTA_PLAZOS_MARCA,
+        tituloPagina: 'Declaración de uso y renovación de marca: calculadora LFPPI',
+        descripcion: 'Calcula cuándo declarar el uso de tu marca a los tres años del registro y cuándo renovarla ante el IMPI, con su periodo de gracia, según la LFPPI vigente (2026).',
+        jsonld: [
+            {
+                '@context': 'https://schema.org',
+                '@type': 'WebApplication',
+                name: 'Calculadora de declaración de uso y renovación de marca',
+                url: SITIO + RUTA_PLAZOS_MARCA,
+                applicationCategory: 'BusinessApplication',
+                operatingSystem: 'Web',
+                inLanguage: 'es-MX',
+                offers: { '@type': 'Offer', price: '0', priceCurrency: 'MXN' },
+                publisher: organizacion,
+                description: 'Calcula los plazos de declaración de uso (artículo 233 de la LFPPI) y de renovación con su periodo de gracia (artículos 178, 237 y 238) de una marca registrada ante el IMPI.'
+            },
+            migas({ nombre: 'Calculadora de declaración de uso y renovación de marca', ruta: RUTA_PLAZOS_MARCA }),
+            faq(PREGUNTAS_PLAZOS_MARCA)
+        ]
+    }) + `
+        <section class="sitio-hero sitio-hero-chico">
+            <div class="sitio-ancho">
+                <nav class="sitio-migas" aria-label="Ruta"><a href="/">Inicio</a> › <a href="/estudio-viabilidad-marca-impi/">Marcas IMPI</a> › Plazos de una marca</nav>
+                <h1>Calculadora de declaración de uso y renovación de marca</h1>
+                <p class="sitio-lead">Con las fechas del título de registro, calcula cuándo declarar el uso de la marca a los tres años, cuándo renovarla y hasta cuándo corre el periodo de gracia, según la Ley Federal de Protección a la Propiedad Industrial vigente.</p>
+            </div>
+        </section>
+
+        <section class="sitio-seccion sitio-calculadora">
+            <div class="sitio-ancho sitio-angosto">
+                <form id="pm-form" class="pm-form" data-whatsapp="${esc(whatsapp)}" novalidate>
+                    <div class="pm-campos">
+                        <label for="pm-concesion">Otorgamiento del registro <small>(fecha de concesión)</small><input type="date" id="pm-concesion"></label>
+                        <label for="pm-presentacion">Presentación de la solicitud <small>(opcional)</small><input type="date" id="pm-presentacion"></label>
+                        <label for="pm-vigencia">Fin de la vigencia <small>(opcional: viene en el título y en Marcanet)</small><input type="date" id="pm-vigencia"></label>
+                    </div>
+                </form>
+                <div id="pm-resultado" class="pm-resultado" aria-live="polite">
+                    <noscript><p>La calculadora necesita JavaScript.</p></noscript>
+                </div>
+                <div class="pm-acciones">
+                    <a class="btn btn-primary" href="${APP}?tour=1#impi">📁 Llévala en la cartera de marcas: avisos y pendientes (gratis hasta ${limiteMarcas()} marcas)</a>
+                </div>
+                <p class="sitio-aviso">⚠️ Es un cálculo de apoyo, con reservas: confírmalo en el título de registro, en el expediente (Marcanet) y con un especialista en propiedad industrial antes de decidir. Los días inhábiles del IMPI pueden mover el inicio o el fin de un plazo. No es una opinión jurídica. Empírica Legal Lab presta el servicio de esta herramienta; si un tercero te presenta este cálculo, Empírica Legal Lab no lo emitió ni lo revisó.</p>
+            </div>
+        </section>
+
+        <section class="sitio-seccion sitio-alterna">
+            <div class="sitio-ancho sitio-angosto">
+                <h2>La declaración de uso a los tres años</h2>
+                <p>El titular de una marca debe declarar su uso real y efectivo, indicando los productos o servicios a los que se aplica, «durante los tres meses posteriores, contados a partir de que se cumpla el tercer año de haberse otorgado el registro» (artículo 233 de la LFPPI). Si no la presenta, el registro caduca de pleno derecho, y la protección continúa solo en los productos o servicios cuyo uso se declaró.</p>
+                <p>La obligación viene de la reforma de 2018 a la ley anterior (en vigor desde el 10 de agosto de 2018) y la LFPPI la mantuvo: la presentan los registros otorgados desde esa fecha. Los otorgados antes están exceptuados (transitorio décimo primero).</p>
+                <h2>La renovación y su periodo de gracia</h2>
+                <ul class="sitio-lista">
+                    <li><strong>Vigencia:</strong> diez años, renovables por periodos iguales. Se cuenta desde el otorgamiento con la LFPPI (artículo 178) y desde la presentación de la solicitud para las presentadas antes del 5 de noviembre de 2020.</li>
+                    <li><strong>Renovación:</strong> dentro de los seis meses anteriores al vencimiento; al pedirla se declara también el uso de la marca (artículo 237).</li>
+                    <li><strong>Periodo de gracia:</strong> el IMPI da trámite a las solicitudes presentadas dentro de los seis meses posteriores al fin de la vigencia. Pasado ese plazo sin pedirla, el registro caduca de pleno derecho (artículo 238).</li>
+                </ul>
+                <p>¿Llevas varias marcas? En la <a href="${APP}?tour=1#impi">cartera de marcas de la app</a> cada plazo pasa a tus pendientes, el estatus se actualiza desde el IMPI y el reporte por cliente sale en PDF. También puedes hacer el <a href="/estudio-viabilidad-marca-impi/">estudio de viabilidad de una marca nueva</a>.</p>
+                <h2>Preguntas frecuentes</h2>
+${faqHTML(PREGUNTAS_PLAZOS_MARCA)}
+            </div>
+        </section>
+` + pie().replace('</body>', `    <script src="/docs/js/cartera-marcas.js"></script>
+    <script src="/docs/js/plazos-marca.js"></script>
+    <script>window.addEventListener('load', () => prepararPlazosMarca());</script>
+</body>`);
 }
 
 // ==================== TÉRMINOS Y CONDICIONES ====================
@@ -1114,6 +1216,7 @@ function sitemap() {
         ['/estrados-tsj-quintana-roo/', '0.9'],
         ['/estrados-laborales-quintana-roo/', '0.8'],
         ['/estudio-viabilidad-marca-impi/', '0.8'],
+        [RUTA_PLAZOS_MARCA, '0.8'],
         ['/expedientes-pjf-quintana-roo/', '0.8'],
         [RUTA_SESIONES, '0.8'],
         ['/terminos-y-condiciones/', '0.3'],
@@ -1147,6 +1250,7 @@ function generar() {
         'calculadora-finiquito-liquidacion/index.html': paginaCalculadora(),
         'estrados-laborales-quintana-roo/index.html': paginaLaborales(unidadesLaborales()),
         'estudio-viabilidad-marca-impi/index.html': paginaViabilidad(lim, planes),
+        [RUTA_PLAZOS_MARCA.slice(1) + 'index.html']: paginaPlazosMarca(whatsappEmpirica()),
         'terminos-y-condiciones/index.html': paginaTerminos(),
         [PRIVACIDAD.RUTA.slice(1) + 'index.html']: paginaPrivacidad(),
         'sitemap.xml': sitemap()
