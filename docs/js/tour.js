@@ -583,7 +583,7 @@
                 {
                     saltarSi: async () => esPremium(),
                     titulo: 'Plan gratuito y Premium',
-                    texto: 'Sin Premium tienes 2 estudios de viabilidad y 5 búsquedas al mes en las herramientas del IMPI. Con Premium, sin límite.'
+                    texto: 'Sin Premium tienes 2 estudios de viabilidad, 5 búsquedas al mes en las herramientas del IMPI y 3 marcas en la cartera. Con Premium, sin límite.'
                 }
             ]
         },

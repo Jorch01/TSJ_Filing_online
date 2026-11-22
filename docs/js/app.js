@@ -8655,6 +8655,9 @@ cargarExpedientes = async function() {
 const PREMIUM_CONFIG = {
     limiteExpedientes: 10,
     limiteBusquedasGlobales: 10,
+    // Marcas en la cartera de marcas (cartera-marcas.js). Las que ya están
+    // nunca se ocultan (llevan plazos legales): solo se limita agregar más.
+    limiteMarcas: 3,
 
     // Las licencias se verifican solo con la API. Antes había un respaldo que
     // leía la hoja publicada como CSV: publicarla dejaba a la vista de
@@ -9101,20 +9104,20 @@ async function incrementarBusquedasGlobales() {
 
 // Mostrar modal de límite alcanzado
 function mostrarModalLimite(tipo) {
-    const titulo = tipo === 'expedientes' ?
-        'Límite de Expedientes Alcanzado' :
-        'Límite de Búsquedas Globales Alcanzado';
+    const LIMITES = {
+        expedientes: { titulo: 'Límite de Expedientes Alcanzado', limite: PREMIUM_CONFIG.limiteExpedientes, que: 'expedientes' },
+        busquedas: { titulo: 'Límite de Búsquedas Globales Alcanzado', limite: PREMIUM_CONFIG.limiteBusquedasGlobales, que: 'búsquedas globales' },
+        marcas: { titulo: 'Límite de la cartera de marcas', limite: PREMIUM_CONFIG.limiteMarcas, que: 'marcas en la cartera',
+            nota: 'Las que ya tienes siguen a la vista, con sus plazos de declaración de uso y renovación.' }
+    };
+    const l = LIMITES[tipo] || LIMITES.busquedas;
 
-    const limite = tipo === 'expedientes' ?
-        PREMIUM_CONFIG.limiteExpedientes :
-        PREMIUM_CONFIG.limiteBusquedasGlobales;
-
-    document.getElementById('modal-titulo').textContent = '⚠️ ' + titulo;
+    document.getElementById('modal-titulo').textContent = '⚠️ ' + l.titulo;
     document.getElementById('modal-body').innerHTML = `
         <div class="limit-warning">
             <div class="limit-warning-icon">🔒</div>
             <h3>Has alcanzado el límite gratuito</h3>
-            <p>El plan gratuito permite hasta ${limite} ${tipo === 'expedientes' ? 'expedientes' : 'búsquedas globales'}.</p>
+            <p>El plan gratuito permite hasta ${l.limite} ${l.que}.${l.nota ? ' ' + l.nota : ''}</p>
             <p>Actualiza a Premium <strong>${textoPrecioDesde()}</strong> para disfrutar de acceso ilimitado.</p>
         </div>
     `;

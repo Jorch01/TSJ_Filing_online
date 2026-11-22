@@ -89,6 +89,13 @@ function planesPremium() {
 
 const pesos = (n) => '$' + n.toLocaleString('en-US') + ' MXN';
 
+// Las marcas que caben en la cartera sin Premium (PREMIUM_CONFIG.limiteMarcas).
+function limiteMarcas() {
+    const m = /limiteMarcas: (\d+)/.exec(fs.readFileSync(path.join(RAIZ, 'docs/js/app.js'), 'utf8'));
+    if (!m) throw new Error('No se encontró PREMIUM_CONFIG.limiteMarcas en docs/js/app.js');
+    return Number(m[1]);
+}
+
 // La página pública de las listas de sesión de los Tribunales Colegiados.
 const RUTA_SESIONES = '/sesiones-tribunales-colegiados-quintana-roo/';
 
@@ -341,9 +348,9 @@ function paginaInicio(cat, pjf, lim, planes) {
             image: SITIO + '/og-image.png',
             offers: [
                 { '@type': 'Offer', name: 'Plan gratuito', price: '0', priceCurrency: 'MXN',
-                    description: `Hasta 10 expedientes, ${lim.busqueda.limite} búsquedas al mes en el IMPI, ${lim.viabilidad.limite} estudios de viabilidad de marca y ${lim.sesiones.limite} consultas de sesiones de Tribunales Colegiados` },
+                    description: `Hasta 10 expedientes, ${lim.busqueda.limite} búsquedas al mes en el IMPI, ${lim.viabilidad.limite} estudios de viabilidad de marca, ${limiteMarcas()} marcas en la cartera y ${lim.sesiones.limite} consultas de sesiones de Tribunales Colegiados` },
                 ...planes.map(p => ({ '@type': 'Offer', name: `Premium ${p.nombre}`, price: String(p.precio), priceCurrency: 'MXN',
-                    description: `Premium por ${p.nombre}: expedientes, búsquedas en el IMPI y estudios de viabilidad sin límite, aviso automático de sesiones de Tribunales Colegiados y sincronización entre dispositivos` }))
+                    description: `Premium por ${p.nombre}: expedientes, búsquedas en el IMPI, estudios de viabilidad y cartera de marcas sin límite, aviso automático de sesiones de Tribunales Colegiados y sincronización entre dispositivos` }))
             ],
             areaServed: quintanaRoo,
             audience: { '@type': 'Audience', audienceType: 'Abogados y despachos jurídicos' },
@@ -440,6 +447,7 @@ ${funciones.map(([ico, t, d, enlace]) => `                    <article class="si
                             <li>Hasta 10 expedientes</li>
                             <li>${lim.busqueda.limite} búsquedas al mes en el IMPI</li>
                             <li>${lim.viabilidad.limite} estudios de viabilidad de marca</li>
+                            <li>${limiteMarcas()} marcas en la cartera de marcas</li>
                             <li>${lim.sesiones.limite} consultas de sesiones de Tribunales Colegiados</li>
                             <li>Estrados, agenda, IA y calculadora laboral</li>
                         </ul>
@@ -452,10 +460,11 @@ ${planes.map(p => `                    <article class="sitio-funcion">
                         <ul class="sitio-lista">
                             <li>Expedientes ilimitados</li>
                             <li>Búsquedas en el IMPI y estudios de viabilidad sin límite</li>
+                            <li>Cartera de marcas sin límite</li>
                             <li>Aviso automático de sesiones de Tribunales Colegiados</li>
                             <li>Sincronización entre dispositivos</li>
                         </ul>
-                        <a href="${esc(p.whatsapp)}" target="_blank" rel="noopener">💬 Contratar por WhatsApp →</a>
+                        <a href="${esc(p.whatsapp)}" target="_blank" rel="noopener" data-medir="premium_plan" data-medir-origen="sitio" data-medir-cantidad="${p.meses}">💬 Contratar por WhatsApp →</a>
                         <p class="sitio-legal">Al contratar aceptas los <a href="/terminos-y-condiciones/">Términos y condiciones</a>: sin devoluciones.</p>
                     </article>`).join('\n')}
                 </div>

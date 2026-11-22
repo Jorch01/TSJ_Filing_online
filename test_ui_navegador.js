@@ -2722,6 +2722,111 @@ async function probarViabilidadConLogotipo(navegador) {
 }
 
 /**
+ * La cartera sin Premium: caben 3 marcas; la 4.ª abre el aviso con los
+ * planes, pero las que ya están se siguen viendo. Con Premium, sin límite.
+ * Cada plazo ofrece «¿Te ayudamos a presentarla?» (WhatsApp con Empírica), y
+ * el límite y ese botón se miden en la analítica.
+ */
+async function probarCupoDeCartera(navegador) {
+    console.log('\nCartera: plan gratuito y servicios');
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, locale: 'es-MX' });
+    await contexto.route('**/googletagmanager.com/**', r => r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
+    await contexto.addInitScript(() => { window.TSJ_GA_ID = 'G-PRUEBA'; try { localStorage.setItem('tour_bienvenida_visto', '1'); } catch (e) {} });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => typeof db !== 'undefined' && !!db && window.CARTERA_MARCAS && typeof medir === 'function', { timeout: 15000 });
+        await page.waitForTimeout(800);
+        const r = await page.evaluate(async () => {
+            const pausa = ms => new Promise(res => setTimeout(res, ms));
+            const eventos = () => (window.dataLayer || []).filter(a => a[0] === 'event').map(a => [a[1], a[2]]);
+            const out = {};
+            estadoPremium.activo = false;
+            navegarA('impi'); await pausa(200);
+            cambiarTabIMPI('cartera'); await pausa(400);
+            const cupoTexto = () => { const el = document.getElementById('cm-cupo'); return el && !el.hidden ? el.textContent.replace(/\s+/g, ' ').trim() : ''; };
+            out.cupoVacio = cupoTexto();
+            const alta = async (datos) => {
+                document.querySelector('[data-cm="agregar"]').click(); await pausa(400);
+                const titulo = document.getElementById('modal-titulo').textContent;
+                if (!/Agregar marca/.test(titulo)) return titulo;
+                for (const [k, v] of Object.entries(datos)) document.getElementById('cm-f-' + k).value = v;
+                document.getElementById('cm-guardar').click(); await pausa(600);
+                return 'ok';
+            };
+            const hace3 = new Date(); hace3.setFullYear(hace3.getFullYear() - 3); hace3.setDate(hace3.getDate() - 10);
+            const dia = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            out.altas = [
+                await alta({ denominacion: 'UNO', registro: '2500001', estatus: 'REGISTRADA', fechaConcesion: dia(hace3), titular: 'Ana' }),
+                await alta({ denominacion: 'DOS', expediente: '2700002' }),
+                await alta({ denominacion: 'TRES', expediente: '2700003' })
+            ];
+            out.cupoLleno = cupoTexto();
+            out.verPlanes = !!document.querySelector('#cm-cupo [data-cm="planes"]');
+            // La cuarta: el aviso con los planes, sin formulario.
+            const cuarta = await alta({ denominacion: 'CUATRO', expediente: '2700004' });
+            out.cuarta = cuarta;
+            out.aviso = document.getElementById('modal-body').textContent.replace(/\s+/g, ' ');
+            out.limiteMedido = eventos().find(e => e[0] === 'limite_alcanzado');
+            cerrarModal(); await pausa(200);
+            out.siguenTres = document.querySelectorAll('#cm-lista tr[data-uid]').length;
+            // Desde MARCia: una nueva también topa; una que ya está, se abre.
+            await CARTERA_MARCAS.agregarDesde({ denominacion: 'NUEVA DE MARCIA', expediente: '9999999' }); await pausa(400);
+            out.desdeMARCia = document.getElementById('modal-titulo').textContent;
+            cerrarModal(); await pausa(200);
+            await CARTERA_MARCAS.agregarDesde({ denominacion: 'DOS', expediente: '2700002' }); await pausa(400);
+            out.yaEstaba = document.getElementById('modal-titulo').textContent;
+            cerrarModal(); await pausa(200);
+            // El plazo de UNO ofrece ayuda de Empírica por WhatsApp.
+            document.querySelector('#cm-lista tr[data-uid] [data-cm="plazos"]').click(); await pausa(400);
+            const enlace = document.querySelector('.cm-servicio');
+            out.servicio = enlace ? { texto: enlace.textContent.trim(), href: enlace.getAttribute('href'), destino: enlace.getAttribute('target') } : null;
+            if (enlace) {
+                enlace.addEventListener('click', e => e.preventDefault());
+                enlace.click();
+            }
+            out.servicioMedido = eventos().find(e => e[0] === 'servicio_cartera');
+            cerrarModal(); await pausa(200);
+            // Con Premium: sin aviso de cupo y la cuarta sí entra.
+            estadoPremium.activo = true;
+            await CARTERA_MARCAS.refrescar(); await pausa(300);
+            out.cupoPremium = cupoTexto();
+            out.cuartaPremium = await alta({ denominacion: 'CUATRO', expediente: '2700004' });
+            out.cuatro = (await CARTERA_MARCAS.leer()).filter(m => !m.eliminada).length;
+            // Si el Premium vence, las cuatro siguen a la vista.
+            estadoPremium.activo = false;
+            await CARTERA_MARCAS.refrescar(); await pausa(300);
+            out.vencido = [document.querySelectorAll('#cm-lista tr[data-uid]').length, cupoTexto()];
+            out.medidas = ['elegirPlanPremium', 'subirLogotipoMARCia', 'mostrarModalLimite'].map(f => !!(window[f] && window[f].__medida));
+            out.todo = JSON.stringify(window.dataLayer);
+            return out;
+        });
+        igual('cupo: sin Premium se ve cuántas caben', r.cupoVacio, '0 de 3 marcas en el plan gratuito');
+        igual('cupo: caben tres', r.altas, ['ok', 'ok', 'ok']);
+        igual('cupo: lleno, lo dice y ofrece los planes', [r.cupoLleno, r.verPlanes], ['3 de 3 marcas en el plan gratuito · Ver planes', true]);
+        verificar('cupo: la cuarta abre el aviso del límite', /Límite de la cartera de marcas/.test(r.cuarta), r.cuarta);
+        verificar('cupo: que dice cuántas caben y que las que hay siguen a la vista', /hasta 3 marcas en la cartera/.test(r.aviso) && /siguen a la vista/.test(r.aviso), r.aviso);
+        igual('cupo: y no borra ni oculta nada', r.siguenTres, 3);
+        verificar('cupo: desde MARCia, una nueva también topa', /Límite de la cartera de marcas/.test(r.desdeMARCia), r.desdeMARCia);
+        verificar('cupo: una que ya está se abre para revisarla', /DOS/.test(r.yaEstaba), r.yaEstaba);
+        verificar('servicios: el plazo ofrece ayuda de Empírica', !!r.servicio && /¿Te ayudamos a presentarla\?/.test(r.servicio.texto) && r.servicio.destino === '_blank', JSON.stringify(r.servicio));
+        verificar('servicios: por WhatsApp, con la marca y el plazo', !!r.servicio && r.servicio.href.startsWith('https://wa.me/529981399930?text=') &&
+            /declaración de uso de la marca «UNO» \(Reg\. 2500001; titular: Ana\)/.test(decodeURIComponent(r.servicio.href.split('text=')[1])), r.servicio && decodeURIComponent(r.servicio.href));
+        igual('analítica: el límite se mide, con dónde se topó', r.limiteMedido && r.limiteMedido[1], { origen: 'marcas' });
+        igual('analítica: y el clic en «¿Te ayudamos?»', r.servicioMedido && r.servicioMedido[1], { origen: 'declaracion_uso' });
+        verificar('analítica: sin datos de las marcas', !/UNO|2500001|Ana/.test(r.todo), r.todo.slice(0, 300));
+        igual('analítica: también el plan elegido, la búsqueda por logotipo y el límite', r.medidas, [true, true, true]);
+        igual('premium: sin aviso de cupo y la cuarta entra', [r.cupoPremium, r.cuartaPremium, r.cuatro], ['', 'ok', 4]);
+        igual('premium vencido: las cuatro siguen a la vista', r.vencido, [4, '4 marcas; el plan gratuito permite 3 (las que tienes siguen a la vista) · Ver planes']);
+        igual('cupo: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
+/**
  * Causas penales del TSJ: sus juzgados no publican en estrados. Un expediente
  * penal ofrece, en vez de los estrados, sus tocas en las salas penales y la
  * agenda de audiencias del juzgado.
@@ -6890,6 +6995,7 @@ async function main() {
         // ---- Búsqueda por logotipo en MARCia ----
         await probarBusquedaPorLogotipo(navegador);
         await probarViabilidadConLogotipo(navegador);
+        await probarCupoDeCartera(navegador);
 
         // ---- Sesiones de los Tribunales Colegiados ----
         await probarSesionesPJF(navegador);

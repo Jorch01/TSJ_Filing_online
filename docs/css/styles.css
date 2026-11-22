@@ -6527,3 +6527,8 @@ body.con-anuncio-ctx { padding-bottom: 5.5rem; }
     .vb-logo-datos .btn { display: none !important; }
     .vb-logo-item { break-inside: avoid; }
 }
+
+/* ==================== Cartera: cupo gratuito y servicios ==================== */
+.cm-cupo { margin: 0.25rem 0 0.75rem; font-size: 0.82rem; color: var(--text-secondary); display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.cm-cupo[hidden] { display: none; }
+.cm-servicio { text-decoration: none; }
