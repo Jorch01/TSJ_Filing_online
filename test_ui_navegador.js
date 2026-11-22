@@ -2564,6 +2564,164 @@ async function probarBusquedaPorLogotipo(navegador) {
 }
 
 /**
+ * El estudio de viabilidad con logotipo: además de las búsquedas por palabra,
+ * busca el logotipo por imagen en MARCia, en cada clase del estudio, y lista
+ * los más parecidos sin calificarlos (MARCia no dice cuánto se parecen).
+ */
+async function probarViabilidadConLogotipo(navegador) {
+    console.log('\nEstudio de viabilidad con logotipo');
+    const contexto = await navegador.newContext({ acceptDownloads: true, viewport: { width: 1280, height: 900 }, locale: 'es-MX' });
+    await contexto.addInitScript(() => { try { localStorage.setItem('tour_bienvenida_visto', '1'); } catch (e) {} });
+    await contexto.route('**/cuota', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ servidor: false, permitido: true }) }));
+    const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+    // En pantalla, las imágenes se piden a MARCia; para el PDF, al proxy.
+    await contexto.route('https://marcia.impi.gob.mx/marcas/image/**', r => r.fulfill({ status: 200, contentType: 'image/png', body: PNG_1PX }));
+    const miniaturas = [];
+    await contexto.route('**/marcia/miniatura/**', r => {
+        miniaturas.push(r.request().url().split('/').pop());
+        return r.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: PNG_1PX });
+    });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => window.VIABILIDAD && typeof db !== 'undefined' && !!db && typeof subirLogotipoMARCia === 'function', { timeout: 15000 });
+        await page.waitForTimeout(800);
+        const pngBase64 = await page.evaluate(() => {
+            const c = document.createElement('canvas'); c.width = 500; c.height = 500;
+            const x = c.getContext('2d'); x.fillStyle = '#1E3F39'; x.beginPath(); x.arc(250, 250, 180, 0, Math.PI * 2); x.fill();
+            return c.toDataURL('image/png').split(',')[1];
+        });
+        await page.evaluate(() => {
+            window.__llamadas = [];
+            window.__logoFalla = false;
+            const marca = (id, title, status, fecha) => ({ id, applicationNumber: id.slice(-7), registrationNumber: status === 'REGISTRADO' ? '2' + id.slice(-6) : '', title, status,
+                appType: 'REGISTRO DE MARCA', owners: ['TITULAR DE ' + title], dates: { application: fecha }, goodsAndServices: '', classes: [], images: '/marcas/image/' + id });
+            window.proxyFetch = async (ruta, opciones) => {
+                const cuerpo = opciones && opciones.body;
+                const body = cuerpo instanceof FormData ? 'FORM' : (cuerpo ? JSON.parse(cuerpo) : null);
+                window.__llamadas.push({ ruta, body });
+                if (ruta === '/marcia/csrf') return { indexacion: '02 Feb 2020' };
+                if (ruta === '/marcia/imagen') {
+                    if (window.__logoFalla) throw new Error('MARCia no pudo procesar la imagen (error 500 de su servidor).');
+                    return { imagenes: [{ id: 'img-logo', width: 500, height: 500, autoSegmentCrop: { mode: 1, polygon: [[70, 70], [430, 70], [430, 430], [70, 430], [70, 70]] } }] };
+                }
+                if (ruta === '/marcia/search') return { id: body.images && body.images.length ? 'logo' : 'texto', count: body.images && body.images.length ? 1000 : 0 };
+                if (ruta === '/marcia/results') {
+                    if (body.searchId !== 'logo') return { resultPage: [], totalResults: 0, aggregates: { NICE_CLASSES: [] } };
+                    const clase = body.niceClassFilter[0];
+                    const r = clase === '30'
+                        ? [marca('RM202002404330', 'THE GLAMPING COMPANY', 'EN TRÁMITE', '13/8/2020'), marca('RM201900111111', 'CIRCULO VERDE', 'REGISTRADO', '10/2/2019')]
+                        : [marca('RM201900111111', 'CIRCULO VERDE', 'REGISTRADO', '10/2/2019'), marca('RM202002377940', 'INEDIA', 'REGISTRADO', '13/7/2020')];
+                    return { resultPage: r.slice(0, body.pageSize), totalResults: 1000, aggregates: {} };
+                }
+                if (ruta.indexOf('/marcia/view/') === 0) throw new Error('HTTP 404');
+                // La fonética de Marcanet siempre encuentra algo (vacía cuenta como falla).
+                if (ruta === '/marcanet/fonetica') return { results: [{ 'Denominación': 'ZAPATERIA EL SOL', 'Expediente': '999999', 'Clase': '25', 'Titular': 'OTRO' }] };
+                if (ruta === '/marcanet/full-detail') return { detail: {} };
+                if (ruta === '/siga/search') return { successed: true, data: [] };
+                throw new Error('Ruta no simulada: ' + ruta);
+            };
+            navegarA('impi');
+            cambiarTabIMPI('viabilidad');
+        });
+        await page.waitForTimeout(300);
+
+        igual('viabilidad+logo: con marca nominativa no se pide logotipo', await page.evaluate(() => document.getElementById('vb-logo-grupo').hidden), true);
+        await page.selectOption('#vb-tipo', 'mixta');
+        igual('viabilidad+logo: con marca mixta, sí', await page.evaluate(() => document.getElementById('vb-logo-grupo').hidden), false);
+        await page.setInputFiles('#vb-logo-input', { name: 'circulo.png', mimeType: 'image/png', buffer: Buffer.from(pngBase64, 'base64') });
+        await page.waitForFunction(() => !document.getElementById('vb-logo-vista').hidden, { timeout: 5000 }).catch(() => {});
+        igual('viabilidad+logo: se ve la imagen elegida', await page.evaluate(() => [document.getElementById('vb-logo-nombre').textContent, /^blob:/.test(document.getElementById('vb-logo-img').src)]), ['circulo.png', true]);
+
+        await page.fill('#vb-denominacion', 'Circulo Azul');
+        await page.selectOption('#vb-clase-agregar', '30');
+        await page.selectOption('#vb-clase-agregar', '43');
+        await page.click('#vb-ejecutar');
+        await page.waitForSelector('.vb-reporte .vb-logotipo', { timeout: 20000 }).catch(() => {});
+        await page.waitForTimeout(300);
+        const r = await page.evaluate(() => {
+            const sec = document.querySelector('.vb-logotipo');
+            const ll = window.__llamadas;
+            const iLogo = ll.findIndex(l => l.ruta === '/marcia/imagen');
+            const ultimaTexto = ll.map((l, i) => (l.ruta === '/marcia/search' && l.body.images.length === 0 ? i : -1)).filter(i => i >= 0).pop();
+            return {
+                subidas: ll.filter(l => l.ruta === '/marcia/imagen').length,
+                despuesDeLasDePalabra: iLogo > ultimaTexto,
+                busqueda: (ll.find(l => l.ruta === '/marcia/search' && l.body.images.length) || {}).body,
+                porClase: ll.filter(l => l.ruta === '/marcia/results' && l.body.searchId === 'logo').map(l => [l.body.niceClassFilter, l.body.pageSize]),
+                paso: ((Array.from(document.querySelectorAll('#vb-progreso li')).find(li => /logotipos parecidos/.test(li.textContent)) || {}).className || ''),
+                titulos: sec ? Array.from(sec.querySelectorAll('.vb-logo-item strong')).map(x => x.textContent) : [],
+                lugares: sec ? Array.from(sec.querySelectorAll('.vb-logo-lugar')).map(x => x.textContent) : [],
+                imagenes: sec ? Array.from(sec.querySelectorAll('.vb-logo-marco img')).map(x => x.getAttribute('src')) : [],
+                propio: sec && sec.querySelector('.vb-logo-propio') ? sec.querySelector('.vb-logo-propio').getAttribute('src').slice(0, 23) : '',
+                nota: sec ? sec.querySelector('.vb-nota').textContent : '',
+                ver: sec ? sec.querySelectorAll('[data-vb="detalle"]').length : 0,
+                recomendaciones: Array.from(document.querySelectorAll('.vb-recomendaciones li')).map(li => li.textContent),
+                guardado: (() => { try { const x = JSON.parse(localStorage.getItem('impi_estudios_viabilidad'))[0].reporte.logotipo; return [x.marcas.length, /^data:image\/jpeg;base64,/.test(x.miniatura)]; } catch (e) { return null; } })()
+            };
+        });
+        igual('viabilidad+logo: sube el logotipo una vez, después de las búsquedas por palabra', [r.subidas, r.despuesDeLasDePalabra], [1, true]);
+        igual('viabilidad+logo: busca por imagen con el recorte de MARCia, sin nombre', r.busqueda && [r.busqueda._type, r.busqueda.query, r.busqueda.images[0].id, r.busqueda.images[0].segment.mode], ['Search$Quick', '', 'img-logo', 1]);
+        igual('viabilidad+logo: lee los primeros 12 de cada clase', r.porClase, [[['30'], 12], [['43'], 12]]);
+        verificar('viabilidad+logo: el paso queda en verde', /vb-paso-ok/.test(r.paso), r.paso);
+        igual('viabilidad+logo: una vez por marca, en el orden de MARCia', r.titulos, ['CIRCULO VERDE', 'THE GLAMPING COMPANY', 'INEDIA']);
+        igual('viabilidad+logo: con su lugar', r.lugares, ['1.º', '1.º', '2.º']);
+        verificar('viabilidad+logo: con sus imágenes de MARCia', r.imagenes.length === 3 && r.imagenes.every(u => /^https:\/\/marcia\.impi\.gob\.mx\/marcas\/image\/RM/.test(u)), JSON.stringify(r.imagenes));
+        igual('viabilidad+logo: el logotipo buscado, en miniatura', r.propio, 'data:image/jpeg;base64,');
+        verificar('viabilidad+logo: explica que no se califican y la indexación de MARCia', /no dice cuánto se parecen/.test(r.nota) && /«02 Feb 2020»/.test(r.nota) && /13\/08\/2020/.test(r.nota), r.nota);
+        igual('viabilidad+logo: cada uno se puede abrir en MARCia', r.ver, 3);
+        verificar('viabilidad+logo: la recomendación de revisarlos a ojo', r.recomendaciones.some(x => /^Revisa a ojo los 3 logotipos/.test(x)), r.recomendaciones.join(' | '));
+        igual('viabilidad+logo: el estudio reciente guarda los logotipos y la miniatura', r.guardado, [3, true]);
+
+        const esperaCsv = page.waitForEvent('download', { timeout: 8000 });
+        await page.click('[data-vb="csv"]');
+        const csv = await esperaCsv.catch(() => null);
+        const textoCsv = csv ? fs.readFileSync(await csv.path(), 'utf8') : '';
+        verificar('viabilidad+logo: el CSV trae los logotipos con su lugar e imagen', /Logotipos parecidos \(MARCia, búsqueda por imagen; sin calificar\)/.test(textoCsv) &&
+            /Lugar en MARCia,Marca/.test(textoCsv) && /\n1,CIRCULO VERDE,.*https:\/\/marcia\.impi\.gob\.mx\/marcas\/image\/RM201900111111/.test(textoCsv), textoCsv.slice(-500));
+
+        await page.click('[data-vb="pdf"]');
+        await page.waitForSelector('#rpdf-generar', { timeout: 5000 });
+        const esperaPdf = page.waitForEvent('download', { timeout: 40000 });
+        await page.click('#rpdf-generar');
+        const pdf = await esperaPdf.catch(() => null);
+        if (pdf) {
+            const bytes = fs.readFileSync(await pdf.path()).toString('latin1');
+            const imagenesPdf = (bytes.match(/\/Subtype\s*\/Image/g) || []).length;
+            verificar('viabilidad+logo: el PDF lleva el logo de Empírica, el buscado y los 3 parecidos', bytes.startsWith('%PDF-') && imagenesPdf >= 5, 'imágenes: ' + imagenesPdf);
+        } else {
+            verificar('viabilidad+logo: el PDF se descarga', false);
+        }
+        igual('viabilidad+logo: las miniaturas del PDF se piden al proxy', miniaturas.slice().sort(), ['RM201900111111', 'RM202002377940', 'RM202002404330']);
+
+        // Si la búsqueda por imagen falla, se reintenta sola y, si sigue, «Reintentar lo que faltó» la repite.
+        await page.evaluate(() => { window.__logoFalla = true; window.__llamadas = []; });
+        await page.click('#vb-ejecutar');
+        await page.waitForFunction(() => { const s = document.querySelector('.vb-logotipo'); return s && /no respondió/.test(s.textContent); }, { timeout: 25000 }).catch(() => {});
+        const fallo = await page.evaluate(() => ({
+            intentos: window.__llamadas.filter(l => l.ruta === '/marcia/imagen').length,
+            texto: (document.querySelector('.vb-logotipo') || {}).textContent || '',
+            boton: !!document.querySelector('[data-vb="reintentar"]')
+        }));
+        igual('viabilidad+logo: si falla, se intenta dos veces y lo dice', [fallo.intentos, /La búsqueda por imagen no respondió/.test(fallo.texto)], [2, true]);
+        igual('viabilidad+logo: y se ofrece reintentar', fallo.boton, true);
+        await page.evaluate(() => { window.__logoFalla = false; window.__llamadas = []; });
+        await page.click('[data-vb="reintentar"]');
+        await page.waitForFunction(() => document.querySelectorAll('.vb-logotipo .vb-logo-item').length === 3, { timeout: 20000 }).catch(() => {});
+        const reintento = await page.evaluate(() => ({
+            items: document.querySelectorAll('.vb-logotipo .vb-logo-item').length,
+            soloLogo: window.__llamadas.every(l => /^\/marcia\//.test(l.ruta)) && window.__llamadas.some(l => l.ruta === '/marcia/imagen')
+        }));
+        igual('viabilidad+logo: el reintento trae los logotipos, sin repetir lo demás', [reintento.items, reintento.soloLogo], [3, true]);
+        igual('viabilidad+logo: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
+/**
  * Causas penales del TSJ: sus juzgados no publican en estrados. Un expediente
  * penal ofrece, en vez de los estrados, sus tocas en las salas penales y la
  * agenda de audiencias del juzgado.
@@ -6731,6 +6889,7 @@ async function main() {
 
         // ---- Búsqueda por logotipo en MARCia ----
         await probarBusquedaPorLogotipo(navegador);
+        await probarViabilidadConLogotipo(navegador);
 
         // ---- Sesiones de los Tribunales Colegiados ----
         await probarSesionesPJF(navegador);

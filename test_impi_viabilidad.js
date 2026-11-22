@@ -530,6 +530,57 @@ console.log('\nLa ficha de MARCia y las marcas con varios expedientes');
         { titulo: 'LUNA', titulares: [], riesgo: 'medio', similitud: { puntaje: 80 }, clases: [43], fuentes: ['SIGA'] }]).length, 2);
 }
 
+console.log('\nEl logotipo: la búsqueda por imagen de MARCia');
+{
+    // Como llegan de MARCia: la imagen como ruta de su sitio y la fecha sin ceros.
+    const fila = (id, title, status, fecha, extra) => marcia(id, title, status, { dates: { application: fecha }, images: '/marcas/image/' + id, ...(extra || {}) });
+    const crudoLogo = {
+        ok: true, error: '', indexacion: '02 Feb 2020', miniatura: 'data:image/jpeg;base64,AAAA',
+        lotes: [
+            { clase: 30, total: 1000, resultados: [fila('RM202002404330', 'THE GLAMPING COMPANY', 'EN TRÁMITE', '13/8/2020'),
+                fila('RM201900111111', 'LUNA AZUL', 'REGISTRADO', '10/02/2019'), fila('RM201500333333', 'SOL', 'CADUCADO', '1/1/2015')] },
+            { clase: 43, total: 500, resultados: [fila('RM201900111111', 'LUNA AZUL', 'REGISTRADO', '10/02/2019'), fila('RM202002377940', 'INEDIA', 'REGISTRADO', '13/7/2020')] }
+        ]
+    };
+    const L = V.resumenLogotipo(crudoLogo);
+    igual('una vez por marca, con su mejor lugar y sus clases; a igual lugar, la vigente primero', L.marcas.map(m => [m.titulo, m.lugar, m.clases]),
+        [['LUNA AZUL', 1, [30, 43]], ['THE GLAMPING COMPANY', 1, [30]], ['INEDIA', 2, [43]], ['SOL', 3, [30]]]);
+    igual('la imagen, completa, para pedirla a MARCia', L.marcas[0].imagen, 'https://marcia.impi.gob.mx/marcas/image/RM201900111111');
+    igual('la solicitud más reciente, la indexación declarada y lo encontrado por clase', [L.masReciente, L.indexacion, L.porClase],
+        ['13/08/2020', '02 Feb 2020', [{ clase: 30, total: 1000 }, { clase: 43, total: 500 }]]);
+    igual('guarda la miniatura del logotipo buscado', L.miniatura, 'data:image/jpeg;base64,AAAA');
+    igual('pero solo si es una imagen PNG o JPEG en data URL', ['javascript:alert(1)', 'https://otro.com/x.png', 'data:image/svg+xml;base64,AAAA']
+        .map(m => V.resumenLogotipo({ ...crudoLogo, miniatura: m }).miniatura), ['', '', '']);
+    igual('sin logotipo no hay sección', V.resumenLogotipo(null), null);
+    const muchos = V.resumenLogotipo({ ok: true, lotes: [{ clase: 9, resultados: Array.from({ length: 30 }, (_, i) => fila('RM20200000' + String(i).padStart(4, '0'), 'MARCA ' + i, 'REGISTRADO', '1/1/2020')) }] });
+    igual('de cada clase se toman los primeros ' + V.LOGO_POR_CLASE, [V.LOGO_POR_CLASE, muchos.marcas.length, muchos.marcas[11].lugar], [12, 12, 12]);
+    const aviso = V.avisoIndiceLogotipo(L);
+    verificar('el aviso dice la indexación declarada y la solicitud más reciente', /«02 Feb 2020»/.test(aviso) && /13\/08\/2020/.test(aviso) && /podrían no estar/.test(aviso), aviso);
+    verificar('sin fecha declarada, dice al menos la más reciente', /^Entre estos resultados, la solicitud más reciente es del 13\/08\/2020/.test(V.avisoIndiceLogotipo({ ...L, indexacion: null })));
+
+    const entrada = { denominacion: 'Luna Azul', clases: [30, 43], tipo: 'mixta', productos: '', solicitante: '' };
+    const fuentesOk = { MARCia: { ok: true, total: 3 }, Marcanet: { ok: true, total: 1 }, SIGA: { ok: true, total: 1 } };
+    const base = { marcia: [{ clase: 30, resultados: [marcia('RM2019000002', 'LUNA AZUL', 'REGISTRADO')] }], marcanet: [], siga: [], fuentes: fuentesOk };
+    const sinLogo = V.analizar(entrada, base, AHORA);
+    const conLogo = V.analizar({ ...entrada, conLogotipo: true }, { ...base, logotipo: crudoLogo }, AHORA);
+    igual('el logotipo no cambia el dictamen ni el conteo (MARCia no mide el parecido)', [conLogo.dictamen, conLogo.conteo], [sinLogo.dictamen, sinLogo.conteo]);
+    igual('pero va en el reporte', [sinLogo.logotipo, conLogo.logotipo && conLogo.logotipo.marcas.length], [null, 4]);
+    verificar('sin logotipo, se recomienda la búsqueda figurativa o agregarlo', sinLogo.recomendaciones.some(r => /búsqueda figurativa.*o agrega el logotipo al estudio/.test(r)), sinLogo.recomendaciones.join('\n'));
+    verificar('con logotipo, revisar a ojo los que encontró y complementar con Viena',
+        conLogo.recomendaciones.some(r => /^Revisa a ojo los 4 logotipos/.test(r) && /no dice cuánto se parecen/.test(r) && /códigos de Viena/.test(r) && /«02 Feb 2020»/.test(r)),
+        conLogo.recomendaciones.join('\n'));
+    verificar('y ya no pide la búsqueda figurativa', !conLogo.recomendaciones.some(r => /búsqueda figurativa/.test(r)));
+    const fallo = V.analizar({ ...entrada, conLogotipo: true }, { ...base, logotipo: { ok: false, error: 'MARCia respondió vacío', lotes: [] } }, AHORA);
+    verificar('si la búsqueda por imagen falló, se propone reintentarla', fallo.recomendaciones.some(r => /^La búsqueda del logotipo por imagen no respondió \(MARCia respondió vacío\): usa «Reintentar lo que faltó»/.test(r)), fallo.recomendaciones.join('\n'));
+    verificar('la observación dice que los logotipos van aparte, sin calificar', conLogo.observaciones.some(o => /se listan sin calificar/.test(o.texto)));
+    verificar('y sin logotipo, sugiere agregarlo', sinLogo.observaciones.some(o => /agrega el logotipo al estudio/.test(o.texto)));
+    const texto = V.resumenTexto(conLogo);
+    verificar('el resumen en texto lista los logotipos con su lugar', /LOGOTIPOS PARECIDOS \(MARCia, búsqueda por imagen; sin calificar\)/.test(texto) &&
+        /• 1\.º en MARCia: LUNA AZUL — clase 30, 43/.test(texto) && /«02 Feb 2020»/.test(texto), texto.slice(texto.indexOf('LOGOTIPOS'), texto.indexOf('LOGOTIPOS') + 400));
+    verificar('y si falló, lo dice', /La búsqueda por imagen no respondió: MARCia respondió vacío/.test(V.resumenTexto(fallo)));
+    igual('las imágenes de MARCia se guardan completas en los antecedentes', V.desdeMARCia(fila('RM1999', 'X', 'REGISTRADO', '1/1/2020')).imagen, 'https://marcia.impi.gob.mx/marcas/image/RM1999');
+}
+
 console.log(`\n${pasadas} pasadas, ${fallos.length} fallidas`);
 if (fallos.length) {
     console.log('\nFallaron:\n  - ' + fallos.join('\n  - '));
