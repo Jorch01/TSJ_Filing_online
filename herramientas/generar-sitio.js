@@ -32,7 +32,7 @@ const APP = '/docs/';
 const WHATSAPP_RECOMENDAR = 'https://wa.me/?text=' + encodeURIComponent(
     'Te recomiendo TSJ Filing Online: estrados del TSJ de Quintana Roo, del PJF y del TCA, agenda de audiencias, IA que lee los acuerdos, calculadora de finiquito y estudio de viabilidad de marca en el IMPI. Gratis y sin registro. ' +
     'https://tsjia.empirica.mx/?utm_source=recomendacion&utm_medium=whatsapp&utm_campaign=colega');
-const ACTUALIZADO = '2026-11-11';
+const ACTUALIZADO = '2026-11-22';
 
 // ==================== DATOS DE LOS CATÁLOGOS ====================
 
@@ -302,7 +302,7 @@ const PREGUNTAS_INICIO = (lim, planes) => [
     ['¿Puedo revisar los estrados del Tribunal de Conciliación y Arbitraje y de las Juntas?',
         'Sí. La app arma un marcador para tu navegador que, en la página oficial de estrados de la Secretaría del Trabajo, revisa el periodo que elijas en tramos de 15 días (el máximo que permite el sitio) y deja solo lo publicado de tus expedientes. Funciona en computadora, iPhone y Android.'],
     ['¿Qué es el estudio de viabilidad de marca?',
-        `Escribes la marca y sus clases de Niza y la app busca a la vez en MARCia, en la búsqueda fonética de Marcanet y en las gacetas de SIGA del IMPI. Junta los antecedentes, los compara por escritura y por sonido y entrega un dictamen de riesgo con recomendaciones. El plan gratuito incluye ${lim.viabilidad.limite}.`]
+        `Escribes la marca y sus clases de Niza y la app busca a la vez en MARCia, en la búsqueda fonética de Marcanet y en las gacetas de SIGA del IMPI. Junta los antecedentes, los compara por escritura y por sonido y entrega un dictamen de riesgo con recomendaciones, que se descarga en PDF. Si la marca lleva diseño, busca también los logotipos parecidos. El plan gratuito incluye ${lim.viabilidad.limite}.`]
 ];
 
 function paginaInicio(cat, pjf, lim, planes) {
@@ -320,8 +320,8 @@ function paginaInicio(cat, pjf, lim, planes) {
         ['📅', 'Agenda de audiencias y pendientes', 'Calendario con los días inhábiles del TSJ, pendientes con fecha límite y vista rápida de tu día.'],
         ['🧮', 'Calculadora de finiquito y liquidación', 'Finiquito, liquidación, 20 días, prima de antigüedad, salarios vencidos e ISR, con su artículo de la LFT.', '/calculadora-finiquito-liquidacion/'],
         ['🎤', 'Asistente de voz', '"Agenda audiencia del 120/2026 el martes a las 10." Díctale y listo.'],
-        ['🧭', 'Estudio de viabilidad de marca', 'MARCia, Marcanet y SIGA del IMPI en una sola búsqueda: antecedentes parecidos por clase de Niza y un dictamen de riesgo.', '/estudio-viabilidad-marca-impi/'],
-        ['🔰', 'Marcas y gacetas del IMPI', 'Busca marcas por similitud, fonética, expediente o titular y vigila las gacetas con avisos de publicaciones nuevas.'],
+        ['🧭', 'Estudio de viabilidad de marca', 'MARCia, Marcanet y SIGA del IMPI en una sola búsqueda, también por logotipo: antecedentes parecidos por clase de Niza y un dictamen de riesgo en PDF.', '/estudio-viabilidad-marca-impi/'],
+        ['🔰', 'Marcas, logotipos y cartera', 'Busca marcas por similitud, fonética, expediente, titular o logotipo; lleva la cartera de tus clientes con sus plazos de declaración de uso y renovación, y vigila las gacetas.'],
         ['📊', 'Estadísticas del despacho', 'Asuntos activos y cerrados, tiempos, resultados, clientes y responsables, con gráficas por periodo.'],
         ['📴', 'Funciona sin internet', 'Abre en el juzgado aunque no haya señal. Tus datos son tuyos y viven en tu dispositivo.']
     ];
@@ -337,7 +337,7 @@ function paginaInicio(cat, pjf, lim, planes) {
             applicationSubCategory: 'Gestión de expedientes jurídicos',
             operatingSystem: 'Web, Android, iOS, Windows, macOS',
             inLanguage: 'es-MX',
-            description: 'Gestión de expedientes del TSJ de Quintana Roo y del PJF: estrados, listas de sesión de los Tribunales Colegiados, agenda de audiencias, análisis de acuerdos con IA, calculadora laboral y búsqueda de marcas del IMPI.',
+            description: 'Gestión de expedientes del TSJ de Quintana Roo y del PJF: estrados, listas de sesión de los Tribunales Colegiados, agenda de audiencias, análisis de acuerdos con IA, calculadora laboral, búsqueda de marcas del IMPI (también por logotipo) y cartera de marcas.',
             image: SITIO + '/og-image.png',
             offers: [
                 { '@type': 'Offer', name: 'Plan gratuito', price: '0', priceCurrency: 'MXN',
@@ -912,7 +912,11 @@ const PREGUNTAS_VIABILIDAD = (lim, planes) => [
     ['¿En qué bases del IMPI busca?',
         'En MARCia (el buscador de similitud del IMPI), en la búsqueda fonética oficial de Marcanet, clase por clase, y en las gacetas de SIGA, donde aparecen solicitudes recién publicadas, renovaciones y caducidades.'],
     ['¿Qué entrega el estudio?',
-        'Una sola lista de antecedentes sin repetidos, cada uno con su parecido por escritura y fonético, su clase, su vigencia y su titular; una clasificación del riesgo y un dictamen con observaciones y recomendaciones que puedes copiar o imprimir.'],
+        'Una sola lista de antecedentes sin repetidos, cada uno con su parecido por escritura y fonético, su clase, su vigencia y su titular; una clasificación del riesgo y un dictamen con observaciones y recomendaciones. Se descarga en PDF con membrete, se copia, se imprime o se exporta a CSV.'],
+    ['¿Puedo buscar una marca por su logotipo?',
+        'Sí. En la búsqueda de MARCia puedes elegir, arrastrar o pegar la imagen, sola o con un nombre, y el estudio de viabilidad de una marca mixta, figurativa o tridimensional puede incluir su logotipo. MARCia ordena los resultados del más parecido al menos parecido, pero no dice cuánto se parecen: por eso la app los lista aparte, sin calificarlos, para revisarlos a ojo. Según la fecha de indexación que publica MARCia, su búsqueda por imagen podría no incluir las solicitudes más recientes: conviene complementarla con la búsqueda por nombre y por códigos de Viena.'],
+    ['¿Puedo llevar las marcas de mis clientes?',
+        'Sí. La cartera de marcas guarda las marcas de cada cliente con su expediente, registro, clases, titular y estatus, y calcula los plazos de declaración de uso (a los tres años del registro) y de renovación, con sus seis meses de gracia. Cada plazo se puede pasar a tus pendientes, el estatus se actualiza desde MARCia y Marcanet, y el reporte por cliente sale en PDF o CSV.'],
     ['¿Cuántos estudios puedo hacer gratis?',
         `El plan gratuito incluye ${lim.viabilidad.limite} estudios de viabilidad y ${lim.busqueda.limite} búsquedas al mes en MARCia, SIGA y Marcanet. Con Premium no hay límite: ${textoPlanes(planes)}.`],
     ['¿Sustituye la opinión de un abogado?',
@@ -924,7 +928,7 @@ function paginaViabilidad(lim, planes) {
     return cabeza({
         ruta: '/estudio-viabilidad-marca-impi/',
         tituloPagina: 'Estudio de viabilidad de marca en el IMPI | Quintana Roo',
-        descripcion: 'Antes de registrar una marca, busca a la vez en MARCia, Marcanet y SIGA del IMPI: antecedentes parecidos por clase de Niza y un dictamen de riesgo en minutos.',
+        descripcion: 'Busca a la vez en MARCia, Marcanet y SIGA del IMPI, también por logotipo: antecedentes parecidos por clase de Niza y un dictamen de riesgo en PDF.',
         jsonld: [
             {
                 '@context': 'https://schema.org',
@@ -939,7 +943,7 @@ function paginaViabilidad(lim, planes) {
                     ...planes.map(p => ({ '@type': 'Offer', name: `Premium ${p.nombre}`, price: String(p.precio), priceCurrency: 'MXN', description: 'Estudios de viabilidad sin límite' }))
                 ],
                 publisher: organizacion,
-                description: 'Búsqueda de antecedentes en MARCia, Marcanet y SIGA del IMPI, comparación por escritura y fonética por clase de Niza y dictamen de riesgo para registrar una marca.'
+                description: 'Búsqueda de antecedentes en MARCia, Marcanet y SIGA del IMPI, también por logotipo; comparación por escritura y fonética por clase de Niza, dictamen de riesgo en PDF y cartera de marcas con plazos de declaración de uso y renovación.'
             },
             migas({ nombre: 'Estudio de viabilidad de marca', ruta: '/estudio-viabilidad-marca-impi/' }),
             faq(preguntas)
@@ -949,7 +953,7 @@ function paginaViabilidad(lim, planes) {
             <div class="sitio-ancho">
                 <nav class="sitio-migas" aria-label="Ruta"><a href="/">Inicio</a> › Estudio de viabilidad de marca</nav>
                 <h1>Estudio de viabilidad de marca en el IMPI</h1>
-                <p class="sitio-lead">Escribe la marca y sus clases: la app busca a la vez en MARCia, Marcanet y SIGA, junta los antecedentes parecidos y te da un dictamen de riesgo antes de presentar la solicitud.</p>
+                <p class="sitio-lead">Escribe la marca y sus clases: la app busca a la vez en MARCia, Marcanet y SIGA, junta los antecedentes parecidos y te da un dictamen de riesgo, en PDF, antes de presentar la solicitud. Si la marca lleva diseño, busca también su logotipo.</p>
                 <div class="sitio-hero-botones">
                     <a class="btn btn-primary btn-lg" href="${APP}?tour=1#impi">Hacer un estudio gratis →</a>
                 </div>
@@ -966,6 +970,7 @@ function paginaViabilidad(lim, planes) {
                     <li><strong>SIGA:</strong> lo publicado en las gacetas, incluidas solicitudes recientes que todavía pueden no verse en las otras.</li>
                 </ul>
                 <p>Cada antecedente se compara con tu propuesta por escritura y por cómo suena en español, por clase de Niza (la misma o una relacionada), por vigencia y por titular. Con eso se clasifica el riesgo y se arma el dictamen con observaciones y recomendaciones.</p>
+                <p><strong>Con logotipo:</strong> si la marca es mixta, figurativa o tridimensional, el estudio busca también su imagen en MARCia, clase por clase. MARCia ordena del más parecido al menos parecido sin medir cuánto se parecen, así que esos logotipos se listan aparte, con su imagen, para revisarlos a ojo; no cuentan en el dictamen.</p>
             </div>
         </section>
 
@@ -973,7 +978,9 @@ function paginaViabilidad(lim, planes) {
             <div class="sitio-ancho">
                 <h2>Más herramientas del IMPI en la app</h2>
                 <ul class="sitio-lista">
-                    <li><strong>Búsqueda en MARCia, SIGA y Marcanet</strong> por denominación, fonética, expediente, registro o titular, o en las tres a la vez.</li>
+                    <li><strong>Búsqueda en MARCia, SIGA y Marcanet</strong> por denominación, fonética, expediente, registro, titular o logotipo, o en las tres a la vez.</li>
+                    <li><strong>Cartera de marcas:</strong> las marcas de cada cliente con sus plazos de declaración de uso y renovación, avisos en tus pendientes y reporte en PDF.</li>
+                    <li><strong>Reportes en PDF</strong> con membrete, listos para entregar, con las reservas del caso.</li>
                     <li><strong>Vigilancia de marcas:</strong> guarda búsquedas y recibe avisos cuando aparezcan publicaciones nuevas en las gacetas.</li>
                     <li><strong>Gratis:</strong> ${lim.viabilidad.limite} estudios de viabilidad y ${lim.busqueda.limite} búsquedas al mes. <a href="/#planes">Ver planes Premium</a>.</li>
                 </ul>

@@ -535,7 +535,7 @@
             paginas: ['impi'],
             icono: '🔰',
             titulo: 'Marcas del IMPI y estudio de viabilidad',
-            duracion: '50 s',
+            duracion: '1 min',
             pasos: [
                 {
                     antes: irIMPI('viabilidad'),
@@ -554,14 +554,31 @@
                     texto: 'Elige las clases de los productos o servicios. Se revisan también las relacionadas, donde una marca parecida igual puede estorbar.'
                 },
                 {
+                    objetivo: '#vb-tipo',
+                    titulo: '¿Lleva diseño? Agrega el logotipo',
+                    texto: 'Si la marca es mixta, figurativa o tridimensional, agrega su logotipo: el estudio busca también, por imagen, los logotipos más parecidos en tus clases. MARCia solo los ordena por parecido; revísalos a ojo.'
+                },
+                {
                     objetivo: '#vb-ejecutar',
                     titulo: 'El dictamen',
-                    texto: 'Sale la viabilidad con cada antecedente, su clase, su estatus y el porqué, más recomendaciones. Guárdalo como nota, expórtalo a CSV o vigila la marca para enterarte de solicitudes nuevas.'
+                    texto: 'Sale la viabilidad con cada antecedente, su clase, su estatus y el porqué, más recomendaciones. Descárgalo en PDF con el formato de Empírica, guárdalo como nota, expórtalo a CSV o vigila la marca para enterarte de solicitudes nuevas.'
                 },
                 {
                     objetivo: '#impi-unified-query',
                     titulo: 'Una búsqueda en las tres',
                     texto: 'Escribe una marca o un titular y busca a la vez en MARCia, Marcanet y SIGA. Las búsquedas que guardes se revisan solas y te avisan de publicaciones nuevas.'
+                },
+                {
+                    antes: irIMPI('marcia'),
+                    objetivo: '#marcia-logo-elegir',
+                    titulo: 'Busca por logotipo',
+                    texto: 'En MARCia también puedes buscar con la imagen: elígela, arrástrala o pégala (Ctrl+V), sola o con un nombre. Los resultados salen del más parecido al menos parecido.'
+                },
+                {
+                    antes: irIMPI('cartera'),
+                    objetivo: '.impi-tab[data-impi-tab="cartera"]',
+                    titulo: 'La cartera de tus clientes',
+                    texto: 'Lleva las marcas de cada cliente con sus plazos de declaración de uso y de renovación. Pásalos a Pendientes, actualiza su estatus en el IMPI y saca el reporte en PDF.'
                 },
                 {
                     saltarSi: async () => esPremium(),
