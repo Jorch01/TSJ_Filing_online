@@ -452,6 +452,7 @@ function renderizarResultadosMARCia() {
                 '</div>' +
                 (owners ? '<div class="impi-result-owner"><strong>Titular:</strong> ' + owners + '</div>' : '') +
                 (r.appType ? '<div class="impi-result-type">' + san(r.appType) + '</div>' : '') +
+                (typeof CARTERA_MARCAS !== 'undefined' ? '<button type="button" class="btn btn-sm btn-outline impi-cartera-btn" data-cartera="' + idx + '" title="Agregar a la cartera de marcas">➕ Cartera</button>' : '') +
             '</div></div>';
     });
     list.innerHTML = html;
@@ -622,7 +623,10 @@ function renderizarDetalleMARCia(data, markId) {
     var content = document.getElementById('marcia-detail-content');
     document.getElementById('marcia-results-section').style.display = 'none';
 
-    // Datos que necesita el botón "Vigilar" de la cabecera del detalle.
+    // Datos que necesitan los botones "Vigilar" y "Cartera" de la cabecera.
+    marciaState.detalleData = data;
+    var botonCartera = document.getElementById('marcia-cartera-btn');
+    if (botonCartera) botonCartera.style.display = typeof CARTERA_MARCAS !== 'undefined' ? '' : 'none';
     var info = extraerEstadoMarca(data);
     marciaState.detalleActual = markId ? {
         markId: markId,
@@ -709,6 +713,40 @@ function renderizarDetalleMARCia(data, markId) {
 
     section.style.display = '';
     actualizarBotonVigilar();
+}
+
+// ==================== CARTERA DE MARCAS ====================
+// «➕ Cartera» en una ficha o un resultado: abre el alta de la cartera
+// (cartera-marcas.js) con lo que trae, para ponerle cliente y guardar.
+
+function agregarMarcaActualACartera() {
+    if (typeof CARTERA_MARCAS === 'undefined' || !marciaState.detalleData) return;
+    CARTERA_MARCAS.agregarDesde(CARTERA_MARCAS.desdeFichaMARCia(marciaState.detalleData));
+}
+
+function agregarResultadoMARCiaACartera(idx) {
+    var r = marciaState.results[idx];
+    if (typeof CARTERA_MARCAS === 'undefined' || !r) return;
+    CARTERA_MARCAS.agregarDesde(CARTERA_MARCAS.desdeResultadoMARCia(r));
+}
+
+function agregarDetalleMarcanetACartera() {
+    var d = marcanetState.detalleCartera;
+    if (typeof CARTERA_MARCAS === 'undefined' || !d) return;
+    var C = CARTERA_MARCAS;
+    var r = d.resultado || {};
+    var leer = typeof VIABILIDAD !== 'undefined' ? VIABILIDAD.leerDetalleMarcanet : null;
+    var datos = C.combinar(d.data && d.data.marcia ? C.desdeFichaMARCia(d.data.marcia) : null,
+        C.desdeFichaMarcanet((d.data && d.data.detail) || {}, Date.now(), leer));
+    // Lo que la ficha no trae, de la fila del resultado.
+    var de = function (nombres) { for (var i = 0; i < nombres.length; i++) if (r[nombres[i]]) return r[nombres[i]]; return ''; };
+    if (!datos.expediente) datos.expediente = de(['Expediente', 'No. Expediente', 'expediente']);
+    if (!datos.registro) datos.registro = de(['Registro', 'No. Registro', 'registro']);
+    if (!datos.titular) datos.titular = de(['Titular', 'titular']);
+    if (!datos.clases || !datos.clases.length) datos.clases = de(['Clase', 'clase', 'Clase Niza']);
+    if (!datos.denominacion) datos.denominacion = de(['Denominación', 'Denominacion', 'Marca']);
+    datos.ultimaRevision = new Date().toISOString();
+    C.agregarDesde(datos);
 }
 
 // ==================== VIGILAR UNA MARCA ====================
@@ -2241,6 +2279,10 @@ async function verDetalleMarcanetDesdeResultado(idx) {
 
 // Renderizar detalle completo con datos de múltiples fuentes
 function renderizarDetalleMarcanetCompleto(data, resultadoOriginal) {
+    // Lo que necesita el botón "➕ Cartera" de la cabecera.
+    marcanetState.detalleCartera = { data: data || {}, resultado: resultadoOriginal || {} };
+    var botonCartera = document.getElementById('mcn-cartera-btn');
+    if (botonCartera) botonCartera.style.display = typeof CARTERA_MARCAS !== 'undefined' ? '' : 'none';
     var section = document.getElementById('mcn-detail-section');
     var content = document.getElementById('mcn-detail-content');
     var resultsSection = document.getElementById('mcn-results-section');
@@ -2505,6 +2547,12 @@ function inicializarDelegacionMARCia() {
     var lista = document.getElementById('marcia-results-list');
     if (lista) {
         lista.addEventListener('click', function(e) {
+            var cartera = e.target.closest('[data-cartera]');
+            if (cartera) {
+                e.stopPropagation();
+                agregarResultadoMARCiaACartera(Number(cartera.dataset.cartera));
+                return;
+            }
             var card = e.target.closest('.impi-result-card[data-mark-id]');
             if (card) verDetalleMARCia(card.dataset.markId);
         });

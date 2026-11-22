@@ -590,6 +590,7 @@ function huellaContenido(datos) {
         historial: histNorm,
         sigaGuardadas: datos.sigaGuardadas || [],
         cuentas: datos.cuentas || [],
+        cartera: datos.cartera || [],
         seguimientoDescartados: datos.seguimientoDescartados || [],
         seguimientoOmitidos: datos.seguimientoOmitidos || []
     };
@@ -1054,6 +1055,11 @@ function fusionarDatos(local, remoto) {
         cuentas: typeof fusionarCuentasCompartidas === 'function'
             ? fusionarCuentasCompartidas(local.cuentas || [], remoto.cuentas || [])
             : (local.cuentas || remoto.cuentas || []),
+        // Cartera de marcas (cartera-marcas.js): cada marca se junta campo por
+        // campo con la fecha de su último cambio; el borrado es un campo más.
+        cartera: typeof fusionarCarteraMarcas === 'function'
+            ? fusionarCarteraMarcas(local.cartera || [], remoto.cartera || [])
+            : (local.cartera || remoto.cartera || []),
         // Lo que se desmarcó al importar el seguimiento semanal (seguimiento.js):
         // se unen los dos lados, para que no reaparezca en ningún dispositivo.
         seguimientoDescartados: typeof fusionarSeguimientoDescartados === 'function'
@@ -1884,6 +1890,9 @@ async function obtenerTodosLosDatos() {
     // bloque para que las vean todos los dispositivos de la licencia.
     const cuentas = typeof obtenerCuentasCompartidas === 'function'
         ? await obtenerCuentasCompartidas().catch(() => []) : [];
+    // La cartera de marcas de los clientes (cartera-marcas.js).
+    const cartera = typeof obtenerCarteraMarcas === 'function'
+        ? await obtenerCarteraMarcas().catch(() => []) : [];
     const seguimientoDescartados = typeof obtenerSeguimientoDescartados === 'function'
         ? await obtenerSeguimientoDescartados().catch(() => []) : [];
     const seguimientoOmitidos = typeof obtenerSeguimientoOmitidos === 'function'
@@ -1899,6 +1908,7 @@ async function obtenerTodosLosDatos() {
         sigaGuardadas,
         carpetas,
         cuentas,
+        cartera,
         seguimientoDescartados,
         seguimientoOmitidos
     };
@@ -1986,6 +1996,9 @@ async function aplicarDatosLocalmente(datos) {
     // mientras se descargaba no se pierde.
     if (typeof aplicarCuentasCompartidas === 'function' && Array.isArray(datos.cuentas)) {
         try { await aplicarCuentasCompartidas(datos.cuentas); } catch (e) { console.warn('No se pudieron aplicar las cuentas compartidas:', e); }
+    }
+    if (typeof aplicarCarteraMarcas === 'function' && Array.isArray(datos.cartera)) {
+        try { await aplicarCarteraMarcas(datos.cartera); } catch (e) { console.warn('No se pudo aplicar la cartera de marcas:', e); }
     }
     if (typeof aplicarSeguimientoDescartados === 'function' && Array.isArray(datos.seguimientoDescartados)) {
         try { await aplicarSeguimientoDescartados(datos.seguimientoDescartados); } catch (e) { console.warn('No se pudo aplicar lo descartado del seguimiento:', e); }

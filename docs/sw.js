@@ -33,6 +33,8 @@ const ARCHIVOS_APP = [
     'js/privacidad.js',
     'js/cuotas-impi.js',
     'js/impi-viabilidad.js',
+    'js/reportes-pdf.js',
+    'js/cartera-marcas.js',
     'js/app.js',
     'js/sync.js',
     'js/cuentas.js',

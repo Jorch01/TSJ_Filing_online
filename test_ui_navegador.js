@@ -181,8 +181,31 @@ function servirDOMPurifyLocal(navegador) {
     return navegador;
 }
 
+// pdfmake (reportes-pdf.js) se carga del CDN al pedir un PDF. En CI se
+// instala con npm: se sirve esa copia, que es idéntica (misma huella SRI).
+const URL_PDFMAKE = 'https://cdn.jsdelivr.net/npm/pdfmake@0.2.20/build/pdfmake.min.js';
+
+function servirPdfmakeLocal(navegador) {
+    let copia = null;
+    try {
+        const version = require(require.resolve('pdfmake/package.json')).version;
+        if (URL_PDFMAKE.includes('@' + version + '/')) copia = fs.readFileSync(require.resolve('pdfmake/build/pdfmake.min.js'), 'utf8');
+        else console.log(`⚠ pdfmake ${version} instalado, pero la app pide otra versión: se usará la CDN.`);
+    } catch (e) {
+        if (process.env.CI) console.log('⚠ pdfmake no está instalado: los PDF dependerán de jsdelivr.');
+    }
+    if (!copia) return navegador;
+    const nuevoContexto = navegador.newContext.bind(navegador);
+    navegador.newContext = async (opciones) => {
+        const contexto = await nuevoContexto(opciones);
+        await contexto.route(URL_PDFMAKE, r => r.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', headers: { 'Access-Control-Allow-Origin': '*' }, body: copia }));
+        return contexto;
+    };
+    return navegador;
+}
+
 async function abrirChromium() {
-    return conAvisoDePrivacidadVisto(sinSesionesReales(servirDOMPurifyLocal(await lanzarChromium())));
+    return conAvisoDePrivacidadVisto(sinSesionesReales(servirPdfmakeLocal(servirDOMPurifyLocal(await lanzarChromium()))));
 }
 
 // El aviso de privacidad sale al pie la primera vez y la IA pide permiso antes
@@ -2200,6 +2223,96 @@ async function probarSeguimientoSemanal(navegador) {
 // formulario, unidad, fechas con calendario y tabla de DataTables), el
 // marcador consulta periodo por periodo y deja en la tabla solo el expediente.
 /**
+ * Cartera de marcas (cartera-marcas.js): alta por el formulario, el mismo
+ * expediente no se duplica, los plazos pasan a Pendientes, el reporte sale en
+ * PDF con el formato de Empírica y desde MARCia se agrega con «➕ Cartera».
+ */
+async function probarCarteraDeMarcas(navegador) {
+    console.log('\nCartera de marcas');
+    const contexto = await navegador.newContext({ acceptDownloads: true, viewport: { width: 1280, height: 900 }, locale: 'es-MX', timezoneId: 'America/Cancun' });
+    await contexto.addInitScript(() => { try { localStorage.setItem('tour_bienvenida_visto', '1'); } catch (e) {} });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => typeof db !== 'undefined' && !!db && window.CARTERA_MARCAS && window.REPORTES_PDF, { timeout: 15000 });
+        await page.waitForTimeout(800);
+        const r = await page.evaluate(async () => {
+            const pausa = ms => new Promise(res => setTimeout(res, ms));
+            const out = {};
+            const avisos = [];
+            const original = window.mostrarToast;
+            window.mostrarToast = (m, t) => { avisos.push(m); return original(m, t); };
+            navegarA('impi'); await pausa(300);
+            cambiarTabIMPI('cartera'); await pausa(300);
+            out.vacia = /Tu cartera está vacía/.test(document.getElementById('cm-lista').textContent);
+            const poner = (id, v) => { document.getElementById('cm-f-' + id).value = v; };
+            const dia = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            const hoy = new Date();
+            // Otorgada hace tres años y diez días: la declaración de uso está en curso.
+            const concesion = new Date(hoy.getFullYear() - 3, hoy.getMonth(), hoy.getDate() - 10);
+            document.querySelector('[data-cm="agregar"]').click(); await pausa(500);
+            poner('denominacion', 'LUNAFARDO'); poner('registro', '2500000'); poner('expediente', '2700001'); poner('clases', '43');
+            poner('titular', 'Juan Pérez Ruiz'); poner('cliente', 'Grupo Pérez'); poner('estatus', 'REGISTRADA'); poner('fechaConcesion', dia(concesion));
+            document.getElementById('cm-guardar').click(); await pausa(800);
+            const fila = document.querySelector('#cm-lista tr[data-uid]');
+            out.fila = fila ? fila.textContent.replace(/\s+/g, ' ') : '';
+            out.insignia = (document.querySelector('.impi-tab[data-impi-tab="cartera"] .cm-insignia') || {}).textContent || '';
+            // El mismo expediente, escrito con ceros a la izquierda.
+            document.querySelector('[data-cm="agregar"]').click(); await pausa(500);
+            poner('denominacion', 'OTRA'); poner('expediente', '02700001');
+            document.getElementById('cm-guardar').click(); await pausa(600);
+            out.duplicado = avisos.some(a => /ya estaba en la cartera/.test(a));
+            out.cuantas = (await CARTERA_MARCAS.leer()).length;
+            // Plazo → pendiente.
+            document.querySelector('#cm-lista tr[data-uid] [data-cm="plazos"]').click(); await pausa(400);
+            document.querySelector('[data-cm-plazo="pendiente"]').click(); await pausa(900);
+            const p = (await obtenerPendientes()).find(x => /^Declaración de uso: «LUNAFARDO»/.test(x.titulo));
+            out.pendiente = p ? { prioridad: p.prioridad, conFecha: !!p.fechaLimite, texto: p.expedienteTexto } : null;
+            out.verPendiente = !!document.querySelector('[data-cm-plazo="ver"]');
+            cerrarModal();
+            // Desde MARCia: el botón del resultado abre el alta prellenada, sin abrir la ficha.
+            marciaState.results = [{ id: 'RM1', applicationNumber: '999', registrationNumber: '', title: 'SOLAR', status: 'EN TRÁMITE', owners: ['X'], dates: { application: '01/01/2026' }, classes: [9] }];
+            marciaState.totalResults = 1;
+            cambiarTabIMPI('marcia'); renderizarResultadosMARCia(); await pausa(200);
+            document.querySelector('#marcia-results-list [data-cartera]').click(); await pausa(600);
+            out.desdeMARCia = [document.getElementById('cm-f-denominacion').value, document.getElementById('cm-f-expediente').value, document.getElementById('cm-f-clases').value];
+            out.fichaCerrada = document.getElementById('marcia-detail-section').style.display === 'none';
+            cerrarModal();
+            cambiarTabIMPI('cartera'); await pausa(200);
+            return out;
+        });
+        igual('cartera: empieza vacía', r.vacia, true);
+        verificar('cartera: la marca aparece con su plazo de declaración de uso en curso', /LUNAFARDO/.test(r.fila) && /Declaración de uso: en curso/.test(r.fila), r.fila);
+        igual('cartera: la pestaña avisa del plazo', r.insignia, '1');
+        igual('cartera: el mismo expediente no se duplica', [r.duplicado, r.cuantas], [true, 1]);
+        igual('cartera: el plazo pasa a Pendientes, con prioridad alta', r.pendiente, { prioridad: 'alta', conFecha: true, texto: 'Marca LUNAFARDO — Grupo Pérez' });
+        igual('cartera: y el plazo ya ofrece ver su pendiente', r.verPendiente, true);
+        igual('cartera: desde MARCia se agrega con sus datos', r.desdeMARCia, ['SOLAR', '999', '9']);
+        igual('cartera: sin abrir la ficha', r.fichaCerrada, true);
+
+        // El reporte en PDF.
+        await page.click('[data-cm="pdf"]');
+        await page.waitForSelector('#rpdf-generar', { timeout: 5000 });
+        const espera = page.waitForEvent('download', { timeout: 30000 });
+        await page.click('#rpdf-generar');
+        const pdf = await espera.catch(() => null);
+        verificar('cartera: el reporte se descarga en PDF', !!pdf && /^Cartera de marcas - .*\.pdf$/.test(pdf.suggestedFilename()), pdf && pdf.suggestedFilename());
+        if (pdf) verificar('cartera: y es un PDF', fs.readFileSync(await pdf.path()).slice(0, 5).toString() === '%PDF-');
+
+        // El CSV.
+        const esperaCsv = page.waitForEvent('download', { timeout: 8000 });
+        await page.click('[data-cm="csv"]');
+        const csv = await esperaCsv.catch(() => null);
+        verificar('cartera: exporta a CSV', !!csv && /LUNAFARDO/.test(fs.readFileSync(await csv.path(), 'utf8')));
+        igual('cartera: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
+/**
  * Causas penales del TSJ: sus juzgados no publican en estrados. Un expediente
  * penal ofrece, en vez de los estrados, sus tocas en las salas penales y la
  * agenda de audiencias del juzgado.
@@ -4071,6 +4184,22 @@ async function probarViabilidadMarca(navegador) {
             verificar('viabilidad: con su historial en Gaceta', /Renovada 15\/03\/2024/.test(csv));
             verificar('viabilidad: y de qué fichas salió cada dato', /,Fichas leídas\r?\n/.test(csv) && /,LUNA AZUL,111111,.*,Marcanet MARCia\r?\n/.test(csv), csv.split('\n').slice(4, 7).join('\n'));
         }
+        // El PDF con el formato de Empírica: se piden para quién es y quién lo presenta.
+        await page.click('[data-vb="pdf"]');
+        await page.waitForSelector('#rpdf-generar', { timeout: 5000 });
+        verificar('pdf: antes de generarlo explica el aviso', /herramienta de apoyo/.test(await page.textContent('.rpdf-nota')));
+        await page.fill('#rpdf-para', 'Juan López');
+        await page.fill('#rpdf-presenta', 'Lic. Ana Torres');
+        const esperaPdf = page.waitForEvent('download', { timeout: 30000 });
+        await page.click('#rpdf-generar');
+        const pdf = await esperaPdf.catch(() => null);
+        verificar('pdf: se descarga con un nombre claro', !!pdf && /^Estudio de viabilidad - Luna Azul - Juan López - \d{4}-\d{2}-\d{2}\.pdf$/.test(pdf.suggestedFilename()), pdf && pdf.suggestedFilename());
+        if (pdf) {
+            const bytes = fs.readFileSync(await pdf.path());
+            verificar('pdf: es un PDF con las fuentes de Empírica', bytes.slice(0, 5).toString() === '%PDF-' && /Lora/.test(bytes.toString('latin1')) && bytes.length > 30000, bytes.length + ' bytes');
+        }
+        await pausa(400);
+        verificar('pdf: se recuerda quién lo presenta', await page.evaluate(() => localStorage.getItem('reportes_pdf_presentado_por')) === 'Lic. Ana Torres');
         await page.click('[data-vb="nota"]');
         await pausa(700);
         verificar('viabilidad: se guarda como nota', await page.evaluate(async () => (await obtenerNotas()).some(n => /Viabilidad de marca: Luna Azul/.test(n.titulo) && /DICTAMEN/.test(n.contenido))));
@@ -6345,6 +6474,9 @@ async function main() {
         // ---- Estrados laborales (TCA y Juntas) ----
         await probarEstradosLaborales(navegador);
         await probarCausasPenales(navegador);
+
+        // ---- Cartera de marcas y reportes en PDF ----
+        await probarCarteraDeMarcas(navegador);
 
         // ---- Sesiones de los Tribunales Colegiados ----
         await probarSesionesPJF(navegador);

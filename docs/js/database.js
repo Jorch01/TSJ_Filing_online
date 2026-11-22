@@ -1712,6 +1712,7 @@ async function exportarTodosDatos() {
     // en un dispositivo sin sincronización perdía las cuentas enteras.
     const opcional = async (fn) => (typeof fn === 'function' ? await fn().catch(() => []) : []);
     const cuentas = await opcional(typeof obtenerCuentasCompartidas === 'function' ? obtenerCuentasCompartidas : null);
+    const cartera = await opcional(typeof obtenerCarteraMarcas === 'function' ? obtenerCarteraMarcas : null);
     const seguimientoDescartados = await opcional(typeof obtenerSeguimientoDescartados === 'function' ? obtenerSeguimientoDescartados : null);
     const seguimientoOmitidos = await opcional(typeof obtenerSeguimientoOmitidos === 'function' ? obtenerSeguimientoOmitidos : null);
 
@@ -1725,6 +1726,7 @@ async function exportarTodosDatos() {
         pendientes,
         sigaGuardadas,
         cuentas,
+        cartera,
         seguimientoDescartados,
         seguimientoOmitidos
     };
@@ -1956,6 +1958,7 @@ async function _importarTodosDatos(datos, sobrescribir = false) {
         if (typeof fn === 'function' && Array.isArray(lista) && lista.length) await fn(lista);
     };
     await juntar(typeof aplicarCuentasCompartidas === 'function' ? aplicarCuentasCompartidas : null, datos.cuentas);
+    await juntar(typeof aplicarCarteraMarcas === 'function' ? aplicarCarteraMarcas : null, datos.cartera);
     await juntar(typeof aplicarSeguimientoDescartados === 'function' ? aplicarSeguimientoDescartados : null, datos.seguimientoDescartados);
     await juntar(typeof aplicarSeguimientoOmitidos === 'function' ? aplicarSeguimientoOmitidos : null, datos.seguimientoOmitidos);
 }
