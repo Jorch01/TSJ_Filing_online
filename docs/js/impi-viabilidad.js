@@ -1868,7 +1868,8 @@
                     ' · ' + esc({ nominativa: 'Nominativa', mixta: 'Mixta', figurativa: 'Figurativa', tridimensional: 'Tridimensional' }[e.tipo] || '') +
                     ' · ' + esc(fechaHora(rep.fecha)) + '</p></div>' +
                     '<div class="vb-reporte-btns">' +
-                        '<button type="button" class="btn btn-sm btn-secondary" data-vb="imprimir">🖨️ Imprimir / PDF</button>' +
+                        '<button type="button" class="btn btn-sm btn-primary" data-vb="pdf" title="PDF con el formato de Empírica Legal Lab">📄 PDF</button>' +
+                        '<button type="button" class="btn btn-sm btn-secondary" data-vb="imprimir">🖨️ Imprimir</button>' +
                         '<button type="button" class="btn btn-sm btn-secondary" data-vb="copiar">📋 Copiar resumen</button>' +
                         '<button type="button" class="btn btn-sm btn-secondary" data-vb="csv">⬇️ CSV</button>' +
                         '<button type="button" class="btn btn-sm btn-secondary" data-vb="vigilar">👁️ Vigilar</button>' +
@@ -1942,6 +1943,7 @@
                 if (typeof global.verDetalleMARCia === 'function') return global.verDetalleMARCia(b.dataset.id);
                 return;
             case 'reintentar': return reintentar();
+            case 'pdf': return pdf(rep);
             case 'imprimir': return imprimir();
             case 'copiar': return copiar(resumenTexto(rep, fechaHora));
             case 'csv': return exportarCSV(rep);
@@ -1967,6 +1969,18 @@
                 try { localStorage.removeItem(CLAVE_RECIENTES); } catch (x) { /* nada que borrar */ }
                 return pintarRecientes();
         }
+    }
+
+    // El reporte en PDF con el formato de Empírica (reportes-pdf.js). Sin el
+    // generador (no cargó), queda la impresión del navegador.
+    function pdf(rep) {
+        const R = global.REPORTES_PDF;
+        if (!R || typeof R.pedirYDescargar !== 'function') return imprimir();
+        R.pedirYDescargar({
+            titulo: 'Estudio de viabilidad en PDF',
+            construir: op => R.documentoViabilidad(rep, op),
+            archivo: op => R.nombreArchivo(['Estudio de viabilidad', rep.entrada.denominacion, op.para], rep.fecha)
+        });
     }
 
     function imprimir() {

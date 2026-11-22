@@ -243,6 +243,8 @@
         <symbol id="i-globo" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.6 2.4 2.6 14.6 0 17"/><path d="M12 3.5c-2.6 2.4-2.6 14.6 0 17"/></symbol>
         <symbol id="i-basura" viewBox="0 0 24 24"><path d="M4.5 7h15"/><path d="M9.5 7V4.8h5V7"/><path d="m6.5 7 .9 12.2a1 1 0 0 0 1 .8h7.2a1 1 0 0 0 1-.8L17.5 7"/><path d="M10.2 10.8v5.4"/><path d="M13.8 10.8v5.4"/></symbol>
         <symbol id="i-subir" viewBox="0 0 24 24"><path d="M12 15V4.5"/><path d="m7.8 8.7 4.2-4.2 4.2 4.2"/><path d="M5 19.5h14"/></symbol>
+        <symbol id="i-descargar" viewBox="0 0 24 24"><path d="M12 4.5V15"/><path d="m7.8 10.8 4.2 4.2 4.2-4.2"/><path d="M5 19.5h14"/></symbol>
+        <symbol id="i-acuerdo" viewBox="0 0 24 24"><path d="M6.2 3.5h8.3l4 4v12.3a.7.7 0 0 1-.7.7H6.2a.7.7 0 0 1-.7-.7V4.2a.7.7 0 0 1 .7-.7Z"/><path d="M14.3 3.6v4.2h4.1"/><path d="M8.6 12h6.8"/><path d="M8.6 15h6.8"/><path d="M8.6 18h4.4"/></symbol>
         <symbol id="i-sincronizar" viewBox="0 0 24 24"><path d="M19 9a7.5 7.5 0 0 0-13.4-2.4"/><path d="M5 4v3.6h3.6"/><path d="M5 15a7.5 7.5 0 0 0 13.4 2.4"/><path d="M19 20v-3.6h-3.6"/></symbol>
         <symbol id="i-reloj" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.6V12l3 2"/></symbol>
         <symbol id="i-usuario" viewBox="0 0 24 24"><circle cx="12" cy="8.6" r="3.6"/><path d="M5.2 19.5a6.8 6.8 0 0 1 13.6 0"/></symbol>
@@ -1916,6 +1918,7 @@
                 <button class="impi-tab" data-impi-tab="marcia" onclick="cambiarTabIMPI('marcia')">🔍 MARCia</button>
                 <button class="impi-tab" data-impi-tab="marcanet" onclick="cambiarTabIMPI('marcanet')">📋 Marcanet</button>
                 <button class="impi-tab" data-impi-tab="siga" onclick="cambiarTabIMPI('siga')">📰 SIGA</button>
+                <button class="impi-tab" data-impi-tab="cartera" onclick="cambiarTabIMPI('cartera')">📁 Cartera</button>
             </div>
 
             <!-- Loading spinner IMPI -->
@@ -1927,6 +1930,10 @@
             <!-- TAB: Estudio de viabilidad de una marca nueva. Combina MARCia,
                  Marcanet y SIGA; lo pinta js/impi-viabilidad.js. -->
             <div class="impi-tab-content active" id="impi-tab-viabilidad"></div>
+
+            <!-- TAB: Cartera de marcas de los clientes, con estatus y plazos;
+                 la pinta js/cartera-marcas.js. -->
+            <div class="impi-tab-content" id="impi-tab-cartera"></div>
 
             <!-- TAB: MARCia - Búsqueda de Marcas -->
             <div class="impi-tab-content" id="impi-tab-marcia">
@@ -2170,6 +2177,7 @@
                         <div class="card-header">
                             <h3>📄 Detalle de Marca</h3>
                             <div class="header-buttons">
+                                <button class="btn btn-sm btn-outline" id="marcia-cartera-btn" onclick="agregarMarcaActualACartera()" style="display: none;" title="Agregar a la cartera de marcas">➕ Cartera</button>
                                 <button class="btn btn-sm btn-outline" id="marcia-watch-btn" onclick="vigilarMarcaActual()" style="display: none;">👁️ Vigilar esta marca</button>
                                 <button class="btn btn-sm btn-outline" onclick="cerrarDetalleMARCia()">← Volver a resultados</button>
                             </div>
@@ -2329,6 +2337,7 @@
                         <div class="card-header">
                             <div class="header-with-help">
                                 <h3>📄 Detalle del Expediente</h3>
+                                <button class="btn btn-sm btn-outline" id="mcn-cartera-btn" onclick="agregarDetalleMarcanetACartera()" style="display: none;" title="Agregar a la cartera de marcas">➕ Cartera</button>
                                 <button class="btn btn-sm btn-outline" onclick="cerrarDetalleMarcanet()">← Volver</button>
                             </div>
                         </div>
@@ -3381,6 +3390,8 @@
     <script src="js/privacidad.js"></script>
     <script src="js/cuotas-impi.js"></script>
     <script src="js/impi-viabilidad.js"></script>
+    <script src="js/reportes-pdf.js"></script>
+    <script src="js/cartera-marcas.js"></script>
     <script src="js/app.js"></script>
     <script src="js/sync.js"></script>
     <script src="js/cuentas.js"></script>
