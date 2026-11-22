@@ -304,6 +304,19 @@
     const LIMITE_GRATIS = 3;
     const WHATSAPP_EMPIRICA = '529981399930';
 
+    // Los pendientes de los plazos avisan por correo un mes, dos semanas y una
+    // semana antes de que venzan (si el usuario configuró los recordatorios).
+    const DIAS_AVISO_PLAZOS = [30, 14, 7];
+
+    /**
+     * Los plazos de una marca que deben tener su pendiente y todavía no lo
+     * tienen: los vigentes (la gracia solo si ya pasó la renovación), sin
+     * atender y que no hayan vencido.
+     */
+    function plazosSinPendiente(m, hoy) {
+        return plazosVigentes(plazosDe(m, hoy)).filter(p => !p.atendido && p.pendienteId == null && p.estado !== 'vencido');
+    }
+
     /** ¿Se puede agregar otra marca? { ok, usadas, limite } */
     function cupoDeMarcas(marcas, premium, limite) {
         const tope = Number(limite) > 0 ? Number(limite) : LIMITE_GRATIS;
@@ -587,7 +600,7 @@
     }
 
     const Motor = {
-        CLAVE_CONFIG, INICIO_LFPPI, DECLARACION_USO_DESDE, LIMITE_GRATIS, CAMPOS, TIPOS, ESTADOS, baseDeVigencia, cupoDeMarcas, enlaceServicio,
+        CLAVE_CONFIG, INICIO_LFPPI, DECLARACION_USO_DESDE, LIMITE_GRATIS, CAMPOS, TIPOS, ESTADOS, baseDeVigencia, cupoDeMarcas, enlaceServicio, DIAS_AVISO_PLAZOS, plazosSinPendiente,
         fecha, sumarMeses, sumarDias, diasEntre, hoyTexto, clasesDe, limpiar, nueva, cambiar, fusionar, activas, buscarMisma,
         situacion, plazosDe, plazosVigentes, proximoPlazo, textoPlazo, numeros, resumen, ordenar, datosParaReporte, csv,
         desdeResultadoMARCia, desdeFichaMARCia, desdeFichaMarcanet, combinar, revisar, imagenDeMARCia
@@ -959,12 +972,14 @@
         if (!m && !buscarMisma(ultimas, limpiar(datos)) && !hayCupo()) return;
         const completos = { ...datos, ...Object.fromEntries(Object.entries(extra).filter(([, x]) => x)) };
         try {
+            const plural = n => n ? ' · ' + n + (n === 1 ? ' pendiente creado' : ' pendientes creados') + ' con sus plazos' : '';
             if (m) {
                 await guardarCambios(m.uid, completos);
-                toast('Marca actualizada', 'success');
+                toast('Marca actualizada' + plural(await pendientesAutomaticos(m.uid)), 'success');
             } else {
                 const r = await guardarNueva(completos);
-                toast(r.yaEstaba ? 'Esa marca ya estaba en la cartera (mismo expediente o registro)' : 'Marca agregada a la cartera', r.yaEstaba ? 'warning' : 'success');
+                const n = r.yaEstaba ? 0 : await pendientesAutomaticos(r.marca.uid);
+                toast(r.yaEstaba ? 'Esa marca ya estaba en la cartera (mismo expediente o registro)' : 'Marca agregada a la cartera' + plural(n), r.yaEstaba ? 'warning' : 'success');
             }
             if (typeof global.cerrarModal === 'function') global.cerrarModal();
             await refrescar();
@@ -1039,6 +1054,8 @@
             resultado = revisar(actual, datos, sello());
             return resultado.marca;
         });
+        // Con fechas nuevas del IMPI pueden aparecer plazos: sus pendientes.
+        resultado.pendientesCreados = await pendientesAutomaticos(m.uid);
         if (conAviso) {
             toast(resultado.cambioEstatus ? '«' + m.denominacion + '» cambió de estatus: ' + resultado.antes + ' → ' + resultado.despues
                 : 'Estatus de «' + m.denominacion + '» al día', resultado.cambioEstatus ? 'warning' : 'success');
@@ -1100,7 +1117,8 @@
                         (p.atendido ? '' : '<a class="btn btn-sm btn-secondary cm-servicio" data-medir="servicio_cartera" data-medir-origen="' + (p.tipo === 'uso' ? 'declaracion_uso' : 'renovacion') + '" href="' +
                             esc(enlaceServicio(m, p, telefonoEmpirica())) + '" target="_blank" rel="noopener">🤝 ¿Te ayudamos a ' + (p.tipo === 'uso' ? 'presentarla' : 'renovarla') + '?</a>') +
                     '</div></li>').join('') + '</ul>' +
-                '<p class="cm-nota">La declaración de uso se presenta dentro de los tres meses siguientes a que se cumplan tres años de otorgado el registro (registros otorgados desde el 10 de agosto de 2018). La renovación, en los seis meses anteriores al fin de la vigencia, con seis meses de gracia después; al renovar se declara también el uso. La vigencia se cuenta desde el otorgamiento si la solicitud se presentó desde el 5 de noviembre de 2020, y desde la presentación si fue antes. Confírmalo en el expediente antes de actuar.</p>';
+                '<p class="cm-nota">La declaración de uso se presenta dentro de los tres meses siguientes a que se cumplan tres años de otorgado el registro (registros otorgados desde el 10 de agosto de 2018). La renovación, en los seis meses anteriores al fin de la vigencia, con seis meses de gracia después; al renovar se declara también el uso. La vigencia se cuenta desde el otorgamiento si la solicitud se presentó desde el 5 de noviembre de 2020, y desde la presentación si fue antes. Confírmalo en el expediente antes de actuar.</p>' +
+                '<p class="cm-nota">Cada plazo pasa solo a tus pendientes; si configuraste los recordatorios por correo, te avisan un mes, dos semanas y una semana antes de que venza.</p>';
         }
         $('modal-body').innerHTML = '<div class="cm-modal-plazos">' + cuerpo + '</div>';
         $('modal-footer').innerHTML = '<button class="btn btn-secondary" onclick="cerrarModal()">Cerrar</button>';
@@ -1119,8 +1137,8 @@
         if (typeof global.abrirModal === 'function') global.abrirModal(); else $('modal-overlay').classList.add('active');
     }
 
-    async function crearPendiente(m, p) {
-        if (typeof global.crearPendienteCore !== 'function') { toast('Los pendientes no están disponibles', 'warning'); return; }
+    async function crearPendiente(m, p, silencioso) {
+        if (typeof global.crearPendienteCore !== 'function') { if (!silencioso) toast('Los pendientes no están disponibles', 'warning'); return null; }
         const [y, mes, d] = p.hasta.split('-').map(Number);
         const prioridad = p.estado === 'en_curso' || p.estado === 'vencido' ? 'alta' : p.estado === 'proximo' ? 'media' : '';
         const id = await global.crearPendienteCore({
@@ -1131,10 +1149,29 @@
             todoElDia: true,
             prioridad,
             expedienteId: m.expedienteId != null ? m.expedienteId : null,
-            expedienteTexto: m.expedienteId != null ? null : 'Marca ' + m.denominacion + (m.cliente ? ' — ' + m.cliente : '')
+            expedienteTexto: m.expedienteId != null ? null : 'Marca ' + m.denominacion + (m.cliente ? ' — ' + m.cliente : ''),
+            origen: { tipo: 'cartera_marcas', uid: m.uid, plazo: p.clave },
+            diasAviso: DIAS_AVISO_PLAZOS
         });
         await guardarCambios(m.uid, { pendientes: { [p.clave]: id } });
-        toast('Pendiente creado para el ' + fechaCorta(p.hasta), 'success');
+        if (!silencioso) toast('Pendiente creado para el ' + fechaCorta(p.hasta), 'success');
+        return id;
+    }
+
+    /**
+     * Crea solo los pendientes que faltan de una marca (se llama al guardarla
+     * o al actualizar su estatus). Devuelve cuántos creó.
+     */
+    async function pendientesAutomaticos(uid) {
+        const m = (await leer()).find(x => x && x.uid === uid);
+        if (!m || m.eliminada) return 0;
+        let creados = 0;
+        for (const p of plazosSinPendiente(m, hoyTexto())) {
+            try {
+                if (await crearPendiente(m, p, true) != null) creados++;
+            } catch (e) { /* el plazo sigue en la cartera; se intenta la próxima vez */ }
+        }
+        return creados;
     }
 
     // ---- Reportes ----

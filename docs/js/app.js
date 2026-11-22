@@ -5340,8 +5340,25 @@ function _pendienteComoAviso(pendiente, expediente) {
         descripcion: pendiente.descripcion || '',
         expediente: expediente || '',
         fechaCreacion: pendiente.fechaCreacion,
+        diasAviso: Array.isArray(pendiente.diasAviso) ? pendiente.diasAviso : null,
         _fieldTimestamps: sellos.fechaLimite ? { fechaInicio: sellos.fechaLimite } : {}
     };
+}
+
+/**
+ * El aviso que toca hoy, o null. Un pendiente con sus propios días
+ * (diasAviso, p. ej. [30, 14, 7]) avisa en esos; lo demás, con los de la
+ * configuración (1, 3 y 7 días). Se manda solo el más cercano que falte:
+ * si se abre la app a 5 días, va el de una semana, no los tres juntos.
+ */
+function _umbralDeAviso(evento, diasRestantes, config, yaAvisado) {
+    const propios = Array.isArray(evento.diasAviso) && evento.diasAviso.length ? evento.diasAviso.slice() : null;
+    const umbrales = propios || [config.unDia && 1, config.tresDias && 3, config.unaSemana && 7].filter(Boolean);
+    for (const u of umbrales.map(Number).sort((a, b) => a - b)) {
+        if (diasRestantes <= u && !yaAvisado('umbral' + u)) return 'umbral' + u;
+        if (diasRestantes <= u) return null;
+    }
+    return null;
 }
 
 // Hora con la que se anota un aviso enviado: la del reloj de sincronización,
@@ -5412,13 +5429,8 @@ async function verificarRecordatoriosPendientes(silencioso) {
         // Usar umbrales en lugar de comparación exacta para no perder ventanas
         // La clave incluye el tipo de umbral (no el número exacto de días) para deduplicar
         const yaAvisado = (umbral) => _avisoSigueVigente(recordatoriosEnviados[`${prefijo}_${umbral}`], evento);
-        if (config.unDia && diasRestantes <= 1 && !yaAvisado('umbral1')) {
-            pendientes.push({ evento, diasRestantes, clave: `${prefijo}_umbral1` });
-        } else if (config.tresDias && diasRestantes <= 3 && !yaAvisado('umbral3')) {
-            pendientes.push({ evento, diasRestantes, clave: `${prefijo}_umbral3` });
-        } else if (config.unaSemana && diasRestantes <= 7 && !yaAvisado('umbral7')) {
-            pendientes.push({ evento, diasRestantes, clave: `${prefijo}_umbral7` });
-        }
+        const umbral = _umbralDeAviso(evento, diasRestantes, config, yaAvisado);
+        if (umbral) pendientes.push({ evento, diasRestantes, clave: `${prefijo}_${umbral}` });
     }
 
     // Verificar recordatorio de suscripción

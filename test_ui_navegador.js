@@ -2288,12 +2288,19 @@ async function probarCarteraDeMarcas(navegador) {
             document.getElementById('cm-guardar').click(); await pausa(600);
             out.duplicado = avisos.some(a => /ya estaba en la cartera/.test(a));
             out.cuantas = (await CARTERA_MARCAS.leer()).length;
-            // Plazo → pendiente.
-            document.querySelector('#cm-lista tr[data-uid] [data-cm="plazos"]').click(); await pausa(400);
-            document.querySelector('[data-cm-plazo="pendiente"]').click(); await pausa(900);
-            const p = (await obtenerPendientes()).find(x => /^Declaración de uso: «LUNAFARDO»/.test(x.titulo));
+            // Al guardarla, sus plazos pasan solos a Pendientes (con avisos a 30, 14 y 7 días).
+            const deLuna = (await obtenerPendientes()).filter(x => /«LUNAFARDO»/.test(x.titulo));
+            const p = deLuna.find(x => /^Declaración de uso: «LUNAFARDO»/.test(x.titulo));
             out.pendiente = p ? { prioridad: p.prioridad, conFecha: !!p.fechaLimite, texto: p.expedienteTexto } : null;
-            out.verPendiente = !!document.querySelector('[data-cm-plazo="ver"]');
+            out.automaticos = deLuna.map(x => [x.titulo.split(':')[0], x.diasAviso, x.origen && x.origen.tipo]).sort();
+            out.avisoAlta = avisos.some(a => /Marca agregada a la cartera · 2 pendientes creados con sus plazos/.test(a));
+            document.querySelector('#cm-lista tr[data-uid] [data-cm="plazos"]').click(); await pausa(400);
+            out.verPendiente = !!document.querySelector('[data-cm-plazo="ver"]') && !document.querySelector('[data-cm-plazo="pendiente"]');
+            cerrarModal(); await pausa(200);
+            // Editarla no los duplica.
+            document.querySelector('#cm-lista tr[data-uid] [data-cm="editar"]').click(); await pausa(500);
+            document.getElementById('cm-guardar').click(); await pausa(700);
+            out.sinDuplicar = (await obtenerPendientes()).filter(x => /«LUNAFARDO»/.test(x.titulo)).length;
             cerrarModal();
             // Desde MARCia: el botón del resultado abre el alta prellenada, sin abrir la ficha.
             marciaState.results = [{ id: 'RM1', applicationNumber: '999', registrationNumber: '', title: 'SOLAR', status: 'EN TRÁMITE', owners: ['X'], dates: { application: '01/01/2026' }, classes: [9] }];
@@ -2310,8 +2317,12 @@ async function probarCarteraDeMarcas(navegador) {
         verificar('cartera: la marca aparece con su plazo de declaración de uso en curso', /LUNAFARDO/.test(r.fila) && /Declaración de uso: en curso/.test(r.fila), r.fila);
         igual('cartera: la pestaña avisa del plazo', r.insignia, '1');
         igual('cartera: el mismo expediente no se duplica', [r.duplicado, r.cuantas], [true, 1]);
-        igual('cartera: el plazo pasa a Pendientes, con prioridad alta', r.pendiente, { prioridad: 'alta', conFecha: true, texto: 'Marca LUNAFARDO — Grupo Pérez' });
+        igual('cartera: el plazo pasa solo a Pendientes, con prioridad alta', r.pendiente, { prioridad: 'alta', conFecha: true, texto: 'Marca LUNAFARDO — Grupo Pérez' });
+        igual('cartera: declaración y renovación, con avisos a 30, 14 y 7 días', r.automaticos,
+            [['Declaración de uso', [30, 14, 7], 'cartera_marcas'], ['Renovación', [30, 14, 7], 'cartera_marcas']]);
+        igual('cartera: al guardar dice cuántos pendientes creó', r.avisoAlta, true);
         igual('cartera: y el plazo ya ofrece ver su pendiente', r.verPendiente, true);
+        igual('cartera: editar la marca no los duplica', r.sinDuplicar, 2);
         igual('cartera: desde MARCia se agrega con sus datos', r.desdeMARCia, ['SOLAR', '999', '9']);
         igual('cartera: sin abrir la ficha', r.fichaCerrada, true);
 
@@ -2844,6 +2855,60 @@ async function probarCupoDeCartera(navegador) {
         igual('premium: sin aviso de cupo y la cuarta entra', [r.cupoPremium, r.cuartaPremium, r.cuatro], ['', 'ok', 4]);
         igual('premium vencido: las cuatro siguen a la vista', r.vencido, [4, '4 marcas; el plan gratuito permite 3 (las que tienes siguen a la vista) · Ver planes']);
         igual('cupo: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
+/**
+ * Avisos por correo de los plazos de la cartera: un mes, dos semanas y una
+ * semana antes de que venzan, uno por vez y sin repetir. Los demás pendientes
+ * siguen con los de la configuración (1, 3 y 7 días). EmailJS se simula.
+ */
+async function probarAvisosDePlazos(navegador) {
+    console.log('\nAvisos por correo de los plazos de marca');
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 900 }, locale: 'es-MX' });
+    await contexto.addInitScript(() => { try { localStorage.setItem('tour_bienvenida_visto', '1'); } catch (e) {} });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => typeof db !== 'undefined' && !!db && typeof verificarRecordatoriosPendientes === 'function', { timeout: 15000 });
+        await page.waitForTimeout(800);
+        const r = await page.evaluate(async () => {
+            const enviados = [];
+            window.emailjs = { init() {}, send: async (s, t, params) => { enviados.push(params); return { status: 200 }; } };
+            for (const [k, v] of [['email_service_id', 's'], ['email_public_key', 'k'], ['email_template_id', 't'], ['email_destino', 'yo@ejemplo.com'],
+                ['recordatorios_config', JSON.stringify({ unDia: true, tresDias: true, unaSemana: true })]]) await guardarConfig(k, v);
+            localStorage.removeItem('recordatorios_enviados');
+            const en = n => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n); return d.toISOString(); };
+            const marca = (titulo, dias) => crearPendienteCore({ titulo, fechaLimite: en(dias), diasAviso: [30, 14, 7], origen: { tipo: 'cartera_marcas' } });
+            await marca('Renovación: «A»', 20);
+            await marca('Renovación: «B»', 10);
+            await marca('Declaración de uso: «C»', 5);
+            await marca('Renovación: «D»', 40);
+            await crearPendienteCore({ titulo: 'Contestar demanda', fechaLimite: en(5) });
+            await crearPendienteCore({ titulo: 'Ofrecer pruebas', fechaLimite: en(20) });
+            await verificarRecordatoriosPendientes(true);
+            const primera = enviados.map(p => JSON.stringify(p));
+            const titulos = (lista) => ['«A»', '«B»', '«C»', '«D»', 'Contestar demanda', 'Ofrecer pruebas'].filter(t => lista.some(x => x.includes(t)));
+            const faltan = (lista, t) => (lista.find(x => x.includes(t)) || '').match(/Faltan: (\d+) d/);
+            const out = {
+                avisados: titulos(primera),
+                diasA: faltan(primera, '«A»') && faltan(primera, '«A»')[1],
+                claves: Object.keys(JSON.parse(localStorage.getItem('recordatorios_enviados') || '{}')).map(k => k.replace(/^pendiente_\d+_/, '')).sort()
+            };
+            enviados.length = 0;
+            await verificarRecordatoriosPendientes(true);
+            out.repetidos = enviados.length;
+            return out;
+        });
+        igual('avisos: van los que están dentro de un mes; el de 40 días todavía no', r.avisados, ['«A»', '«B»', '«C»', 'Contestar demanda']);
+        igual('avisos: a 20 días, el aviso de un mes dice cuánto falta', r.diasA, '20');
+        igual('avisos: uno por pendiente, el más cercano (30, 14 y 7 para las marcas; 7 para lo demás)', r.claves, ['umbral14', 'umbral30', 'umbral7', 'umbral7']);
+        igual('avisos: abrir la app otra vez no los repite', r.repetidos, 0);
+        igual('avisos: sin errores de JavaScript', errores, []);
     } finally {
         await contexto.close();
     }
@@ -7019,6 +7084,7 @@ async function main() {
         await probarBusquedaPorLogotipo(navegador);
         await probarViabilidadConLogotipo(navegador);
         await probarCupoDeCartera(navegador);
+        await probarAvisosDePlazos(navegador);
 
         // ---- Sesiones de los Tribunales Colegiados ----
         await probarSesionesPJF(navegador);
