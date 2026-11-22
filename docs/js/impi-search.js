@@ -261,7 +261,6 @@ function toggleMarciaSearchMode(mode) {
 var LOGO_LADO_MAX = 800;
 var LOGO_MAX_BYTES = 4 * 1024 * 1024;     // lo que se sube (el proxy acepta hasta 5 MB)
 var LOGO_MAX_ARCHIVO = 25 * 1024 * 1024;  // lo que se acepta elegir
-var LOGO_TIPOS = /^image\/(png|jpe?g|pjpeg|gif|bmp|x-ms-bmp|webp|svg\+xml|avif)$/i;
 var MARCIA_ORIGEN = 'https://marcia.impi.gob.mx';
 
 function lienzoABlob(canvas, tipo, calidad) {
@@ -282,8 +281,10 @@ function cargarImagenDeUrl(url) {
 /** El archivo elegido, listo para MARCia: { blob, ancho, alto }. */
 async function prepararLogotipo(archivo) {
     if (!archivo) throw new Error('No elegiste ninguna imagen');
-    if (archivo.type && !LOGO_TIPOS.test(archivo.type)) {
-        throw new Error('Ese archivo no es una imagen que se pueda usar. Usa un PNG, JPG, GIF, BMP, WEBP o SVG.');
+    // Cualquier imagen que el navegador sepa abrir (HEIC en Safari, AVIF…):
+    // se redibuja en PNG. Lo que no es imagen, ni se intenta.
+    if (archivo.type && !/^image\//i.test(archivo.type)) {
+        throw new Error('Ese archivo no es una imagen. Usa un PNG, JPG, GIF, BMP, WEBP o SVG.');
     }
     if (archivo.size > LOGO_MAX_ARCHIVO) throw new Error('La imagen pesa más de 25 MB. Usa una más ligera.');
     var url = URL.createObjectURL(archivo);
