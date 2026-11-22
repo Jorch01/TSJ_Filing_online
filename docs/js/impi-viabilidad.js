@@ -1930,18 +1930,19 @@
      * si no se leyó ninguna (señal de que la sesión se atoró). Una ficha
      * suelta que no se deja leer no se arregla reintentando.
      */
-    function faltantes(rep) {
+    function faltantes(rep, conImagen) {
         if (!rep) return [];
         const f = rep.fuentes.filter(x => !x.ok).map(x => x.nombre);
         if (rep.fichas && rep.fichas.pedidas && !rep.fichas.leidas) f.push('fichas');
         if (rep.fichasMARCia && rep.fichasMARCia.pedidas && !rep.fichasMARCia.leidas) f.push('fichas-marcia');
-        // La imagen solo se tiene mientras la página siga abierta.
-        if (rep.logotipo && !rep.logotipo.ok && ui.logoEstudio) f.push('logotipo');
+        // El logotipo solo se puede volver a buscar si su imagen sigue a la mano
+        // (conImagen): no se guarda con el estudio.
+        if (rep.logotipo && !rep.logotipo.ok && conImagen) f.push('logotipo');
         return f;
     }
 
     function puedeReintentar() {
-        return !!(ui.crudo && ui.entrada && ui.reporte && !ui.sinReintento && faltantes(ui.reporte).length);
+        return !!(ui.crudo && ui.entrada && ui.reporte && !ui.sinReintento && faltantes(ui.reporte, !!ui.logoEstudio).length);
     }
 
     /**
@@ -1966,7 +1967,7 @@
         }
         ui.ejecutando = true;
         const entrada = ui.entrada, crudo = ui.crudo;
-        const falta = faltantes(ui.reporte);
+        const falta = faltantes(ui.reporte, !!ui.logoEstudio);
         sesionNuevaMarcanet();
         pasos = [];
         const tareas = [];
@@ -1997,7 +1998,7 @@
             guardarReciente(ui.reporte, true);
             pintarReporte();
             pintarRecientes();
-            const sigue = faltantes(ui.reporte).length;
+            const sigue = faltantes(ui.reporte, !!ui.logoEstudio).length;
             toast(sigue ? 'Todavía faltó algo; puedes volver a intentarlo en un momento.' : 'Listo: el estudio quedó completo.', sigue ? 'warning' : 'success');
         } catch (e) {
             console.error('[VIABILIDAD]', e);

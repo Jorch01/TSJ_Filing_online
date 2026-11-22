@@ -178,7 +178,7 @@ const peticion = (pase) => ({ headers: { get: (h) => (h === 'X-TSJ-Cuota' ? pase
             const cuerpo = impi.slice(impi.indexOf('async function ' + f + '('), impi.indexOf('\n}\n', impi.indexOf('async function ' + f + '(')));
             verificar(`${f} pide permiso antes de buscar`, /autorizarBusquedaIMPI\(/.test(cuerpo));
         }
-        verificar('buscar en las 3 cuenta una sola vez', /buscarMARCia\(\{ silencioso: true, cuotaAutorizada: true \}\)/.test(impi));
+        verificar('buscar en las 3 cuenta una sola vez', /buscarMARCia\(\{ silencioso: true, cuotaAutorizada: true(, sinLogo: true)? \}\)/.test(impi));
         verificar('el proxy recibe el pase en cada petición', /headers\['X-TSJ-Cuota'\] = paseCuota/.test(impi));
         verificar('el estudio de viabilidad pide permiso', /CUOTAS_IMPI\.autorizar\('viabilidad'\)/.test(leer('js/impi-viabilidad.js')));
         const cq = leer('js/cuotas-impi.js');
