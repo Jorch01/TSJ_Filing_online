@@ -578,7 +578,7 @@
                     antes: irIMPI('cartera'),
                     objetivo: '.impi-tab[data-impi-tab="cartera"]',
                     titulo: 'La cartera de tus clientes',
-                    texto: 'Lleva las marcas de cada cliente con sus plazos de declaración de uso y de renovación. Pásalos a Pendientes, actualiza su estatus en el IMPI y saca el reporte en PDF.'
+                    texto: 'Lleva las marcas de cada cliente con sus plazos de declaración de uso y de renovación. Cada plazo pasa solo a Pendientes y, con los recordatorios por correo, te avisa un mes, dos semanas y una semana antes. Actualiza su estatus en el IMPI y saca el reporte en PDF.'
                 },
                 {
                     saltarSi: async () => esPremium(),

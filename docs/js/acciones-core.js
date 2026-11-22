@@ -444,6 +444,13 @@ async function crearPendienteCore(datos) {
     // De dónde vino (p. ej. el seguimiento semanal): con eso la siguiente
     // importación lo reconoce y lo actualiza en vez de duplicarlo.
     if (datos.origen && typeof datos.origen === 'object') pendiente.origen = { ...datos.origen };
+    // Sus propios avisos por correo, en días antes de la fecha límite (p. ej.
+    // los plazos de la cartera de marcas: 30, 14 y 7). Sin esto, los de la
+    // configuración de recordatorios.
+    const dias = Array.isArray(datos.diasAviso)
+        ? Array.from(new Set(datos.diasAviso.map(Number).filter(n => Number.isInteger(n) && n > 0 && n <= 365))).sort((a, b) => b - a).slice(0, 5)
+        : [];
+    if (dias.length) pendiente.diasAviso = dias;
 
     const nuevoId = await agregarPendiente(pendiente);
     await _coreRefrescarUI();

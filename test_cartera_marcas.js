@@ -138,6 +138,19 @@ console.log('\nPlazos');
     igual('orden: primero lo urgente', C.ordenar(lista, '2026-01-10').map(m => m.denominacion), ['LUNA', 'SOL', 'LUNFARDO']);
 }
 
+console.log('\nPendientes automáticos');
+{
+    const m = C.nueva({ denominacion: 'LUNA', registro: '2500000', estatus: 'REGISTRADA', fechaConcesion: '2022-11-21', vigencia: '2032-11-21' }, T0, 'p');
+    igual('los plazos vigentes sin pendiente: la declaración y la renovación', C.plazosSinPendiente(m, '2026-01-10').map(p => p.tipo), ['uso', 'renovacion']);
+    const conUno = C.cambiar(m, { pendientes: { 'uso|2026-02-21': 77 } }, T1);
+    igual('el que ya tiene pendiente no se repite', C.plazosSinPendiente(conUno, '2026-01-10').map(p => p.tipo), ['renovacion']);
+    const atendida = C.cambiar(m, { atendidos: { 'renovacion|2032-11-21': T1 } }, T1);
+    igual('ni el atendido', C.plazosSinPendiente(atendida, '2026-01-10').map(p => p.tipo), ['uso']);
+    igual('ni el que ya venció', C.plazosSinPendiente(m, '2026-03-01').map(p => p.tipo), ['renovacion']);
+    igual('en trámite, ninguno', C.plazosSinPendiente(C.nueva({ denominacion: 'X', expediente: '1', estatus: 'EN TRÁMITE' }, T0, 'x'), '2026-01-10'), []);
+    igual('avisan un mes, dos semanas y una semana antes', C.DIAS_AVISO_PLAZOS, [30, 14, 7]);
+}
+
 console.log('\nPlan gratuito: 3 marcas, y el botón de servicios');
 {
     const tres = ['A', 'B', 'C'].map((d, i) => C.nueva({ denominacion: d, expediente: String(i + 1) }, T0, 'g' + i));
