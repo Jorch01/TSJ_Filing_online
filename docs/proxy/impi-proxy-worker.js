@@ -33,7 +33,7 @@
 
 // Sirve para confirmar, desde /health, que el worker publicado es el esperado.
 // Actualízala cuando el cambio valga la pena verificar tras desplegar.
-const WORKER_VERSION = '2026-11-13-verificador-sitio';
+const WORKER_VERSION = '2026-11-22-logotipo-marcia';
 
 const ALLOWED_ORIGINS = [
     'https://jorch01.github.io',
@@ -115,7 +115,7 @@ const CUOTAS = {
 };
 // Las rutas que hacen una búsqueda nueva necesitan pase; paginar, ver un
 // detalle o pedir la sesión, no.
-const RUTAS_CON_PASE = ['/marcia/search', '/siga/search', '/marcanet/fonetica', '/marcanet/expediente', '/marcanet/registro', '/marcanet/titular'];
+const RUTAS_CON_PASE = ['/marcia/search', '/marcia/imagen', '/siga/search', '/marcanet/fonetica', '/marcanet/expediente', '/marcanet/registro', '/marcanet/titular'];
 const LICENCIAS_API = 'https://script.google.com/macros/s/AKfycbyK8kudH83BoBEN-NHLo7sPpdsIuqTdnusZcr08aRO_oXtv0frwzo8bpG9JWn9EoHbrLQ/exec';
 
 function cuotasActivas(env) {
@@ -505,6 +505,10 @@ export default {
             } else if (path.startsWith('/marcia/view/')) {
                 const markId = path.replace('/marcia/view/', '');
                 response = await handleMarciaView(request, markId);
+            } else if (path === '/marcia/imagen') {
+                response = await handleMarciaImagen(request);
+            } else if (path.startsWith('/marcia/miniatura/')) {
+                response = await handleMarciaMiniatura(request, path.slice('/marcia/miniatura/'.length));
             }
             // ===== Rutas SIGA =====
             else if (path === '/siga/csrf') {
@@ -562,7 +566,7 @@ export default {
                 response = new Response(JSON.stringify({
                     status: 'ok',
                     version: WORKER_VERSION,
-                    services: ['marcia', 'siga', 'marcanet', 'sesiones'],
+                    services: ['marcia', 'marcia-logotipo', 'siga', 'marcanet', 'sesiones'],
                     cuotas: cuotasActivas(env),
                     sitio: { turnstile: !!(env && env.TURNSTILE_SECRET) },
                     timestamp: new Date().toISOString()
@@ -624,6 +628,94 @@ async function jsonDelIMPI(resp, servicio) {
 }
 // ==================== RESPUESTAS DEL IMPI (FIN) ====================
 
+// ==================== LOGOTIPO MARCia (INICIO) ====================
+// La búsqueda por logotipo de MARCia va en dos pasos: se sube la imagen
+// (POST /marcas/search/internal/image/upload/bulk, con un solo campo
+// «files») y se busca en /record con el id que devuelve, como cualquier otra
+// búsqueda: { _type: 'Search$Quick', query, images: [{ id, segment }] }. Aquí
+// está la subida (/marcia/imagen); la búsqueda sigue por /marcia/search.
+//
+// Lo que acepta MARCia (revisado en su sitio en noviembre de 2026): PNG, JPG,
+// GIF y BMP. WEBP, SVG y un archivo que no es imagen le dan error 500 con el
+// cuerpo vacío; su servidor corta lo que pase de ~8 MiB (413) y reduce las
+// imágenes grandes. La app ya manda la imagen redibujada y reducida; esto es
+// la última revisión antes de reenviarla, para no pasarle al IMPI otra cosa.
+const IMAGEN_MAX_BYTES = 5 * 1024 * 1024;
+const IMAGEN_FORMATOS = [
+    { tipo: 'image/png', ext: 'png', firma: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] },
+    { tipo: 'image/jpeg', ext: 'jpg', firma: [0xFF, 0xD8, 0xFF] },
+    { tipo: 'image/gif', ext: 'gif', firma: [0x47, 0x49, 0x46, 0x38] },
+    { tipo: 'image/bmp', ext: 'bmp', firma: [0x42, 0x4D] }
+];
+// El id de una imagen subida (un UUID hoy) y el de una marca (RM202002404330).
+const ID_IMAGEN_RE = /^[A-Za-z0-9_-]{1,100}$/;
+const ID_MARCA_RE = /^[A-Z]{1,4}[0-9]{4,20}$/;
+// Las miniaturas de los resultados pesan unos KB; esto es un tope generoso.
+const MINIATURA_MAX_BYTES = 1024 * 1024;
+
+/** El formato de la imagen por sus primeros bytes, no por el nombre ni por el tipo que declara. */
+function formatoDeImagen(bytes) {
+    if (!bytes || !bytes.length) return null;
+    return IMAGEN_FORMATOS.find(f => f.firma.every((b, i) => bytes[i] === b)) || null;
+}
+
+/** { formato } si la imagen se puede mandar a MARCia; si no, { error, status }. */
+function revisarImagen(bytes) {
+    if (!bytes || !bytes.length) return { error: 'No llegó ninguna imagen.', status: 400 };
+    if (bytes.length > IMAGEN_MAX_BYTES) return { error: 'La imagen pesa más de 5 MB. Usa una más ligera.', status: 413 };
+    const formato = formatoDeImagen(bytes);
+    if (!formato) return { error: 'MARCia solo acepta imágenes PNG, JPG, GIF o BMP.', status: 415 };
+    return { formato };
+}
+
+/** Un recorte como los de MARCia: { mode: 0 (lazo) o 1 (rectángulo), polygon: [[x, y], …] }. */
+function segmentoValido(s) {
+    if (!s || typeof s !== 'object' || (s.mode !== 0 && s.mode !== 1)) return false;
+    const p = s.polygon;
+    return Array.isArray(p) && p.length >= 3 && p.length <= 2000 &&
+        p.every(v => Array.isArray(v) && v.length === 2 && v.every(n => typeof n === 'number' && isFinite(n) && n >= 0 && n <= 100000));
+}
+
+/**
+ * Lo que responde MARCia al subir: [{ id, width, height, autoSegmentCrop,
+ * autoSegmentLasso }]. Se pasa solo lo que sirve para buscar; null si no trae
+ * ninguna imagen utilizable.
+ */
+function leerSubidaImagen(data) {
+    if (!Array.isArray(data)) return null;
+    const imagenes = data.filter(x => x && typeof x.id === 'string' && ID_IMAGEN_RE.test(x.id)).map(x => ({
+        id: x.id,
+        width: Math.max(0, Math.round(Number(x.width) || 0)),
+        height: Math.max(0, Math.round(Number(x.height) || 0)),
+        autoSegmentCrop: segmentoValido(x.autoSegmentCrop) ? { mode: x.autoSegmentCrop.mode, polygon: x.autoSegmentCrop.polygon } : null
+    }));
+    return imagenes.length ? imagenes : null;
+}
+
+/**
+ * La página de MARCia declara la fecha de su última indexación
+ * (window.VARS.lastIndexingDate, «02 Feb 2020» en noviembre de 2026). La app
+ * la muestra junto a los resultados por logotipo. null si no viene.
+ */
+function fechaIndexacion(html) {
+    const m = String(html || '').match(/lastIndexingDate\s*:\s*['"]([^'"<>]{1,40})['"]/);
+    return m ? m[1].trim() : null;
+}
+/**
+ * El tipo de una miniatura: el que declara MARCia si es de imagen; si no, por
+ * sus primeros bytes. null si no es una imagen (por ejemplo, una página de
+ * error en HTML).
+ */
+function tipoDeMiniatura(declarado, bytes) {
+    const t = String(declarado || '').split(';')[0].trim().toLowerCase();
+    if (/^image\/(png|jpeg|gif|bmp|webp)$/.test(t)) return t;
+    const f = formatoDeImagen(bytes);
+    if (f) return f.tipo;
+    const ascii = (a, b) => String.fromCharCode.apply(null, Array.prototype.slice.call(bytes, a, b));
+    return bytes && bytes.length > 12 && ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP' ? 'image/webp' : null;
+}
+// ==================== LOGOTIPO MARCia (FIN) ====================
+
 // ==================== MARCia HANDLERS ====================
 
 async function handleMarciaCsrf(request) {
@@ -659,8 +751,10 @@ async function handleMarciaCsrf(request) {
     // el token de sesión.
     sessions.set(sessionKey, session);
 
-    // La sesión viaja en la cabecera; el cuerpo se mantiene igual que antes.
-    return respuestaConSesion({ csrf: session.csrf, sessionActive: true }, 200, session, null);
+    // La sesión viaja en la cabecera; el cuerpo se mantiene igual que antes,
+    // más la fecha de indexación que declara MARCia (para la búsqueda por
+    // logotipo).
+    return respuestaConSesion({ csrf: session.csrf, sessionActive: true, indexacion: fechaIndexacion(html) }, 200, session, null);
 }
 
 async function handleMarciaSearch(request) {
@@ -731,6 +825,91 @@ async function handleMarciaView(request, markId) {
     const leido = await jsonDelIMPI(resp, 'MARCia');
     if (leido.respuesta) return leido.respuesta;
     return respuestaConSesion(leido.data, resp.status, conCookiesActualizadas(session, resp), request);
+}
+
+/**
+ * POST /marcia/imagen (multipart, campo «files»): sube el logotipo a MARCia
+ * con la sesión del cliente. → { imagenes: [{ id, width, height, autoSegmentCrop }] }
+ */
+async function handleMarciaImagen(request) {
+    if (request.method !== 'POST') return jsonSimple({ error: 'Solo POST' }, 405);
+    const session = obtenerSesionMARCia(request);
+    if (!session) return respuestaSinSesionMARCia();
+
+    let archivo = null;
+    try {
+        archivo = (await request.formData()).get('files');
+    } catch (e) { /* no era un formulario */ }
+    if (!archivo || typeof archivo === 'string' || typeof archivo.arrayBuffer !== 'function') {
+        return jsonSimple({ error: 'No llegó ninguna imagen.' }, 400);
+    }
+    const bytes = new Uint8Array(await archivo.arrayBuffer());
+    const revision = revisarImagen(bytes);
+    if (revision.error) return jsonSimple({ error: revision.error }, revision.status);
+
+    // Se arma un formulario nuevo: solo la imagen, con un nombre neutro (el
+    // del archivo de la persona no le importa al IMPI).
+    const envio = new FormData();
+    envio.append('files', new Blob([bytes], { type: revision.formato.tipo }), 'logotipo.' + revision.formato.ext);
+
+    const resp = await fetch(MARCIA_BASE + '/marcas/search/internal/image/upload/bulk', {
+        method: 'POST',
+        headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'X-XSRF-TOKEN': session.csrf,
+            'Cookie': session.cookies,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': MARCIA_BASE + '/marcas/search/quick',
+            'Origin': MARCIA_BASE
+        },
+        body: envio
+    });
+
+    // Sin una sesión válida MARCia responde 404 con una página HTML: se trata
+    // como sesión perdida, para que la app la rehaga y reintente una vez.
+    if (resp.status === 404 || resp.status === 401 || resp.status === 403) return respuestaSinSesionMARCia();
+    if (resp.status === 413) return jsonSimple({ error: 'La imagen es demasiado grande para MARCia. Usa una más ligera.' }, 413);
+    const texto = await resp.text();
+    let data = null;
+    try { data = JSON.parse(texto); } catch (e) { /* MARCia responde 500 vacío si no pudo leer la imagen */ }
+    const imagenes = resp.ok ? leerSubidaImagen(data) : null;
+    if (!imagenes) {
+        return jsonSimple({
+            error: resp.ok
+                ? 'MARCia respondió algo inesperado al subir la imagen. Intenta de nuevo.'
+                : 'MARCia no pudo procesar la imagen (error ' + resp.status + ' de su servidor). Prueba con otra en PNG o JPG; si sigue igual, MARCia puede estar fallando: intenta más tarde.',
+            status: resp.status
+        }, 502);
+    }
+    return respuestaConSesion({ imagenes }, 200, conCookiesActualizadas(session, resp), request);
+}
+
+/**
+ * GET /marcia/miniatura/{id}: la imagen de una marca de los resultados
+ * (/marcas/image/{id}, que MARCia sirve sin sesión). La app la necesita como
+ * datos para ponerla en el PDF: en pantalla la pide directo a MARCia, pero
+ * MARCia no da permiso (CORS) para leerla desde otra página.
+ */
+async function handleMarciaMiniatura(request, id) {
+    if (request.method !== 'GET') return jsonSimple({ error: 'Solo GET' }, 405);
+    if (!ID_MARCA_RE.test(id)) return jsonSimple({ error: 'Id de marca no válido' }, 400);
+    const resp = await fetch(MARCIA_BASE + '/marcas/image/' + id, {
+        headers: {
+            'Accept': 'image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': MARCIA_BASE + '/marcas/search/result'
+        }
+    });
+    if (!resp.ok) return jsonSimple({ error: 'MARCia no tiene imagen para esta marca', status: resp.status }, resp.status === 404 ? 404 : 502);
+    const bytes = new Uint8Array(await resp.arrayBuffer());
+    if (bytes.length > MINIATURA_MAX_BYTES) return jsonSimple({ error: 'La imagen es demasiado grande' }, 502);
+    const tipo = tipoDeMiniatura(resp.headers.get('Content-Type'), bytes);
+    if (!tipo) return jsonSimple({ error: 'MARCia no devolvió una imagen para esta marca' }, 502);
+    return new Response(bytes, { status: 200, headers: { 'Content-Type': tipo, 'Cache-Control': 'public, max-age=86400' } });
+}
+
+function jsonSimple(datos, status) {
+    return new Response(JSON.stringify(datos), { status: status || 200, headers: { 'Content-Type': 'application/json' } });
 }
 
 // ==================== SIGA HANDLERS ====================

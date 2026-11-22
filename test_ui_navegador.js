@@ -2313,6 +2313,257 @@ async function probarCarteraDeMarcas(navegador) {
 }
 
 /**
+ * Búsqueda por logotipo en MARCia. El IMPI no se consulta: proxyFetch se
+ * sustituye por un simulador con la forma que tiene MARCia (revisada en su
+ * sitio): la subida devuelve { imagenes: [{ id, width, height, autoSegmentCrop }] }
+ * y los resultados traen la imagen como ruta («/marcas/image/RM…»).
+ */
+async function probarBusquedaPorLogotipo(navegador) {
+    console.log('\nBúsqueda por logotipo (MARCia)');
+    const contexto = await navegador.newContext({ acceptDownloads: true, viewport: { width: 1280, height: 900 }, locale: 'es-MX' });
+    await contexto.addInitScript(() => { try { localStorage.setItem('tour_bienvenida_visto', '1'); } catch (e) {} });
+    await contexto.route('**/cuota', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ servidor: false, permitido: true }) }));
+    // Las imágenes de los resultados se piden directo a MARCia: aquí, un PNG local.
+    const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+    let imagenesPedidas = 0;
+    await contexto.route('https://marcia.impi.gob.mx/marcas/image/**', r => { imagenesPedidas++; return r.fulfill({ status: 200, contentType: 'image/png', body: PNG_1PX }); });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/`, { waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => typeof db !== 'undefined' && !!db && typeof elegirLogotipoMARCia === 'function', { timeout: 15000 });
+        await page.waitForTimeout(800);
+
+        // Un logotipo de 1600 × 1200, con fondo transparente y un cuadro negro.
+        const pngBase64 = await page.evaluate(() => {
+            const c = document.createElement('canvas'); c.width = 1600; c.height = 1200;
+            const x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(400, 300, 800, 600);
+            return c.toDataURL('image/png').split(',')[1];
+        });
+        await page.evaluate(() => {
+            window.__avisos = [];
+            const original = window.mostrarToast;
+            window.mostrarToast = (m, t) => { window.__avisos.push(m); return original(m, t); };
+            window.__llamadas = [];
+            window.__subidas = [];
+            window.__fallaSubida = 0;
+            const marca = (id, title, fecha) => ({ id, applicationNumber: id.slice(-7), title, status: 'REGISTRADO', appType: 'REGISTRO DE MARCA',
+                owners: ['TITULAR DE ' + title], dates: { application: fecha }, goodsAndServices: '', classes: [], images: '/marcas/image/' + id });
+            window.proxyFetch = async (ruta, opciones) => {
+                const cuerpo = opciones && opciones.body;
+                const esForm = cuerpo instanceof FormData;
+                window.__llamadas.push({ ruta, body: esForm ? 'FORM' : (cuerpo ? JSON.parse(cuerpo) : null), contentType: ((opciones && opciones.headers) || {})['Content-Type'] || null });
+                if (ruta === '/marcia/csrf') return { csrf: 'x', sessionActive: true, indexacion: '02 Feb 2020' };
+                if (ruta === '/marcia/imagen') {
+                    if (window.__fallaSubida > 0) { window.__fallaSubida--; throw new Error('No active session. Call /marcia/csrf first.'); }
+                    const f = cuerpo.get('files');
+                    const bmp = await createImageBitmap(f);
+                    const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+                    const x = c.getContext('2d'); x.drawImage(bmp, 0, 0);
+                    window.__subidas.push({ campos: Array.from(cuerpo.keys()), nombre: f.name, tipo: f.type, ancho: bmp.width, alto: bmp.height,
+                        esquina: Array.from(x.getImageData(2, 2, 1, 1).data), centro: Array.from(x.getImageData(Math.floor(bmp.width / 2), Math.floor(bmp.height / 2), 1, 1).data) });
+                    return { imagenes: [{ id: 'img-' + window.__subidas.length, width: 400, height: 300,
+                        autoSegmentCrop: { mode: 1, polygon: [[100, 75], [300, 75], [300, 225], [100, 225], [100, 75]] } }] };
+                }
+                if (ruta === '/marcia/search') return { id: 'busq-' + window.__llamadas.length, count: 2 };
+                if (ruta === '/marcia/results') {
+                    const r = [marca('RM202002404330', 'THE GLAMPING COMPANY', '13/8/2020'), marca('RM202002377940', 'INEDIA', '13/7/2020')];
+                    return { resultPage: r, totalResults: r.length, aggregates: { STATUS: [{ key: 'REGISTRADO', docCount: 2 }], NICE_CLASSES: [], VIENNA_CODES: [{ key: '26.01.01', docCount: 2 }] } };
+                }
+                if (ruta.indexOf('/marcia/view/') === 0) {
+                    return { result: marca('RM202002404330', 'THE GLAMPING COMPANY', '13/8/2020'), details: { generalInformation: { title: 'THE GLAMPING COMPANY' } } };
+                }
+                if (ruta === '/marcanet/fonetica') return { results: [] };
+                if (ruta === '/siga/search') return { successed: true, data: [] };
+                throw new Error('ruta inesperada ' + ruta);
+            };
+            navegarA('impi');
+            cambiarTabIMPI('marcia');
+        });
+        await page.waitForTimeout(300);
+
+        const antes = await page.evaluate(() => ({
+            boton: document.getElementById('marcia-logo-elegir').textContent.trim(),
+            vista: document.getElementById('marcia-logo-vista').hidden,
+            visible: !!document.getElementById('marcia-logo-elegir').offsetParent
+        }));
+        igual('logotipo: el botón está a la vista y sin imagen elegida', [antes.visible, antes.vista, /Buscar por logotipo/.test(antes.boton)], [true, true, true]);
+
+        await page.setInputFiles('#marcia-logo-input', { name: 'logo cliente.png', mimeType: 'image/png', buffer: Buffer.from(pngBase64, 'base64') });
+        await page.waitForFunction(() => !!marciaState.logo, { timeout: 5000 }).catch(() => {});
+        const elegido = await page.evaluate(() => ({
+            vista: document.getElementById('marcia-logo-vista').hidden,
+            nombre: document.getElementById('marcia-logo-nombre').textContent,
+            etiqueta: document.getElementById('marcia-query-label').textContent,
+            boton: document.getElementById('marcia-logo-elegir').textContent.trim(),
+            src: document.getElementById('marcia-logo-img').getAttribute('src') || ''
+        }));
+        igual('logotipo: se ve la imagen elegida, ya reducida a 800 px', [elegido.vista, elegido.nombre], [false, 'logo cliente.png · 800 × 600 px']);
+        verificar('logotipo: la vista previa es la imagen preparada', /^blob:/.test(elegido.src), elegido.src);
+        igual('logotipo: el nombre pasa a ser opcional y el botón dice «Cambiar»', [elegido.etiqueta, /Cambiar logotipo/.test(elegido.boton)], ['Nombre de la marca (opcional)', true]);
+
+        // Solo con la imagen.
+        await page.evaluate(() => { document.getElementById('marcia-query').value = ''; });
+        await page.click('button.btn-primary[onclick="buscarMARCia()"]');
+        await page.waitForFunction(() => document.querySelectorAll('#marcia-results-list .impi-result-card').length === 2, { timeout: 8000 }).catch(() => {});
+        const r1 = await page.evaluate(() => {
+            const aviso = document.getElementById('marcia-logo-aviso');
+            const poly = aviso.querySelector('polygon');
+            const svg = aviso.querySelector('svg');
+            return {
+                rutas: window.__llamadas.map(l => l.ruta),
+                subidaSinJson: (window.__llamadas.find(l => l.ruta === '/marcia/imagen') || {}).contentType,
+                busqueda: (window.__llamadas.find(l => l.ruta === '/marcia/search') || {}).body,
+                subida: window.__subidas[0],
+                imagenes: Array.from(document.querySelectorAll('#marcia-results-list .impi-mark-image')).map(i => i.getAttribute('src')),
+                aviso: aviso.hidden ? '' : aviso.textContent.replace(/\s+/g, ' '),
+                puntos: poly ? poly.getAttribute('points') : '',
+                viewBox: svg ? svg.getAttribute('viewBox') : '',
+                guardar: document.getElementById('marcia-save-search-btn').style.display,
+                cartera: CARTERA_MARCAS.desdeResultadoMARCia(marciaState.results[0]).imagen
+            };
+        });
+        igual('logotipo: sesión, subida, búsqueda y resultados, en ese orden', r1.rutas, ['/marcia/csrf', '/marcia/imagen', '/marcia/search', '/marcia/results']);
+        igual('logotipo: la subida va como formulario (sin Content-Type JSON)', r1.subidaSinJson, null);
+        igual('logotipo: un solo campo «files», en PNG de 800 × 600', r1.subida && [r1.subida.campos, r1.subida.nombre, r1.subida.tipo, r1.subida.ancho, r1.subida.alto],
+            [['files'], 'logotipo.png', 'image/png', 800, 600]);
+        igual('logotipo: lo transparente se vuelve blanco y el dibujo se conserva', r1.subida && [r1.subida.esquina, r1.subida.centro], [[255, 255, 255, 255], [0, 0, 0, 255]]);
+        igual('logotipo: la búsqueda lleva el id y el recorte de MARCia', r1.busqueda,
+            { _type: 'Search$Quick', query: '', images: [{ id: 'img-1', segment: { mode: 1, polygon: [[100, 75], [300, 75], [300, 225], [100, 225], [100, 75]] } }] });
+        igual('logotipo: las imágenes de los resultados se piden a MARCia', r1.imagenes,
+            ['https://marcia.impi.gob.mx/marcas/image/RM202002404330', 'https://marcia.impi.gob.mx/marcas/image/RM202002377940']);
+        verificar('logotipo: el aviso dice cómo ordena MARCia y que no da porcentaje', /Búsqueda por logotipo/.test(r1.aviso) && /del más parecido al menos parecido/.test(r1.aviso) && /no da un porcentaje/.test(r1.aviso), r1.aviso);
+        verificar('logotipo: y la fecha de indexación que declara, con la solicitud más reciente', /«02 Feb 2020»/.test(r1.aviso) && /más reciente es del 13\/08\/2020/.test(r1.aviso), r1.aviso);
+        igual('logotipo: el recuadro marca la parte que comparó', [r1.viewBox, r1.puntos], ['0 0 400 300', '100,75 300,75 300,225 100,225 100,75']);
+        igual('logotipo: la búsqueda por logotipo no se ofrece para guardar', r1.guardar, 'none');
+        igual('logotipo: a la cartera llega la imagen completa', r1.cartera, 'https://marcia.impi.gob.mx/marcas/image/RM202002404330');
+
+        // El CSV numera el orden de parecido y lleva la imagen.
+        const esperaCsv = page.waitForEvent('download', { timeout: 8000 });
+        await page.click('#btn-export-marcia');
+        const csv = await esperaCsv.catch(() => null);
+        const textoCsv = csv ? fs.readFileSync(await csv.path(), 'utf8') : '';
+        verificar('logotipo: el CSV numera el parecido', /^﻿?Parecido \(1 = el más parecido\),Denominación/.test(textoCsv) && /\n"1","THE GLAMPING COMPANY"/.test(textoCsv), textoCsv.slice(0, 200));
+        verificar('logotipo: y trae la imagen de cada marca', textoCsv.includes('"https://marcia.impi.gob.mx/marcas/image/RM202002377940"'), textoCsv.slice(0, 400));
+        verificar('logotipo: con su propio nombre de archivo', !!csv && /^marcas_impi_logotipo_\d{4}-\d{2}-\d{2}\.csv$/.test(csv.suggestedFilename()), csv && csv.suggestedFilename());
+
+        // La ficha también muestra su imagen.
+        const ficha = await page.evaluate(async () => {
+            await verDetalleMARCia('RM202002404330');
+            const img = document.querySelector('#marcia-detail-content .impi-detail-image');
+            const src = img ? img.getAttribute('src') : '';
+            cerrarDetalleMARCia();
+            return src;
+        });
+        igual('logotipo: la ficha muestra la imagen de MARCia', ficha, 'https://marcia.impi.gob.mx/marcas/image/RM202002404330');
+
+        // Imagen y nombre; y si la sesión se perdió al subir, se rehace una vez.
+        const r2 = await page.evaluate(async () => {
+            window.__llamadas = [];
+            window.__fallaSubida = 1;
+            document.getElementById('marcia-query').value = 'SOLAR';
+            await buscarMARCia();
+            return {
+                rutas: window.__llamadas.map(l => l.ruta),
+                busqueda: (window.__llamadas.find(l => l.ruta === '/marcia/search') || {}).body,
+                aviso: document.getElementById('marcia-logo-aviso').textContent.replace(/\s+/g, ' ')
+            };
+        });
+        igual('logotipo: sesión perdida al subir: se rehace y se sube otra vez', r2.rutas, ['/marcia/csrf', '/marcia/imagen', '/marcia/csrf', '/marcia/imagen', '/marcia/search', '/marcia/results']);
+        // La subida que falló no cuenta: la buena es la segunda.
+        igual('logotipo: con nombre, la búsqueda lleva los dos', r2.busqueda && [r2.busqueda.query, r2.busqueda.images.length, r2.busqueda.images[0].id], ['SOLAR', 1, 'img-2']);
+        verificar('logotipo: el aviso dice el nombre y que acota de forma aproximada', /y el nombre «SOLAR»/.test(r2.aviso) && /de forma aproximada/.test(r2.aviso), r2.aviso);
+
+        // Buscar en las 3 es por nombre, aunque haya un logotipo elegido.
+        const r3 = await page.evaluate(async () => {
+            window.__llamadas = [];
+            document.getElementById('impi-unified-query').value = 'LUNA';
+            await buscarEnLas3();
+            return {
+                imagen: window.__llamadas.some(l => l.ruta === '/marcia/imagen'),
+                busqueda: (window.__llamadas.find(l => l.ruta === '/marcia/search') || {}).body,
+                aviso: document.getElementById('marcia-logo-aviso').hidden,
+                logo: !!marciaState.logo
+            };
+        });
+        igual('logotipo: «buscar en las 3» no sube el logotipo', [r3.imagen, r3.busqueda && r3.busqueda.query, r3.busqueda && r3.busqueda.images], [false, 'LUNA', []]);
+        igual('logotipo: sus resultados no llevan el aviso, y el logotipo sigue elegido', [r3.aviso, r3.logo], [true, true]);
+
+        // Quitar el logotipo: vuelve a ser una búsqueda por nombre, que sí se guarda.
+        await page.click('#marcia-logo-quitar');
+        const r4 = await page.evaluate(async () => {
+            window.__llamadas = [];
+            document.getElementById('marcia-query').value = 'LUNA';
+            await buscarMARCia();
+            return {
+                vista: document.getElementById('marcia-logo-vista').hidden,
+                imagen: window.__llamadas.some(l => l.ruta === '/marcia/imagen'),
+                busqueda: (window.__llamadas.find(l => l.ruta === '/marcia/search') || {}).body,
+                aviso: document.getElementById('marcia-logo-aviso').hidden,
+                guardar: document.getElementById('marcia-save-search-btn').style.display,
+                etiqueta: document.getElementById('marcia-query-label').textContent
+            };
+        });
+        igual('logotipo: al quitarlo, la búsqueda es por nombre', [r4.vista, r4.imagen, r4.busqueda && r4.busqueda.images, r4.aviso], [true, false, [], true]);
+        igual('logotipo: y esa sí se puede guardar', [r4.guardar, r4.etiqueta], ['', 'Nombre de la marca']);
+
+        // Sin nombre ni logotipo, no se busca.
+        const r5 = await page.evaluate(async () => {
+            window.__llamadas = []; window.__avisos = [];
+            document.getElementById('marcia-query').value = '';
+            await buscarMARCia();
+            return { llamadas: window.__llamadas.length, aviso: window.__avisos.join(' | ') };
+        });
+        igual('logotipo: sin nombre ni logotipo no se busca', [r5.llamadas, /Escribe un nombre o elige un logotipo/.test(r5.aviso)], [0, true]);
+
+        // Otros formatos: WEBP y SVG se convierten; un texto con nombre de .png, no.
+        const formatos = await page.evaluate(async () => {
+            const out = {};
+            const c = document.createElement('canvas'); c.width = 300; c.height = 200;
+            c.getContext('2d').fillRect(10, 10, 50, 50);
+            const webp = await new Promise(r => c.toBlob(r, 'image/webp'));
+            out.webp = await elegirLogotipoMARCia(new File([webp], 'logo.webp', { type: 'image/webp' }));
+            out.webpTipo = marciaState.logo && marciaState.logo.blob.type;
+            const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60"><circle cx="30" cy="30" r="20" fill="red"/></svg>';
+            out.svg = await elegirLogotipoMARCia(new File([svg], 'logo.svg', { type: 'image/svg+xml' }));
+            out.svgTam = marciaState.logo && [marciaState.logo.blob.type, marciaState.logo.ancho, marciaState.logo.alto];
+            window.__avisos = [];
+            out.texto = await elegirLogotipoMARCia(new File(['esto no es una imagen'], 'logo.png', { type: 'image/png' }));
+            out.textoAviso = window.__avisos.join(' | ');
+            out.sigueSvg = marciaState.logo && marciaState.logo.nombre;
+            out.pdf = await elegirLogotipoMARCia(new File(['%PDF-1.4'], 'logo.pdf', { type: 'application/pdf' }));
+            // Pegar (Ctrl+V) una imagen en la búsqueda de MARCia.
+            const dt = new DataTransfer();
+            dt.items.add(new File([webp], 'pegada.webp', { type: 'image/webp' }));
+            document.getElementById('marcia-query').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+            await new Promise(r => setTimeout(r, 600));
+            out.pegada = marciaState.logo && marciaState.logo.nombre;
+            // Arrastrarla al recuadro.
+            const dt2 = new DataTransfer();
+            dt2.items.add(new File([webp], 'arrastrada.webp', { type: 'image/webp' }));
+            document.getElementById('marcia-logo-zona').dispatchEvent(new DragEvent('drop', { dataTransfer: dt2, bubbles: true, cancelable: true }));
+            await new Promise(r => setTimeout(r, 600));
+            out.arrastrada = marciaState.logo && marciaState.logo.nombre;
+            limpiarFormularioMARCia();
+            out.limpio = [marciaState.logo, document.getElementById('marcia-logo-vista').hidden];
+            return out;
+        });
+        igual('logotipo: un WEBP se acepta y se sube en PNG', [formatos.webp, formatos.webpTipo], [true, 'image/png']);
+        igual('logotipo: un SVG también, con su tamaño', [formatos.svg, formatos.svgTam], [true, ['image/png', 120, 60]]);
+        igual('logotipo: un texto con nombre de .png no se acepta y avisa', [formatos.texto, /No pude leer esa imagen/.test(formatos.textoAviso), formatos.sigueSvg], [false, true, 'logo.svg']);
+        igual('logotipo: un PDF tampoco', formatos.pdf, false);
+        igual('logotipo: se puede pegar con Ctrl+V', formatos.pegada, 'pegada.webp');
+        igual('logotipo: o arrastrar al recuadro', formatos.arrastrada, 'arrastrada.webp');
+        igual('logotipo: «Limpiar» lo quita', formatos.limpio, [null, true]);
+        verificar('logotipo: las imágenes de los resultados sí se cargaron', imagenesPedidas >= 2, String(imagenesPedidas));
+        igual('logotipo: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
+/**
  * Causas penales del TSJ: sus juzgados no publican en estrados. Un expediente
  * penal ofrece, en vez de los estrados, sus tocas en las salas penales y la
  * agenda de audiencias del juzgado.
@@ -6477,6 +6728,9 @@ async function main() {
 
         // ---- Cartera de marcas y reportes en PDF ----
         await probarCarteraDeMarcas(navegador);
+
+        // ---- Búsqueda por logotipo en MARCia ----
+        await probarBusquedaPorLogotipo(navegador);
 
         // ---- Sesiones de los Tribunales Colegiados ----
         await probarSesionesPJF(navegador);

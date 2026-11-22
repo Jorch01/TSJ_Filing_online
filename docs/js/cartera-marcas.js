@@ -431,6 +431,14 @@
         return texto(o && (o.name || o.fullName || o.ownerName));
     }
 
+    // MARCia da la imagen de sus resultados como una ruta de su sitio
+    // («/marcas/image/RM…»): se guarda completa, para pedirla directo a MARCia.
+    function imagenDeMARCia(u) {
+        const v = typeof u === 'string' ? u.trim() : '';
+        if (/^\/marcas\/[\w\/.%-]+$/.test(v) && v.indexOf('..') < 0) return 'https://marcia.impi.gob.mx' + v;
+        return /^https:\/\//i.test(v) ? v : '';
+    }
+
     /** Una fila de resultados de MARCia (o el `result` de su ficha). */
     function desdeResultadoMARCia(r) {
         const x = r || {};
@@ -439,7 +447,7 @@
             denominacion: x.title, expediente: x.applicationNumber, registro: x.registrationNumber,
             titular: lista(x.owners).map(nombreDeTitular).filter(Boolean).join('; '),
             clases: x.classes, estatus: x.status, fechaPresentacion: d.application, vigencia: d.expiry,
-            markId: x.id, imagen: typeof x.images === 'string' ? x.images : '', fuente: 'MARCia'
+            markId: x.id, imagen: imagenDeMARCia(x.images), fuente: 'MARCia'
         };
     }
 
@@ -465,7 +473,7 @@
             fechaConcesion: gi.registrationDate || '',
             vigencia: gi.expiryDate || base.vigencia,
             markId: tm.id || base.markId,
-            imagen: (typeof tm.image === 'string' && tm.image) || base.imagen
+            imagen: imagenDeMARCia(tm.image) || base.imagen
         };
     }
 
@@ -535,7 +543,7 @@
         CLAVE_CONFIG, INICIO_LFPPI, CAMPOS, TIPOS, ESTADOS,
         fecha, sumarMeses, sumarDias, diasEntre, hoyTexto, clasesDe, limpiar, nueva, cambiar, fusionar, activas, buscarMisma,
         situacion, plazosDe, plazosVigentes, proximoPlazo, textoPlazo, numeros, resumen, ordenar, datosParaReporte, csv,
-        desdeResultadoMARCia, desdeFichaMARCia, desdeFichaMarcanet, combinar, revisar
+        desdeResultadoMARCia, desdeFichaMARCia, desdeFichaMarcanet, combinar, revisar, imagenDeMARCia
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = Motor;
     global.CARTERA_MARCAS = Motor;
@@ -629,10 +637,8 @@
     const MAX_REVISION = 40;
     const SITUACION = { registrada: 'Registrada', tramite: 'En trámite', inactiva: 'Sin efectos', desconocida: 'Sin estatus' };
 
-    function urlImagen(u) {
-        const v = String(u || '').trim();
-        return /^https:\/\//i.test(v) ? v : '';
-    }
+    // Las que se guardaron antes como ruta de MARCia también se ven.
+    const urlImagen = u => imagenDeMARCia(u);
 
     function construir() {
         const cont = $('impi-tab-cartera');

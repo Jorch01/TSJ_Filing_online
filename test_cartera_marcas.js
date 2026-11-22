@@ -153,6 +153,10 @@ console.log('\nLo que llega del IMPI');
     const deFila = C.limpiar(C.desdeResultadoMARCia(fila));
     igual('fila de MARCia', [deFila.denominacion, deFila.expediente, deFila.registro, deFila.titular, deFila.clases, deFila.fechaPresentacion, deFila.vigencia, deFila.markId],
         ['LUNFARDO', '1204050', '1261657', 'RESTAURANTES DEL SUR', [43], '2011-08-18', '2021-08-18', 'RM201101204050']);
+    igual('la imagen https se queda', deFila.imagen, 'https://prod.impi.static.tmv.io/x');
+    igual('la que MARCia da como ruta de su sitio se guarda completa',
+        C.desdeResultadoMARCia({ ...fila, images: '/marcas/image/RM201101204050' }).imagen, 'https://marcia.impi.gob.mx/marcas/image/RM201101204050');
+    igual('y lo raro no se guarda', ['javascript:alert(1)', '//otro.com/x.png', '/marcas/../../x', 'http://inseguro.com/x.png', 42].map(C.imagenDeMARCia), ['', '', '', '', '']);
     const ficha = { result: fila, details: { generalInformation: { registrationDate: '01/02/2012', applicationDate: '18/08/2011', expiryDate: '18/08/2021' },
         ownerInformation: { owners: [{ name: 'RESTAURANTES DEL SUR, S.A. DE C.V.' }] }, productsAndServices: [{ niceClass: 43 }], trademark: { id: 'RM201101204050' } } };
     const deFicha = C.limpiar(C.desdeFichaMARCia(ficha));

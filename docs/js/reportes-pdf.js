@@ -345,6 +345,8 @@
     }
 
     const AVISO_FUENTES = 'Tiene reservas.';
+    // Los logotipos parecidos que caben en el PDF (cada uno lleva su imagen).
+    const MAX_LOGOS_PDF = 24;
 
     // ==================== ESTUDIO DE VIABILIDAD ====================
 
@@ -383,7 +385,10 @@
         const contenido = [];
         let n = 0;
 
-        contenido.push(parrafo('Se buscó la denominación en los sistemas del Instituto Mexicano de la Propiedad Industrial (MARCia, con marcas idénticas y parecidas; Marcanet, con la búsqueda fonética, y la Gaceta de la Propiedad Industrial, por medio de SIGA), y cada antecedente se comparó con la propuesta por su escritura y su pronunciación en español, su clase, su vigencia y su titular. Este documento resume lo encontrado. Sus resultados son orientativos y tienen las reservas que se indican en el aviso del final.'));
+        const L = rep.logotipo || null;
+        contenido.push(parrafo('Se buscó la denominación en los sistemas del Instituto Mexicano de la Propiedad Industrial (MARCia, con marcas idénticas y parecidas; Marcanet, con la búsqueda fonética, y la Gaceta de la Propiedad Industrial, por medio de SIGA), y cada antecedente se comparó con la propuesta por su escritura y su pronunciación en español, su clase, su vigencia y su titular.' +
+            (L ? ' El logotipo se buscó aparte, con la búsqueda por imagen de MARCia.' : '') +
+            ' Este documento resume lo encontrado. Sus resultados son orientativos y tienen las reservas que se indican en el aviso del final.'));
 
         // ---- Resultado ----
         contenido.push(seccion(++n, 'Resultado'));
@@ -428,6 +433,43 @@
                 : 'Las fuentes consultadas no devolvieron antecedentes.'));
         }
 
+        // ---- Logotipo ----
+        if (L) {
+            contenido.push(seccion(++n, 'Logotipos parecidos'));
+            if (!L.ok) {
+                contenido.push(parrafo('La búsqueda del logotipo por imagen en MARCia no respondió' + (L.error ? ' (' + texto(L.error) + ')' : '') + '. Conviene repetirla antes de decidir sobre el diseño.'));
+            } else {
+                const indice = typeof V.avisoIndiceLogotipo === 'function' ? ' ' + V.avisoIndiceLogotipo(L) : '';
+                const intro = parrafo('Se buscó el logotipo en MARCia con su búsqueda por imagen, en ' + (clases.length === 1 ? 'la clase ' : 'las clases ') + enLista(clases) +
+                    '. MARCia ordena los resultados del más parecido al menos parecido, pero no mide cuánto se parecen: estos logotipos no se califican ni cuentan en el resultado del estudio, y deben revisarse a ojo. La columna «Lugar» es el que les dio MARCia en su clase.' + indice, { margin: [0, 0, 0, 0] });
+                contenido.push(L.miniatura
+                    ? { columns: [{ width: 76, stack: [{ image: L.miniatura, fit: [68, 68] }, { text: 'Logotipo buscado', font: 'Inter', fontSize: 7.5, color: COLOR.pie, margin: [0, 3, 0, 0] }] }, { width: '*', stack: [intro] }], columnGap: 12, margin: [0, 0, 0, 10] }
+                    : Object.assign(intro, { margin: [0, 0, 0, 10] }));
+                const marcas = L.marcas.slice(0, MAX_LOGOS_PDF);
+                if (marcas.length) {
+                    const imagenes = o.imagenes || {};
+                    contenido.push(tabla(['Logotipo', 'Marca', 'Clase', 'Estatus', 'Lugar'],
+                        marcas.map(m => [
+                            imagenes[m.id] ? { image: imagenes[m.id], fit: [58, 58], alignment: 'center' } : celda({ text: 'Sin imagen', font: 'Inter', fontSize: 8, color: COLOR.pie }),
+                            celda({ text: m.titulo || 'Sin denominación', bold: true }, [
+                                m.registro ? 'Reg. ' + m.registro : m.expediente ? 'Exp. ' + m.expediente : '',
+                                (m.titulares || []).slice(0, 1).join('')
+                            ]),
+                            celda(m.clases.join(', ') || '—'),
+                            celda(m.estado || 'Sin estatus'),
+                            celda(m.lugar + '.º', [], { alignment: 'center' })
+                        ]),
+                        ['18%', '38%', '11%', '21%', '12%']));
+                    if (L.marcas.length > marcas.length) {
+                        const resto = L.marcas.length - marcas.length;
+                        contenido.push(parrafo('Además, ' + resto + ' logotipo' + (resto === 1 ? '' : 's') + ' de lugares posteriores no se detalla' + (resto === 1 ? '' : 'n') + ' aquí.', { fontSize: 10.5, margin: [0, 6, 0, 8] }));
+                    }
+                } else {
+                    contenido.push(parrafo('MARCia no devolvió logotipos en las clases del estudio.'));
+                }
+            }
+        }
+
         // ---- Gaceta ----
         if (rep.publicaciones && rep.publicaciones.length) {
             contenido.push(seccion(++n, 'Publicaciones parecidas en la Gaceta'));
@@ -455,7 +497,16 @@
         if (rep.fichas && rep.fichas.pedidas) fuentes.push({ negrita: 'Fichas de Marcanet:', texto: rep.fichas.leidas + ' de ' + rep.fichas.pedidas + ' consultadas (estatus y vigencia).' });
         if (rep.fichasMARCia && rep.fichasMARCia.pedidas) fuentes.push({ negrita: 'Fichas de MARCia:', texto: rep.fichasMARCia.leidas + ' de ' + rep.fichasMARCia.pedidas + ' consultadas (clase y productos).' });
         fuentes.push({ negrita: 'Fecha de corte:', texto: 'la consulta se hizo el ' + fechaLarga(rep.fecha) + (horaDe(rep.fecha) ? ' a las ' + horaDe(rep.fecha) : '') + '. Lo que se presente o publique después no está considerado.' });
-        if (e.tipo && e.tipo !== 'nominativa') fuentes.push({ negrita: 'Diseño:', texto: 'el estudio compara solo la parte en palabras; el diseño de la marca requiere una búsqueda figurativa por separado.' });
+        if (L) {
+            fuentes.push({ negrita: 'Búsqueda por imagen (MARCia):', texto: L.ok
+                ? L.marcas.length + ' logotipo' + (L.marcas.length === 1 ? '' : 's') + ' entre los primeros ' + (V.LOGO_POR_CLASE || 12) + ' de cada clase del estudio.'
+                : 'no respondió' + (L.error ? ' (' + texto(L.error) + ')' : '') + '.' });
+        }
+        if (e.tipo && e.tipo !== 'nominativa') {
+            fuentes.push({ negrita: 'Diseño:', texto: L && L.ok
+                ? 'el parecido y el riesgo se calcularon solo con la parte en palabras; el logotipo se buscó aparte, por imagen, y sus resultados no se califican.'
+                : 'el estudio compara solo la parte en palabras; el diseño de la marca requiere una búsqueda figurativa por separado.' });
+        }
         contenido.push(vinetas(fuentes));
 
         contenido.push(aviso('Aviso importante', puntosDeAviso([
@@ -570,7 +621,7 @@
     }
 
     const Motor = {
-        PDFMAKE, FUENTES, ARCHIVOS_FUENTES, COLOR, MARGENES, ANCHO, EMPIRICA,
+        PDFMAKE, FUENTES, ARCHIVOS_FUENTES, COLOR, MARGENES, ANCHO, EMPIRICA, MAX_LOGOS_PDF,
         fechaLarga, fechaCorta, enLista, puntosDeAviso, documento, documentoViabilidad, documentoCartera, nombreArchivo,
         bloques: { rotulo, parrafo, caja, seccion, subtitulo, vinetas, tabla, celda, recuadro, aviso, pie, membrete }
     };
@@ -655,7 +706,8 @@
 
     /**
      * Pregunta para quién es y quién lo presenta (los dos, opcionales) y genera
-     * el PDF. { titulo, para, construir(opciones) → definición, archivo(opciones) → nombre }
+     * el PDF. { titulo, para, antes(opciones) (opcional, async), construir(opciones) → definición,
+     * archivo(opciones) → nombre }
      */
     function pedirYDescargar(cfg) {
         $('modal-titulo').textContent = '📄 ' + cfg.titulo;
@@ -674,6 +726,8 @@
             boton.disabled = true;
             boton.textContent = 'Generando…';
             try {
+                // Lo que hay que reunir antes de armar el documento (imágenes).
+                if (typeof cfg.antes === 'function') await cfg.antes(opciones);
                 await descargar(logo => cfg.construir({ ...opciones, logo }), cfg.archivo(opciones));
                 if (typeof global.cerrarModal === 'function') global.cerrarModal();
                 if (typeof global.mostrarToast === 'function') global.mostrarToast('PDF listo', 'success');

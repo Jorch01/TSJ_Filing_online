@@ -31,7 +31,15 @@ var marciaState = {
     searchMode: 'rapida',
     searching: false,
     // Marca abierta en el detalle, para el botón de vigilancia.
-    detalleActual: null
+    detalleActual: null,
+    // El logotipo elegido en el formulario: { blob, url, nombre, ancho, alto }.
+    logo: null,
+    // El de la última búsqueda, para el aviso sobre los resultados y para
+    // volver a subirlo si la sesión se pierde: { blob, url, ancho, alto,
+    // subida: { width, height, autoSegmentCrop }, query }. null si fue por texto.
+    busquedaLogo: null,
+    // La fecha de indexación que declara MARCia (la da /marcia/csrf).
+    indexacion: null
 };
 
 var sigaState = {
@@ -137,10 +145,13 @@ async function proxyFetch(path, options) {
     }
 
     var headers = {
-        'Content-Type': 'application/json',
         'Accept': 'application/json',
         'X-IMPI-Client': obtenerClientId()
     };
+    // Un formulario (el logotipo) lleva su propio Content-Type con el boundary,
+    // que pone el navegador; todo lo demás va en JSON.
+    var esFormulario = typeof FormData !== 'undefined' && options && options.body instanceof FormData;
+    if (!esFormulario) headers['Content-Type'] = 'application/json';
     if (impiSessionToken) headers['X-IMPI-Session'] = impiSessionToken;
     // El pase del plan gratuito (cuotas-impi.js): sin él, el proxy no busca.
     var paseCuota = typeof CUOTAS_IMPI !== 'undefined' ? CUOTAS_IMPI.pase() : null;
@@ -195,6 +206,13 @@ function esErrorDeSesionMARCia(e) {
 async function restablecerSesionMARCia(recrearBusqueda) {
     await proxyFetch('/marcia/csrf');
     if (!recrearBusqueda || !marciaState.lastPayload) return;
+    // El id del logotipo subido puede no valer en la sesión nueva: se sube otra vez.
+    var conLogo = marciaState.lastPayload.images && marciaState.lastPayload.images.length;
+    if (conLogo && marciaState.busquedaLogo) {
+        var otra = await subirLogotipoMARCia(marciaState.busquedaLogo.blob);
+        marciaState.lastPayload.images = otra.images;
+        marciaState.busquedaLogo.subida = otra.subida;
+    }
     var record = await proxyFetch('/marcia/search', {
         method: 'POST',
         body: JSON.stringify(marciaState.lastPayload)
@@ -226,6 +244,195 @@ function toggleMarciaSearchMode(mode) {
     document.getElementById('btn-marcia-avanzada').classList.toggle('active', mode === 'avanzada');
 }
 
+// ==================== MARCia: BÚSQUEDA POR LOGOTIPO ====================
+// MARCia busca por imagen en dos pasos: se sube el logotipo (el proxy lo
+// manda a su /marcas/search/internal/image/upload/bulk) y se busca con el id
+// que devuelve y la parte de la imagen que MARCia recortó sola:
+// { _type: 'Search$Quick', query, images: [{ id, segment }] }. Los resultados
+// llegan del más parecido al menos parecido, sin porcentaje.
+//
+// Antes de subirla, la imagen se redibuja aquí: MARCia solo acepta PNG, JPG,
+// GIF y BMP (WEBP y SVG le dan error), reduce lo grande y corta lo que pase
+// de ~8 MiB. Se dibuja sobre fondo blanco (como están las marcas del IMPI; un
+// fondo transparente podría leerse como negro), con el lado mayor en 800 px
+// como máximo, y sale en PNG (o en JPG, si en PNG pesa demasiado). Al
+// redibujarla también pierde los metadatos de la foto (EXIF, ubicación).
+
+var LOGO_LADO_MAX = 800;
+var LOGO_MAX_BYTES = 4 * 1024 * 1024;     // lo que se sube (el proxy acepta hasta 5 MB)
+var LOGO_MAX_ARCHIVO = 25 * 1024 * 1024;  // lo que se acepta elegir
+var LOGO_TIPOS = /^image\/(png|jpe?g|pjpeg|gif|bmp|x-ms-bmp|webp|svg\+xml|avif)$/i;
+var MARCIA_ORIGEN = 'https://marcia.impi.gob.mx';
+
+function lienzoABlob(canvas, tipo, calidad) {
+    return new Promise(function (listo) {
+        try { canvas.toBlob(function (b) { listo(b); }, tipo, calidad); } catch (e) { listo(null); }
+    });
+}
+
+function cargarImagenDeUrl(url) {
+    return new Promise(function (listo, falla) {
+        var img = new Image();
+        img.onload = function () { listo(img); };
+        img.onerror = function () { falla(new Error('No pude leer esa imagen. Usa un PNG, JPG, GIF, BMP, WEBP o SVG.')); };
+        img.src = url;
+    });
+}
+
+/** El archivo elegido, listo para MARCia: { blob, ancho, alto }. */
+async function prepararLogotipo(archivo) {
+    if (!archivo) throw new Error('No elegiste ninguna imagen');
+    if (archivo.type && !LOGO_TIPOS.test(archivo.type)) {
+        throw new Error('Ese archivo no es una imagen que se pueda usar. Usa un PNG, JPG, GIF, BMP, WEBP o SVG.');
+    }
+    if (archivo.size > LOGO_MAX_ARCHIVO) throw new Error('La imagen pesa más de 25 MB. Usa una más ligera.');
+    var url = URL.createObjectURL(archivo);
+    try {
+        var img = await cargarImagenDeUrl(url);
+        var w = img.naturalWidth || LOGO_LADO_MAX, h = img.naturalHeight || LOGO_LADO_MAX;
+        var escala = Math.min(1, LOGO_LADO_MAX / Math.max(w, h));
+        var ancho = Math.max(1, Math.round(w * escala)), alto = Math.max(1, Math.round(h * escala));
+        var canvas = document.createElement('canvas');
+        canvas.width = ancho;
+        canvas.height = alto;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, ancho, alto);
+        ctx.drawImage(img, 0, 0, ancho, alto);
+        var blob = await lienzoABlob(canvas, 'image/png');
+        if (!blob || blob.size > LOGO_MAX_BYTES) blob = await lienzoABlob(canvas, 'image/jpeg', 0.9);
+        if (!blob) throw new Error('No pude preparar esa imagen. Prueba con otra en PNG o JPG.');
+        return { blob: blob, ancho: ancho, alto: alto };
+    } finally {
+        URL.revokeObjectURL(url);
+    }
+}
+
+function urlDeBlob(blob) {
+    try { return URL.createObjectURL(blob); } catch (e) { return ''; }
+}
+
+function soltarUrlDeBlob(u) {
+    if (u) { try { URL.revokeObjectURL(u); } catch (e) { /* ya no existía */ } }
+}
+
+async function elegirLogotipoMARCia(archivo) {
+    var listo;
+    try {
+        listo = await prepararLogotipo(archivo);
+    } catch (e) {
+        mostrarToast(e.message, 'warning');
+        return false;
+    }
+    quitarLogotipoMARCia(true);
+    marciaState.logo = {
+        blob: listo.blob, url: urlDeBlob(listo.blob),
+        nombre: String((archivo && archivo.name) || 'Imagen pegada').slice(0, 80),
+        ancho: listo.ancho, alto: listo.alto
+    };
+    if (marciaState.searchMode !== 'rapida') toggleMarciaSearchMode('rapida');
+    pintarLogotipoMARCia();
+    return true;
+}
+
+function quitarLogotipoMARCia(sinPintar) {
+    if (marciaState.logo) soltarUrlDeBlob(marciaState.logo.url);
+    marciaState.logo = null;
+    var input = document.getElementById('marcia-logo-input');
+    if (input) input.value = '';
+    if (!sinPintar) pintarLogotipoMARCia();
+}
+
+function pintarLogotipoMARCia() {
+    var logo = marciaState.logo;
+    var vista = document.getElementById('marcia-logo-vista');
+    if (vista) vista.hidden = !logo;
+    var boton = document.getElementById('marcia-logo-elegir');
+    if (boton) boton.textContent = logo ? '🖼️ Cambiar logotipo' : '🖼️ Buscar por logotipo';
+    if (logo) {
+        var img = document.getElementById('marcia-logo-img');
+        if (img) img.src = logo.url;
+        var nombre = document.getElementById('marcia-logo-nombre');
+        if (nombre) nombre.textContent = logo.nombre + ' · ' + logo.ancho + ' × ' + logo.alto + ' px';
+    }
+    var q = document.getElementById('marcia-query');
+    if (q) q.placeholder = logo ? 'Opcional: un nombre para acotar la búsqueda' : 'Ej: Coca Cola, Nike, Apple...';
+    var etiqueta = document.getElementById('marcia-query-label');
+    if (etiqueta) etiqueta.textContent = logo ? 'Nombre de la marca (opcional)' : 'Nombre de la marca';
+}
+
+/** El recorte con que se busca: el que propuso MARCia o, si no hay, la imagen completa. */
+function segmentoDeLogotipo(subida) {
+    var s = subida && subida.autoSegmentCrop;
+    if (s && Array.isArray(s.polygon) && s.polygon.length >= 3) return { mode: s.mode === 0 ? 0 : 1, polygon: s.polygon };
+    var w = Math.max(1, (subida && subida.width) || 1), h = Math.max(1, (subida && subida.height) || 1);
+    return { mode: 1, polygon: [[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1], [0, 0]] };
+}
+
+/** Sube el logotipo y devuelve { images: [{ id, segment }], subida } para la búsqueda. */
+async function subirLogotipoMARCia(blob) {
+    var form = new FormData();
+    form.append('files', blob, blob.type === 'image/jpeg' ? 'logotipo.jpg' : 'logotipo.png');
+    var data = await proxyFetch('/marcia/imagen', { method: 'POST', body: form });
+    var subida = data && Array.isArray(data.imagenes) ? data.imagenes[0] : null;
+    if (!subida || !subida.id) throw new Error('MARCia no devolvió el logotipo subido');
+    return { images: [{ id: subida.id, segment: segmentoDeLogotipo(subida) }], subida: subida };
+}
+
+// MARCia da las imágenes de sus resultados como una ruta de su sitio
+// («/marcas/image/RM…»), que se pide directo a MARCia y sin sesión.
+function imagenDeMARCia(u) {
+    var v = typeof u === 'string' ? u.trim() : '';
+    if (/^\/marcas\/[\w\/.%-]+$/.test(v) && v.indexOf('..') < 0) return MARCIA_ORIGEN + v;
+    return /^https:\/\//i.test(v) ? v : '';
+}
+
+/** dd/mm/aaaa (MARCia a veces sin ceros: 13/8/2020) → aaaa-mm-dd, o ''. */
+function fechaIsoMARCia(t) {
+    var m = String(t || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    return m ? m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) : '';
+}
+
+/** La solicitud más reciente entre unos resultados, como dd/mm/aaaa, o ''. */
+function solicitudMasReciente(resultados) {
+    var mejor = '';
+    (resultados || []).forEach(function (r) {
+        var f = fechaIsoMARCia(r && r.dates && r.dates.application);
+        if (f && f > mejor) mejor = f;
+    });
+    return mejor ? mejor.slice(8, 10) + '/' + mejor.slice(5, 7) + '/' + mejor.slice(0, 4) : '';
+}
+
+// El aviso sobre los resultados de una búsqueda por logotipo: la imagen con
+// la parte que comparó MARCia, cómo ordena y hasta cuándo llega su índice.
+function renderizarAvisoLogotipoMARCia() {
+    var el = document.getElementById('marcia-logo-aviso');
+    if (!el) return;
+    var b = marciaState.busquedaLogo;
+    if (!b) { el.hidden = true; el.innerHTML = ''; return; }
+    var w = (b.subida && b.subida.width) || b.ancho, h = (b.subida && b.subida.height) || b.alto;
+    var seg = segmentoDeLogotipo(b.subida);
+    var puntos = seg.polygon.map(function (p) { return Number(p[0]) + ',' + Number(p[1]); }).join(' ');
+    var reciente = solicitudMasReciente(marciaState.results);
+    var indice = marciaState.indexacion
+        ? 'MARCia declara como su última indexación el «' + marciaState.indexacion + '»' +
+          (reciente ? '; entre los resultados de esta página, la solicitud más reciente es del ' + reciente : '') + '. '
+        : (reciente ? 'Entre los resultados de esta página, la solicitud más reciente es del ' + reciente + '. ' : '');
+    el.innerHTML =
+        '<div class="marcia-logo-comparado" style="aspect-ratio:' + w + ' / ' + h + '">' +
+            '<img src="' + attr(b.url) + '" alt="Tu logotipo">' +
+            '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" aria-hidden="true" focusable="false">' +
+                '<polygon points="' + attr(puntos) + '"></polygon></svg>' +
+        '</div>' +
+        '<div class="marcia-logo-texto">' +
+            '<strong>🖼️ Búsqueda por logotipo' + (b.query ? ' y el nombre «' + san(b.query) + '»' : '') + '</strong>' +
+            '<p>MARCia ordena los resultados del más parecido al menos parecido a tu imagen; no da un porcentaje. El recuadro marca la parte de la imagen que comparó.' +
+                (b.query ? ' Con un nombre, MARCia acota de forma aproximada: pueden salir denominaciones distintas.' : '') + '</p>' +
+            '<p class="marcia-logo-indice">⚠️ ' + san(indice) + 'Las marcas más recientes podrían no estar en la búsqueda por imagen: compleméntala con la búsqueda por nombre y por códigos de Viena.</p>' +
+        '</div>';
+    el.hidden = false;
+}
+
 // ==================== MARCia: BÚSQUEDA ====================
 
 // opts.silencioso: no emite toasts propios (lo usa buscarEnLas3, que resume).
@@ -236,11 +443,15 @@ async function buscarMARCia(opts) {
     if (marciaState.searching) return false;
 
     var payload = opts.payload || null;
+    // El logotipo va solo en la búsqueda rápida del formulario; buscar en las
+    // 3 (opts.sinLogo) y las búsquedas guardadas son por nombre.
+    var logo = null;
     if (!payload) {
         if (marciaState.searchMode === 'rapida') {
             var query = (document.getElementById('marcia-query').value || '').trim();
-            if (!query) {
-                if (!opts.silencioso) mostrarToast('Ingresa un término de búsqueda', 'warning');
+            logo = opts.sinLogo ? null : marciaState.logo;
+            if (!query && !logo) {
+                if (!opts.silencioso) mostrarToast('Escribe un nombre o elige un logotipo', 'warning');
                 return false;
             }
             payload = { _type: 'Search$Quick', query: query, images: [] };
@@ -257,13 +468,25 @@ async function buscarMARCia(opts) {
     marciaState.lastPayload = payload;
     marciaState.pageNumber = 0;
     marciaState.filters = { status: [], niceClass: [], viennaCode: [] };
+    var nuevoLogo = null;
     mostrarCargandoIMPI();
 
     try {
         // 1. Obtener sesión CSRF
-        await proxyFetch('/marcia/csrf');
+        var sesion = await proxyFetch('/marcia/csrf');
+        if (sesion && sesion.indexacion) marciaState.indexacion = String(sesion.indexacion).slice(0, 40);
 
-        // 2. Crear búsqueda (reintenta si el worker perdió la sesión recién creada)
+        // 2. Con logotipo: subirlo y buscar con su id y su recorte.
+        if (logo) {
+            var subido = await conReintentoDeSesion(function() { return subirLogotipoMARCia(logo.blob); }, false);
+            payload.images = subido.images;
+            nuevoLogo = {
+                blob: logo.blob, url: urlDeBlob(logo.blob), ancho: logo.ancho, alto: logo.alto,
+                subida: subido.subida, query: payload.query
+            };
+        }
+
+        // 3. Crear búsqueda (reintenta si el worker perdió la sesión recién creada)
         var recordData = await conReintentoDeSesion(function() {
             return proxyFetch('/marcia/search', {
                 method: 'POST',
@@ -272,8 +495,12 @@ async function buscarMARCia(opts) {
         }, false);
         marciaState.searchId = recordData.id;
         marciaState.totalResults = recordData.count || 0;
+        // Lo que se muestra desde ahora es esta búsqueda (con o sin logotipo).
+        var anterior = marciaState.busquedaLogo;
+        marciaState.busquedaLogo = nuevoLogo;
+        if (anterior && anterior !== nuevoLogo) soltarUrlDeBlob(anterior.url);
 
-        // 3. Obtener resultados
+        // 4. Obtener resultados
         var ok = await obtenerResultadosMARCia({ silencioso: opts.silencioso });
         if (!ok) return false;
         return true;
@@ -283,6 +510,8 @@ async function buscarMARCia(opts) {
         if (!opts.silencioso) {
             if (e.message === 'PROXY_NOT_CONFIGURED') {
                 mostrarErrorProxy();
+            } else if (logo && esErrorDeSesionMARCia(e)) {
+                mostrarToast('MARCia no aceptó la sesión para subir el logotipo. Intenta de nuevo en unos minutos.', 'error');
             } else {
                 console.error('Error MARCia:', e);
                 mostrarToast('Error al buscar en MARCia: ' + e.message, 'error');
@@ -291,6 +520,7 @@ async function buscarMARCia(opts) {
         return false;
     } finally {
         marciaState.searching = false;
+        if (nuevoLogo && marciaState.busquedaLogo !== nuevoLogo) soltarUrlDeBlob(nuevoLogo.url);
         ocultarCargandoIMPI();
     }
 }
@@ -403,9 +633,11 @@ function attr(value) {
 }
 
 // Solo se aceptan URLs de imagen http(s) o data:image para no inyectar
-// esquemas raros en src.
+// esquemas raros en src. Las rutas de MARCia («/marcas/image/…») se piden a
+// MARCia.
 function urlImagenSegura(url) {
     var u = String(url || '').trim();
+    if (u.charAt(0) === '/') return imagenDeMARCia(u);
     if (/^https?:\/\//i.test(u) || /^data:image\//i.test(u)) return u;
     return '';
 }
@@ -419,6 +651,7 @@ function renderizarResultadosMARCia() {
     section.style.display = '';
     document.getElementById('marcia-detail-section').style.display = 'none';
     countEl.textContent = marciaState.totalResults + ' resultado' + (marciaState.totalResults !== 1 ? 's' : '');
+    renderizarAvisoLogotipoMARCia();
     if (exportBtn) exportBtn.style.display = marciaState.results.length > 0 ? '' : 'none';
 
     if (marciaState.results.length === 0) {
@@ -810,6 +1043,10 @@ function cerrarDetalleMARCia() {
 
 function limpiarFormularioMARCia() {
     document.getElementById('marcia-query').value = '';
+    quitarLogotipoMARCia();
+    if (marciaState.busquedaLogo) soltarUrlDeBlob(marciaState.busquedaLogo.url);
+    marciaState.busquedaLogo = null;
+    renderizarAvisoLogotipoMARCia();
     ['marcia-adv-title','marcia-adv-name','marcia-adv-number','marcia-adv-goods','marcia-adv-date-from','marcia-adv-date-to'].forEach(function(id) {
         var el = document.getElementById(id); if (el) el.value = '';
     });
@@ -853,7 +1090,8 @@ function filaCSVMarca(r) {
         r.appType,
         r.owners,
         r.classes,
-        r.dates && r.dates.application ? r.dates.application : ''
+        r.dates && r.dates.application ? r.dates.application : '',
+        urlImagenSegura(r.images)
     ].map(csvCelda).join(',') + '\n';
 }
 
@@ -907,10 +1145,12 @@ async function exportarResultadosMARCia() {
 
     if (registros.length === 0) { mostrarToast('No hay resultados para exportar', 'warning'); return; }
 
-    var csv = 'Denominación,Expediente,Registro,Estatus,Tipo,Titular,Clases,Fecha Presentación\n';
-    registros.forEach(function(r) { csv += filaCSVMarca(r); });
+    // Por logotipo, el orden es el de parecido: se numera para que no se pierda.
+    var porLogo = !!marciaState.busquedaLogo;
+    var csv = (porLogo ? 'Parecido (1 = el más parecido),' : '') + 'Denominación,Expediente,Registro,Estatus,Tipo,Titular,Clases,Fecha Presentación,Imagen\n';
+    registros.forEach(function(r, i) { csv += (porLogo ? csvCelda(i + 1) + ',' : '') + filaCSVMarca(r); });
 
-    descargarArchivo('marcas_impi_' + new Date().toISOString().slice(0, 10) + '.csv',
+    descargarArchivo('marcas_impi_' + (porLogo ? 'logotipo_' : '') + new Date().toISOString().slice(0, 10) + '.csv',
                      '\ufeff' + csv, 'text/csv;charset=utf-8;');
 
     var aviso = 'CSV exportado con ' + registros.length + ' resultado' + (registros.length !== 1 ? 's' : '');
@@ -1228,6 +1468,8 @@ function guardarBusquedaSIGA() {
 // Guardar búsqueda MARCia
 function guardarBusquedaMARCia() {
     if (!db || marciaState.results.length === 0) return;
+    // La imagen no se guarda, así que una búsqueda por logotipo no se podría repetir.
+    if (marciaState.busquedaLogo) { mostrarToast('Las búsquedas por logotipo no se guardan: la imagen no se conserva.', 'warning'); return; }
     var query = '';
     if (marciaState.searchMode === 'rapida') {
         query = (document.getElementById('marcia-query').value || '').trim();
@@ -1906,7 +2148,7 @@ async function buscarEnLas3() {
     var acuerdos;
     try {
         acuerdos = await Promise.allSettled([
-            buscarMARCia({ silencioso: true, cuotaAutorizada: true }),
+            buscarMARCia({ silencioso: true, cuotaAutorizada: true, sinLogo: true }),
             buscarMarcanet({ silencioso: true, cuotaAutorizada: true }),
             buscarSIGA({ silencioso: true, cuotaAutorizada: true })
         ]);
@@ -1961,7 +2203,7 @@ function actualizarBotonesGuardar() {
         var yaGuardadaMarcia = savedSearchesState.searches.some(function(s) {
             return s.tool === 'marcia' && s.query === marciaQuery && (s.subtype || '') === marciaState.searchMode;
         });
-        marciaSaveBtn.style.display = (marciaState.results.length > 0 && marciaQuery && !yaGuardadaMarcia) ? '' : 'none';
+        marciaSaveBtn.style.display = (marciaState.results.length > 0 && marciaQuery && !yaGuardadaMarcia && !marciaState.busquedaLogo) ? '' : 'none';
     }
 
     // Marcanet save button
@@ -2574,8 +2816,56 @@ function inicializarDelegacionMARCia() {
     }
 }
 
+// El logotipo se elige con el botón, se arrastra al recuadro o se pega
+// (Ctrl+V) estando en la búsqueda de MARCia.
+function inicializarLogotipoMARCia() {
+    var input = document.getElementById('marcia-logo-input');
+    var boton = document.getElementById('marcia-logo-elegir');
+    var quitar = document.getElementById('marcia-logo-quitar');
+    var zona = document.getElementById('marcia-logo-zona');
+    if (!input || !boton) return;
+    boton.addEventListener('click', function () { input.click(); });
+    input.addEventListener('change', function () {
+        if (input.files && input.files[0]) elegirLogotipoMARCia(input.files[0]);
+    });
+    if (quitar) quitar.addEventListener('click', function () { quitarLogotipoMARCia(); });
+    if (zona) {
+        ['dragenter', 'dragover'].forEach(function (tipo) {
+            zona.addEventListener(tipo, function (e) {
+                if (!e.dataTransfer || Array.from(e.dataTransfer.types || []).indexOf('Files') < 0) return;
+                e.preventDefault();
+                zona.classList.add('arrastrando');
+            });
+        });
+        ['dragleave', 'drop'].forEach(function (tipo) {
+            zona.addEventListener(tipo, function () { zona.classList.remove('arrastrando'); });
+        });
+        zona.addEventListener('drop', function (e) {
+            var archivo = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+            if (!archivo) return;
+            e.preventDefault();
+            elegirLogotipoMARCia(archivo);
+        });
+    }
+    var tarjeta = document.getElementById('marcia-form-rapida');
+    var contenedor = tarjeta && tarjeta.closest('.card');
+    if (contenedor) {
+        contenedor.addEventListener('paste', function (e) {
+            var items = (e.clipboardData && e.clipboardData.items) || [];
+            for (var i = 0; i < items.length; i++) {
+                if (items[i].kind === 'file' && /^image\//.test(items[i].type)) {
+                    var archivo = items[i].getAsFile();
+                    if (archivo) { e.preventDefault(); elegirLogotipoMARCia(archivo); }
+                    return;
+                }
+            }
+        });
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     inicializarDelegacionMARCia();
+    inicializarLogotipoMARCia();
 
     // Enter key para búsqueda unificada
     var unifiedInput = document.getElementById('impi-unified-query');
