@@ -117,8 +117,9 @@ console.log('\nEl aviso');
 
 console.log('\nNombres de archivo y fechas');
 {
-    igual('nombre de archivo legible y sin signos prohibidos', R.nombreArchivo(['Estudio de viabilidad', 'Luna/Sol: "Café"', ''], '2026-11-22'),
-        'Estudio de viabilidad - LunaSol Café - 2026-11-22.pdf');
+    igual('nombre de archivo legible, sin signos prohibidos ni acentos (con acento, Chrome lo guarda como «download»)',
+        R.nombreArchivo(['Estudio de viabilidad', 'Luna/Sol: "Café"', 'Juan López Ñuñez', ''], '2026-11-22'),
+        'Estudio de viabilidad - LunaSol Cafe - Juan Lopez Nunez - 2026-11-22.pdf');
     igual('fecha larga en español', R.fechaLarga('2026-11-22'), '22 de noviembre de 2026');
     igual('un día suelto es del calendario local (no se recorre al día anterior)', R.fechaCorta('2026-01-01'), '01/01/2026');
     igual('listas en español', [R.enLista([3]), R.enLista([3, 5]), R.enLista([3, 5, 10])], ['3', '3 y 5', '3, 5 y 10']);

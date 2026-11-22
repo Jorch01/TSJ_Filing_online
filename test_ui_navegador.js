@@ -4105,7 +4105,7 @@ async function probarViabilidadMarca(navegador) {
         verificar('viabilidad: el aviso de que los resultados no son concluyentes, a la vista antes de buscar',
             /dependen por completo de búsquedas en sistemas externos/.test(await page.textContent('#vb-form')) && /nunca son concluyentes/.test(await page.textContent('#vb-form')) &&
             /consulta siempre a un especialista/.test(await page.textContent('#vb-form')));
-        igual('viabilidad: las otras herramientas siguen ahí', await page.locator('.impi-tab').count(), 4);
+        igual('viabilidad: las otras herramientas siguen ahí (y la cartera)', await page.locator('.impi-tab').count(), 5);
 
         // Sin clase no se hace nada.
         await page.fill('#vb-denominacion', 'Luna Azul');
@@ -4193,7 +4193,7 @@ async function probarViabilidadMarca(navegador) {
         const esperaPdf = page.waitForEvent('download', { timeout: 30000 });
         await page.click('#rpdf-generar');
         const pdf = await esperaPdf.catch(() => null);
-        verificar('pdf: se descarga con un nombre claro', !!pdf && /^Estudio de viabilidad - Luna Azul - Juan López - \d{4}-\d{2}-\d{2}\.pdf$/.test(pdf.suggestedFilename()), pdf && pdf.suggestedFilename());
+        verificar('pdf: se descarga con un nombre claro, sin acentos', !!pdf && /^Estudio de viabilidad - Luna Azul - Juan Lopez - \d{4}-\d{2}-\d{2}\.pdf$/.test(pdf.suggestedFilename()), pdf && pdf.suggestedFilename());
         if (pdf) {
             const bytes = fs.readFileSync(await pdf.path());
             verificar('pdf: es un PDF con las fuentes de Empírica', bytes.slice(0, 5).toString() === '%PDF-' && /Lora/.test(bytes.toString('latin1')) && bytes.length > 30000, bytes.length + ' bytes');

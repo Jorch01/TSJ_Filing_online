@@ -555,12 +555,18 @@
         });
     }
 
-    /** Nombre de archivo sin signos raros: «Estudio de viabilidad - LUNA - 2026-11-22.pdf». */
+    /**
+     * Nombre de archivo sin signos raros ni acentos: «Estudio de viabilidad -
+     * Cafe Lopez - 2026-11-22.pdf». Con un acento, Chrome descarta el nombre y
+     * guarda el archivo como «download», sin extensión.
+     */
     function nombreArchivo(partes, fecha) {
         const d = aFecha(fecha) || new Date();
         const dia = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
         return partes.map(texto).filter(Boolean).concat(dia).join(' - ')
-            .replace(/[\\/:*?"<>|]+/g, '').slice(0, 120) + '.pdf';
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^\x20-\x7e]/g, '')
+            .replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 120) + '.pdf';
     }
 
     const Motor = {
