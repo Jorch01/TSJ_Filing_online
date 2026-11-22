@@ -7,7 +7,9 @@
  *  - Las fechas del IMPI («18/08/2011 11:47:18 AM») se leen bien, y las
  *    sumas de meses no se pasan de mes (31 de agosto + 6 meses = febrero).
  *  - Los plazos: declaración de uso a los tres años de otorgado el registro
- *    (solo con la ley de 2020) y renovación con sus seis meses de gracia.
+ *    (registros otorgados desde el 10 de agosto de 2018) y renovación con sus
+ *    seis meses de gracia; la vigencia, desde el otorgamiento o la presentación
+ *    según la ley con que se presentó la solicitud.
  *  - Dos dispositivos que editan la misma marca no se pisan; el borrado viaja.
  *  - Lo que llega de MARCia y de Marcanet llena la marca sin borrar lo
  *    capturado, y Marcanet manda en el estatus y la vigencia.
@@ -97,9 +99,24 @@ console.log('\nPlazos');
     const atendida = C.cambiar(nuevaLey, { atendidos: { 'uso|2026-02-21': T1 } }, T1);
     igual('atendida, el siguiente es la renovación', C.proximoPlazo(atendida, '2026-03-01').tipo, 'renovacion');
 
-    // Otorgada antes de la ley de 2020: no hay declaración a los tres años.
+    // Otorgada antes del 10 de agosto de 2018: no hay declaración a los tres años.
     const vieja = C.nueva({ denominacion: 'LUNFARDO', registro: '1261657', estatus: 'REGISTRADA', fechaPresentacion: '18/08/2011', fechaConcesion: '01/02/2012', vigencia: '18/08/2031' }, T0, 'v');
-    igual('registro anterior a la ley: sin declaración de uso', C.plazosDe(vieja, '2026-01-10').map(x => x.tipo), ['renovacion', 'gracia']);
+    igual('registro anterior al 10/08/2018: sin declaración de uso', C.plazosDe(vieja, '2026-01-10').map(x => x.tipo), ['renovacion', 'gracia']);
+    // La declaración a los tres años viene de la reforma de 2018 (LPI art. 128) y
+    // la LFPPI la mantiene (art. 233, transitorio décimo primero): un registro
+    // otorgado en 2019 también la debía, aunque la LFPPI sea de 2020.
+    const de2019 = C.nueva({ denominacion: 'SOLAR', registro: '2000001', estatus: 'REGISTRADA', fechaPresentacion: '2018-11-05', fechaConcesion: '2019-06-01' }, T0, 'd');
+    igual('otorgado en 2019: declaración de uso del 01/06/2022 al 01/09/2022', (({ desde, hasta, estado }) => [desde, hasta, estado])(C.plazosDe(de2019, '2026-01-10').find(x => x.tipo === 'uso')),
+        ['2022-06-01', '2022-09-01', 'vencido']);
+    igual('el corte es el 10 de agosto de 2018, día de la reforma', [C.DECLARACION_USO_DESDE,
+        C.plazosDe(C.cambiar(de2019, { fechaConcesion: '2018-08-09' }, T1), '2026-01-10').some(x => x.tipo === 'uso'),
+        C.plazosDe(C.cambiar(de2019, { fechaConcesion: '2018-08-10' }, T1), '2026-01-10').some(x => x.tipo === 'uso')], ['2018-08-10', false, true]);
+    // Su vigencia, con la ley anterior, se cuenta desde la presentación.
+    igual('presentada con la ley anterior: la vigencia estimada cuenta desde la presentación', (({ hasta, estimado }) => [hasta, estimado])(C.plazosDe(de2019, '2026-01-10').find(x => x.tipo === 'renovacion')),
+        ['2028-11-05', true]);
+    igual('aunque se haya otorgado ya con la LFPPI', C.baseDeVigencia('2021-02-15', '2020-09-30'), '2020-09-30');
+    igual('presentada con la LFPPI: desde el otorgamiento', C.baseDeVigencia('2021-07-01', '2020-11-05'), '2021-07-01');
+    igual('sin la presentación y otorgada antes de la LFPPI: no se estima', C.baseDeVigencia('2019-06-01', ''), null);
     // Vencida la renovación: se muestra la gracia y no la renovación vencida.
     const enGracia = C.plazosVigentes(C.plazosDe(vieja, '2031-10-01'));
     igual('pasado el fin de la vigencia: periodo de gracia en curso', enGracia.map(x => x.tipo + ':' + x.estado), ['gracia:en_curso']);
@@ -119,6 +136,30 @@ console.log('\nPlazos');
     igual('resumen: sin contar la borrada', C.resumen(lista, '2026-01-10'), { total: 3, registradas: 3, tramite: 0, otras: 0, enCurso: 1, proximos: 0, vencidos: 0 });
     // LUNA tiene la declaración en curso; SOL, su declaración en mayo; LUNFARDO, la renovación en 2031.
     igual('orden: primero lo urgente', C.ordenar(lista, '2026-01-10').map(m => m.denominacion), ['LUNA', 'SOL', 'LUNFARDO']);
+}
+
+console.log('\nPlan gratuito: 3 marcas, y el botón de servicios');
+{
+    const tres = ['A', 'B', 'C'].map((d, i) => C.nueva({ denominacion: d, expediente: String(i + 1) }, T0, 'g' + i));
+    igual('con 2 marcas, cabe otra', C.cupoDeMarcas(tres.slice(0, 2), false), { ok: true, usadas: 2, limite: 3 });
+    igual('con 3, ya no (sin Premium)', C.cupoDeMarcas(tres, false), { ok: false, usadas: 3, limite: 3 });
+    igual('con Premium, siempre', C.cupoDeMarcas(tres, true).ok, true);
+    igual('las borradas no cuentan', C.cupoDeMarcas([...tres.slice(0, 2), C.cambiar(tres[2], { eliminada: T1 }, T1)], false).ok, true);
+    igual('el límite configurado en la app manda', [C.cupoDeMarcas(tres, false, 5).ok, C.cupoDeMarcas(tres, false, 5).limite], [true, 5]);
+    igual('el límite gratuito por omisión es 3', C.LIMITE_GRATIS, 3);
+
+    const m = C.nueva({ denominacion: 'LUNA AZUL', registro: '2500000', expediente: '2700001', clases: '43', titular: 'Juan Pérez', cliente: 'Grupo Pérez', estatus: 'REGISTRADA', fechaConcesion: '2022-11-21' }, T0, 'w');
+    const uso = C.plazosDe(m, '2026-01-10').find(x => x.tipo === 'uso');
+    const url = C.enlaceServicio(m, uso, '529981399930');
+    igual('abre WhatsApp con Empírica', url.split('?')[0], 'https://wa.me/529981399930');
+    const msg = decodeURIComponent(url.split('text=')[1]);
+    igual('con la marca, su número, su clase, su titular y el plazo', msg,
+        'Hola, Empírica Legal Lab. Quiero ayuda para presentar la declaración de uso de la marca «LUNA AZUL» (Reg. 2500000 · Exp. 2700001; clase 43; titular: Juan Pérez). El plazo es del 21/11/2025 al 21/02/2026.');
+    verificar('sin el cliente ni las notas (no hacen falta para cotizar)', !/Grupo Pérez/.test(msg));
+    const ren = { tipo: 'renovacion', desde: '2032-05-21', hasta: '2032-11-21', estado: 'futuro', estimado: true };
+    verificar('para la renovación, lo dice, y si la fecha es estimada también', /presentar la renovación/.test(decodeURIComponent(C.enlaceServicio(m, ren).split('text=')[1])) &&
+        /\(fecha estimada\)/.test(decodeURIComponent(C.enlaceServicio(m, ren).split('text=')[1])));
+    verificar('si ya pasó, también', /, y ya pasó\.$/.test(decodeURIComponent(C.enlaceServicio(m, { ...uso, estado: 'vencido' }).split('text=')[1])));
 }
 
 console.log('\nDos dispositivos');
@@ -193,7 +234,7 @@ console.log('\nReporte y CSV');
     const doc = R.documentoCartera(d, { para: 'Pérez' });
     verificar('se arma el PDF de la cartera', doc.pageSize === 'LETTER' && doc.content.length > 5);
     const texto = JSON.stringify(doc.content);
-    verificar('con el aviso de que los plazos son de apoyo', /cálculos de apoyo/.test(texto) && /5 de noviembre de 2020/.test(texto));
+    verificar('con el aviso de que los plazos son de apoyo y desde cuándo aplica cada regla', /cálculos de apoyo/.test(texto) && /10 de agosto de 2018/.test(texto) && /5 de noviembre de 2020/.test(texto));
     const csv = C.csv(lista, '2026-01-10');
     verificar('el CSV abre con acentos en Excel (BOM)', csv.charCodeAt(0) === 0xfeff);
     igual('y trae una fila por marca más la cabecera', csv.trim().split('\n').length, 4);

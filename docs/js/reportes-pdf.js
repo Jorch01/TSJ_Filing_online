@@ -588,7 +588,7 @@
             ['25%', '12%', '21%', '18%', '24%']));
 
         contenido.push(aviso('Aviso importante', puntosDeAviso([
-            { negrita: AVISO_FUENTES, texto: 'Este reporte se generó con los datos capturados en la herramienta y, cuando se indica, con los que se consultaron en los sistemas públicos del IMPI (MARCia y Marcanet) en la fecha señalada, que pueden estar incompletos, desactualizados o fallar. Los plazos de declaración de uso y de renovación son cálculos de apoyo: deben confirmarse contra cada expediente, el título de registro y la legislación aplicable, en particular para los registros otorgados antes del 5 de noviembre de 2020.' }
+            { negrita: AVISO_FUENTES, texto: 'Este reporte se generó con los datos capturados en la herramienta y, cuando se indica, con los que se consultaron en los sistemas públicos del IMPI (MARCia y Marcanet) en la fecha señalada, que pueden estar incompletos, desactualizados o fallar. Los plazos de declaración de uso y de renovación son cálculos de apoyo: deben confirmarse contra cada expediente, el título de registro y la legislación aplicable. La declaración de uso a los tres años aplica a los registros otorgados desde el 10 de agosto de 2018, y la vigencia se cuenta desde el otorgamiento solo para las solicitudes presentadas desde el 5 de noviembre de 2020 (antes, desde la presentación).' }
         ])));
 
         const asunto = [

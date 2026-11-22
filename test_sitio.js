@@ -34,7 +34,8 @@ for (const ruta of paginas) {
     verificar(`${ruta}: título de 30 a 70 caracteres`, t.length >= 30 && t.length <= 70, `${t.length}: ${t}`);
     verificar(`${ruta}: título distinto a las demás páginas`, !titulos.has(t));
     titulos.add(t);
-    verificar(`${ruta}: menciona Quintana Roo en el título`, /Quintana Roo|LFT/.test(t), t);
+    // Las calculadoras dicen la ley que aplican (LFT, LFPPI); lo demás, Quintana Roo.
+    verificar(`${ruta}: menciona Quintana Roo (o la ley de la calculadora) en el título`, /Quintana Roo|LFT|LFPPI/.test(t), t);
     const d = /<meta name="description" content="([^"]+)"/.exec(html)?.[1] || '';
     verificar(`${ruta}: descripción de 110 a 180 caracteres`, d.length >= 110 && d.length <= 180, `${d.length}: ${d}`);
     const canon = /<link rel="canonical" href="([^"]+)"/.exec(html)?.[1];
@@ -75,6 +76,18 @@ const idsApp = [...app.matchAll(/id="(lab-[^"]+)"/g)].map(m => m[1]).filter(i =>
 const faltan = idsApp.filter(i => !calc.includes(`id="${i}"`));
 verificar('calculadora pública: trae todos los campos de la de la app', faltan.length === 0, faltan.join(', '));
 verificar('calculadora pública: carga el motor', calc.includes('src="/docs/js/calculadora-laboral.js"'));
+
+// La calculadora de plazos de marca usa el motor de la cartera de la app.
+const plazos = generado['calculadora-declaracion-uso-renovacion-marca/index.html'];
+verificar('plazos de marca: carga el motor de la cartera y su calculadora',
+    plazos.includes('src="/docs/js/cartera-marcas.js"') && plazos.includes('src="/docs/js/plazos-marca.js"') && /prepararPlazosMarca\(\)/.test(plazos));
+verificar('plazos de marca: pide las tres fechas', ['pm-concesion', 'pm-presentacion', 'pm-vigencia'].every(i => plazos.includes(`id="${i}"`)));
+verificar('plazos de marca: cita los artículos y el corte de 2018', /artículo 233/.test(plazos) && /artículo 237/.test(plazos) && /10 de agosto de 2018/.test(plazos) && /5 de noviembre de 2020/.test(plazos));
+verificar('plazos de marca: con el aviso de reservas y quién presta el servicio', /cálculo de apoyo, con reservas/.test(plazos) && /Empírica Legal Lab presta el servicio/.test(plazos));
+verificar('plazos de marca: la ayuda de Empírica va por WhatsApp', /data-whatsapp="\d{10,15}"/.test(plazos));
+verificar('plazos de marca: la enlazan la portada, la viabilidad y el pie',
+    generado['index.html'].includes('href="/calculadora-declaracion-uso-renovacion-marca/"') &&
+    generado['estudio-viabilidad-marca-impi/index.html'].includes('href="/calculadora-declaracion-uso-renovacion-marca/"'));
 
 // Sitemap y robots.
 const sitemap = generado['sitemap.xml'];

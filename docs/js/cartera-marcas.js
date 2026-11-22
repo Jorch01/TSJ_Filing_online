@@ -9,15 +9,19 @@
  * fichas de MARCia y Marcanet, que no gastan búsquedas del plan.
  *
  * Con esas fechas se calculan dos plazos, como ayuda y no como cómputo
- * oficial:
- *  - Declaración de uso: con la Ley Federal de Protección a la Propiedad
- *    Industrial (en vigor desde el 5 de noviembre de 2020), el titular declara
- *    el uso de la marca dentro de los tres meses siguientes a que se cumplan
- *    tres años de otorgado el registro.
+ * oficial (revisado contra el texto vigente de la LFPPI, última reforma DOF
+ * 03-04-2026, y la Ley de la Propiedad Industrial abrogada):
+ *  - Declaración de uso: dentro de los tres meses siguientes a que se cumplan
+ *    tres años de otorgado el registro (LFPPI art. 233; antes, LPI art. 128,
+ *    desde la reforma en vigor el 10 de agosto de 2018). La deben presentar
+ *    los registros otorgados desde el 10 de agosto de 2018; los anteriores
+ *    están exceptuados (LFPPI, transitorio décimo primero).
  *  - Renovación: en los seis meses anteriores al fin de la vigencia, con seis
- *    meses de gracia después. La vigencia de diez años cuenta desde el
- *    otorgamiento para los registros otorgados con la ley nueva y desde la
- *    presentación para los anteriores.
+ *    meses de gracia después (LFPPI art. 237). La vigencia de diez años se
+ *    cuenta desde el otorgamiento con la LFPPI (art. 178), para solicitudes
+ *    presentadas desde el 5 de noviembre de 2020, y desde la presentación de
+ *    la solicitud con la ley anterior (LPI art. 95), que siguió aplicando a
+ *    las que estaban en trámite (transitorio décimo).
  * Cada plazo se puede pasar a Pendientes o marcar como atendido.
  *
  * Se guarda en la configuración (como las cuentas compartidas) y viaja en la
@@ -35,7 +39,10 @@
     // ==================== MOTOR ====================
 
     const CLAVE_CONFIG = 'cartera_marcas';
+    // Desde aquí se cuenta la vigencia desde el otorgamiento (LFPPI, art. 178).
     const INICIO_LFPPI = '2020-11-05';
+    // Los registros otorgados desde aquí declaran el uso a los tres años.
+    const DECLARACION_USO_DESDE = '2018-08-10';
     // Un plazo que empieza dentro de estos días "empieza pronto".
     const DIAS_AVISO = 90;
     const MAX_HISTORIAL = 40;
@@ -264,7 +271,7 @@
         if (situacion(m) !== 'registrada') return [];
         const out = [];
         const conc = fecha(m.fechaConcesion), pres = fecha(m.fechaPresentacion);
-        if (conc && conc >= INICIO_LFPPI) {
+        if (conc && conc >= DECLARACION_USO_DESDE) {
             const desde = sumarMeses(conc, 36);
             out.push({ tipo: 'uso', titulo: 'Declaración de uso', desde, hasta: sumarMeses(desde, 3), estimado: false });
         }
@@ -273,7 +280,7 @@
             // Sin vigencia oficial se estima, pero solo si la estimación no se
             // quedó atrás: una marca vieja que sigue registrada se renovó, y
             // contar diez años desde su presentación daría un plazo falso.
-            const base = conc && conc >= INICIO_LFPPI ? conc : pres;
+            const base = baseDeVigencia(conc, pres);
             if (base) {
                 const est = sumarMeses(base, 120);
                 if (diasEntre(hoy, sumarMeses(est, 6)) >= 0) { vig = est; estimada = true; }
@@ -290,6 +297,46 @@
             const atendido = !!(at && at.valor);
             return { ...p, clave, atendido, pendienteId: pe && pe.valor != null ? pe.valor : null, estado: estadoPlazo(p, hoy, atendido) };
         });
+    }
+
+    // Sin Premium caben estas marcas (PREMIUM_CONFIG.limiteMarcas en app.js
+    // manda si existe). Las que ya están nunca se ocultan: llevan plazos legales.
+    const LIMITE_GRATIS = 3;
+    const WHATSAPP_EMPIRICA = '529981399930';
+
+    /** ¿Se puede agregar otra marca? { ok, usadas, limite } */
+    function cupoDeMarcas(marcas, premium, limite) {
+        const tope = Number(limite) > 0 ? Number(limite) : LIMITE_GRATIS;
+        const usadas = activas(marcas || []).length;
+        return { ok: !!premium || usadas < tope, usadas, limite: tope };
+    }
+
+    /**
+     * El enlace de WhatsApp para pedirle a Empírica Legal Lab que presente un
+     * plazo (la declaración de uso o la renovación) de una marca. Lleva solo
+     * lo que identifica la marca y el plazo: la persona lo revisa antes de mandarlo.
+     */
+    function enlaceServicio(m, p, telefono) {
+        const que = p.tipo === 'uso' ? 'la declaración de uso' : 'la renovación';
+        const datos = [numeros(m), clasesDe(m.clases).length ? 'clase ' + clasesDe(m.clases).join(', ') : '', m.titular ? 'titular: ' + texto(m.titular) : '']
+            .filter(Boolean).join('; ');
+        const msg = 'Hola, Empírica Legal Lab. Quiero ayuda para presentar ' + que + ' de la marca «' + texto(m.denominacion) + '»' +
+            (datos ? ' (' + datos + ')' : '') + '. El plazo es del ' + fechaCorta(p.desde) + ' al ' + fechaCorta(p.hasta) +
+            (p.estimado ? ' (fecha estimada)' : '') + (p.estado === 'vencido' ? ', y ya pasó' : '') + '.';
+        return 'https://wa.me/' + (telefono || WHATSAPP_EMPIRICA) + '?text=' + encodeURIComponent(msg);
+    }
+
+    /**
+     * Desde cuándo se cuentan los diez años de vigencia: con la LFPPI
+     * (solicitudes presentadas desde el 5 de noviembre de 2020), desde el
+     * otorgamiento; con la ley anterior, desde la presentación. Sin la fecha
+     * de presentación, un registro otorgado ya con la LFPPI se cuenta desde el
+     * otorgamiento (la estimación se marca como tal: su solicitud pudo ser
+     * anterior).
+     */
+    function baseDeVigencia(conc, pres) {
+        if (pres) return pres >= INICIO_LFPPI ? conc : pres;
+        return conc && conc >= INICIO_LFPPI ? conc : null;
     }
 
     function estadoPlazo(p, hoy, atendido) {
@@ -540,7 +587,7 @@
     }
 
     const Motor = {
-        CLAVE_CONFIG, INICIO_LFPPI, CAMPOS, TIPOS, ESTADOS,
+        CLAVE_CONFIG, INICIO_LFPPI, DECLARACION_USO_DESDE, LIMITE_GRATIS, CAMPOS, TIPOS, ESTADOS, baseDeVigencia, cupoDeMarcas, enlaceServicio,
         fecha, sumarMeses, sumarDias, diasEntre, hoyTexto, clasesDe, limpiar, nueva, cambiar, fusionar, activas, buscarMisma,
         situacion, plazosDe, plazosVigentes, proximoPlazo, textoPlazo, numeros, resumen, ordenar, datosParaReporte, csv,
         desdeResultadoMARCia, desdeFichaMARCia, desdeFichaMarcanet, combinar, revisar, imagenDeMARCia
@@ -548,6 +595,9 @@
     if (typeof module !== 'undefined' && module.exports) module.exports = Motor;
     global.CARTERA_MARCAS = Motor;
     if (typeof document === 'undefined') return;
+    // En las páginas públicas (la calculadora de plazos de marca) solo hace
+    // falta el motor: ni pantalla de cartera ni base de datos.
+    if (document.body && document.body.classList.contains('sitio')) return;
 
     // ==================== ALMACÉN ====================
 
@@ -640,6 +690,19 @@
     // Las que se guardaron antes como ruta de MARCia también se ven.
     const urlImagen = u => imagenDeMARCia(u);
 
+    const esPremium = () => !!(typeof estadoPremium !== 'undefined' && estadoPremium && estadoPremium.activo);
+    const limiteConfigurado = () => (typeof PREMIUM_CONFIG !== 'undefined' && PREMIUM_CONFIG.limiteMarcas) || LIMITE_GRATIS;
+    const telefonoEmpirica = () => (typeof PREMIUM_CONFIG !== 'undefined' && PREMIUM_CONFIG.whatsappVentas) || WHATSAPP_EMPIRICA;
+    const cupo = () => cupoDeMarcas(ultimas, esPremium(), limiteConfigurado());
+
+    /** Sin Premium y con el cupo lleno, avisa con los planes y responde false. */
+    function hayCupo() {
+        if (cupo().ok) return true;
+        if (typeof global.mostrarModalLimite === 'function') global.mostrarModalLimite('marcas');
+        else toast('El plan gratuito permite hasta ' + limiteConfigurado() + ' marcas en la cartera. Activa Premium para agregar más.', 'warning');
+        return false;
+    }
+
     function construir() {
         const cont = $('impi-tab-cartera');
         if (!cont || cont.dataset.listo) return;
@@ -658,6 +721,7 @@
                 '</div>' +
                 '<div class="card-body">' +
                     '<div class="cm-resumen" id="cm-resumen"></div>' +
+                    '<p class="cm-cupo" id="cm-cupo" hidden></p>' +
                     '<div class="cm-filtros">' +
                         '<input type="search" id="cm-buscar" placeholder="Buscar por marca, número, titular o cliente" aria-label="Buscar en la cartera">' +
                         '<select id="cm-cliente" aria-label="Cliente"><option value="">Todos los clientes</option></select>' +
@@ -726,6 +790,17 @@
             ['cm-chip-vencido', r.vencidos + ' con plazo vencido'],
             ['cm-chip-proximo', r.proximos + ' empieza' + (r.proximos === 1 ? '' : 'n') + ' pronto']
         ].map(([c, t]) => '<span class="cm-chip ' + c + '">' + esc(t) + '</span>').join('');
+        const c = cupo();
+        const cupoEl = $('cm-cupo');
+        if (cupoEl) {
+            cupoEl.hidden = esPremium();
+            // Con más de las que caben (venció el Premium), se dicen tal cual:
+            // las que hay siguen a la vista, solo no se agregan más.
+            cupoEl.innerHTML = esPremium() ? '' : esc(c.usadas > c.limite
+                ? c.usadas + ' marcas; el plan gratuito permite ' + c.limite + ' (las que tienes siguen a la vista)'
+                : c.usadas + ' de ' + c.limite + ' marcas en el plan gratuito') +
+                (c.ok ? '' : ' · <button type="button" class="btn btn-sm btn-secondary" data-cm="planes">⭐ Ver planes</button>');
+        }
 
         // Los clientes que hay, para el filtro.
         const sel = $('cm-cliente');
@@ -774,7 +849,8 @@
         const b = ev.target.closest('[data-cm]');
         if (!b) return;
         const accion = b.dataset.cm;
-        if (accion === 'agregar') return abrirFormulario(null, {});
+        if (accion === 'agregar') return hayCupo() ? abrirFormulario(null, {}) : undefined;
+        if (accion === 'planes') { if (typeof global.mostrarModalLimite === 'function') global.mostrarModalLimite('marcas'); return; }
         if (accion === 'revisar-todas') return revisarTodas();
         if (accion === 'pdf') return reportePDF();
         if (accion === 'csv') return descargarCSV();
@@ -879,6 +955,8 @@
     async function guardarFormulario(m, extra) {
         const datos = leerFormulario();
         if (!texto(datos.denominacion)) { toast('Falta la denominación', 'warning'); $('cm-f-denominacion').focus(); return; }
+        // Una marca nueva cuenta contra el cupo (salvo que ya estuviera: entonces se abre).
+        if (!m && !buscarMisma(ultimas, limpiar(datos)) && !hayCupo()) return;
         const completos = { ...datos, ...Object.fromEntries(Object.entries(extra).filter(([, x]) => x)) };
         try {
             if (m) {
@@ -903,6 +981,7 @@
             toast('Esa marca ya está en tu cartera: se abre para que la revises', 'info');
             return abrirFormulario(misma, {});
         }
+        if (!hayCupo()) return;
         return abrirFormulario(null, datos);
     }
 
@@ -1017,8 +1096,11 @@
                         (p.pendienteId != null ? '<button type="button" class="btn btn-sm btn-secondary" data-cm-plazo="ver">✅ Ver pendiente</button>'
                             : '<button type="button" class="btn btn-sm btn-primary" data-cm-plazo="pendiente">✅ Crear pendiente</button>') +
                         '<button type="button" class="btn btn-sm btn-secondary" data-cm-plazo="atendido">' + (p.atendido ? 'Desmarcar atendido' : 'Marcar atendido') + '</button>' +
+                        // Empírica Legal Lab puede presentarlo: WhatsApp con los datos de la marca.
+                        (p.atendido ? '' : '<a class="btn btn-sm btn-secondary cm-servicio" data-medir="servicio_cartera" data-medir-origen="' + (p.tipo === 'uso' ? 'declaracion_uso' : 'renovacion') + '" href="' +
+                            esc(enlaceServicio(m, p, telefonoEmpirica())) + '" target="_blank" rel="noopener">🤝 ¿Te ayudamos a ' + (p.tipo === 'uso' ? 'presentarla' : 'renovarla') + '?</a>') +
                     '</div></li>').join('') + '</ul>' +
-                '<p class="cm-nota">La declaración de uso se presenta dentro de los tres meses siguientes a que se cumplan tres años de otorgado el registro (registros otorgados desde el 5 de noviembre de 2020). La renovación, en los seis meses anteriores al fin de la vigencia, con seis meses de gracia después. Confírmalo en el expediente antes de actuar.</p>';
+                '<p class="cm-nota">La declaración de uso se presenta dentro de los tres meses siguientes a que se cumplan tres años de otorgado el registro (registros otorgados desde el 10 de agosto de 2018). La renovación, en los seis meses anteriores al fin de la vigencia, con seis meses de gracia después; al renovar se declara también el uso. La vigencia se cuenta desde el otorgamiento si la solicitud se presentó desde el 5 de noviembre de 2020, y desde la presentación si fue antes. Confírmalo en el expediente antes de actuar.</p>';
         }
         $('modal-body').innerHTML = '<div class="cm-modal-plazos">' + cuerpo + '</div>';
         $('modal-footer').innerHTML = '<button class="btn btn-secondary" onclick="cerrarModal()">Cerrar</button>';

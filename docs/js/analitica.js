@@ -148,7 +148,35 @@
             envolver('abrirBusquedaPopup', () => medir('estrados_abiertos'));
             envolver('ejecutarBusquedaPJF', () => medir('pjf_consulta'));
             envolver('guardarCalculoComoNota', () => medir('calculo_guardado'));
+            // Lo que lleva a Premium: dónde se topan con el límite y qué plan eligen.
+            envolver('mostrarModalLimite', (tipo) => medir('limite_alcanzado', { origen: tipo }));
+            envolver('elegirPlanPremium', (evento, idPlan) => {
+                const plan = typeof PREMIUM_CONFIG !== 'undefined' ? PREMIUM_CONFIG.planes.find(p => p.id === idPlan) : null;
+                medir('premium_plan', plan ? { origen: 'app', cantidad: plan.meses } : { origen: 'despacho' });
+            });
+            // Marcas: cada búsqueda por logotipo sube la imagen una vez.
+            envolver('subirLogotipoMARCia', () => medir('logotipo_busqueda'));
         }
+        // La calculadora de plazos de marca (página pública): una vez por visita.
+        let plazosMedidos = false;
+        envolver('calcularPlazosMarca', null, (r) => {
+            if (!r || !r.plazos || plazosMedidos) return;
+            plazosMedidos = true;
+            medir('calculo_plazos_marca', { origen: enApp ? 'app' : 'sitio' });
+        });
+        // Lo que se mide con un atributo en el propio botón o enlace
+        // (data-medir="evento", y si hace falta data-medir-origen o
+        // data-medir-cantidad): por ejemplo «¿Te ayudamos a presentarla?» de la
+        // cartera o los planes de las páginas públicas. Va en la fase de
+        // captura: el modal de la app detiene la propagación de sus clics.
+        document.addEventListener('click', (e) => {
+            const el = e.target.closest && e.target.closest('[data-medir]');
+            if (!el) return;
+            const params = {};
+            if (el.dataset.medirOrigen) params.origen = el.dataset.medirOrigen;
+            if (el.dataset.medirCantidad) params.cantidad = el.dataset.medirCantidad;
+            medir(el.dataset.medir, params);
+        }, true);
         // La calculadora (en la app y en su página pública): un evento por tipo
         // de cálculo y visita, cuando ya hay un resultado.
         envolver('recalcularLaboral', null, (r) => {
