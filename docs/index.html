@@ -1947,7 +1947,7 @@
                                 <div class="tooltip-content tooltip-left">
                                     <h4>¿Cómo funciona?</h4>
                                     <ul>
-                                        <li>Busca marcas registradas ante el IMPI por nombre</li>
+                                        <li>Busca marcas registradas ante el IMPI por nombre o por logotipo (elige, arrastra o pega una imagen)</li>
                                         <li>Filtra por estatus, clase de Niza y código de Viena</li>
                                         <li>Usa la búsqueda avanzada para criterios específicos (titular, apoderado, fechas)</li>
                                         <li>Los resultados se obtienen directamente de MARCia (marcia.impi.gob.mx)</li>
@@ -1968,8 +1968,21 @@
                         <!-- Búsqueda Rápida -->
                         <div id="marcia-form-rapida">
                             <div class="form-group">
-                                <label for="marcia-query">Nombre de la marca</label>
-                                <input type="text" id="marcia-query" placeholder="Ej: Coca Cola, Nike, Apple..." autocomplete="off">
+                                <label for="marcia-query" id="marcia-query-label">Nombre de la marca</label>
+                                <input type="text" id="marcia-query" placeholder="Ej: Coca Cola, Nike, Apple..." autocomplete="off" maxlength="2000">
+                            </div>
+                            <!-- Búsqueda por logotipo: la imagen se prepara en el navegador y se sube a MARCia al buscar -->
+                            <div class="marcia-logo" id="marcia-logo-zona">
+                                <input type="file" id="marcia-logo-input" accept="image/*" hidden>
+                                <div class="marcia-logo-fila">
+                                    <button type="button" class="btn btn-sm btn-outline" id="marcia-logo-elegir">🖼️ Buscar por logotipo</button>
+                                    <div class="marcia-logo-vista" id="marcia-logo-vista" hidden>
+                                        <img id="marcia-logo-img" alt="El logotipo que vas a buscar">
+                                        <span id="marcia-logo-nombre"></span>
+                                        <button type="button" class="btn btn-sm btn-secondary" id="marcia-logo-quitar" aria-label="Quitar el logotipo">✕ Quitar</button>
+                                    </div>
+                                </div>
+                                <small class="marcia-logo-ayuda">También puedes arrastrar la imagen aquí o pegarla (Ctrl+V). MARCia ordena las marcas por su parecido con ella; puedes escribir además un nombre para acotar.</small>
                             </div>
                         </div>
 
@@ -2141,6 +2154,8 @@
                             </div>
                         </div>
                         <div class="card-body">
+                            <!-- Búsqueda por logotipo: qué se comparó y cómo leer el orden -->
+                            <div class="marcia-logo-aviso" id="marcia-logo-aviso" role="note" hidden></div>
                             <!-- Filtros facetados -->
                             <div class="impi-filters" id="marcia-filters" style="display: none;">
                                 <div class="impi-filter-group" id="marcia-filter-group-status">

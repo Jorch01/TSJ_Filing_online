@@ -369,6 +369,14 @@
         return lista(v).flatMap(x => String(x).split(/[^0-9]+/)).map(Number).filter(n => n >= 1 && n <= 45);
     }
 
+    // MARCia da la imagen de sus resultados como ruta de su sitio
+    // («/marcas/image/RM…»): se guarda completa, para pedirla directo a MARCia.
+    function imagenDeMARCia(u) {
+        const v = typeof u === 'string' ? u.trim() : '';
+        if (/^\/marcas\/[\w\/.%-]+$/.test(v) && v.indexOf('..') < 0) return 'https://marcia.impi.gob.mx' + v;
+        return /^https:\/\//i.test(v) ? v : '';
+    }
+
     function desdeMARCia(r, claseConsultada) {
         const clases = numeros(r.classes);
         if (claseConsultada && !clases.includes(Number(claseConsultada))) clases.push(Number(claseConsultada));
@@ -384,7 +392,7 @@
             tipoSolicitud: r.appType || '',
             solicitud: (r.dates && r.dates.application) || '',
             vencimiento: (r.dates && (r.dates.expiry || r.dates.cancellation)) || '',
-            imagen: typeof r.images === 'string' ? r.images : ''
+            imagen: imagenDeMARCia(r.images)
         };
     }
 
@@ -728,9 +736,77 @@
             obs.push({ nivel: 'medio', texto: 'Letras o números aislados tienen poca distintividad; conviene acompañarlos de otros elementos o de un diseño.' });
         }
         if (entrada.tipo && entrada.tipo !== 'nominativa') {
-            obs.push({ nivel: 'info', texto: 'El estudio compara solo la parte en palabras. Para el diseño haz también la búsqueda por imagen en MARCia.' });
+            obs.push({ nivel: 'info', texto: entrada.conLogotipo
+                ? 'El parecido y el riesgo se calculan solo con la parte en palabras. Los logotipos parecidos se buscaron aparte, por imagen, y se listan sin calificar.'
+                : 'El estudio compara solo la parte en palabras. Para el diseño haz también la búsqueda por imagen en MARCia (o agrega el logotipo al estudio).' });
         }
         return obs;
+    }
+
+    // ---- El logotipo ----
+
+    // Por cada clase del estudio, los primeros que da MARCia en su búsqueda
+    // por imagen (los ordena del más parecido al menos parecido).
+    const LOGO_POR_CLASE = 12;
+
+    /** dd/mm/aaaa (MARCia a veces sin ceros: 13/8/2020) → aaaa-mm-dd, o ''. */
+    function fechaIsoMARCia(t) {
+        const m = String(t || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        return m ? m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0') : '';
+    }
+
+    /**
+     * Lo que encontró la búsqueda por imagen, una vez por marca: en qué lugar
+     * la puso MARCia (el mejor, si salió en varias clases del estudio) y en qué
+     * clases. MARCia no mide el parecido, así que aquí no se califica: solo se
+     * ordena como ella. crudo.logotipo: { ok, error, indexacion, miniatura,
+     * subida, lotes: [{ clase, total, resultados }] }. null si no hubo logotipo.
+     */
+    function resumenLogotipo(c) {
+        if (!c) return null;
+        const marcas = [];
+        for (const lote of c.lotes || []) {
+            const clase = Number(lote.clase) || null;
+            (lote.resultados || []).slice(0, LOGO_POR_CLASE).forEach((r, i) => {
+                const m = desdeMARCia(r || {}, null);
+                const clave = m.id || m.expediente || m.registro || normalizarMarca(m.titulo);
+                if (!clave) return;
+                const ya = marcas.find(x => x.clave === clave);
+                if (ya) {
+                    if (clase && !ya.clases.includes(clase)) ya.clases.push(clase);
+                    ya.lugar = Math.min(ya.lugar, i + 1);
+                    return;
+                }
+                marcas.push({
+                    clave, id: m.id, titulo: m.titulo, expediente: m.expediente, registro: m.registro, estado: m.estado,
+                    situacion: situacionDe(m.estado), titulares: m.titulares, solicitud: m.solicitud, imagen: m.imagen,
+                    clases: clase ? [clase] : [], lugar: i + 1
+                });
+            });
+        }
+        // Los más parecidos primero; a igual lugar, los que siguen vivos.
+        const peso = { vigente: 0, tramite: 1, desconocida: 2, inactiva: 3 };
+        marcas.sort((a, b) => a.lugar - b.lugar || peso[a.situacion] - peso[b.situacion] || a.titulo.localeCompare(b.titulo, 'es'));
+        const fechas = marcas.map(m => fechaIsoMARCia(m.solicitud)).filter(Boolean).sort();
+        const ultima = fechas.length ? fechas[fechas.length - 1] : '';
+        return {
+            ok: !!c.ok,
+            error: c.error || '',
+            indexacion: c.indexacion || null,
+            miniatura: typeof c.miniatura === 'string' && /^data:image\/(png|jpeg);base64,/.test(c.miniatura) ? c.miniatura : '',
+            porClase: (c.lotes || []).map(l => ({ clase: Number(l.clase), total: l.total || 0 })),
+            marcas: marcas.map(({ clave, ...m }) => m),
+            masReciente: ultima ? ultima.slice(8, 10) + '/' + ultima.slice(5, 7) + '/' + ultima.slice(0, 4) : ''
+        };
+    }
+
+    /** El aviso sobre el índice de imágenes de MARCia, para el reporte y el PDF. */
+    function avisoIndiceLogotipo(L) {
+        if (!L) return '';
+        return (L.indexacion ? 'MARCia declara como su última indexación el «' + L.indexacion + '»' +
+                (L.masReciente ? ' y, entre estos resultados, la solicitud más reciente es del ' + L.masReciente : '') + '. '
+            : L.masReciente ? 'Entre estos resultados, la solicitud más reciente es del ' + L.masReciente + '. ' : '') +
+            'Las solicitudes más recientes podrían no estar en su búsqueda por imagen.';
     }
 
     // ---- El dictamen ----
@@ -982,7 +1058,10 @@
             conteo, fuentes, observaciones, antecedentes, publicaciones,
             // Todo lo que SIGA devolvió, como punto de partida si se vigila la
             // denominación: lo ya visto no debe llegar luego como novedad.
-            fichasSIGA: (crudo.siga || []).map(f => f.fichaId).filter(x => x != null).sort()
+            fichasSIGA: (crudo.siga || []).map(f => f.fichaId).filter(x => x != null).sort(),
+            // La búsqueda por imagen, si se hizo con un logotipo. No entra en el
+            // dictamen: MARCia no dice cuánto se parecen.
+            logotipo: resumenLogotipo(crudo.logotipo)
         };
         reporte.recomendaciones = recomendaciones(reporte);
         return reporte;
@@ -1047,8 +1126,17 @@
         if (rep.observaciones.some(o => o.nivel !== 'info' && /describe|descriptivas/.test(o.texto))) {
             r.push('Refuerza la parte distintiva de la marca; la parte descriptiva no se protege.');
         }
-        if (rep.entrada.tipo && rep.entrada.tipo !== 'nominativa') {
-            r.push('Haz la búsqueda figurativa (por imagen) en MARCia para el diseño de la marca.');
+        const L = rep.logotipo;
+        if (L && L.ok) {
+            r.push((L.marcas.length
+                ? 'Revisa a ojo los ' + L.marcas.length + ' logotipo' + (L.marcas.length === 1 ? '' : 's') + ' que MARCia puso como más parecidos al tuyo en tus clases: los ordena por parecido, pero no dice cuánto se parecen, y el estudio no los califica.'
+                : 'La búsqueda por imagen no devolvió logotipos en tus clases.') +
+                ' Complementa con una búsqueda por los códigos de Viena de tu diseño: ' + avisoIndiceLogotipo(L).replace(/\.$/, '') + '.');
+        } else if (L) {
+            r.push('La búsqueda del logotipo por imagen no respondió' + (L.error ? ' (' + L.error + ')' : '') +
+                ': usa «Reintentar lo que faltó» o búscalo en la pestaña MARCia antes de presentar.');
+        } else if (rep.entrada.tipo && rep.entrada.tipo !== 'nominativa') {
+            r.push('Haz la búsqueda figurativa (por imagen) en MARCia para el diseño de la marca, o agrega el logotipo al estudio.');
         }
         if (rep.dictamen.parcial) {
             const falto = queFalto(rep.fuentes);
@@ -1118,6 +1206,18 @@
                     (a.gaceta && a.gaceta.length ? ' En Gaceta: ' + historialTexto(a) + '.' : ''));
             }
         }
+        const L = rep.logotipo;
+        if (L) {
+            lineas.push('', 'LOGOTIPOS PARECIDOS (MARCia, búsqueda por imagen; sin calificar)');
+            if (!L.ok) lineas.push('• La búsqueda por imagen no respondió' + (L.error ? ': ' + L.error : '') + '.');
+            else if (!L.marcas.length) lineas.push('• MARCia no devolvió logotipos en las clases del estudio.');
+            for (const m of (L.ok ? L.marcas : []).slice(0, 15)) {
+                lineas.push('• ' + m.lugar + '.º en MARCia: ' + (m.titulo || 'Sin denominación') + ' — clase ' + (m.clases.join(', ') || '¿?') +
+                    (m.registro ? ', Reg. ' + m.registro : m.expediente ? ', Exp. ' + m.expediente : '') +
+                    (m.estado ? ', ' + m.estado : '') + (m.titulares.length ? ', ' + m.titulares[0] : '') + '.');
+            }
+            if (L.ok) lineas.push('  ' + avisoIndiceLogotipo(L));
+        }
         lineas.push('', 'RECOMENDACIONES');
         for (const r of rep.recomendaciones) lineas.push('• ' + r);
         lineas.push('', 'AVISO: ' + AVISO_VIABILIDAD);
@@ -1129,7 +1229,8 @@
         situacionDe, mismoTitular, palabrasDistintivas, observacionesRegistrabilidad, desdeMARCia, desdeMarcanet,
         desdeSIGA, consolidar, evaluarAntecedente, analizar, recomendaciones, resumenTexto, fechaIMPI,
         leerDetalleMarcanet, variantesComodin, aConsultarDetalle, nombresParaGaceta, etiquetaGaceta, historialTexto,
-        leerFichaMARCia, avisosDeFicha, agruparMarcas, aConsultarMARCia, aConsultarFechas, nombreDe, claveTitular
+        leerFichaMARCia, avisosDeFicha, agruparMarcas, aConsultarMARCia, aConsultarFechas, nombreDe, claveTitular,
+        LOGO_POR_CLASE, resumenLogotipo, avisoIndiceLogotipo, imagenDeMARCia
     };
 
     if (typeof module !== 'undefined' && module.exports) module.exports = Motor;
@@ -1141,7 +1242,9 @@
     const MAX_RECIENTES = 8;
     const MAX_CLASES = 6;
 
-    const ui = { clases: [], ejecutando: false, reporte: null, verBajos: false, crudo: null, entrada: null, sinReintento: false };
+    // logo: el que está elegido en el formulario; logoEstudio: el del último
+    // estudio (para reintentar su búsqueda). { blob, url, nombre, ancho, alto, miniatura }
+    const ui = { clases: [], ejecutando: false, reporte: null, verBajos: false, crudo: null, entrada: null, sinReintento: false, logo: null, logoEstudio: null };
 
     function $(id) { return document.getElementById(id); }
 
@@ -1181,6 +1284,16 @@
                                 '<option value="nominativa">Nominativa (solo palabras)</option><option value="mixta">Mixta (palabras y diseño)</option>' +
                                 '<option value="figurativa">Figurativa (solo diseño)</option><option value="tridimensional">Tridimensional</option></select></div>' +
                         '</div>' +
+                        '<div class="form-group vb-logo" id="vb-logo-grupo" hidden>' +
+                            '<label for="vb-logo-elegir">Logotipo o diseño (opcional)</label>' +
+                            '<input type="file" id="vb-logo-input" accept="image/*" hidden>' +
+                            '<div class="vb-logo-fila">' +
+                                '<button type="button" class="btn btn-sm btn-secondary" id="vb-logo-elegir" data-vb="logo-elegir">🖼️ Elegir imagen</button>' +
+                                '<span class="vb-logo-vista" id="vb-logo-vista" hidden><img id="vb-logo-img" alt="El logotipo del estudio"><span id="vb-logo-nombre"></span>' +
+                                    '<button type="button" class="btn btn-sm btn-secondary" data-vb="logo-quitar" aria-label="Quitar el logotipo">✕</button></span>' +
+                            '</div>' +
+                            '<small class="vb-ayuda">Con la imagen, el estudio busca también en MARCia los logotipos más parecidos en tus clases (puedes arrastrarla o pegarla). MARCia solo los ordena por parecido: el estudio no los califica.</small>' +
+                        '</div>' +
                         '<div class="form-group"><label for="vb-clase-agregar">Clases de Niza * <small>(hasta ' + MAX_CLASES + ')</small></label>' +
                             '<div class="vb-clases"><div id="vb-clases-elegidas" class="vb-chips" aria-live="polite"></div>' +
                             '<select id="vb-clase-agregar"><option value="">Agregar clase…</option>' + opciones + '</select></div>' +
@@ -1213,8 +1326,99 @@
             pintarClases();
         });
         cont.addEventListener('click', alHacerClic);
+        $('vb-tipo').addEventListener('change', pintarLogo);
+        $('vb-logo-input').addEventListener('change', e => {
+            const f = e.target.files && e.target.files[0];
+            if (f) elegirLogo(f);
+        });
+        const grupo = $('vb-logo-grupo');
+        grupo.addEventListener('dragover', e => {
+            if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) { e.preventDefault(); grupo.classList.add('arrastrando'); }
+        });
+        grupo.addEventListener('dragleave', () => grupo.classList.remove('arrastrando'));
+        grupo.addEventListener('drop', e => {
+            grupo.classList.remove('arrastrando');
+            const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+            if (f) { e.preventDefault(); elegirLogo(f); }
+        });
+        $('vb-form').addEventListener('paste', e => {
+            if (grupo.hidden) return;
+            const item = Array.from((e.clipboardData && e.clipboardData.items) || []).find(i => i.kind === 'file' && /^image\//.test(i.type));
+            const f = item && item.getAsFile();
+            if (f) { e.preventDefault(); elegirLogo(f); }
+        });
         pintarClases();
+        pintarLogo();
         pintarRecientes();
+    }
+
+    // ---- Logotipo ----
+
+    /** Una miniatura en JPEG (data URL), sobre blanco: para guardarla con el estudio y para el PDF. */
+    async function miniaturaDeBlob(blob, lado) {
+        const url = URL.createObjectURL(blob);
+        try {
+            const img = await new Promise((listo, falla) => {
+                const i = new Image();
+                i.onload = () => listo(i);
+                i.onerror = () => falla(new Error('No se pudo leer la imagen'));
+                i.src = url;
+            });
+            const w = img.naturalWidth || lado, h = img.naturalHeight || lado;
+            const k = Math.min(1, lado / Math.max(w, h));
+            const c = document.createElement('canvas');
+            c.width = Math.max(1, Math.round(w * k));
+            c.height = Math.max(1, Math.round(h * k));
+            const x = c.getContext('2d');
+            x.fillStyle = '#ffffff';
+            x.fillRect(0, 0, c.width, c.height);
+            x.drawImage(img, 0, 0, c.width, c.height);
+            return c.toDataURL('image/jpeg', 0.85);
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    }
+
+    async function elegirLogo(archivo) {
+        if (typeof global.prepararLogotipo !== 'function') { toast('La búsqueda por logotipo no está disponible', 'warning'); return false; }
+        let listo;
+        try {
+            listo = await global.prepararLogotipo(archivo);
+        } catch (e) {
+            toast(e.message, 'warning');
+            return false;
+        }
+        const miniatura = await miniaturaDeBlob(listo.blob, 160).catch(() => '');
+        quitarLogo(true);
+        ui.logo = {
+            blob: listo.blob, url: URL.createObjectURL(listo.blob), nombre: String((archivo && archivo.name) || 'Imagen pegada').slice(0, 80),
+            ancho: listo.ancho, alto: listo.alto, miniatura
+        };
+        pintarLogo();
+        return true;
+    }
+
+    function quitarLogo(sinPintar) {
+        // La URL no se suelta si el último estudio la usa (para reintentar).
+        if (ui.logo && ui.logo !== ui.logoEstudio) URL.revokeObjectURL(ui.logo.url);
+        ui.logo = null;
+        const input = $('vb-logo-input');
+        if (input) input.value = '';
+        if (!sinPintar) pintarLogo();
+    }
+
+    /** El campo del logotipo se ve solo si la marca lleva diseño. */
+    function pintarLogo() {
+        const grupo = $('vb-logo-grupo');
+        if (!grupo) return;
+        grupo.hidden = $('vb-tipo').value === 'nominativa';
+        const vista = $('vb-logo-vista');
+        vista.hidden = !ui.logo;
+        $('vb-logo-elegir').textContent = ui.logo ? '🖼️ Cambiar imagen' : '🖼️ Elegir imagen';
+        if (ui.logo) {
+            $('vb-logo-img').src = ui.logo.url;
+            $('vb-logo-nombre').textContent = ui.logo.nombre;
+        }
     }
 
     function pintarClases() {
@@ -1233,7 +1437,8 @@
             clases: ui.clases.slice(),
             productos: ($('vb-productos').value || '').trim(),
             solicitante: ($('vb-solicitante').value || '').trim(),
-            porPalabra: $('vb-palabras').checked
+            porPalabra: $('vb-palabras').checked,
+            conLogotipo: !!ui.logo && $('vb-tipo').value !== 'nominativa'
         };
     }
 
@@ -1245,6 +1450,7 @@
         $('vb-palabras').checked = e.porPalabra !== false;
         ui.clases = (e.clases || []).slice(0, MAX_CLASES);
         pintarClases();
+        pintarLogo();
     }
 
     // ---- Progreso ----
@@ -1412,6 +1618,53 @@
         fuente.ok = alguna && !fuente.fallidas;
         fuente.parcial = alguna && fuente.fallidas > 0;
         if (fuente.parcial) fuente.error = fuente.fallidas + ' de ' + fuente.consultas + ' búsquedas fallaron (' + fuente.error + ')';
+    }
+
+    /**
+     * El logotipo en MARCia: se sube (impi-search.js lo sube y da el recorte
+     * que propone MARCia), se busca por imagen y se leen, en cada clase del
+     * estudio, los primeros LOGO_POR_CLASE (MARCia los da del más parecido al
+     * menos parecido). Si falla, se repite una vez con una sesión nueva.
+     */
+    async function consultarLogotipo(entrada, crudo, logo) {
+        const c = crudo.logotipo = { ok: false, error: '', indexacion: null, miniatura: logo.miniatura || '', subida: null, lotes: [] };
+        const intento = async () => {
+            const sesion = await global.proxyFetch('/marcia/csrf');
+            if (sesion && sesion.indexacion) c.indexacion = String(sesion.indexacion).slice(0, 40);
+            const subido = await global.subirLogotipoMARCia(logo.blob);
+            c.subida = subido.subida;
+            const registro = await global.proxyFetch('/marcia/search', {
+                method: 'POST', body: JSON.stringify({ _type: 'Search$Quick', query: '', images: subido.images })
+            });
+            const lotes = [];
+            for (const clase of entrada.clases) {
+                const r = await global.proxyFetch('/marcia/results', {
+                    method: 'POST',
+                    body: JSON.stringify({ searchId: registro.id, pageSize: LOGO_POR_CLASE, pageNumber: 0, statusFilter: [], viennaCodeFilter: [], niceClassFilter: [String(clase)] })
+                });
+                lotes.push({ clase, total: r.totalResults || 0, resultados: (r.resultPage || []).slice(0, LOGO_POR_CLASE) });
+            }
+            return lotes;
+        };
+        try {
+            if (typeof global.subirLogotipoMARCia !== 'function') throw new Error('la búsqueda por logotipo no está disponible');
+            let lotes;
+            try {
+                lotes = await intento();
+            } catch (e) {
+                if (esLimite(e)) throw e;
+                marcar('m-logo', 'espera', 'falló; se repite en 2 s');
+                await esperar(2000);
+                lotes = await intento();
+            }
+            c.lotes = lotes;
+            c.ok = true;
+            const n = lotes.reduce((t, l) => t + l.resultados.length, 0);
+            marcar('m-logo', 'ok', n + ' para revisar a ojo');
+        } catch (e) {
+            c.error = /JSON/.test(e.message) ? 'MARCia respondió vacío' : e.message;
+            marcar('m-logo', 'error', c.error);
+        }
     }
 
     // El proxy guarda una sesión con Marcanet por navegador. Si esa sesión se
@@ -1677,16 +1930,19 @@
      * si no se leyó ninguna (señal de que la sesión se atoró). Una ficha
      * suelta que no se deja leer no se arregla reintentando.
      */
-    function faltantes(rep) {
+    function faltantes(rep, conImagen) {
         if (!rep) return [];
         const f = rep.fuentes.filter(x => !x.ok).map(x => x.nombre);
         if (rep.fichas && rep.fichas.pedidas && !rep.fichas.leidas) f.push('fichas');
         if (rep.fichasMARCia && rep.fichasMARCia.pedidas && !rep.fichasMARCia.leidas) f.push('fichas-marcia');
+        // El logotipo solo se puede volver a buscar si su imagen sigue a la mano
+        // (conImagen): no se guarda con el estudio.
+        if (rep.logotipo && !rep.logotipo.ok && conImagen) f.push('logotipo');
         return f;
     }
 
     function puedeReintentar() {
-        return !!(ui.crudo && ui.entrada && ui.reporte && !ui.sinReintento && faltantes(ui.reporte).length);
+        return !!(ui.crudo && ui.entrada && ui.reporte && !ui.sinReintento && faltantes(ui.reporte, !!ui.logoEstudio).length);
     }
 
     /**
@@ -1711,7 +1967,7 @@
         }
         ui.ejecutando = true;
         const entrada = ui.entrada, crudo = ui.crudo;
-        const falta = faltantes(ui.reporte);
+        const falta = faltantes(ui.reporte, !!ui.logoEstudio);
         sesionNuevaMarcanet();
         pasos = [];
         const tareas = [];
@@ -1730,6 +1986,10 @@
             paso('siga', 'SIGA: publicaciones en Gaceta');
             tareas.push(consultarSIGA(entrada, crudo));
         }
+        if (falta.includes('logotipo')) {
+            paso('m-logo', 'MARCia: logotipos parecidos (búsqueda por imagen)');
+            tareas.push(consultarLogotipo(entrada, crudo, ui.logoEstudio));
+        }
         const boton = document.querySelector('[data-vb="reintentar"]');
         if (boton) { boton.disabled = true; boton.textContent = '⏳ Reintentando…'; }
         try {
@@ -1738,7 +1998,7 @@
             guardarReciente(ui.reporte, true);
             pintarReporte();
             pintarRecientes();
-            const sigue = faltantes(ui.reporte).length;
+            const sigue = faltantes(ui.reporte, !!ui.logoEstudio).length;
             toast(sigue ? 'Todavía faltó algo; puedes volver a intentarlo en un momento.' : 'Listo: el estudio quedó completo.', sigue ? 'warning' : 'success');
         } catch (e) {
             console.error('[VIABILIDAD]', e);
@@ -1769,8 +2029,10 @@
         $('vb-reporte').innerHTML = '';
 
         const plan = planDeBusqueda(entrada);
+        const logo = entrada.conLogotipo ? ui.logo : null;
         pasos = [];
         pasosDeMARCia(plan);
+        if (logo) paso('m-logo', 'MARCia: logotipos parecidos (búsqueda por imagen)');
         paso('mcn', 'Marcanet: búsqueda fonética (en todas las clases)');
         paso('siga', 'SIGA: publicaciones en Gaceta');
         // Cada estudio empieza con la sesión de siempre en Marcanet.
@@ -1779,12 +2041,19 @@
         ui.sinReintento = false;
 
         const crudo = { marcia: [], marcanet: [], siga: [], fuentes: {} };
+        // El logotipo va después de las búsquedas por palabra, en la misma sesión de MARCia.
+        const enMARCia = async () => {
+            await consultarMARCia(entrada, crudo, plan.distintivas, plan.comodines);
+            if (logo) await consultarLogotipo(entrada, crudo, logo);
+        };
         try {
-            await Promise.all([consultarMARCia(entrada, crudo, plan.distintivas, plan.comodines), consultarMarcanet(entrada, crudo), consultarSIGA(entrada, crudo)]);
+            await Promise.all([enMARCia(), consultarMarcanet(entrada, crudo), consultarSIGA(entrada, crudo)]);
             ui.reporte = await completar(entrada, crudo);
             // Lo crudo se queda en memoria para poder reintentar lo que faltó.
             ui.crudo = crudo;
             ui.entrada = entrada;
+            if (ui.logoEstudio && ui.logoEstudio !== logo && ui.logoEstudio !== ui.logo) URL.revokeObjectURL(ui.logoEstudio.url);
+            ui.logoEstudio = logo;
             ui.verBajos = false;
             guardarReciente(ui.reporte);
             pintarReporte();
@@ -1860,6 +2129,25 @@
                 '<td class="vb-num">' + p.similitud.puntaje + '%</td></tr>').join('') + '</tbody></table></div>'
             : '<p class="vb-vacio">' + (rep.fuentes.some(f => f.nombre === 'SIGA' && f.ok) ? 'Sin publicaciones parecidas en las Gacetas.' : 'SIGA no respondió.') + '</p>';
 
+        const L = rep.logotipo;
+        const logoItem = m => '<li class="vb-logo-item">' +
+            '<div class="vb-logo-marco">' + (m.imagen ? '<img src="' + esc(m.imagen) + '" alt="' + esc(m.titulo) + '" loading="lazy" onerror="this.remove()">' : '') + '</div>' +
+            '<div class="vb-logo-datos"><span class="vb-logo-lugar">' + m.lugar + '.º</span> <strong>' + esc(m.titulo || 'Sin denominación') + '</strong>' +
+                '<small>' + esc([numero(m), 'clase ' + (m.clases.join(', ') || '—')].filter(Boolean).join(' · ')) + '</small>' +
+                '<small>' + esc(m.estado || 'Sin estatus') + '</small>' +
+                (m.titulares.length ? '<small>' + esc(m.titulares[0]) + '</small>' : '') +
+                (m.id ? verMARCia(m.id) : '') + '</div></li>';
+        const seccionLogotipo = !L ? '' :
+            '<section class="vb-seccion vb-logotipo"><h4>Logotipos parecidos (MARCia, búsqueda por imagen)</h4>' +
+            (!L.ok
+                ? '<p class="vb-vacio">⚠️ La búsqueda por imagen no respondió' + (L.error ? ': ' + esc(L.error) : '') + '.</p>'
+                : '<div class="vb-logo-cab">' + (L.miniatura ? '<img class="vb-logo-propio" src="' + esc(L.miniatura) + '" alt="Tu logotipo">' : '') +
+                    '<p class="vb-nota">MARCia los ordena del más parecido al menos parecido en cada clase (el número es su lugar), pero no dice cuánto se parecen: el estudio no los califica ni los cuenta en el dictamen. Revísalos a ojo. ' +
+                    esc(avisoIndiceLogotipo(L)) + '</p></div>' +
+                  (L.marcas.length ? '<ul class="vb-logos">' + L.marcas.map(logoItem).join('') + '</ul>'
+                    : '<p class="vb-vacio">MARCia no devolvió logotipos en las clases del estudio.</p>')) +
+            '</section>';
+
         cont.innerHTML =
             '<article class="card vb-reporte" aria-labelledby="vb-titulo-reporte">' +
                 '<header class="vb-reporte-cab">' +
@@ -1902,6 +2190,7 @@
                     (bajos.length ? '<button type="button" class="btn btn-sm btn-secondary vb-mas" data-vb="ver-bajos">' +
                         (ui.verBajos ? 'Ocultar los de riesgo bajo' : 'Ver también los ' + bajos.length + ' de riesgo bajo') + '</button>' : '') +
                 '</section>' +
+                seccionLogotipo +
                 '<section class="vb-seccion"><h4>Publicaciones en Gaceta</h4>' + publicaciones + '</section>' +
                 '<section class="vb-seccion"><h4>Recomendaciones</h4><ul class="vb-recomendaciones">' +
                     rep.recomendaciones.map(r => '<li>' + esc(r) + '</li>').join('') + '</ul></section>' +
@@ -1935,6 +2224,10 @@
             case 'quitar-clase':
                 ui.clases = ui.clases.filter(c => c !== Number(b.dataset.clase));
                 return pintarClases();
+            case 'logo-elegir':
+                return $('vb-logo-input').click();
+            case 'logo-quitar':
+                return quitarLogo();
             case 'ver-bajos':
                 ui.verBajos = !ui.verBajos;
                 return pintarReporte();
@@ -1963,6 +2256,8 @@
                 const r = leerRecientes().find(x => x.id === b.dataset.id);
                 if (!r) return;
                 ponerEntrada(r.reporte.entrada);
+                // La imagen no se guarda con el estudio: hay que volver a elegirla.
+                if (r.reporte.logotipo && !ui.logo) toast('El logotipo no se guarda con el estudio: elígelo otra vez para buscarlo también.', 'info');
                 return ejecutar();
             }
             case 'borrar-recientes':
@@ -1976,11 +2271,39 @@
     function pdf(rep) {
         const R = global.REPORTES_PDF;
         if (!R || typeof R.pedirYDescargar !== 'function') return imprimir();
+        const imagenes = {};
         R.pedirYDescargar({
             titulo: 'Estudio de viabilidad en PDF',
-            construir: op => R.documentoViabilidad(rep, op),
+            // Las imágenes de los logotipos parecidos van dentro del PDF.
+            antes: async () => {
+                if (rep.logotipo && rep.logotipo.ok) Object.assign(imagenes, await miniaturasParaPDF(rep.logotipo.marcas.slice(0, R.MAX_LOGOS_PDF || 24)));
+            },
+            construir: op => R.documentoViabilidad(rep, { ...op, imagenes }),
             archivo: op => R.nombreArchivo(['Estudio de viabilidad', rep.entrada.denominacion, op.para], rep.fecha)
         });
+    }
+
+    /**
+     * Las imágenes de esas marcas como data URL (JPEG), para el PDF. MARCia no
+     * deja leerlas desde otra página, así que se piden por el proxy
+     * (/marcia/miniatura/{id}). La que no llega, se queda fuera.
+     */
+    async function miniaturasParaPDF(marcas) {
+        const proxy = typeof global.getProxyUrl === 'function' ? global.getProxyUrl() : '';
+        const out = {};
+        if (!proxy) return out;
+        const pendientes = marcas.filter(m => m.id && /^[A-Z]{1,4}[0-9]{4,20}$/.test(m.id));
+        const una = async (m) => {
+            const control = typeof AbortController === 'function' ? new AbortController() : null;
+            const reloj = setTimeout(() => control && control.abort(), 10000);
+            try {
+                const r = await fetch(proxy + '/marcia/miniatura/' + m.id, control ? { signal: control.signal } : {});
+                if (!r.ok) return;
+                out[m.id] = await miniaturaDeBlob(await r.blob(), 200);
+            } catch (e) { /* sin esa imagen */ } finally { clearTimeout(reloj); }
+        };
+        for (let i = 0; i < pendientes.length; i += 4) await Promise.all(pendientes.slice(i, i + 4).map(una));
+        return out;
     }
 
     function imprimir() {
@@ -2023,6 +2346,15 @@
         if (rep.publicaciones.length) {
             filas.push([], ['Publicaciones en Gaceta'], ['Denominación', 'Clases', 'Gaceta', 'Sección', 'Ejemplar', 'Fecha', 'Parecido (%)']);
             for (const p of rep.publicaciones) filas.push([p.denominacion, p.clases.join(' '), p.gaceta, p.seccion, p.ejemplar, p.fecha, p.similitud.puntaje]);
+        }
+        const L = rep.logotipo;
+        if (L) {
+            filas.push([], ['Logotipos parecidos (MARCia, búsqueda por imagen; sin calificar)'],
+                [L.ok ? avisoIndiceLogotipo(L) : 'La búsqueda por imagen no respondió' + (L.error ? ': ' + L.error : '')]);
+            if (L.ok) {
+                filas.push(['Lugar en MARCia', 'Marca', 'Expediente', 'Registro', 'Clases', 'Estatus', 'Titular', 'Imagen']);
+                for (const m of L.marcas) filas.push([m.lugar, m.titulo, m.expediente, m.registro, m.clases.join(' '), m.estado, m.titulares.join('; '), m.imagen]);
+            }
         }
         const nombre = 'viabilidad-' + (normalizarMarca(rep.entrada.denominacion).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'marca') +
             '-' + dia + '.csv';

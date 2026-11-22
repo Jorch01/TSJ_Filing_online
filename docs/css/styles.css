@@ -6479,3 +6479,51 @@ body.con-anuncio-ctx { padding-bottom: 5.5rem; }
     .cm-tabla td { border-bottom: none; padding: 0.3rem 0.75rem; }
     .cm-acciones { white-space: normal; }
 }
+
+/* ==================== MARCia: búsqueda por logotipo ==================== */
+.marcia-logo { margin-top: 0.25rem; padding: 0.75rem; border: 1px dashed var(--border-fuerte); border-radius: var(--radius-sm); background: var(--bg-secondary); transition: border-color 0.15s, background 0.15s; }
+.marcia-logo.arrastrando { border-color: var(--primary-light); background: var(--primary-suave); }
+.marcia-logo-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+.marcia-logo-vista { display: flex; align-items: center; gap: 0.6rem; min-width: 0; flex: 1 1 14rem; }
+.marcia-logo-vista[hidden] { display: none; }
+.marcia-logo-vista img { width: 56px; height: 56px; object-fit: contain; background: #fff; border: 1px solid var(--border-color); border-radius: 6px; flex: none; }
+.marcia-logo-vista span { font-size: 0.82rem; color: var(--text-secondary); overflow-wrap: anywhere; min-width: 0; flex: 1; }
+.marcia-logo-ayuda { display: block; margin-top: 0.5rem; font-size: 0.78rem; color: var(--text-secondary); line-height: 1.45; }
+.marcia-logo-aviso { display: flex; gap: 0.9rem; align-items: flex-start; margin-bottom: 1rem; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-secondary); }
+.marcia-logo-aviso[hidden] { display: none; }
+.marcia-logo-comparado { position: relative; width: 96px; max-height: 160px; flex: none; background: #fff; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; }
+.marcia-logo-comparado img, .marcia-logo-comparado svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.marcia-logo-comparado img { object-fit: fill; }
+.marcia-logo-comparado polygon { fill: rgba(208, 165, 137, 0.18); stroke: var(--cobre-hondo); stroke-width: 3; vector-effect: non-scaling-stroke; }
+.marcia-logo-texto { min-width: 0; font-size: 0.85rem; line-height: 1.5; }
+.marcia-logo-texto p { margin: 0.3rem 0 0; color: var(--text-secondary); }
+.marcia-logo-texto .marcia-logo-indice { color: var(--aviso-tinta); }
+[data-theme="dark"] .marcia-logo-texto .marcia-logo-indice { color: var(--warning); }
+@media (max-width: 560px) {
+    .marcia-logo-aviso { flex-direction: column; }
+}
+
+/* ==================== Estudio de viabilidad: el logotipo ==================== */
+.vb-logo[hidden] { display: none; }
+.vb-logo.arrastrando .vb-logo-fila { outline: 2px dashed var(--primary-light); outline-offset: 4px; border-radius: 6px; }
+.vb-logo-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+.vb-logo-vista { display: inline-flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.vb-logo-vista[hidden] { display: none; }
+.vb-logo-vista img { width: 44px; height: 44px; object-fit: contain; background: #fff; border: 1px solid var(--border-color); border-radius: 6px; flex: none; }
+.vb-logo-vista span { font-size: 0.82rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+.vb-logo-cab { display: flex; gap: 0.75rem; align-items: flex-start; }
+.vb-logo-propio { width: 72px; height: 72px; object-fit: contain; background: #fff; border: 1px solid var(--border-color); border-radius: 6px; flex: none; }
+.vb-logos { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); gap: 0.6rem; }
+.vb-logo-item { display: flex; gap: 0.6rem; align-items: flex-start; border: 1px solid var(--border-color); border-radius: 8px; padding: 0.5rem; min-width: 0; }
+.vb-logo-marco { width: 64px; height: 64px; flex: none; display: flex; align-items: center; justify-content: center; background: #fff; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; }
+.vb-logo-marco img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.vb-logo-datos { min-width: 0; display: grid; gap: 0.1rem; font-size: 0.85rem; justify-items: start; }
+.vb-logo-datos strong { overflow-wrap: anywhere; }
+.vb-logo-datos small { color: var(--text-secondary); font-size: 0.76rem; overflow-wrap: anywhere; }
+.vb-logo-datos .btn { margin-top: 0.25rem; }
+.vb-logo-lugar { font-size: 0.75rem; font-weight: 600; color: var(--cobre-hondo); }
+[data-theme="dark"] .vb-logo-lugar { color: var(--cobre); }
+@media print {
+    .vb-logo-datos .btn { display: none !important; }
+    .vb-logo-item { break-inside: avoid; }
+}

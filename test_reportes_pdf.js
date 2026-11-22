@@ -101,6 +101,40 @@ console.log('\nEl estudio de viabilidad');
     verificar('sin firmas', !/Jorge Israel Clemente|Frida Delgado|Socio Fundador/.test(t));
 }
 
+console.log('\nLos logotipos parecidos');
+// Un PNG de 1 × 1, como el que da /marcia/miniatura convertido a data URL.
+const PNG_1PX = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+const conLogo = V.analizar({ ...entrada, conLogotipo: true }, { ...crudo, logotipo: {
+    ok: true, indexacion: '02 Feb 2020', miniatura: PNG_1PX,
+    lotes: [{ clase: 43, total: 800, resultados: [
+        { id: 'RM202002404330', applicationNumber: '2404330', title: 'THE GLAMPING COMPANY', status: 'EN TRÁMITE', owners: ['LUIS FERNANDO RUBIO FLORES'], dates: { application: '13/8/2020' }, classes: [], images: '/marcas/image/RM202002404330' },
+        { id: 'RM202002377940', applicationNumber: '2377940', registrationNumber: '2147989', title: 'INEDIA', status: 'REGISTRADO', owners: ['ANA AURORA LORENZO MEJIA'], dates: { application: '13/7/2020' }, classes: [], images: '/marcas/image/RM202002377940' }
+    ] }]
+} }, AHORA);
+{
+    const doc = R.documentoViabilidad(conLogo, { viabilidad: V, imagenes: { RM202002404330: PNG_1PX } });
+    const t = textoDe(doc.content);
+    const secciones = doc.content.filter(n => n.headlineLevel === 1).map(n => textoDe(n).trim().replace(/^\d+\.\s+/, ''));
+    igual('va después de los antecedentes', secciones, ['Resultado', 'Sobre la denominación', 'Antecedentes a revisar', 'Logotipos parecidos', 'Recomendaciones', 'Fuentes y alcance']);
+    verificar('explica que MARCia solo ordena y que no se califican', /no mide cuánto se parecen/.test(t) && /no se califican ni cuentan en el resultado del estudio/.test(t) && /revisarse a ojo/.test(t));
+    verificar('con la indexación que declara MARCia', /«02 Feb 2020»/.test(t) && /13\/08\/2020/.test(t));
+    verificar('el párrafo inicial dice que el logotipo se buscó aparte', /El logotipo se buscó aparte, con la búsqueda por imagen de MARCia/.test(t));
+    const tabla = doc.content.find(n => n.table && n.table.headerRows === 1 && /LOGOTIPO/.test(textoDe(n.table.body[0])));
+    igual('una fila por logotipo', tabla && tabla.table.body.length - 1, 2);
+    igual('con su imagen, si se pudo traer', tabla && tabla.table.body[1][0].image, PNG_1PX);
+    verificar('y «Sin imagen» si no', tabla && /Sin imagen/.test(textoDe(tabla.table.body[2][0])));
+    verificar('con su lugar en MARCia', tabla && /1\.º/.test(textoDe(tabla.table.body[1][4])) && /2\.º/.test(textoDe(tabla.table.body[2][4])));
+    const cab = doc.content.find(n => n.columns && n.columns[0].stack && n.columns[0].stack[0].image);
+    igual('el logotipo buscado va junto a la explicación', cab && cab.columns[0].stack[0].image, PNG_1PX);
+    verificar('las fuentes dicen cuántos se revisaron y que el diseño no se califica', /Búsqueda por imagen \(MARCia\):\s+2 logotipos entre los primeros 12/.test(t) && /el logotipo se buscó aparte, por imagen, y sus resultados no se califican/.test(t));
+    const fallo = V.analizar({ ...entrada, conLogotipo: true }, { ...crudo, logotipo: { ok: false, error: 'MARCia respondió vacío', lotes: [] } }, AHORA);
+    const tf = textoDe(R.documentoViabilidad(fallo, { viabilidad: V }).content);
+    verificar('si la búsqueda falló, lo dice sin botones de la app', /La búsqueda del logotipo por imagen en MARCia no respondió \(MARCia respondió vacío\)/.test(tf) && !/Reintentar lo que faltó/.test(tf), tf.slice(0, 200));
+    const sinLogo = textoDe(R.documentoViabilidad(rep, { viabilidad: V }).content);
+    verificar('sin logotipo no hay sección y pide la búsqueda figurativa', !/Logotipos parecidos/.test(sinLogo) && /requiere una búsqueda figurativa por separado/.test(sinLogo));
+    igual('caben hasta 24', R.MAX_LOGOS_PDF, 24);
+}
+
 console.log('\nEl aviso');
 {
     const doc = R.documentoViabilidad(rep, { viabilidad: V });
@@ -149,6 +183,13 @@ console.log('\nNombres de archivo y fechas');
         verificar('y el logo', /\/Subtype\s*\/Image/.test(crudoPdf));
         const paginas = (crudoPdf.match(/\/Type\s*\/Page[^s]/g) || []).length;
         verificar('ocupa varias hojas carta', paginas >= 2 && /\/MediaBox\s*\[\s*0\s+0\s+612\s+792\s*\]/.test(crudoPdf), 'páginas: ' + paginas);
+        const conImagenes = await new Promise((resolve, reject) => {
+            try {
+                pdfMake.createPdf(R.documentoViabilidad(conLogo, { logo, viabilidad: V, imagenes: { RM202002404330: PNG_1PX } }), null, R.FUENTES, vfs).getBuffer(resolve);
+            } catch (e) { reject(e); }
+        });
+        const crudoLogo = Buffer.from(conImagenes).toString('latin1');
+        verificar('con logotipos, también sale el PDF, con sus imágenes', crudoLogo.startsWith('%PDF-') && (crudoLogo.match(/\/Subtype\s*\/Image/g) || []).length >= 3);
     }
 
     console.log(`\n  ${pasadas} pasadas, ${fallos.length} fallidas\n`);
