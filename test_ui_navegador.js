@@ -661,9 +661,16 @@ async function probarRecorridoGuiado(navegador) {
         await page.reload({ waitUntil: 'domcontentloaded' });
         await page.waitForTimeout(3000);
         igual('recorrido: no se vuelve a ofrecer', await page.evaluate(() => !!document.getElementById('tour-oferta')), false);
+        // Una vez al día como máximo: el mismo día, ni con ?tour=1.
+        await page.goto(`http://localhost:${PUERTO}/?tour=1`, { waitUntil: 'domcontentloaded' });
+        const mismoDia = await page.waitForSelector('#tour-oferta', { timeout: 4000 }).then(() => true).catch(() => false);
+        igual('recorrido: el mismo día no se vuelve a ofrecer, ni con ?tour=1', mismoDia, false);
+        // Al día siguiente, ?tour=1 (desde las páginas públicas) sí lo ofrece.
+        await page.evaluate(() => localStorage.setItem('tour_oferta_dia', '2000-01-01'));
         await page.goto(`http://localhost:${PUERTO}/?tour=1`, { waitUntil: 'domcontentloaded' });
         const pedido = await page.waitForSelector('#tour-oferta', { timeout: 6000 }).then(() => true).catch(() => false);
-        igual('recorrido: ?tour=1 (desde las páginas públicas) lo ofrece de nuevo', pedido, true);
+        igual('recorrido: otro día, ?tour=1 (desde las páginas públicas) lo ofrece de nuevo', pedido, true);
+        igual('recorrido: y anota que hoy ya se ofreció', await page.evaluate(() => localStorage.getItem('tour_oferta_dia') !== '2000-01-01'), true);
         await page.goto(`http://localhost:${PUERTO}/#laboral`, { waitUntil: 'domcontentloaded' });
         await page.waitForTimeout(1200);
         igual('enlace directo: #laboral abre la calculadora',

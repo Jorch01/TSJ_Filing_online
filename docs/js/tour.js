@@ -3,7 +3,8 @@
  *
  * Nada invasivo:
  *  - A quien entra por primera vez (sin expedientes) se le OFRECE, en una
- *    tarjeta pequeña en una esquina, ver cómo empezar. No se abre solo.
+ *    tarjeta pequeña en una esquina, ver cómo empezar. No se abre solo, y
+ *    sale una vez al día como máximo (también al llegar con ?tour=1).
  *  - Durante el recorrido la página sigue usable: el resaltado solo oscurece
  *    alrededor, no bloquea clics. Esc o ✕ lo cierran en cualquier momento.
  *  - Después queda el botón 🧭 con todos los recorridos, por grupos, el de la
@@ -22,6 +23,8 @@
 
     const CLAVE_VISTO = 'tour_bienvenida_visto';
     const CLAVE_COMPLETADOS = 'tour_completados';
+    // El día (local, aaaa-mm-dd) en que se ofreció por última vez.
+    const CLAVE_OFRECIDA = 'tour_oferta_dia';
     const ESPERA_OBJETIVO_MS = 1500;
     const pausa = (ms) => new Promise(res => setTimeout(res, ms));
     const medir = (e, p) => { if (typeof window.medir === 'function') window.medir(e, p); };
@@ -1056,9 +1059,19 @@
         }
     }
 
+    function hoyLocal() {
+        const d = new Date();
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
     async function decidirOferta() {
-        let visto = false;
-        try { visto = localStorage.getItem(CLAVE_VISTO) === '1'; } catch (e) { /* sin almacenamiento */ }
+        let visto = false, ofrecidaHoy = false;
+        try {
+            visto = localStorage.getItem(CLAVE_VISTO) === '1';
+            ofrecidaHoy = localStorage.getItem(CLAVE_OFRECIDA) === hoyLocal();
+        } catch (e) { /* sin almacenamiento */ }
+        // Una vez al día como máximo, se pida o no con ?tour=1.
+        if (ofrecidaHoy) return;
         const pedido = /[?&]tour=1\b/.test(location.search);
         if (visto && !pedido) return;
         if (!pedido) {
@@ -1069,6 +1082,9 @@
             } catch (e) { return; }
         }
         ofrecerTour();
+        if (document.getElementById('tour-oferta')) {
+            try { localStorage.setItem(CLAVE_OFRECIDA, hoyLocal()); } catch (e) { /* sin almacenamiento */ }
+        }
     }
 
     window.addEventListener('load', () => {
