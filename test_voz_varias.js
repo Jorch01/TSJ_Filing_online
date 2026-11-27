@@ -124,6 +124,22 @@ function crearSandbox({ falla } = {}) {
         vm.runInContext(extraerIndentado(VOZ, n), sb, { filename: 'voice-assistant.js:' + n });
     }
     vm.runInContext(extraerSeccion(VOZ, 'VARIAS ACCIONES A LA VEZ'), sb, { filename: 'voice-assistant.js:varias' });
+    // Cómo se acomoda lo que contesta el modelo, y qué acciones son búsquedas.
+    vm.runInContext(extraerSeccion(VOZ, 'ÓRDENES DEL MODELO'), sb, { filename: 'voice-assistant.js:órdenes' });
+    const busquedas = /^[ \t]*const ACCIONES_BUSQUEDA = new Set\(\[[^\]]*\]\);/m.exec(VOZ);
+    if (!busquedas) throw new Error('No se encontró ACCIONES_BUSQUEDA (¿se renombró?)');
+    vm.runInContext(busquedas[0].trim(), sb, { filename: 'voice-assistant.js:ACCIONES_BUSQUEDA' });
+    // Las búsquedas de estrados se prueban en test_voz_estrados.js; aquí basta
+    // ver que el lote las prepara y las abre, con lo que se le pasó.
+    estado.busquedasPlaneadas = [];
+    estado.busquedasAbiertas = [];
+    sb.planBuscarVarios = async (p) => {
+        estado.busquedasPlaneadas.push(copia(p));
+        const consultas = p.busquedas.map(b => ({ etiqueta: (b.parametros.numero || b.parametros.valor) + ' — ' + (b.parametros.organismo || b.parametros.juzgado), url: 'https://estrados/' + (b.parametros.numero || b.parametros.valor) }));
+        if (p.busquedas.some(b => b.parametros.organismo === 'inventado')) throw sb.ErrorAviso('No pude preparar ninguna de las búsquedas: no identifiqué "inventado".');
+        return { consultas, avisos: [], numero: '' };
+    };
+    sb.ejecutarPlanBusqueda = (plan) => { estado.busquedasAbiertas.push(plan.consultas.map(c => c.url)); return `Abriendo ${plan.consultas.length} consultas.`; };
 
     // Los expedientes.
     const exp = (id, numero, extra = {}) => ({ id, numero, institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN', ...extra });
@@ -332,6 +348,72 @@ async function pruebaPreparar() {
     verificar('el modelo ve qué pasó, para rehacer la orden completa', /No se ejecutó nada/.test(correr(sb, 'conversacion[conversacion.length - 1].content')));
 }
 
+// ==================== BÚSQUEDAS DE ESTRADOS EN EL LOTE ====================
+// El modelo a veces mete las búsquedas de estrados en "varias". Antes eso
+// tumbaba la orden entera («“buscar_tsj” no se puede combinar con otras en
+// una sola orden»); ahora se preparan juntas y se abren al confirmar.
+
+const BUSCA_TSJ = { accion: 'buscar_tsj', parametros: { valor: '120/2026', juzgado: 'JUZGADO PRIMERO FAMILIAR ORAL CANCUN' } };
+const BUSCA_PJF = { accion: 'buscar_pjf', parametros: { numero: '486/2026', organismo: 'primer tribunal colegiado del 27 circuito', tipoAsunto: 'amparo directo' } };
+
+async function pruebaBusquedasEnElLote() {
+    // Solo búsquedas: nada que guardar, y se abren.
+    let { sb, estado } = crearSandbox();
+    sb.__orden = { acciones: [BUSCA_TSJ, BUSCA_PJF] };
+    let plan = await correr(sb, 'planVarias(__orden)');
+    igual('solo búsquedas: ya no se rechazan', [plan.items.length, plan.busqueda && plan.busqueda.consultas.length], [0, 2]);
+    igual('solo búsquedas: el resumen dice cuántas abre', plan.resumen, 'Abrir 2 consultas');
+    igual('se preparan juntas, como en buscar_varios', estado.busquedasPlaneadas.map(p => p.busquedas.map(b => b.accion)), [['buscar_tsj', 'buscar_pjf']]);
+    sb.__plan = plan;
+    let msg = await correr(sb, 'aplicarVarias(__plan)');
+    igual('solo búsquedas: se abren al confirmar', estado.busquedasAbiertas, [['https://estrados/120/2026', 'https://estrados/486/2026']]);
+    igual('solo búsquedas: y se dice', msg, 'Abriendo 2 consultas.');
+
+    // Mezclado: una nota y dos búsquedas en la misma orden.
+    ({ sb, estado } = crearSandbox());
+    sb.__orden = { acciones: [{ accion: 'crear_nota', parametros: { titulo: 'Revisar acuerdos', expedienteId: 10 } }, BUSCA_TSJ, BUSCA_PJF] };
+    plan = await correr(sb, 'planVarias(__orden)');
+    verificar('mezclado: el resumen dice las dos cosas', /^Nota “Revisar acuerdos” — 123\/2025 .* y abrir 2 consultas$/.test(plan.resumen), plan.resumen);
+    verificar('mezclado: la lista enseña la nota y cada consulta', plan.detalles.length === 3 && /Nota “Revisar acuerdos”/.test(plan.detalles[0]) &&
+        /120\/2026/.test(plan.detalles[1]) && /486\/2026/.test(plan.detalles[2]), JSON.stringify(plan.detalles));
+    igual('mezclado: preparar no guarda ni abre nada', [estado.notas.length, estado.busquedasAbiertas.length], [0, 0]);
+    sb.__plan = plan;
+    msg = await correr(sb, 'aplicarVarias(__plan)');
+    igual('mezclado: se guarda la nota', estado.notas.map(n => n.expedienteId), [10]);
+    igual('mezclado: y se abren las búsquedas', estado.busquedasAbiertas.length, 1);
+    igual('mezclado: el mensaje cuenta las dos cosas', msg, 'Listo: 1 nota creada. Abriendo 2 consultas.');
+    await correr(sb, 'accDeshacer()');
+    igual('mezclado: «deshaz lo último» quita la nota', estado.notas.length, 0);
+
+    // Si la nota falla, las búsquedas abiertas se dicen igual.
+    ({ sb, estado } = crearSandbox({ falla: { nota: 10 } }));
+    sb.__orden = { acciones: [{ accion: 'crear_nota', parametros: { titulo: 'Revisar', expedienteId: 10 } }, BUSCA_TSJ] };
+    sb.__plan = await correr(sb, 'planVarias(__orden)');
+    msg = await correr(sb, 'aplicarVarias(__plan)');
+    verificar('si lo demás falla, se dice lo que sí se abrió', /^Abriendo 1 consultas\. No pude hacer ninguna de las acciones/.test(msg), msg);
+
+    // Una búsqueda imposible frena toda la orden, como cualquier otro problema.
+    ({ sb, estado } = crearSandbox());
+    sb.__orden = { acciones: [{ accion: 'crear_nota', parametros: { titulo: 'Revisar', expedienteId: 10 } }, { accion: 'buscar_pjf', parametros: { numero: '1/2026', organismo: 'inventado' } }] };
+    const e = await lanza(() => correr(sb, 'planVarias(__orden)'));
+    verificar('una búsqueda que no se puede preparar frena la orden y lo dice', e && e._esLote && /no identifiqué "inventado"/.test(e.message), e && e.message);
+    igual('y no se guarda nada a medias', estado.notas.length, 0);
+
+    // Lo que ve el usuario: la confirmación con todo.
+    ({ sb, estado } = crearSandbox());
+    correr(sb, 'conversacion.push({ role: "assistant", content: "{}" })');
+    sb.__r = { accion: 'varias', parametros: { acciones: [{ accion: 'crear_nota', parametros: { titulo: 'Revisar', expedienteId: 10 } }, BUSCA_TSJ, BUSCA_PJF] } };
+    await correr(sb, 'prepararVarias(__r)');
+    verificar('se confirma la nota y las dos búsquedas juntas', estado.confirmaciones.length === 1 && /y abrir 2 consultas$/.test(estado.confirmaciones[0].resumen),
+        JSON.stringify(estado.confirmaciones.map(c => c.resumen)));
+
+    // problemaDeOrden: las búsquedas ya no son un problema; editar eventos sí.
+    sb.__o = { accion: 'varias', parametros: { acciones: [BUSCA_TSJ, { accion: 'crear_nota', parametros: { titulo: 'x' } }] } };
+    igual('búsquedas y una nota en "varias" se pueden hacer', correr(sb, 'problemaDeOrden(normalizarOrden(__o))'), null);
+    sb.__o = { accion: 'varias', parametros: { acciones: [{ accion: 'editar_evento', parametros: {} }, { accion: 'crear_nota', parametros: { titulo: 'x' } }] } };
+    verificar('editar eventos dentro de "varias" se le devuelve al modelo', /no caben "editar_evento"/.test(correr(sb, 'problemaDeOrden(normalizarOrden(__o))') || ''));
+}
+
 function pruebaProtocolo() {
     const prompt = extraerIndentado(VOZ, 'construirPromptSistema');
     verificar('el modelo conoce la acción', /18\. "varias"/.test(prompt) && /paraTodosLosDe/.test(prompt));
@@ -346,7 +428,7 @@ function pruebaProtocolo() {
 (async () => {
     console.log('Órdenes múltiples al asistente');
     for (const prueba of [pruebaGrupo, pruebaEnumerada, pruebaPorGrupo, pruebaMezclada, pruebaCarpetaYArchivo,
-                          pruebaNadaAMedias, pruebaFalloParcial, pruebaPreparar, pruebaProtocolo]) {
+                          pruebaNadaAMedias, pruebaFalloParcial, pruebaPreparar, pruebaBusquedasEnElLote, pruebaProtocolo]) {
         try { await prueba(); } catch (e) { fallos.push(`${prueba.name} reventó: ${e.stack || e.message}`); }
     }
     console.log(`\n${pasadas} pasadas, ${fallos.length} fallidas\n`);

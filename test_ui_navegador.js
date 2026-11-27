@@ -4099,6 +4099,139 @@ async function probarAsistenteVariosEstrados(navegador) {
 }
 
 /**
+ * La orden real que falló con el modelo de verdad: «Ábreme los estrados del
+ * 120/2026 y 121/2026 del primero familiar oral de Cancún, y el amparo directo
+ * 486/2026 del primer colegiado del 27 circuito». Primero contestó «Listo.» y
+ * no abrió nada; después, «“buscar_tsj” no se puede combinar con otras en una
+ * sola orden». Aquí el modelo simulado contesta como lo hizo el real (las
+ * búsquedas dentro de "varias", una acción inventada, dos objetos seguidos…)
+ * y la app tiene que abrir las tres igual, o decir que no entendió; nunca un
+ * «Listo.» sin haber hecho nada.
+ */
+async function probarAsistenteOrdenesDelModelo(navegador) {
+    console.log('\nAsistente: lo que contesta el modelo (la orden que falló)');
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 850 } });
+    await contexto.addInitScript(() => { try { localStorage.setItem('tour_bienvenida_visto', '1'); localStorage.setItem('voz_tts_activado', '0'); } catch (e) {} });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    const ORDEN = 'Ábreme los estrados del 120/2026 y 121/2026 del primero familiar oral de Cancún, y el amparo directo 486/2026 del primer colegiado del 27 circuito';
+    const TSJ = { valores: ['120/2026', '121/2026'], tipoBusqueda: 'numero', juzgado: 'JUZGADO PRIMERO FAMILIAR ORAL CANCUN' };
+    const PJF = { numero: '486/2026', organismo: 'primer tribunal colegiado del 27 circuito', tipoAsunto: 'amparo directo' };
+    const BIEN = { accion: 'buscar_varios', faltan_datos: false, pregunta: null, resumen: 'Estrados',
+        parametros: { busquedas: [{ accion: 'buscar_tsj', parametros: TSJ }, { accion: 'buscar_pjf', parametros: PJF }] } };
+    // El modelo simulado: contesta, en orden, lo que se le dé; anota qué vio.
+    const contestara = (...respuestas) => page.evaluate((rs) => {
+        window.__llamadas = [];
+        window.llamarIA = async (prompt, op) => {
+            window.__llamadas.push(op.historial.map(m => m.content));
+            return rs[Math.min(window.__llamadas.length - 1, rs.length - 1)];
+        };
+    }, respuestas);
+    const ordenar = async () => {
+        await page.evaluate(() => { document.getElementById('voz-chat').innerHTML = ''; });
+        await page.fill('#voz-input', ORDEN);
+        await page.click('#voz-enviar');
+    };
+    const chat = () => page.evaluate(() => [...document.querySelectorAll('#voz-chat .voz-msg-asistente')].map(x => x.textContent.trim()));
+    const confirmacion = async () => {
+        await page.waitForSelector('#voz-confirmacion', { state: 'visible', timeout: 8000 });
+        return page.textContent('#voz-confirmacion');
+    };
+    const lasTres = (c) => /Abrir 3 consultas/.test(c) && ['120/2026', '121/2026', '486/2026'].every(n => c.includes(n));
+    const cancelar = async () => { await page.click('#voz-btn-cancelar'); await page.waitForTimeout(200); };
+    try {
+        await page.goto(`http://localhost:${PUERTO}/index.html`, { waitUntil: 'load' });
+        await page.waitForFunction(() => typeof crearExpedienteCore === 'function' && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+        await page.waitForTimeout(800);
+        await page.evaluate(async () => {
+            await guardarConfig('ia_api_key', 'CLAVE-DE-PRUEBA');
+            window.__abiertas = [];
+            window.__permitidas = 0;
+            window.open = (url) => {
+                if (window.__permitidas > 0) { window.__permitidas--; window.__abiertas.push(url); return { focus() {} }; }
+                return null;
+            };
+        });
+        await page.click('#voz-fab');
+        await page.waitForSelector('#voz-input', { state: 'visible' });
+
+        // 1) Lo que contestó el modelo la segunda vez: las búsquedas en "varias".
+        await contestara('```json\n' + JSON.stringify({ accion: 'varias', faltan_datos: false, pregunta: null, resumen: 'Abrir estrados',
+            parametros: { acciones: [{ accion: 'buscar_tsj', parametros: TSJ }, { accion: 'buscar_pjf', parametros: PJF }] } }) + '\n```');
+        await ordenar();
+        let conf = await confirmacion();
+        verificar('orden real: con las búsquedas en "varias", pide abrir las tres', lasTres(conf), conf);
+        igual('orden real: sin volver a preguntarle al modelo', await page.evaluate(() => window.__llamadas.length), 1);
+        verificar('orden real: ya no dice que no se pueden combinar', !(await chat()).some(m => /no se puede combinar/.test(m)), JSON.stringify(await chat()));
+        await page.evaluate(() => { window.__permitidas = 1; });
+        await page.click('#voz-btn-confirmar');
+        await page.waitForTimeout(1600);
+        for (let k = 0; k < 2; k++) {
+            await page.evaluate(() => {
+                window.__permitidas = 1;
+                [...document.querySelectorAll('#voz-chat .voz-indexada')].pop().querySelector('.voz-siguiente').click();
+            });
+            await page.waitForTimeout(200);
+        }
+        const r = await page.evaluate(() => {
+            const lista = [...document.querySelectorAll('#voz-chat .voz-indexada')].pop();
+            return {
+                estados: lista ? [...lista.querySelectorAll('.voz-indexada-fila')].map(x => x.dataset.estado) : null,
+                abiertas: window.__abiertas.slice()
+            };
+        });
+        igual('orden real: la lista numerada con las tres, abiertas', r.estados, ['abierta', 'abierta', 'abierta']);
+        const enTSJ = r.abiertas.filter(u => /tsjqroo/.test(u)).map(u => decodeURIComponent((/findexp=([^&]+)/.exec(u) || [])[1] || ''));
+        const enPJF = r.abiertas.filter(u => /dgej\.cjf\.gob\.mx/.test(u));
+        igual('orden real: el 120/2026 y el 121/2026 en el TSJ', enTSJ, ['120/2026', '121/2026']);
+        verificar('orden real: y el amparo directo 486/2026 en el primer colegiado del 27',
+            enPJF.length === 1 && /[?&]expediente=486%2F2026/.test(enPJF[0]) && /[?&]organismo=462(&|$)/.test(enPJF[0]) && /[?&]tipoasunto=10(&|$)/.test(enPJF[0]), JSON.stringify(enPJF));
+
+        // 2) La primera vez dijo «Listo.» sin abrir nada: así contesta un
+        //    modelo que manda una lista, o "acciones" sin "accion".
+        for (const [nombre, respuesta] of [
+            ['una lista de acciones', JSON.stringify([{ accion: 'buscar_tsj', parametros: TSJ }, { accion: 'buscar_pjf', parametros: PJF }])],
+            ['"acciones" sin "accion"', JSON.stringify({ acciones: [{ accion: 'buscar_tsj', parametros: TSJ }, { accion: 'buscar_pjf', parametros: PJF }] })],
+            ['dos objetos seguidos', '```json\n' + JSON.stringify({ accion: 'buscar_tsj', parametros: TSJ }) + '\n```\n```json\n' + JSON.stringify({ accion: 'buscar_pjf', parametros: PJF }) + '\n```']
+        ]) {
+            await contestara(respuesta);
+            await ordenar();
+            conf = await confirmacion();
+            verificar(`${nombre}: pide abrir las tres, en vez de «Listo.»`, lasTres(conf), conf);
+            await cancelar();
+        }
+
+        // 3) Lo que no se puede acomodar se le devuelve al modelo, una vez.
+        await contestara(JSON.stringify({ accion: 'abrir_estrados', parametros: { descripcion: 'los tres asuntos' } }), JSON.stringify(BIEN));
+        await ordenar();
+        conf = await confirmacion();
+        verificar('acción inventada: al rehacerla el modelo, abre las tres', lasTres(conf), conf);
+        const vio = await page.evaluate(() => window.__llamadas.map(h => h[h.length - 1]));
+        verificar('acción inventada: el modelo ve qué estuvo mal', vio.length === 2 && /"abrir_estrados" no existe/.test(vio[1]) && /buscar_varios/.test(vio[1]), JSON.stringify(vio));
+        await cancelar();
+
+        // 4) Si ni así sirve, dice que no entendió y que no hizo nada.
+        await contestara(JSON.stringify({ accion: 'abrir_estrados', parametros: {} }));
+        await ordenar();
+        await page.waitForFunction(() => [...document.querySelectorAll('#voz-chat .voz-msg-asistente')].length > 0, null, { timeout: 8000 });
+        let msgs = await chat();
+        verificar('dos veces inventada: dice que no entendió y no hizo nada', msgs.some(m => /No entendí qué hacer con eso, así que no hice nada/.test(m)), JSON.stringify(msgs));
+        verificar('dos veces inventada: nunca «Listo.»', !msgs.some(m => /^✅?\s*Listo\.?$/.test(m)), JSON.stringify(msgs));
+        igual('dos veces inventada: no insiste más de una vez', await page.evaluate(() => window.__llamadas.length), 2);
+
+        await contestara(JSON.stringify({ accion: 'responder', respuesta: '', resumen: '' }));
+        await ordenar();
+        await page.waitForFunction(() => [...document.querySelectorAll('#voz-chat .voz-msg-asistente')].length > 0, null, { timeout: 8000 });
+        msgs = await chat();
+        verificar('una respuesta vacía tampoco es «Listo.»', msgs.some(m => /No entendí qué hacer con eso/.test(m)) && !msgs.some(m => /^Listo\.?$/.test(m)), JSON.stringify(msgs));
+        igual('sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
+/**
  * Dos asuntos del PJF con el mismo número ante el mismo órgano pero de distinto
  * tipo de asunto (un amparo directo y un recurso de revisión 577/2026 del mismo
  * tribunal) son asuntos distintos. El barrido de duplicados, que corre en cada
@@ -7212,6 +7345,7 @@ async function main() {
         await probarApartadoOtros(navegador);
         await probarAsistenteVarias(navegador);
         await probarAsistenteVariosEstrados(navegador);
+        await probarAsistenteOrdenesDelModelo(navegador);
         await probarAsuntosConMismoNumero(navegador);
         await probarImportacionPorTipoDeAsunto(navegador);
         await probarVinculoDeAnalisisIA(navegador);

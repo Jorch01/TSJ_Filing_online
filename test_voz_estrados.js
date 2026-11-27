@@ -119,12 +119,15 @@ function crearEntorno() {
         if (!tope) throw new Error(`No se encontró ${nombre} (¿se renombró?)`);
         vm.runInContext(tope[0].trim(), sandbox, { filename: 'voice-assistant.js:' + nombre });
     }
-    for (const nombre of ['normalizar', 'matchJuzgadoTSJ', 'accCrearExpediente', 'accEditarExpediente']) {
+    for (const nombre of ['normalizar', 'textoLimpio', 'matchJuzgadoTSJ', 'accCrearExpediente', 'accEditarExpediente']) {
         vm.runInContext(extraerIndentado(voz, nombre, 'voice-assistant.js'),
             sandbox, { filename: 'voice-assistant.js:' + nombre });
     }
     vm.runInContext(extraerSeccionVoz(voz, 'BÚSQUEDAS EN ESTRADOS'),
         sandbox, { filename: 'voice-assistant.js:búsquedas' });
+    // Y cómo se acomoda lo que contesta el modelo antes de llegar aquí.
+    vm.runInContext(extraerSeccionVoz(voz, 'ÓRDENES DEL MODELO'),
+        sandbox, { filename: 'voice-assistant.js:órdenes' });
 
     // El catálogo del TSJ, entero: tampoco hace nada al cargarse.
     vm.runInContext(fs.readFileSync(path.join(JS, 'juzgados.js'), 'utf8'),
@@ -754,8 +757,179 @@ async function pruebaBuscarGuardadoSinDatos() {
 
 // ==================== LAS INSTRUCCIONES AL MODELO ====================
 
+// ==================== LO QUE CONTESTA EL MODELO ====================
+// La orden real que falló: «Ábreme los estrados del 120/2026 y 121/2026 del
+// primero familiar oral de Cancún, y el amparo directo 486/2026 del primer
+// colegiado del 27 circuito». La primera vez contestó «Listo.» y no abrió
+// nada; la segunda, «“buscar_tsj” no se puede combinar con otras en una sola
+// orden»: el modelo había metido las búsquedas en "varias".
+
+const PEDIDO_TSJ = { valores: ['120/2026', '121/2026'], tipoBusqueda: 'numero', juzgado: 'juzgado primero familiar oral de cancún' };
+const PEDIDO_PJF = { numero: '486/2026', organismo: 'primer tribunal colegiado del 27 circuito', tipoAsunto: 'amparo directo' };
+
+// Lo que abre una orden ya acomodada, de principio a fin.
+async function abreLaOrden(respuesta) {
+    const { sandbox, estado } = crearEntorno();
+    estado.resolverLanza = sandbox.ErrorAviso('no está');
+    const orden = sandbox.normalizarOrden(respuesta);
+    const problema = sandbox.problemaDeOrden(orden);
+    let mensaje = '';
+    if (!problema && vm.runInContext('ACCIONES_BUSQUEDA', sandbox).has(orden.accion)) {
+        mensaje = sandbox.ejecutarPlanBusqueda(await sandbox.planificarBusqueda(orden.accion, orden.parametros));
+    }
+    const v = estado.ventanas;
+    return {
+        orden, problema, mensaje,
+        abiertas: v.map(x => decodeURIComponent((/findexp=([^&]+)/.exec(x.url) || /[?&]expediente=([^&]+)/.exec(x.url) || /[?&]numero=([^&]+)/.exec(x.url) || [])[1] || '')),
+        tsj: v.filter(x => /tsjqroo/.test(x.url)).length,
+        pjf: v.filter(x => /dgej\.cjf\.gob\.mx/.test(x.url)),
+        nombres: new Set(v.map(x => x.nombre)).size
+    };
+}
+
+function lasTres(nombre, r) {
+    igual(`${nombre}: se abren las tres (dos del TSJ y una del PJF)`, [r.tsj, r.pjf.length], [2, 1]);
+    verificar(`${nombre}: el 120/2026 y el 121/2026 en el familiar oral`, ['120/2026', '121/2026'].every(n => r.abiertas.includes(n)), JSON.stringify(r.abiertas));
+    verificar(`${nombre}: el 486/2026 como amparo directo en el primer colegiado del 27`,
+        r.pjf.length === 1 && r.pjf[0].url.includes(encodeURIComponent('486/2026')) && organoDe(r.pjf[0].url) === 462 && tipoDe(r.pjf[0].url) === 10, r.pjf[0] && r.pjf[0].url);
+    igual(`${nombre}: cada una en su propia ventana`, r.nombres, 3);
+}
+
+async function pruebaOrdenesDelModelo() {
+    const { sandbox } = crearEntorno();
+    const s = sandbox;
+
+    // 1) El fallo real: las búsquedas metidas en "varias".
+    const enVarias = { accion: 'varias', faltan_datos: false, pregunta: null, resumen: 'Abrir estrados',
+        parametros: { acciones: [{ accion: 'buscar_tsj', parametros: PEDIDO_TSJ }, { accion: 'buscar_pjf', parametros: PEDIDO_PJF }] } };
+    let r = await abreLaOrden(enVarias);
+    igual('varias con búsquedas: se vuelve buscar_varios', r.orden.accion, 'buscar_varios');
+    igual('varias con búsquedas: ya no es un problema', r.problema, null);
+    lasTres('varias con búsquedas', r);
+    verificar('varias con búsquedas: dice cuántas abre y que están numeradas', /3 consultas/.test(r.mensaje) && /numeradas/.test(r.mensaje), r.mensaje);
+    igual('varias con búsquedas: conserva el resumen del modelo', r.orden.resumen, 'Abrir estrados');
+
+    // 2) Las otras formas en que el modelo manda lo mismo.
+    lasTres('una lista de acciones', await abreLaOrden([{ accion: 'buscar_tsj', parametros: PEDIDO_TSJ }, { accion: 'buscar_pjf', parametros: PEDIDO_PJF }]));
+    const dosObjetos = s.leerOrdenDelModelo('```json\n' + JSON.stringify({ accion: 'buscar_tsj', parametros: PEDIDO_TSJ }) + '\n```\n```json\n' +
+        JSON.stringify({ accion: 'buscar_pjf', parametros: PEDIDO_PJF }) + '\n```');
+    igual('dos objetos seguidos: se leen los dos', Array.isArray(dosObjetos) && dosObjetos.length, 2);
+    lasTres('dos objetos seguidos', await abreLaOrden(dosObjetos));
+    lasTres('sin "accion", con "acciones" arriba', await abreLaOrden({ acciones: [{ accion: 'buscar_tsj', parametros: PEDIDO_TSJ }, { accion: 'buscar_pjf', parametros: PEDIDO_PJF }] }));
+    lasTres('un nombre inventado con "busquedas"', await abreLaOrden({ accion: 'abrir_estrados', parametros: { busquedas: [{ accion: 'buscar_tsj', parametros: PEDIDO_TSJ }, { accion: 'buscar_pjf', parametros: PEDIDO_PJF }] } }));
+    lasTres('parámetros sueltos, fuera de "parametros"', await abreLaOrden({ accion: 'buscar_varios', parametros: { busquedas: [{ accion: 'buscar_tsj', ...PEDIDO_TSJ }, { accion: 'buscar_pjf', ...PEDIDO_PJF }] } }));
+    lasTres('búsquedas sin nombre de acción, por su institución o sus datos', await abreLaOrden({ accion: 'buscar_varios', parametros: { busquedas: [{ institucion: 'TSJ', ...PEDIDO_TSJ }, { parametros: PEDIDO_PJF }] } }));
+    lasTres('una buscar_varios dentro de otra', await abreLaOrden({ accion: 'buscar_varios', parametros: { busquedas: [{ accion: 'buscar_varios', parametros: { busquedas: [{ accion: 'buscar_tsj', parametros: PEDIDO_TSJ }] } }, { accion: 'buscar_pjf', parametros: PEDIDO_PJF }] } }));
+    lasTres('"varias" dentro de "varias"', await abreLaOrden({ accion: 'varias', parametros: { acciones: [{ accion: 'varias', parametros: { acciones: [{ accion: 'buscar_tsj', parametros: PEDIDO_TSJ }] } }, { accion: 'buscar_pjf', parametros: PEDIDO_PJF }] } }));
+
+    const lista = [{ accion: 'buscar_tsj', parametros: PEDIDO_TSJ }, { accion: 'buscar_pjf', parametros: PEDIDO_PJF }];
+    lasTres('"parametros" como texto', await abreLaOrden({ accion: 'buscar_varios', parametros: JSON.stringify({ busquedas: lista }) }));
+    lasTres('"varias" con la lista en "busquedas"', await abreLaOrden({ accion: 'varias', parametros: { busquedas: lista } }));
+    lasTres('buscar_varios con la lista en "acciones"', await abreLaOrden({ accion: 'buscar_varios', parametros: { acciones: lista } }));
+    lasTres('buscar_tsj que en realidad trae la lista de varias', await abreLaOrden({ accion: 'buscar_tsj', parametros: { busquedas: lista } }));
+
+    // Un nombre inventado: sus parámetros dicen si es del TSJ o del PJF.
+    igual('"buscar" con un juzgado es buscar_tsj', s.normalizarOrden({ accion: 'buscar', parametros: { valor: '123/2025', juzgado: 'JUZGADO PRIMERO CIVIL CANCUN' } }).accion, 'buscar_tsj');
+    igual('"buscar" con solo un número no se adivina (podía ser buscar_local)', s.normalizarOrden({ accion: 'buscar', parametros: { valor: '123/2025' } }).accion, 'buscar');
+    igual('"estrados_pjf" con datos del PJF es buscar_pjf', s.normalizarOrden({ accion: 'estrados_pjf', parametros: PEDIDO_PJF }).accion, 'buscar_pjf');
+    igual('"crear_expediente_pjf" no se vuelve una búsqueda', s.normalizarOrden({ accion: 'crear_expediente_pjf', parametros: { valor: '486/2026', juzgado: 'primer colegiado', institucion: 'PJF' } }).accion, 'crear_expediente_pjf');
+    igual('"buscar_estrados" con datos del TSJ es buscar_tsj', s.normalizarOrden({ accion: 'buscar_estrados', parametros: PEDIDO_TSJ }).accion, 'buscar_tsj');
+    igual('"Consultar Estrados" con datos del PJF es buscar_pjf', s.normalizarOrden({ accion: 'Consultar Estrados', parametros: PEDIDO_PJF }).accion, 'buscar_pjf');
+    igual('una sola búsqueda en "varias" queda como esa búsqueda', s.normalizarOrden({ accion: 'varias', parametros: { acciones: [{ accion: 'buscar_pjf', parametros: PEDIDO_PJF }] } }).accion, 'buscar_pjf');
+    // Pero solo si suena a búsqueda: "dar_de_alta" con juzgado no abre estrados.
+    igual('un nombre inventado que no suena a búsqueda no se adivina', s.normalizarOrden({ accion: 'dar_de_alta', parametros: { valor: '1/2026', juzgado: 'X' } }).accion, 'dar_de_alta');
+    igual('con datos de los dos lados no se adivina', s.normalizarOrden({ accion: 'abrir_estrados', parametros: { ...PEDIDO_TSJ, ...PEDIDO_PJF } }).accion, 'abrir_estrados');
+
+    // Acomodarla dos veces no la cambia (procesarRespuestaIA la vuelve a pasar).
+    for (const x of [enVarias, { accion: 'buscar_tsj', parametros: PEDIDO_TSJ }, { accion: 'responder', respuesta: 'Hola' }]) {
+        const una = s.normalizarOrden(x);
+        igual(`acomodar dos veces da lo mismo (${x.accion})`, s.normalizarOrden(una), una);
+    }
+    // Una parte que pregunta algo: primero la pregunta.
+    const conPregunta = s.normalizarOrden([{ accion: 'buscar_tsj', parametros: PEDIDO_TSJ }, { accion: 'buscar_pjf', faltan_datos: true, pregunta: '¿De qué circuito?', parametros: { numero: '486/2026' } }]);
+    igual('si una parte pregunta, se pregunta', [conPregunta.faltan_datos, conPregunta.pregunta], [true, '¿De qué circuito?']);
+
+    // 3) Lo que la app no puede acomodar sola: problemaDeOrden lo dice.
+    verificar('una acción que no existe es un problema', /no existe/.test(s.problemaDeOrden(s.normalizarOrden({ accion: 'hacer_magia', parametros: {} })) || ''));
+    verificar('"responder" sin texto es un problema (era el «Listo.» sin hacer nada)', /sin ningún texto/.test(s.problemaDeOrden(s.normalizarOrden({ accion: 'responder' })) || ''));
+    verificar('sin "accion" ni nada útil, también', !!s.problemaDeOrden(s.normalizarOrden({ resumen: '' })));
+    igual('"responder" con texto está bien', s.problemaDeOrden(s.normalizarOrden({ accion: 'responder', respuesta: 'Hola' })), null);
+    igual('una pregunta para el usuario está bien aunque falte lo demás', s.problemaDeOrden(s.normalizarOrden({ accion: 'inventada', faltan_datos: true, pregunta: '¿Cuál?' })), null);
+    verificar('buscar_varios vacío es un problema', /sin ninguna búsqueda/.test(s.problemaDeOrden(s.normalizarOrden({ accion: 'buscar_varios', parametros: { busquedas: [] } })) || ''));
+    igual('buscar_varios de un grupo está bien', s.problemaDeOrden(s.normalizarOrden({ accion: 'buscar_varios', parametros: { busquedas: [], paraTodosLosDe: 'García' } })), null);
+
+    // 4) Leer el texto del modelo.
+    igual('un objeto con texto alrededor', s.leerOrdenDelModelo('Claro, aquí está:\n{"accion":"responder","respuesta":"Hola"}\nSaludos').respuesta, 'Hola');
+    igual('llaves y comillas dentro de los textos no lo confunden',
+        s.leerOrdenDelModelo('{"accion":"responder","respuesta":"usa {llaves} y \\"comillas\\" }"}').respuesta, 'usa {llaves} y "comillas" }');
+    igual('una lista JSON se lee como lista', s.leerOrdenDelModelo('[{"accion":"buscar_tsj"},{"accion":"buscar_pjf"}]').length, 2);
+    let sinJSON = null;
+    try { s.leerOrdenDelModelo('Listo.'); } catch (e) { sinJSON = e; }
+    verificar('un texto sin JSON es un error (y pedirOrden lo devuelve al modelo)', !!sinJSON);
+
+    // 5) Las acciones conocidas son las que la app sabe ejecutar.
+    const voz = fs.readFileSync(path.join(JS, 'voice-assistant.js'), 'utf8');
+    const cuerpo = voz.slice(voz.indexOf('async function ejecutarAccionResuelta'), voz.indexOf('function informarFallo'));
+    const casos = [...cuerpo.matchAll(/case '([a-z_]+)':/g)].map(m => m[1]).concat('responder').sort();
+    igual('ACCIONES_CONOCIDAS coincide con las que se ejecutan', [...vm.runInContext('ACCIONES_CONOCIDAS', s)].sort(), casos);
+    verificar('ya no se contesta «Listo.» por una acción desconocida', !/mensajeFinal = 'Listo\.'/.test(voz) && !/\|\| 'Listo\.'/.test(voz));
+}
+
+// pedirOrden: si la orden no sirve, se le dice al modelo qué estuvo mal y se
+// le pide que la rehaga, una sola vez.
+async function pruebaRehacerOrden() {
+    const preparar = (respuestas) => {
+        const { sandbox } = crearEntorno();
+        vm.runInContext('var conversacion = [{ role: "user", content: "Ábreme los estrados del 120/2026 y 121/2026…" }];', sandbox);
+        const llamadas = [];
+        sandbox.llamarModelo = async (sistema, historial) => {
+            llamadas.push(historial.map(m => ({ ...m })));
+            const r = respuestas[Math.min(llamadas.length - 1, respuestas.length - 1)];
+            if (r instanceof Error) throw r;
+            return r;
+        };
+        return { sandbox, llamadas };
+    };
+    const buena = { accion: 'buscar_varios', parametros: { busquedas: [{ accion: 'buscar_tsj', parametros: PEDIDO_TSJ }, { accion: 'buscar_pjf', parametros: PEDIDO_PJF }] } };
+
+    let { sandbox, llamadas } = preparar([{ accion: 'abrir_estrados', parametros: { que: 'los tres' } }, buena]);
+    let orden = await sandbox.pedirOrden('sistema');
+    igual('inventada y luego bien: se queda con la buena', orden.accion, 'buscar_varios');
+    igual('inventada y luego bien: dos llamadas', llamadas.length, 2);
+    const aviso = llamadas[1][llamadas[1].length - 1];
+    verificar('al rehacer, el modelo ve qué estuvo mal', aviso.role === 'user' && /"abrir_estrados" no existe/.test(aviso.content) && /buscar_varios/.test(aviso.content), aviso.content);
+    verificar('y ve su respuesta anterior', llamadas[1][llamadas[1].length - 2].role === 'assistant');
+    igual('la conversación queda con las dos respuestas', sandbox.conversacion.map(m => m.role), ['user', 'assistant', 'user', 'assistant']);
+
+    ({ sandbox, llamadas } = preparar([enVariasDelModelo()]));
+    orden = await sandbox.pedirOrden('sistema');
+    igual('las búsquedas en "varias" se acomodan sin volver a preguntar', [orden.accion, llamadas.length], ['buscar_varios', 1]);
+
+    ({ sandbox, llamadas } = preparar([{ accion: 'hacer_magia' }]));
+    orden = await sandbox.pedirOrden('sistema');
+    igual('si tampoco la segunda sirve, no insiste más', [llamadas.length, orden.accion], [2, 'hacer_magia']);
+
+    const sinJSON = Object.assign(new Error('No entendí la instrucción, intenta expresarla de otra forma'), { _sinJSON: true, _texto: 'Listo.' });
+    ({ sandbox, llamadas } = preparar([sinJSON, buena]));
+    orden = await sandbox.pedirOrden('sistema');
+    igual('sin JSON: se le pide que lo rehaga', [orden.accion, llamadas.length], ['buscar_varios', 2]);
+    verificar('y se le dice que no mandó JSON', /no respondiste con un objeto JSON/.test(llamadas[1][llamadas[1].length - 1].content));
+
+    ({ sandbox, llamadas } = preparar([new Error('Sin conexión')]));
+    let error = null;
+    try { await sandbox.pedirOrden('sistema'); } catch (e) { error = e; }
+    igual('un error de red no se reintenta', [error && error.message, llamadas.length], ['Sin conexión', 1]);
+}
+
+function enVariasDelModelo() {
+    return { accion: 'varias', parametros: { acciones: [{ accion: 'buscar_tsj', parametros: PEDIDO_TSJ }, { accion: 'buscar_pjf', parametros: PEDIDO_PJF }] } };
+}
+
 function pruebaInstrucciones() {
     const voz = fs.readFileSync(path.join(JS, 'voice-assistant.js'), 'utf8');
+    verificar('prompt: un solo objeto JSON, nunca una lista', /UNO SOLO, aunque la orden tenga varias partes/.test(voz));
+    verificar('prompt: los estrados de varios asuntos van en buscar_varios, nunca en "varias"', /SIEMPRE "buscar_varios", nunca "varias"/.test(voz));
+    verificar('prompt: con la orden real como ejemplo', /120\/2026 y 121\/2026 del primero familiar oral de Cancún, y el amparo directo 486\/2026/.test(voz));
 
     // El fallo de enrutado: "estrados" solo se nombraba en el TSJ, así que una
     // orden con "estrado" y "pjf" a la vez caía del lado equivocado.
@@ -809,6 +983,8 @@ function pruebaInstrucciones() {
         ['dar de alta por voz', pruebaAltaPorVoz],
         ['cambiar de órgano por voz', pruebaCambiarDeOrgano],
         ['buscar uno guardado sin datos', pruebaBuscarGuardadoSinDatos],
+        ['lo que contesta el modelo', pruebaOrdenesDelModelo],
+        ['rehacer una orden que no sirve', pruebaRehacerOrden],
         ['las instrucciones al modelo', pruebaInstrucciones]
     ];
     for (const [nombre, fn] of pruebas) {
