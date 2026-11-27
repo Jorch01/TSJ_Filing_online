@@ -3999,6 +3999,106 @@ async function probarAsistenteVarias(navegador) {
 }
 
 /**
+ * «Ábreme los estrados del 120, 121 y 130…»: el asistente abre TODOS los que
+ * se le piden. El navegador deja abrir una ventana por clic, así que se
+ * simula igual: la primera pasa y las que se abren solas después las bloquea.
+ * La lista numerada del chat dice cuáles se abrieron y «Abrir la siguiente»
+ * abre las demás, una por clic, hasta la última.
+ */
+async function probarAsistenteVariosEstrados(navegador) {
+    console.log('\nAsistente: varios estrados en una orden');
+    const contexto = await navegador.newContext({ viewport: { width: 1280, height: 850 } });
+    await contexto.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: `http://localhost:${PUERTO}` });
+    await contexto.addInitScript(() => { try { localStorage.setItem('tour_bienvenida_visto', '1'); localStorage.setItem('voz_tts_activado', '0'); } catch (e) {} });
+    const page = await contexto.newPage();
+    const errores = [];
+    page.on('pageerror', e => errores.push(e.message));
+    try {
+        await page.goto(`http://localhost:${PUERTO}/index.html`, { waitUntil: 'load' });
+        await page.waitForFunction(() => typeof crearExpedienteCore === 'function' && typeof db !== 'undefined' && !!db, { timeout: 15000 });
+        await page.waitForTimeout(800);
+        await page.evaluate(async () => {
+            await guardarConfig('ia_api_key', 'CLAVE-DE-PRUEBA');
+            // El bloqueador de ventanas: una por clic (__permitidas), las demás, null.
+            window.__abiertas = [];
+            window.__permitidas = 0;
+            window.open = (url) => {
+                if (window.__permitidas > 0) { window.__permitidas--; window.__abiertas.push(url); return { focus() {} }; }
+                return null;
+            };
+            window.llamarIA = async () => JSON.stringify({ accion: 'buscar_tsj', faltan_datos: false, pregunta: null, resumen: 'Estrados',
+                parametros: { valor: null, valores: ['120/2026', '121/2026', '130/2025'], tipoBusqueda: 'numero', juzgado: 'JUZGADO PRIMERO FAMILIAR ORAL CANCUN' } });
+        });
+        await page.click('#voz-fab');
+        await page.waitForSelector('#voz-input', { state: 'visible' });
+        await page.fill('#voz-input', 'ábreme los estrados del 120/2026, 121/2026 y 130/2025 del primero familiar oral de Cancún');
+        await page.click('#voz-enviar');
+        await page.waitForSelector('#voz-confirmacion', { state: 'visible', timeout: 8000 });
+        const conf = await page.textContent('#voz-confirmacion');
+        verificar('estrados: pide confirmar las tres', /Abrir 3 consultas/.test(conf) && ['120/2026', '121/2026', '130/2025'].every(n => conf.includes(n)), conf);
+        // El clic en «Confirmar» deja abrir una ventana; las otras las bloquea.
+        await page.evaluate(() => { window.__permitidas = 1; });
+        await page.click('#voz-btn-confirmar');
+        await page.waitForTimeout(1800);
+        const leer = () => page.evaluate(() => {
+            const lista = [...document.querySelectorAll('#voz-chat .voz-indexada')].pop();
+            if (!lista) return null;
+            return {
+                indices: [...lista.querySelectorAll('.voz-indice')].map(x => x.textContent),
+                // El estado de cada fila (el texto lleva íconos en vez de ✓ y ⛔).
+                estados: [...lista.querySelectorAll('.voz-indexada-fila')].map(x => x.dataset.estado),
+                siguiente: lista.querySelector('.voz-siguiente').textContent.trim(),
+                deshabilitado: lista.querySelector('.voz-siguiente').disabled,
+                aviso: lista.querySelector('.voz-indexada-aviso').hidden ? '' : lista.querySelector('.voz-indexada-aviso').textContent,
+                abiertas: window.__abiertas.slice()
+            };
+        });
+        let r = await leer();
+        igual('estrados: la lista numerada, del 1 al 3', r && r.indices, ['1', '2', '3']);
+        igual('estrados: la primera se abrió; las otras dos las bloqueó el navegador', r && r.estados, ['abierta', 'bloqueada', 'bloqueada']);
+        verificar('estrados: «Abrir la siguiente» apunta a la 2', !!r && /Abrir la 2 de 3$/.test(r.siguiente), r && r.siguiente);
+        verificar('estrados: y explica por qué y cómo evitarlo', !!r && /bloqueó 2 ventanas/.test(r.aviso) && /ventanas emergentes/.test(r.aviso), r && r.aviso);
+        // Un clic, una ventana: la 2 y luego la 3.
+        for (let k = 0; k < 2; k++) {
+            await page.evaluate(() => {
+                window.__permitidas = 1;
+                [...document.querySelectorAll('#voz-chat .voz-indexada')].pop().querySelector('.voz-siguiente').click();
+            });
+            await page.waitForTimeout(200);
+        }
+        r = await leer();
+        igual('estrados: con dos clics quedan las tres abiertas', r.estados, ['abierta', 'abierta', 'abierta']);
+        igual('estrados: y el botón lo dice', [/Abriste las 3$/.test(r.siguiente), r.deshabilitado, r.aviso], [true, true, '']);
+        verificar('estrados: una ventana por número, en orden', r.abiertas.length === 3 &&
+            ['120/2026', '121/2026', '130/2025'].every((n, i) => r.abiertas[i].includes(encodeURIComponent(n))), JSON.stringify(r.abiertas));
+        await page.evaluate(() => [...document.querySelectorAll('#voz-chat .voz-indexada')].pop().querySelector('.voz-indexada-barra .voz-chip:not(.voz-siguiente)').click());
+        await page.waitForTimeout(300);
+        const copiado = await page.evaluate(() => navigator.clipboard.readText().catch(() => ''));
+        verificar('estrados: «Copiar los enlaces» los deja numerados', /^1\. 120\/2026 — JUZGADO PRIMERO FAMILIAR ORAL CANCUN\nhttps?:\/\//.test(copiado) && /\n\n3\. 130\/2025/.test(copiado), copiado.slice(0, 200));
+
+        // «Los estrados de todos los de la carpeta García»: la app arma cada uno.
+        await page.evaluate(async () => {
+            const carpeta = await agregarCarpeta({ nombre: 'García', color: '#2f7d4f' });
+            await crearExpedienteCore({ numero: '15/2026', institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO FAMILIAR ORAL CANCUN', carpetaId: carpeta });
+            await crearExpedienteCore({ numero: '88/2025', institucion: 'TSJ', juzgado: 'JUZGADO SEGUNDO FAMILIAR ORAL CANCUN', carpetaId: carpeta });
+            await crearExpedienteCore({ numero: '7/2026', institucion: 'OTRO', juzgado: 'TRIBUNAL DE JUSTICIA ADMINISTRATIVA DE YUCATAN', carpetaId: carpeta });
+            window.__abiertas = [];
+            window.llamarIA = async () => JSON.stringify({ accion: 'buscar_varios', faltan_datos: false, pregunta: null, resumen: 'Estrados de García',
+                parametros: { busquedas: [], paraTodosLosDe: 'García' } });
+        });
+        await page.fill('#voz-input', 'abre los estrados de todos los de la carpeta García');
+        await page.click('#voz-enviar');
+        await page.waitForSelector('#voz-confirmacion', { state: 'visible', timeout: 8000 });
+        const conf2 = await page.textContent('#voz-confirmacion');
+        verificar('grupo: confirma los dos del TSJ de la carpeta', /Abrir 2 consultas/.test(conf2) && conf2.includes('15/2026') && conf2.includes('88/2025'), conf2);
+        verificar('grupo: y avisa del que no tiene estrados', /1 de “García” sin estrados electrónicos/.test(conf2), conf2);
+        igual('grupo: sin errores de JavaScript', errores, []);
+    } finally {
+        await contexto.close();
+    }
+}
+
+/**
  * Dos asuntos del PJF con el mismo número ante el mismo órgano pero de distinto
  * tipo de asunto (un amparo directo y un recurso de revisión 577/2026 del mismo
  * tribunal) son asuntos distintos. El barrido de duplicados, que corre en cada
@@ -7111,6 +7211,7 @@ async function main() {
         await probarAceptacionVisible(navegador);
         await probarApartadoOtros(navegador);
         await probarAsistenteVarias(navegador);
+        await probarAsistenteVariosEstrados(navegador);
         await probarAsuntosConMismoNumero(navegador);
         await probarImportacionPorTipoDeAsunto(navegador);
         await probarVinculoDeAnalisisIA(navegador);

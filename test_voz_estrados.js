@@ -529,6 +529,44 @@ async function pruebaVariosJuzgadosTSJ() {
     verificar('tsj: se dejan en una lista', /lista/.test(rt), rt);
 }
 
+// ==================== VARIOS NÚMEROS Y GRUPOS ====================
+
+// «Ábreme el 120, el 121 y el 130 del primero familiar»: TODOS los que se
+// piden, uno por número; y «los de la carpeta García», con lo guardado de cada uno.
+async function pruebaVariosNumeros() {
+    const tsj = crearEntorno();
+    await tsj.sandbox.accBuscarTSJ({ valores: ['120/2026', '121/2026', '130/2025', '121/2026'], tipoBusqueda: 'numero', juzgado: 'JUZGADO PRIMERO FAMILIAR ORAL CANCUN' });
+    igual('números: una ventana por número, sin repetir', tsj.estado.ventanas.length, 3);
+    igual('números: en el orden dictado', tsj.estado.ventanas.map(v => decodeURIComponent((/findexp=([^&]+)/.exec(v.url) || [])[1] || '')),
+        ['120/2026', '121/2026', '130/2025']);
+    verificar('números: todas en el mismo juzgado', new Set(tsj.estado.ventanas.map(v => /[?&]int=(\d+)/.exec(v.url)[1])).size === 1);
+
+    const pjf = crearEntorno();
+    await pjf.sandbox.accBuscarPJF({ numeros: ['100/2026', '101/2026'], organismo: 'primer tribunal colegiado del 27 circuito', tipoAsunto: 'amparo directo' });
+    igual('números PJF: una ventana por número', pjf.estado.ventanas.length, 2);
+    verificar('números PJF: cada una con su número', ['100/2026', '101/2026'].every(n => pjf.estado.ventanas.some(v => v.url.includes(encodeURIComponent(n)))),
+        JSON.stringify(pjf.estado.ventanas.map(v => v.url)));
+
+    // Un grupo: los del TSJ y del PJF con lo que tienen guardado; los de otros tribunales, aparte.
+    const g = crearEntorno();
+    const exps = {
+        1: { id: 1, numero: '15/2026', institucion: 'TSJ', juzgado: 'JUZGADO PRIMERO FAMILIAR ORAL CANCUN' },
+        2: { id: 2, numero: '88/2025', institucion: 'TSJ', juzgado: 'JUZGADO SEGUNDO FAMILIAR ORAL CANCUN' },
+        3: { id: 3, numero: '486/2026', institucion: 'PJF', juzgado: 'Primer Tribunal Colegiado del Vigésimo Séptimo Circuito', pjfOrgId: 462, pjfTipoAsunto: 10 },
+        4: { id: 4, numero: '7/2026', institucion: 'OTRO', juzgado: 'TRIBUNAL DE JUSTICIA ADMINISTRATIVA DE YUCATAN' }
+    };
+    g.sandbox.buscarExpedientesDeGrupo = async (ref) => (ref === 'García' ? Object.values(exps).map(expediente => ({ expediente })) : []);
+    g.sandbox.resolverExpedienteDeParametros = async (p) => exps[p.expedienteId] || null;
+    const plan = await g.sandbox.planificarBusqueda('buscar_varios', { busquedas: [], paraTodosLosDe: 'García' });
+    igual('grupo: una consulta por expediente con estrados', plan.consultas.map(c => [c.institucion, c.numero]),
+        [['TSJ', '15/2026'], ['TSJ', '88/2025'], ['PJF', '486/2026']]);
+    verificar('grupo: el del PJF con su órgano y tipo guardados', /[?&]organismo=462(&|$)/.test(plan.consultas[2].url) && /[?&]tipoasunto=10(&|$)/.test(plan.consultas[2].url), plan.consultas[2].url);
+    verificar('grupo: y avisa del que no tiene estrados', plan.avisos.some(a => /1 de “García” sin estrados electrónicos/.test(a)), JSON.stringify(plan.avisos));
+    let msg = '';
+    try { await g.sandbox.planificarBusqueda('buscar_varios', { busquedas: [], paraTodosLosDe: 'Nadie' }); } catch (e) { msg = e.message; }
+    verificar('grupo: si no hay expedientes de ese grupo, lo dice', /No encontré expedientes de “Nadie”/.test(msg), msg);
+}
+
 // ==================== CAUSAS PENALES ====================
 
 // Los juzgados penales no publican en estrados: de la causa se buscan sus
@@ -717,6 +755,9 @@ function pruebaInstrucciones() {
     verificar('prompt: y todos los tipos', /tiposAsunto:\["todos"\]/.test(voz));
     verificar('prompt: varios juzgados del TSJ', /VARIOS JUZGADOS/.test(voz) && /juzgados:\[/.test(voz));
     verificar('prompt: existe buscar_varios para asuntos distintos', /"buscar_varios": \{busquedas:/.test(voz));
+    verificar('prompt: varios números en el mismo juzgado u órgano', /valores:\[textos\]/.test(voz) && /numeros:\[textos\]/.test(voz));
+    verificar('prompt: un grupo entero de asuntos', /"buscar_varios": \{[^\n]*paraTodosLosDe/.test(voz));
+    verificar('prompt: y que abra todos, nunca solo el primero', /nunca solo el primero/.test(voz) && /Nunca digas que solo puedes abrir una/.test(voz));
     verificar('prompt: con un ejemplo que mezcla TSJ y PJF', /Ejemplo mixto/.test(voz));
     verificar('prompt: al dar de alta un federal se pasa el tipo de asunto',
         /"crear_expediente": \{[^}]*tipoAsunto/.test(voz));
@@ -737,6 +778,7 @@ function pruebaInstrucciones() {
         ['todos los tipos de asunto', pruebaTodosLosTipos],
         ['varios juzgados del TSJ', pruebaVariosJuzgadosTSJ],
         ['causas penales', pruebaCausaPenal],
+        ['varios números y grupos', pruebaVariosNumeros],
         ['varios asuntos en una orden', pruebaVariosAsuntos],
         ['dar de alta por voz', pruebaAltaPorVoz],
         ['cambiar de órgano por voz', pruebaCambiarDeOrgano],
