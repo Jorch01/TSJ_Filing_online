@@ -546,6 +546,9 @@ async function pruebaVariosNumeros() {
     igual('números PJF: una ventana por número', pjf.estado.ventanas.length, 2);
     verificar('números PJF: cada una con su número', ['100/2026', '101/2026'].every(n => pjf.estado.ventanas.some(v => v.url.includes(encodeURIComponent(n)))),
         JSON.stringify(pjf.estado.ventanas.map(v => v.url)));
+    // Mismo órgano y mismo tipo: si compartieran nombre de ventana, la segunda
+    // cargaría encima de la primera y solo quedaría una.
+    igual('números PJF: cada número en su propia ventana', new Set(pjf.estado.ventanas.map(v => v.nombre)).size, 2);
 
     // Un grupo: los del TSJ y del PJF con lo que tienen guardado; los de otros tribunales, aparte.
     const g = crearEntorno();
@@ -565,6 +568,29 @@ async function pruebaVariosNumeros() {
     let msg = '';
     try { await g.sandbox.planificarBusqueda('buscar_varios', { busquedas: [], paraTodosLosDe: 'Nadie' }); } catch (e) { msg = e.message; }
     verificar('grupo: si no hay expedientes de ese grupo, lo dice', /No encontré expedientes de “Nadie”/.test(msg), msg);
+
+    // Todo junto en una orden: varios números, juzgados, órganos y tipos de
+    // asunto, del TSJ y del PJF mezclados. Cada consulta en su propia ventana.
+    const todo = crearEntorno();
+    todo.estado.resolverLanza = todo.sandbox.ErrorAviso('no está');
+    const segundo27 = todo.sandbox.buscarOrganismoPJF('segundo tribunal colegiado del 27 circuito');
+    const rt = await todo.sandbox.accBuscarVarios({ busquedas: [
+        { accion: 'buscar_tsj', parametros: { valores: ['120/2026', '121/2026'], tipoBusqueda: 'numero', juzgado: 'JUZGADO PRIMERO FAMILIAR ORAL CANCUN' } },
+        { accion: 'buscar_tsj', parametros: { valor: '45/2025', tipoBusqueda: 'numero', juzgados: ['JUZGADO PRIMERO CIVIL CANCUN', 'JUZGADO SEGUNDO CIVIL CANCUN'] } },
+        { accion: 'buscar_pjf', parametros: { numero: '486/2026', organismos: ['primer tribunal colegiado del 27 circuito', 'segundo tribunal colegiado del 27 circuito'], tiposAsunto: ['amparo directo', 'queja'] } },
+        { accion: 'buscar_pjf', parametros: { numeros: ['100/2026', '101/2026'], organismo: 'juzgado primero de distrito en quintana roo', tipoAsunto: 'amparo indirecto' } }
+    ] });
+    const v = todo.estado.ventanas;
+    igual('todo junto: diez consultas, cuatro del TSJ y seis del PJF',
+        [v.length, v.filter(x => /tsjqroo/.test(x.url)).length, v.filter(x => /dgej\.cjf\.gob\.mx/.test(x.url)).length], [10, 4, 6]);
+    igual('todo junto: cada una en su propia ventana', new Set(v.map(x => x.nombre)).size, 10);
+    const de486 = v.filter(x => x.url.includes(encodeURIComponent('486/2026'))).map(x => [organoDe(x.url), tipoDe(x.url)])
+        .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    igual('todo junto: el 486/2026 como amparo directo y como queja en los dos colegiados',
+        de486, [[462, 10], [462, 15], [segundo27.id, 10], [segundo27.id, 15]].sort((a, b) => a[0] - b[0] || a[1] - b[1]));
+    verificar('todo junto: los dos amparos indirectos, cada uno con su número',
+        ['100/2026', '101/2026'].every(n => v.some(x => x.url.includes(encodeURIComponent(n)) && tipoDe(x.url) === 1)), JSON.stringify(v.map(x => x.url)));
+    verificar('todo junto: el asistente dice cuántas abre', /10 consultas/.test(rt), rt);
 }
 
 // ==================== CAUSAS PENALES ====================

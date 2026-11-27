@@ -2469,7 +2469,8 @@
                         else if (url) window.open(url, '_blank');
                     } else {
                         const url = construirURLPJF(exp.pjfOrgId, exp.pjfTipoAsunto, exp.numero || '', 0);
-                        window.open(url, 'pjf_expediente', 'width=1024,height=700,scrollbars=yes,resizable=yes');
+                        // Una ventana por expediente: abrir otro no carga encima del anterior.
+                        window.open(url, 'pjf_expediente_' + exp.id, 'width=1024,height=700,scrollbars=yes,resizable=yes');
                     }
                 });
                 btns.appendChild(b);
@@ -2532,9 +2533,10 @@
             tipo: tipo.nombre,
             etiqueta: `${tipo.nombre} ${numero} — ${org.nombre}`,
             url: construirURLPJF(org.id, tipo.id, numero, 0),
-            // Una ventana por órgano Y tipo: con el mismo nombre, la queja
-            // cargaría encima del amparo y solo quedaría una.
-            ventana: `pjf_${org.id}_${tipo.id}`
+            // Una ventana por órgano, tipo Y número: con el mismo nombre, la
+            // queja cargaría encima del amparo (o el 101/2026 encima del
+            // 100/2026) y solo quedaría una.
+            ventana: `pjf_${org.id}_${tipo.id}_${String(numero).replace(/[^0-9A-Za-z]+/g, '_')}`
         };
     }
 
