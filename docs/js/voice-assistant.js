@@ -837,6 +837,268 @@
         procesarEntradaUsuario(texto);
     }
 
+    // ==================== ÓRDENES DEL MODELO ====================
+    // El modelo contesta casi siempre con UN objeto JSON y una acción de la
+    // lista. Casi: con una orden de varias partes («ábreme el 120/2026 y el
+    // 121/2026 del primero familiar oral, y el amparo directo 486/2026 del
+    // primer colegiado») a veces mete las búsquedas en "varias" (que es para
+    // guardar cosas, no para abrir estrados), manda una lista o un objeto por
+    // asunto, pone los parámetros fuera de "parametros" o inventa el nombre de
+    // la acción. Aquí se acomoda todo eso a la forma que entiende la app; lo
+    // que no se pueda, se le devuelve al modelo UNA vez para que lo rehaga. Y
+    // nunca se contesta «Listo.» sin haber hecho nada.
+
+    // Las acciones que existen: las de ejecutarAccionResuelta, más responder.
+    const ACCIONES_CONOCIDAS = new Set([
+        'crear_evento', 'editar_evento', 'eliminar_evento', 'varias', 'consultar_agenda',
+        'crear_expediente', 'editar_expediente', 'archivar_expediente', 'crear_nota',
+        'crear_pendiente', 'completar_pendiente', 'consultar_pendientes', 'mover_a_carpeta',
+        'abrir_expediente', 'deshacer', 'buscar_local', 'buscar_tsj', 'buscar_pjf',
+        'buscar_varios', 'calcular_laboral', 'navegar', 'responder'
+    ]);
+
+    const NO_ENTENDI = 'No entendí qué hacer con eso, así que no hice nada. ¿Me lo pides de otra forma?';
+
+    // Un nombre inventado que es de estrados ("abrir_estrados",
+    // "consultar_acuerdos", "estrados_pjf"…), o que es de buscar ("buscar",
+    // "consultar", "abrir") y además trae un juzgado u órgano: un nombre de
+    // buscar con solo un número podía ser buscar_local, y no se adivina.
+    const RE_NOMBRE_ESTRADOS = /estrad|acuerd|boletin|publica|tsj|pjf/;
+    const RE_NOMBRE_BUSCAR = /busc|consult|abr|list/;
+    // Pero "crear_expediente_pjf" o "guardar_acuerdo" no son búsquedas.
+    const RE_NOMBRE_NO_BUSQUEDA = /crea|alta|agreg|nuev|guard|regist|edit|modif|cambi|borr|elimin|archiv|mover|agend/;
+    const CLAVES_ORGANO = ['juzgado', 'juzgados', 'organismo', 'organismos', 'ambito'];
+
+    // Los parámetros que solo lleva una búsqueda del PJF, o una del TSJ.
+    const CLAVES_PJF = ['organismo', 'organismos', 'tipoAsunto', 'tiposAsunto', 'numeros'];
+    const CLAVES_TSJ = ['juzgado', 'juzgados', 'valor', 'valores', 'ambito', 'tipoBusqueda'];
+
+    function tieneAlguna(p, claves) {
+        return claves.some(k => {
+            const v = p[k];
+            return Array.isArray(v) ? v.length > 0 : (v != null && String(v).trim() !== '');
+        });
+    }
+
+    function nombreDeAccion(a) {
+        return typeof a === 'string' ? a.trim().toLowerCase().replace(/[\s-]+/g, '_') : '';
+    }
+
+    /**
+     * Una entrada { accion, parametros } tal como la manda el modelo, con el
+     * nombre limpio y los parámetros en su lugar: a veces los pone sueltos al
+     * lado de "accion" en vez de dentro de "parametros". null si no es una.
+     */
+    function entradaDeOrden(x) {
+        if (!x || typeof x !== 'object' || Array.isArray(x)) return null;
+        // Lo que no es de la acción (pregunta, resumen…) no pasa a sus parámetros.
+        const { accion, parametros, faltan_datos, pregunta, resumen, respuesta, ...sueltos } = x;
+        let dentro = parametros;
+        // A veces los manda como texto: "parametros": "{\"valor\": …}".
+        if (typeof dentro === 'string') {
+            try { dentro = JSON.parse(dentro); } catch (e) { dentro = null; }
+        }
+        if (!dentro || typeof dentro !== 'object' || Array.isArray(dentro)) dentro = {};
+        return { accion: nombreDeAccion(accion), parametros: { ...sueltos, ...dentro } };
+    }
+
+    /**
+     * La acción de una entrada cuyo nombre no existe (o no vino), deducida de
+     * sus parámetros; null si no se puede saber. enBusquedas: la entrada viene
+     * dentro de "busquedas", así que es una búsqueda aunque no lo diga.
+     */
+    function accionInferida(nombre, p, enBusquedas) {
+        if (Array.isArray(p.acciones) && p.acciones.length) return 'varias';
+        if (Array.isArray(p.busquedas) && p.busquedas.length) return 'buscar_varios';
+        const esBusqueda = enBusquedas || (!RE_NOMBRE_NO_BUSQUEDA.test(nombre) && (RE_NOMBRE_ESTRADOS.test(nombre) ||
+            (RE_NOMBRE_BUSCAR.test(nombre) && (tieneAlguna(p, CLAVES_ORGANO) || textoLimpio(p.paraTodosLosDe) !== ''))));
+        if (!esBusqueda) return null;
+        const inst = String(p.institucion || '').trim().toUpperCase();
+        if (inst === 'PJF') return 'buscar_pjf';
+        if (inst === 'TSJ') return 'buscar_tsj';
+        const pjf = tieneAlguna(p, CLAVES_PJF);
+        const tsj = tieneAlguna(p, CLAVES_TSJ);
+        if (pjf !== tsj) return pjf ? 'buscar_pjf' : 'buscar_tsj';
+        if (!pjf && textoLimpio(p.paraTodosLosDe)) return 'buscar_varios';
+        return null;
+    }
+
+    // Las entradas de una lista de acciones, acomodadas; una "varias" dentro
+    // de otra se aplana.
+    function entradasDeLista(lista, profundidad = 0) {
+        const out = [];
+        for (const x of Array.isArray(lista) ? lista : []) {
+            const e = entradaDeOrden(x);
+            if (!e) continue;
+            if (!ACCIONES_CONOCIDAS.has(e.accion)) e.accion = accionInferida(e.accion, e.parametros, false) || e.accion;
+            if (e.accion === 'varias' && profundidad < 3) out.push(...entradasDeLista(e.parametros.acciones, profundidad + 1));
+            else out.push(e);
+        }
+        return out;
+    }
+
+    /**
+     * La respuesta del modelo en la forma que entiende la app:
+     *  - una lista de acciones, o un objeto por asunto → una sola orden;
+     *  - "varias" que solo trae búsquedas de estrados → buscar_varios (si trae
+     *    además cosas por guardar, planVarias abre las búsquedas con el resto);
+     *  - parámetros sueltos → dentro de "parametros";
+     *  - un nombre de acción inventado cuyos parámetros dicen qué es.
+     * Lo que no sepa acomodar lo deja como vino, y problemaDeOrden lo dice.
+     */
+    function normalizarOrden(r) {
+        if (Array.isArray(r)) {
+            const partes = r.filter(x => x && typeof x === 'object' && !Array.isArray(x));
+            // Si una de las partes pregunta algo, primero esa pregunta: al
+            // contestarla, el modelo rehace la orden completa.
+            const conPregunta = partes.find(x => x.faltan_datos && textoLimpio(x.pregunta));
+            if (conPregunta) return normalizarOrden(conPregunta);
+            if (partes.length === 1) return normalizarOrden(partes[0]);
+            r = { accion: 'varias', parametros: { acciones: partes } };
+        }
+        if (!r || typeof r !== 'object') return { accion: 'responder', parametros: {}, respuesta: '' };
+
+        const e = entradaDeOrden(r);
+        let accion = e.accion;
+        let parametros = e.parametros;
+        if (!ACCIONES_CONOCIDAS.has(accion)) accion = accionInferida(accion, parametros, false) || accion || 'responder';
+
+        // La lista con el nombre de la otra: "busquedas" en "varias", o
+        // "acciones" en buscar_varios.
+        if (accion === 'varias' && !Array.isArray(parametros.acciones) && Array.isArray(parametros.busquedas)) {
+            parametros = { ...parametros, acciones: parametros.busquedas };
+            delete parametros.busquedas;
+        }
+        if (accion === 'buscar_varios' && !Array.isArray(parametros.busquedas) && Array.isArray(parametros.acciones)) {
+            parametros = { ...parametros, busquedas: parametros.acciones };
+            delete parametros.acciones;
+        }
+        // Una búsqueda sola que en realidad trae la lista de varias.
+        if ((accion === 'buscar_tsj' || accion === 'buscar_pjf') && Array.isArray(parametros.busquedas) && parametros.busquedas.length &&
+            !tieneAlguna(parametros, accion === 'buscar_tsj' ? CLAVES_TSJ : CLAVES_PJF.concat('numero'))) {
+            accion = 'buscar_varios';
+        }
+
+        if (accion === 'varias') {
+            const entradas = entradasDeLista(parametros.acciones);
+            parametros = { ...parametros, acciones: entradas };
+            if (entradas.length && entradas.every(x => ACCIONES_BUSQUEDA.has(x.accion))) {
+                // Solo búsquedas de estrados: eso es buscar_varios (o, si es
+                // una sola, esa búsqueda tal cual).
+                if (entradas.length === 1) { accion = entradas[0].accion; parametros = entradas[0].parametros; }
+                else { accion = 'buscar_varios'; parametros = { busquedas: entradas }; }
+            }
+        }
+
+        const orden = { accion, parametros };
+        for (const k of ['faltan_datos', 'pregunta', 'resumen', 'respuesta']) {
+            if (r[k] !== undefined) orden[k] = r[k];
+        }
+        return orden;
+    }
+
+    /**
+     * Lo que impide ejecutar la orden ya acomodada, dicho para el modelo; null
+     * si se puede ejecutar.
+     */
+    function problemaDeOrden(r) {
+        if (r.faltan_datos && textoLimpio(r.pregunta)) return null;
+        const accion = r.accion;
+        const p = r.parametros || {};
+        if (!ACCIONES_CONOCIDAS.has(accion)) return `la acción "${accion}" no existe`;
+        if (accion === 'responder' && !textoLimpio(r.respuesta) && !textoLimpio(r.resumen)) {
+            return 'contestaste "responder" sin ningún texto, y no se hizo nada';
+        }
+        if (accion === 'varias') {
+            const acciones = Array.isArray(p.acciones) ? p.acciones : [];
+            if (!acciones.length) return '"varias" llegó sin ninguna acción en "acciones"';
+            const malas = [...new Set(acciones
+                .filter(x => !ACCIONES_EN_LOTE[x.accion] && !ACCIONES_BUSQUEDA.has(x.accion))
+                .map(x => x.accion || '(sin acción)'))];
+            if (malas.length) return `dentro de "varias" no caben ${malas.map(a => `"${a}"`).join(', ')}`;
+        }
+        if (accion === 'buscar_varios' && !(Array.isArray(p.busquedas) && p.busquedas.length) && !textoLimpio(p.paraTodosLosDe)) {
+            return '"buscar_varios" llegó sin ninguna búsqueda en "busquedas"';
+        }
+        return null;
+    }
+
+    // Lo que se le dice al modelo para que rehaga la orden.
+    function avisoParaRehacer(problema) {
+        return `[Aviso automático de la app; no lo escribió el usuario] Tu última respuesta no se pudo usar: ${problema}. ` +
+            'Vuelve a responder la instrucción anterior del usuario con UN solo objeto JSON y una de las ACCIONES DISPONIBLES, con todo lo que pidió. ' +
+            'Para abrir los estrados de varios asuntos (del TSJ, del PJF o mezclados) usa "buscar_varios", con una entrada por asunto: "varias" no es para búsquedas.';
+    }
+
+    // Los objetos JSON de primer nivel que hay en un texto, en orden.
+    function objetosJSONEn(texto) {
+        const out = [];
+        let nivel = 0, inicio = -1, enCadena = false, escape = false;
+        for (let i = 0; i < texto.length; i++) {
+            const ch = texto[i];
+            if (enCadena) {
+                if (escape) escape = false;
+                else if (ch === '\\') escape = true;
+                else if (ch === '"') enCadena = false;
+                continue;
+            }
+            if (ch === '"') { if (nivel > 0) enCadena = true; continue; }
+            if (ch === '{') { if (nivel === 0) inicio = i; nivel++; }
+            else if (ch === '}' && nivel > 0) {
+                nivel--;
+                if (nivel === 0) {
+                    try { out.push(JSON.parse(texto.slice(inicio, i + 1))); } catch (e) { /* no era JSON */ }
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Lo que contestó el modelo, como objeto (o lista, si mandó varias
+     * acciones sueltas). Suele venir envuelto en ```json; a veces trae texto
+     * alrededor, una lista, o dos objetos seguidos (uno por asunto).
+     */
+    function leerOrdenDelModelo(texto) {
+        const limpio = String(texto == null ? '' : texto).replace(/```(?:json)?/gi, '').trim();
+        try {
+            const todo = JSON.parse(limpio);
+            if (todo && typeof todo === 'object') return todo;
+        } catch (e) { /* trae algo más: se buscan los objetos */ }
+        const objetos = objetosJSONEn(limpio);
+        if (!objetos.length) throw new Error('La respuesta no trae JSON');
+        return objetos.length === 1 ? objetos[0] : objetos;
+    }
+
+    /**
+     * Pide la orden al modelo y la acomoda. Si no sirve, se le dice qué estuvo
+     * mal y se le pide que la rehaga, UNA vez. Lo que conteste queda en la
+     * conversación, ya acomodado, para que los turnos siguientes partan de ahí.
+     */
+    async function pedirOrden(sistema) {
+        let orden = null;
+        let problema = null;
+        for (let intento = 0; intento < 2; intento++) {
+            if (problema) conversacion.push({ role: 'user', content: avisoParaRehacer(problema) });
+            let crudo;
+            try {
+                crudo = await llamarModelo(sistema, conversacion);
+            } catch (e) {
+                if (!e._sinJSON || intento) throw e;
+                conversacion.push({ role: 'assistant', content: String(e._texto || '').slice(0, 1500) || '(vacío)' });
+                problema = 'no respondiste con un objeto JSON';
+                console.warn('[VOZ] El modelo no respondió con JSON; se le pide que rehaga la orden.');
+                continue;
+            }
+            orden = normalizarOrden(crudo);
+            conversacion.push({ role: 'assistant', content: JSON.stringify(orden) });
+            problema = problemaDeOrden(orden);
+            if (!problema) return orden;
+            console.warn('[VOZ] La orden del modelo no sirve (' + problema + ')' + (intento ? '.' : '; se le pide que la rehaga.'), crudo);
+        }
+        return orden;
+    }
+
     // ==================== FLUJO PRINCIPAL ====================
 
     async function procesarEntradaUsuario(texto) {
@@ -891,8 +1153,7 @@
 
         try {
             const sistema = await construirPromptSistema();
-            const respuesta = await llamarModelo(sistema, conversacion);
-            conversacion.push({ role: 'assistant', content: JSON.stringify(respuesta) });
+            const respuesta = await pedirOrden(sistema);
             estado = Estado.INACTIVO;
             setStatus('', false);
             await procesarRespuestaIA(respuesta);
@@ -905,6 +1166,8 @@
     }
 
     async function procesarRespuestaIA(r) {
+        // pedirOrden ya la acomodó; acomodarla otra vez no la cambia.
+        r = normalizarOrden(r);
         const accion = r.accion || 'responder';
         const p = r.parametros || {};
 
@@ -999,7 +1262,9 @@
         const accion = r.accion || 'responder';
         const p = r.parametros || {};
         if (accion === 'responder') {
-            const mensajeFinal = r.respuesta || r.resumen || 'Listo.';
+            // Sin texto no es una respuesta: decir «Listo.» haría creer que
+            // se hizo algo.
+            const mensajeFinal = textoLimpio(r.respuesta) || textoLimpio(r.resumen) || NO_ENTENDI;
             agregarMensaje('asistente', esc(mensajeFinal));
             hablar(mensajeFinal);
             conversacion = [];
@@ -1038,9 +1303,11 @@
                 case 'calcular_laboral':    mensajeFinal = await accCalcularLaboral(p); break;
                 case 'navegar':             mensajeFinal = accNavegar(p); break;
                 default:
-                    mensajeFinal = 'Listo.';
-                    agregarMensaje('asistente', esc(mensajeFinal));
-                    hablar(mensajeFinal);
+                    // Una acción que no existe no hizo nada: decirlo, en vez
+                    // del «Listo.» que hacía creer que sí.
+                    console.warn('[VOZ] Acción desconocida:', accion);
+                    agregarMensaje('asistente', esc(NO_ENTENDI));
+                    hablar(NO_ENTENDI);
                     conversacion = [];
                     return;
             }
@@ -2022,8 +2289,10 @@
     // Tope de acciones por orden: con más, la lista de confirmación ya no se lee.
     const TOPE_LOTE = 40;
 
-    // Lo que se puede combinar en una orden. Lo demás (editar eventos, buscar en
-    // estrados…) ya acepta varios por sí mismo o se pide por separado.
+    // Lo que se puede guardar en una orden. Las búsquedas en estrados también
+    // pueden venir en ella (se preparan como en buscar_varios y se abren al
+    // confirmar); lo demás (editar o borrar eventos…) ya acepta varios por sí
+    // mismo o se pide por separado.
     const ACCIONES_EN_LOTE = {
         crear_evento:        { expedienteObligatorio: false },
         crear_pendiente:     { expedienteObligatorio: false },
@@ -2129,18 +2398,29 @@
      * Convierte la orden del modelo en una lista de cosas concretas por hacer,
      * sin hacer ninguna. Cada entrada de "acciones" es { accion, parametros }; si
      * sus parametros llevan paraTodosLosDe se repite para cada expediente activo
-     * de ese grupo. Devuelve { items, resumen, detalles }.
+     * de ese grupo. Las búsquedas en estrados que traiga se preparan juntas,
+     * en "busqueda" (un plan de buscar_varios, o null). Devuelve
+     * { items, busqueda, resumen, detalles }.
      */
     async function planVarias(p) {
-        const pedidas = Array.isArray(p.acciones) ? p.acciones : [];
+        // Acomodadas como las demás órdenes del modelo (entradasDeLista): con
+        // los parámetros en su lugar y una "varias" anidada, aplanada.
+        const pedidas = entradasDeLista(p.acciones);
         if (!pedidas.length) throw ErrorLote('no vi qué cosas hacer; dime qué quieres en cada expediente');
 
         const problemas = [];
         const candidatas = [];   // { accion, parametros, exp, numero }
+        // Las búsquedas de estrados que vengan en la orden no se rechazan: se
+        // preparan juntas, como en buscar_varios, y se abren al confirmar.
+        const busquedas = [];
         for (let i = 0; i < pedidas.length; i++) {
-            const entrada = pedidas[i] || {};
+            const entrada = pedidas[i];
             const accion = entrada.accion;
             const numero = i + 1;
+            if (ACCIONES_BUSQUEDA.has(accion)) {
+                busquedas.push(entrada);
+                continue;
+            }
             if (!ACCIONES_EN_LOTE[accion]) {
                 problemas.push(`“${accion || '(sin acción)'}” no se puede combinar con otras en una sola orden; pídemelo por separado`);
                 continue;
@@ -2194,16 +2474,27 @@
             }
         }
 
+        let busqueda = null;
+        if (busquedas.length) {
+            try {
+                busqueda = await planBuscarVarios({ busquedas });
+            } catch (e) {
+                problemas.push(e._esEleccion ? 'para la búsqueda en estrados, elige arriba el expediente' : String(e.message || e).replace(/\.$/, ''));
+            }
+        }
+
         if (problemas.length) throw ErrorLote(problemas);
-        if (!items.length) throw ErrorLote('no quedó nada por hacer');
+        if (!items.length && !busqueda) throw ErrorLote('no quedó nada por hacer');
         if (items.length > TOPE_LOTE) {
             throw ErrorLote(`son ${items.length} acciones y el máximo por orden es ${TOPE_LOTE}; acótalo (por fecha, carpeta o cliente) o pídelo por partes`);
         }
-        return {
-            items,
-            resumen: resumenDelLote(items),
-            detalles: items.length === 1 ? [] : items.map(x => x.detalle)
-        };
+        const consultas = busqueda ? busqueda.consultas.length : 0;
+        const abrir = consultas ? `abrir ${plural(consultas, 'consulta', 'consultas')}` : '';
+        const resumen = !items.length ? 'A' + abrir.slice(1)
+            : abrir ? `${resumenDelLote(items)} y ${abrir}` : resumenDelLote(items);
+        const detalles = (items.length === 1 && !busqueda ? [] : items.map(x => x.detalle))
+            .concat(busqueda ? busqueda.consultas.map(c => '🌐 ' + c.etiqueta).concat(busqueda.avisos.map(a => '⚠️ ' + a)) : []);
+        return { items, busqueda, resumen, detalles };
     }
 
     function ejecutorDeLote(accion) {
@@ -2220,6 +2511,11 @@
     // solo repintado, una sola subida a la nube y un solo "deshaz lo último".
     // Un fallo suelto no tira el resto: se cuenta y se informa.
     async function aplicarVarias(plan) {
+        // Las búsquedas primero: el clic en «Confirmar» deja abrir una ventana
+        // solo mientras dura, y guardar lo demás toma su tiempo.
+        const abiertas = plan.busqueda ? ejecutarPlanBusqueda(plan.busqueda) : '';
+        if (!plan.items || !plan.items.length) return abiertas;
+
         const entradas = [];
         const fallos = [];
         const hechos = {};
@@ -2241,9 +2537,14 @@
 
         const total = Object.values(hechos).reduce((a, b) => a + b, 0);
         if (entradas.length) {
-            registrarDeshacer({ tipo: 'lote', entradas, etiqueta: plan.resumen.toLowerCase() });
+            registrarDeshacer({ tipo: 'lote', entradas, etiqueta: (abiertas ? resumenDelLote(plan.items) : plan.resumen).toLowerCase() });
         }
-        if (!total) throw new Error('No pude hacer ninguna de las acciones. ' + fallos.slice(0, 3).join(' · '));
+        if (!total) {
+            const nada = 'No pude hacer ninguna de las acciones. ' + fallos.slice(0, 3).join(' · ');
+            // Las búsquedas sí se abrieron: eso se dice igual.
+            if (abiertas) return `${abiertas} ${nada}`;
+            throw new Error(nada);
+        }
 
         toast(total === 1 ? 'Listo' : `${total} acciones hechas`, 'success');
         const partes = [];
@@ -2256,7 +2557,7 @@
         if (fallos.length) {
             mensaje += ` No pude hacer ${fallos.length === 1 ? 'una de ellas' : fallos.length + ' de ellas'}: ${fallos.slice(0, 3).join(' · ')}.`;
         }
-        return mensaje;
+        return abiertas ? `${mensaje} ${abiertas}` : mensaje;
     }
 
     // Sin confirmación: para dispararlas desde otra parte de la app (VOZ.ejecutar).
@@ -2788,7 +3089,7 @@
      * del PJF. Cada búsqueda lleva los parámetros de su acción; lo que no se
      * pueda preparar se avisa sin tumbar al resto.
      */
-    async function planBuscarVarios(p) {
+    async function planBuscarVarios(p, profundidad = 0) {
         const busquedas = Array.isArray(p.busquedas) ? p.busquedas.slice() : [];
         const plan = { consultas: [], avisos: [], numero: '' };
         const vistas = new Set();
@@ -2814,22 +3115,37 @@
         }
 
         for (const b of busquedas) {
-            const accion = b && b.accion;
-            const params = (b && b.parametros) || {};
-            if (accion !== 'buscar_pjf' && accion !== 'buscar_tsj') continue;
-            const cual = params.numero || params.valor || 'una búsqueda';
+            // Con los parámetros en su lugar; sin nombre de acción (o con uno
+            // inventado), lo dicen sus parámetros: aquí todo es una búsqueda.
+            const entrada = entradaDeOrden(b);
+            if (!entrada) continue;
+            const params = entrada.parametros;
+            const accion = ACCIONES_BUSQUEDA.has(entrada.accion) ? entrada.accion : accionInferida(entrada.accion, params, true);
+            const cual = textoLimpio(params.numero) || textoLimpio(params.valor) ||
+                textosDe(params.numeros, null).concat(textosDe(params.valores, null)).join(', ') || 'una búsqueda';
 
             let parcial;
             try {
-                parcial = accion === 'buscar_pjf' ? await planBuscarPJF(params) : await planBuscarTSJ(params);
+                if (accion === 'buscar_varios') {
+                    // Una buscar_varios dentro de otra (o el grupo de una).
+                    if (profundidad >= 3) continue;
+                    parcial = await planBuscarVarios(params, profundidad + 1);
+                } else if (accion === 'buscar_pjf' || accion === 'buscar_tsj') {
+                    parcial = accion === 'buscar_pjf' ? await planBuscarPJF(params) : await planBuscarTSJ(params);
+                } else {
+                    plan.avisos.push(`${cual}: no entendí qué buscar`);
+                    continue;
+                }
             } catch (e) {
                 // Si hay que elegir expediente, las opciones ya están en
                 // pantalla y se pueden usar aparte; el resto sigue.
-                plan.avisos.push(e._esEleccion ? `${cual}: elige el expediente arriba` : `${cual}: ${e.message}`);
+                plan.avisos.push(e._esEleccion ? `${cual}: elige el expediente arriba`
+                    : accion === 'buscar_varios' ? String(e.message).replace(/\.$/, '') : `${cual}: ${e.message}`);
                 continue;
             }
             if (parcial.sinOrgano) plan.avisos.push(`${cual}: no identifiqué el órgano`);
-            parcial.avisos.forEach(a => plan.avisos.push(`${cual}: ${a}`));
+            // Los avisos de una buscar_varios anidada ya dicen de qué número son.
+            parcial.avisos.forEach(a => plan.avisos.push(accion === 'buscar_varios' ? a : `${cual}: ${a}`));
             if (parcial.faltaTipo) plan.faltaTipo = true;
             for (const c of parcial.consultas) {
                 if (vistas.has(c.url)) continue;
@@ -3603,7 +3919,7 @@ ${JSON.stringify(ultimoCalculoLaboral)}
 ` : ''}JUZGADOS TSJ QUINTANA ROO VÁLIDOS (usa el nombre EXACTO):
 ${JSON.stringify(juzgadosTSJ)}
 
-RESPONDE SIEMPRE Y ÚNICAMENTE CON UN OBJETO JSON (sin texto adicional) con esta estructura:
+RESPONDE SIEMPRE Y ÚNICAMENTE CON UN OBJETO JSON (sin texto adicional). UNO SOLO, aunque la orden tenga varias partes: para eso están "buscar_varios" (estrados) y "varias" (guardar cosas); nunca una lista ni dos objetos seguidos. Esta es su estructura:
 {
   "accion": "<una de las acciones listadas abajo>",
   "parametros": { ... },
@@ -3673,6 +3989,7 @@ ACCIONES DISPONIBLES y sus parámetros:
       Copia cada referencia TAL CUAL la dice el usuario. No inventes nombres oficiales ni cuentes cuántos órganos hay: de eso se encarga la app.
 14b. "buscar_varios": {busquedas:[{accion:"buscar_pjf"|"buscar_tsj", parametros:{...los mismos de esa acción...}}], paraTodosLosDe:texto o null}
     - Para VARIOS ASUNTOS DISTINTOS en una sola orden: números distintos en órganos distintos, o unos del TSJ y otros del PJF. Una entrada por asunto, cada una con los parámetros completos de su acción. No hay límite práctico: pon TODOS los que pida, nunca solo el primero.
+    - Abrir estrados de varios asuntos es SIEMPRE "buscar_varios", nunca "varias": "varias" es para guardar cosas (eventos, pendientes, notas) y no abre estrados.
     - Si es el MISMO número en varios órganos o con varios tipos de asunto, basta buscar_pjf (organismos / tiposAsunto) o buscar_tsj (juzgados); si son varios números con los mismos datos, buscar_tsj con "valores" o buscar_pjf con "numeros".
     - UN GRUPO ENTERO de sus asuntos ("abre los estrados de todos los de AHO", "de todos los de la carpeta García", "de todos los asuntos de ese cliente"): NO los enumeres. Usa paraTodosLosDe con el nombre del grupo (sin "carpeta", "cliente"…) y busquedas:[]; la app arma la consulta de cada expediente con su juzgado u órgano guardado.
     - La app pone las consultas en una LISTA NUMERADA en el chat: intenta abrirlas todas y, si el navegador bloquea alguna, el usuario la abre ahí con «Abrir la siguiente». Nunca digas que solo puedes abrir una.
@@ -3689,6 +4006,7 @@ CÓMO DECIDIR ENTRE ESTRADOS DEL TSJ Y DEL PJF (importante):
 - Ejemplo con varios juzgados del TSJ: "busca el 123/2025 en el primero y el segundo civil de Cancún" → buscar_tsj con valor="123/2025", juzgados=["JUZGADO PRIMERO CIVIL CANCUN","JUZGADO SEGUNDO CIVIL CANCUN"].
 - Ejemplo mixto: "busca el 123/2025 en el juzgado primero civil de Cancún y el amparo indirecto 45/2026 en el juzgado primero de distrito de Quintana Roo" → buscar_varios con busquedas=[{accion:"buscar_tsj", parametros:{valor:"123/2025", tipoBusqueda:"numero", juzgado:"JUZGADO PRIMERO CIVIL CANCUN"}}, {accion:"buscar_pjf", parametros:{numero:"45/2026", organismo:"juzgado primero de distrito en quintana roo", tiposAsunto:["amparo indirecto"]}}].
 - Ejemplo con números distintos: "busca el amparo directo 100/2026 y la queja 7/2026 en el primer colegiado del 27" → buscar_varios con dos buscar_pjf, uno por número.
+- Ejemplo mixto con varios números: "ábreme los estrados del 120/2026 y 121/2026 del primero familiar oral de Cancún, y el amparo directo 486/2026 del primer colegiado del 27 circuito" → buscar_varios con busquedas=[{accion:"buscar_tsj", parametros:{valores:["120/2026","121/2026"], tipoBusqueda:"numero", juzgado:"JUZGADO PRIMERO FAMILIAR ORAL CANCUN"}}, {accion:"buscar_pjf", parametros:{numero:"486/2026", organismo:"primer tribunal colegiado del 27 circuito", tipoAsunto:"amparo directo"}}].
 - NO hace falta que el asunto esté en el catálogo del usuario: si dicta el órgano y el número, manda esos datos y deja expedienteId y expedienteRef en null. Solo usa expedienteRef cuando se refiera a algo SUYO sin dar el órgano ("abre los estrados de lo de Ramírez").
 15. "navegar": {pagina:"inicio"|"expedientes"|"calendario"|"pendientes"|"notas"|"tribunales"|"busqueda"|"pjf"|"otros"|"laboral"|"impi"|"estadisticas"|"config"} — "tribunales" abre el apartado de tribunales; "busqueda" es su parte del TSJ, "pjf" la del PJF y "otros" la de los asuntos ante otras autoridades (otros estados, tribunales administrativos, IMSS, SAT, notarías); "laboral" es la calculadora de finiquito y liquidación (solo abrirla, sin calcular); "estadisticas" son las tablas y métricas del despacho (tiempos, resultados, clientes, pendientes).
 16. "responder": para preguntas generales, saludos o cuando ninguna acción aplica. Usa el campo "respuesta".
@@ -3727,7 +4045,7 @@ CÓMO DECIDIR ENTRE ESTRADOS DEL TSJ Y DEL PJF (importante):
       · En "paraTodosLosDe" pasa SOLO el nombre del grupo ("AHO"), sin palabras como "carpeta", "cliente" o "categoría".
     - Cosas distintas: "agenda la audiencia en el 123/2025 y deja una nota en el 45/2026" → una entrada crear_evento y una crear_nota.
     - Si el título del recordatorio no lo dijo, pregunta UNA vez (faltan_datos=true) en lugar de inventarlo.
-    - Para editar o borrar varios EVENTOS usa editar_evento / eliminar_evento (ya aceptan listas), y para varias búsquedas buscar_varios; no van dentro de "varias".
+    - Para editar o borrar varios EVENTOS usa editar_evento / eliminar_evento (ya aceptan listas), y para varias búsquedas en estrados buscar_varios; ni unas ni otras van dentro de "varias".
 
 CÓMO REFERIRSE A UN EXPEDIENTE (importante):
 - Toda acción que reciba "expedienteId" acepta también "expedienteRef": el texto TAL CUAL lo dijo el usuario para referirse al expediente ("el 123", "lo de Ramírez", "el del juzgado segundo", "123 diagonal 2025").
@@ -3753,9 +4071,13 @@ REGLAS:
         const respuesta = await llamarIA(null, { sistema, historial, maxTokens: 4096 });
 
         try {
-            return _extraerJSON(respuesta);
+            return leerOrdenDelModelo(respuesta);
         } catch (e) {
-            throw new Error('No entendí la instrucción, intenta expresarla de otra forma');
+            // pedirOrden se lo devuelve al modelo una vez, con lo que contestó.
+            const error = new Error('No entendí la instrucción, intenta expresarla de otra forma');
+            error._sinJSON = true;
+            error._texto = respuesta;
+            throw error;
         }
     }
 
