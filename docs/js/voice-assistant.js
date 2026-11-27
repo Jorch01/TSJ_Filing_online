@@ -2561,7 +2561,41 @@
      * uno o varios tipos de asunto (tipoAsunto / tiposAsunto, o "todos") y el
      * número dictado, o un expediente del catálogo con sus datos del PJF.
      */
+    // Junta en «plan» las consultas y avisos de «parcial», sin repetir ventanas.
+    function sumarPlan(plan, parcial, prefijo) {
+        for (const c of parcial.consultas) {
+            if (!plan.consultas.some(x => x.url === c.url)) plan.consultas.push(c);
+        }
+        for (const a of parcial.avisos) {
+            const texto = prefijo ? `${prefijo}: ${a}` : a;
+            if (!plan.avisos.includes(texto)) plan.avisos.push(texto);
+        }
+        if (parcial.faltaTipo) plan.faltaTipo = true;
+        if (parcial.sinOrgano) plan.sinOrgano = true;
+    }
+
+    // Varios números con los mismos datos («el 100/2026 y el 101/2026 en el
+    // primer colegiado», «el 120, el 121 y el 130 del primero familiar»): una
+    // búsqueda por número, todas en la misma lista.
+    async function planPorNumeros(numeros, armar) {
+        const plan = { consultas: [], avisos: [], numero: numeros.join(', ') };
+        for (const n of numeros) {
+            try {
+                sumarPlan(plan, await armar(n), n);
+            } catch (e) {
+                if (e._esEleccion) throw e;
+                plan.avisos.push(`${n}: ${e.message}`);
+            }
+        }
+        if (!plan.consultas.length) throw ErrorAviso('No pude preparar ninguna de las búsquedas' + (plan.avisos.length ? ': ' + plan.avisos.join('; ') : '') + '.');
+        if (plan.consultas.length > MAX_CONSULTAS) throw ErrorAviso(`Eso son ${plan.consultas.length} consultas. Son demasiadas: divídelo en varias órdenes.`);
+        return plan;
+    }
+
     async function planBuscarPJF(p) {
+        const numeros = textosDe(p.numeros, null);
+        if (numeros.length > 1) return planPorNumeros(numeros, n => planBuscarPJF({ ...p, numeros: null, numero: n }));
+        if (numeros.length === 1 && !p.numero) p = { ...p, numero: numeros[0] };
         const refsOrganos = textosDe(p.organismos, p.organismo);
         const tiposPedidos = textosDe(p.tiposAsunto, p.tipoAsunto);
 
@@ -2670,6 +2704,9 @@
      * estrados encuentra el número en cualquiera.
      */
     async function planBuscarTSJ(p) {
+        const valores = textosDe(p.valores, null);
+        if (valores.length > 1) return planPorNumeros(valores, v => planBuscarTSJ({ ...p, valores: null, valor: v }));
+        if (valores.length === 1 && !p.valor) p = { ...p, valor: valores[0] };
         const refsJuzgados = textosDe(p.juzgados, p.juzgado);
         let valor = String(p.valor || '').trim();
         let tipo = p.tipoBusqueda === 'nombre' ? 'nombre' : 'numero';
@@ -2750,10 +2787,29 @@
      * pueda preparar se avisa sin tumbar al resto.
      */
     async function planBuscarVarios(p) {
-        const busquedas = Array.isArray(p.busquedas) ? p.busquedas : [];
+        const busquedas = Array.isArray(p.busquedas) ? p.busquedas.slice() : [];
         const plan = { consultas: [], avisos: [], numero: '' };
         const vistas = new Set();
         let numeros = [];
+
+        // «Los estrados de todos los de AHO / de la carpeta García»: la app busca
+        // los expedientes del grupo y arma la consulta de cada uno con lo que
+        // tiene guardado (su juzgado del TSJ, o su órgano y tipo del PJF).
+        const grupo = String(p.paraTodosLosDe || '').trim();
+        if (grupo) {
+            const miembros = typeof buscarExpedientesDeGrupo === 'function' ? await buscarExpedientesDeGrupo(grupo) : [];
+            if (!miembros.length) {
+                throw ErrorAviso(`No encontré expedientes de “${grupo}” (busqué en carpetas, clientes, tipos de asunto, responsables y comentarios).`);
+            }
+            let sinEstrados = 0;
+            for (const { expediente: e } of miembros) {
+                const inst = e.institucion || 'TSJ';
+                if (inst === 'PJF' || e.pjfOrgId) busquedas.push({ accion: 'buscar_pjf', parametros: { expedienteId: e.id } });
+                else if (inst === 'TSJ' && e.juzgado) busquedas.push({ accion: 'buscar_tsj', parametros: { expedienteId: e.id } });
+                else sinEstrados++;
+            }
+            if (sinEstrados) plan.avisos.push(`${sinEstrados} de “${grupo}” sin estrados electrónicos (otros tribunales o autoridades, o sin juzgado)`);
+        }
 
         for (const b of busquedas) {
             const accion = b && b.accion;
@@ -2797,46 +2853,86 @@
         return planBuscarVarios(p);
     }
 
+    // Abre una consulta y dice si el navegador la dejó abrir. Los navegadores
+    // dejan abrir UNA ventana por clic: las que se abren después, solas, las
+    // bloquean (window.open devuelve null). Por eso cada una se puede abrir
+    // también desde la lista numerada del chat, con su propio clic.
     function abrirConsulta(c) {
-        if (c.institucion === 'TSJ' && typeof abrirBusquedaPopup === 'function') {
-            abrirBusquedaPopup(c.url, c.etiqueta);
-            return;
-        }
-        window.open(c.url, c.ventana || '_blank', 'width=1024,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no');
+        let w = null;
+        try {
+            if (c.institucion === 'TSJ') {
+                // La misma ventana a la derecha que abre la app (abrirBusquedaPopup),
+                // con un nombre propio para que una no cargue encima de otra.
+                const pantalla = (typeof screen !== 'undefined' && screen) || { width: 1280, height: 800 };
+                const ancho = Math.round(Math.min(900, pantalla.width * 0.5));
+                const alto = Math.round(Math.min(700, pantalla.height * 0.8));
+                w = window.open(c.url, 'TSJ_Busqueda_' + Date.now() + '_' + (c.indice || 0),
+                    `width=${ancho},height=${alto},left=${Math.max(0, pantalla.width - ancho - 50)},top=${Math.max(0, Math.round((pantalla.height - alto) / 2))},scrollbars=yes,resizable=yes,toolbar=no,menubar=no`);
+            } else {
+                w = window.open(c.url, c.ventana || '_blank', 'width=1024,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no');
+            }
+            if (w && typeof w.focus === 'function') w.focus();
+        } catch (e) { w = null; }
+        return !!w;
     }
 
-    function abrirConsultas(consultas) {
+    // Intenta abrirlas todas: la primera en el acto (si viene de un clic, el
+    // navegador la deja pasar) y las demás espaciadas. alAbrir(i, ok) dice cómo
+    // le fue a cada una, para marcarla en la lista.
+    function abrirConsultas(consultas, alAbrir) {
         consultas.forEach((c, i) => {
-            // La primera en el acto: si viene de un clic, el navegador la deja
-            // pasar. Las demás espaciadas, porque bloquea las ráfagas.
-            if (i === 0) abrirConsulta(c);
-            else setTimeout(() => abrirConsulta(c), i * 600);
+            const intentar = () => {
+                const ok = abrirConsulta(c);
+                if (typeof alAbrir === 'function') alAbrir(i, ok);
+            };
+            if (i === 0) intentar();
+            else setTimeout(intentar, i * 600);
         });
     }
 
-    // La lista de consultas en el chat, con un botón por cada una: sirve para
-    // reabrir la que el navegador bloqueó y para elegir cuando no se abren solas.
-    function mostrarListaConsultas(consultas, abiertas) {
-        const div = agregarMensaje('asistente', abiertas
-            ? `🌐 <strong>${consultas.length} consultas.</strong> Si alguna no se abrió, ábrela desde aquí:`
-            : `🌐 <strong>${consultas.length} consultas listas.</strong> Ábrelas una por una o todas de una vez:`);
-        if (!div) return;
-        if (!abiertas) {
-            const todas = document.createElement('button');
-            todas.type = 'button';
-            todas.className = 'voz-chip voz-chip-todas';
-            todas.textContent = `🌐 Abrir las ${consultas.length}`;
-            todas.addEventListener('click', () => abrirConsultas(consultas));
-            div.appendChild(todas);
-        }
-        consultas.forEach(c => {
+    /**
+     * La lista NUMERADA de las consultas en el chat. Cada fila dice si ya se
+     * abrió y tiene su botón; arriba, «Abrir la siguiente (k de N)» abre la
+     * primera que falte con cada clic —un clic, una ventana: así el navegador
+     * nunca las bloquea— y «Copiar los enlaces» las deja en el portapapeles.
+     * abriendo: si ya se están abriendo solas. Devuelve { marcar(i, ok) }.
+     */
+    function mostrarListaConsultas(consultas, abriendo) {
+        const n = consultas.length;
+        const estado = consultas.map(() => (abriendo ? 'abriendo' : 'pendiente'));
+        const div = agregarMensaje('asistente', abriendo
+            ? `🌐 <strong>${n} consultas</strong>, numeradas. Las voy abriendo; si el navegador bloquea alguna, ábrela con «Abrir la siguiente» (una por clic) o desde su número:`
+            : `🌐 <strong>${n} consultas listas</strong>, numeradas. Ábrelas con «Abrir la siguiente» (una por clic) o cada una desde su número:`);
+        if (!div || typeof document === 'undefined' || typeof document.createElement !== 'function') return { marcar() {} };
+        div.classList.add('voz-indexada');
+
+        const barra = document.createElement('div');
+        barra.className = 'voz-indexada-barra';
+        const siguiente = document.createElement('button');
+        siguiente.type = 'button';
+        siguiente.className = 'voz-chip voz-chip-todas voz-siguiente';
+        const copiar = document.createElement('button');
+        copiar.type = 'button';
+        copiar.className = 'voz-chip';
+        copiar.textContent = `📋 Copiar los ${n} enlaces`;
+        barra.appendChild(siguiente);
+        barra.appendChild(copiar);
+
+        const aviso = document.createElement('p');
+        aviso.className = 'voz-indexada-aviso';
+        aviso.hidden = true;
+
+        const ETIQUETA = { pendiente: 'Por abrir', abriendo: 'Abriendo…', abierta: '✓ Abierta', bloqueada: '⛔ Bloqueada' };
+        const filas = consultas.map((c, i) => {
             const fila = document.createElement('div');
-            fila.className = 'voz-resultado';
+            fila.className = 'voz-resultado voz-indexada-fila';
             fila.innerHTML =
+                '<span class="voz-indice" aria-hidden="true">' + (i + 1) + '</span>' +
                 '<div class="voz-resultado-info">' +
                     '<strong>' + esc(c.tipo ? `${c.tipo} ${c.numero}` : c.numero) + '</strong>' +
                     ' <span class="voz-tag voz-tag-inst">' + esc(c.institucion) + '</span>' +
                     '<br><small>' + esc(c.organo) + '</small>' +
+                    '<br><small class="voz-estado-consulta"></small>' +
                 '</div>';
             const btns = document.createElement('div');
             btns.className = 'voz-resultado-btns';
@@ -2844,13 +2940,70 @@
             b.type = 'button';
             b.className = 'voz-chip';
             b.textContent = '🌐 Abrir';
-            b.addEventListener('click', () => abrirConsulta(c));
+            b.setAttribute('aria-label', `Abrir la consulta ${i + 1}: ${c.etiqueta}`);
+            b.addEventListener('click', () => marcar(i, abrirConsulta({ ...c, indice: i + 1 })));
             btns.appendChild(b);
             fila.appendChild(btns);
             div.appendChild(fila);
+            return fila;
         });
+        // Los botones van al final, junto a la última fila: el chat se desplaza
+        // hasta abajo y ahí quedan a la mano.
+        div.appendChild(aviso);
+        div.appendChild(barra);
+
+        function pintar() {
+            filas.forEach((fila, i) => {
+                fila.dataset.estado = estado[i];
+                const el = fila.querySelector('.voz-estado-consulta');
+                if (el) el.textContent = ETIQUETA[estado[i]];
+            });
+            const k = estado.findIndex(e => e === 'pendiente' || e === 'bloqueada');
+            const quedan = estado.filter(e => e !== 'abierta').length;
+            if (k >= 0) {
+                siguiente.disabled = false;
+                siguiente.textContent = `▶️ Abrir la ${k + 1} de ${n}`;
+            } else if (quedan) {
+                siguiente.disabled = true;
+                siguiente.textContent = 'Abriendo…';
+            } else {
+                siguiente.disabled = true;
+                siguiente.textContent = `✓ Abriste las ${n}`;
+            }
+            const bloqueadas = estado.filter(e => e === 'bloqueada').length;
+            aviso.hidden = !bloqueadas;
+            if (bloqueadas) {
+                aviso.textContent = `El navegador bloqueó ${bloqueadas === 1 ? '1 ventana' : bloqueadas + ' ventanas'}: ábrelas con «Abrir la siguiente», una por clic. ` +
+                    'Si permites las ventanas emergentes de este sitio (el ícono de la barra de direcciones), la próxima vez se abrirán todas solas.';
+            }
+        }
+
+        function marcar(i, ok) {
+            if (i < 0 || i >= n) return;
+            // Una que ya se abrió no vuelve a «bloqueada» si se reintenta y falla.
+            if (ok) estado[i] = 'abierta';
+            else if (estado[i] !== 'abierta') estado[i] = 'bloqueada';
+            pintar();
+        }
+
+        siguiente.addEventListener('click', () => {
+            const k = estado.findIndex(e => e === 'pendiente' || e === 'bloqueada');
+            if (k >= 0) marcar(k, abrirConsulta({ ...consultas[k], indice: k + 1 }));
+        });
+        copiar.addEventListener('click', async () => {
+            const texto = consultas.map((c, i) => `${i + 1}. ${c.etiqueta}\n${c.url}`).join('\n\n');
+            try {
+                await navigator.clipboard.writeText(texto);
+                copiar.textContent = `✓ ${n} enlaces copiados`;
+            } catch (e) {
+                copiar.textContent = 'No se pudo copiar';
+            }
+        });
+
+        pintar();
         const chat = document.getElementById('voz-chat');
         if (chat) chat.scrollTop = chat.scrollHeight;
+        return { marcar };
     }
 
     // Sin órgano resuelto: a la página del PJF con el número precargado.
@@ -2879,8 +3032,10 @@
         }
 
         const soloLista = !!plan.faltaTipo || consultas.length > MAX_VENTANAS_AUTO;
-        if (!soloLista) abrirConsultas(consultas);
-        if (consultas.length > 1) mostrarListaConsultas(consultas, !soloLista);
+        // Con varias, primero la lista numerada (para marcar en ella cuáles se
+        // abrieron y cuáles bloqueó el navegador) y luego se intenta abrirlas.
+        const lista = consultas.length > 1 ? mostrarListaConsultas(consultas, !soloLista) : null;
+        if (!soloLista) abrirConsultas(consultas.map((c, i) => ({ ...c, indice: i + 1 })), lista ? lista.marcar : null);
 
         if (soloLista) {
             return plan.faltaTipo
@@ -2908,7 +3063,7 @@
         } else {
             que = `${consultas.length} consultas`;
         }
-        return `Abriendo ${que}.${cola} Permite las ventanas emergentes.`;
+        return `Abriendo ${que}.${cola} Te las dejé numeradas en el chat: si el navegador bloquea alguna, ábrela con «Abrir la siguiente».`;
     }
 
     async function accBuscarPJF(p) {
@@ -3495,15 +3650,16 @@ ACCIONES DISPONIBLES y sus parámetros:
 10. "abrir_expediente": {expedienteId:número o null, expedienteRef:texto o null} — navega hasta el expediente y lo resalta ("abre el expediente 123/2025", "muéstrame el caso de Juan Pérez", "ábreme el 123").
 11. "deshacer": {} — revierte la última acción hecha por el asistente ("deshaz lo último", "revierte eso").
 12. "buscar_local": {consulta} — buscar en el catálogo local del usuario ("busca mis expedientes de divorcio", "¿tengo algo de Juan Pérez?", "qué tengo del 123"). Pasa la consulta TAL CUAL la dijo; la app la interpreta y ordena por relevancia.
-13. "buscar_tsj": {valor, tipoBusqueda:"numero"|"nombre", juzgado:nombre exacto de la lista o null, juzgados:[nombres exactos] o null, ambito:"todos"|"primera"|"segunda"|"penal" o null, expedienteId:número o null, expedienteRef:texto o null}
+13. "buscar_tsj": {valor, valores:[textos] o null, tipoBusqueda:"numero"|"nombre", juzgado:nombre exacto de la lista o null, juzgados:[nombres exactos] o null, ambito:"todos"|"primera"|"segunda"|"penal" o null, expedienteId:número o null, expedienteRef:texto o null}
     - ESTRADOS DEL TSJ DE QUINTANA ROO (tribunal del estado). Si el usuario menciona un expediente de su catálogo, usa el juzgado guardado de ese expediente.
     - VARIOS JUZGADOS concretos: usa "juzgados" (lista de nombres EXACTOS de la lista) y deja "juzgado" en null. Si no especifica juzgado, deja los dos en null y usa ambito (default "todos").
+    - VARIOS NÚMEROS en el mismo juzgado (o los mismos juzgados): usa "valores" con TODOS los números que dicte y deja "valor" en null: "abre los estrados del 120/2026, 121/2026 y 130/2025 del primero familiar de Cancún" → valores:["120/2026","121/2026","130/2025"].
     - En el TSJ no hay tipos de asunto: el buscador encuentra el número en cualquier tipo de juicio. "En todos los tipos de asunto" en un juzgado del TSJ es una búsqueda normal por número.
     - CAUSAS PENALES: los juzgados penales (JUZGADO PENAL ORAL…, TRIBUNAL DE JUICIO ORAL…, adolescentes, ejecución) NO publican en estrados; de una causa se ven sus tocas en las salas penales, que se buscan por el número de la CAUSA (número/año), no por el del toca. "Busca la causa 339/2023", "¿hay algo de la causa penal…?", "en las salas penales" → ambito:"penal" (o el juzgado penal, si lo dice o es el del expediente). La app abre la búsqueda en cada sala penal.
-14. "buscar_pjf": {expedienteId:número o null, expedienteRef:texto o null, numero:texto o null, organismo:texto o null, organismos:[textos] o null, tipoAsunto:texto o null, tiposAsunto:[textos] o null}
+14. "buscar_pjf": {expedienteId:número o null, expedienteRef:texto o null, numero:texto o null, numeros:[textos] o null, organismo:texto o null, organismos:[textos] o null, tipoAsunto:texto o null, tiposAsunto:[textos] o null}
     - ESTRADOS / LISTA DE ACUERDOS DEL PODER JUDICIAL DE LA FEDERACIÓN. Si el expediente está en el catálogo con tienePJF=true, usa su id.
     - Si el usuario dicta el órgano federal, pásalo TAL CUAL en "organismo" y el tipo de asunto tal como lo diga en "tipoAsunto"; la app los resuelve contra el catálogo oficial. Los ordinales dan igual: "27 circuito", "vigésimo séptimo circuito" y "XXVII circuito" valen los tres.
-    - El número del asunto va SIEMPRE en "numero", aunque no esté dado de alta.
+    - El número del asunto va SIEMPRE en "numero", aunque no esté dado de alta. VARIOS NÚMEROS con el mismo órgano y tipo ("el amparo directo 100/2026 y el 101/2026 del primer colegiado del 27"): usa "numeros" con todos y deja "numero" en null.
     - VARIOS TIPOS DE ASUNTO del mismo número: usa "tiposAsunto" (lista) y deja "tipoAsunto" en null: "la queja y el amparo directo 12/2026" → tiposAsunto:["queja","amparo directo"].
     - TODOS LOS TIPOS: si lo pide en todos los tipos de asunto o no sabe de qué tipo es ("en todos los tipos", "sin importar el tipo", "en cualquier tipo de asunto") → tiposAsunto:["todos"].
     - Si no dice el tipo de asunto, no preguntes: déjalo en null y la app le ofrece los tipos posibles de ese órgano.
@@ -3513,9 +3669,11 @@ ACCIONES DISPONIBLES y sus parámetros:
       · Circuitos distintos: "en los colegiados del 27 y del 28" → organismos:["tribunales colegiados del 27 circuito","tribunales colegiados del 28 circuito"].
       · Mezclados: "en los juzgados de distrito de Quintana Roo y en el primer colegiado del 27" → organismos:["juzgados de distrito en quintana roo","primer tribunal colegiado del 27 circuito"].
       Copia cada referencia TAL CUAL la dice el usuario. No inventes nombres oficiales ni cuentes cuántos órganos hay: de eso se encarga la app.
-14b. "buscar_varios": {busquedas:[{accion:"buscar_pjf"|"buscar_tsj", parametros:{...los mismos de esa acción...}}]}
-    - Para VARIOS ASUNTOS DISTINTOS en una sola orden: números distintos, o unos del TSJ y otros del PJF. Una entrada por asunto, cada una con los parámetros completos de su acción.
-    - Si es el MISMO número en varios órganos o con varios tipos de asunto, basta buscar_pjf (organismos / tiposAsunto) o buscar_tsj (juzgados).
+14b. "buscar_varios": {busquedas:[{accion:"buscar_pjf"|"buscar_tsj", parametros:{...los mismos de esa acción...}}], paraTodosLosDe:texto o null}
+    - Para VARIOS ASUNTOS DISTINTOS en una sola orden: números distintos en órganos distintos, o unos del TSJ y otros del PJF. Una entrada por asunto, cada una con los parámetros completos de su acción. No hay límite práctico: pon TODOS los que pida, nunca solo el primero.
+    - Si es el MISMO número en varios órganos o con varios tipos de asunto, basta buscar_pjf (organismos / tiposAsunto) o buscar_tsj (juzgados); si son varios números con los mismos datos, buscar_tsj con "valores" o buscar_pjf con "numeros".
+    - UN GRUPO ENTERO de sus asuntos ("abre los estrados de todos los de AHO", "de todos los de la carpeta García", "de todos los asuntos de ese cliente"): NO los enumeres. Usa paraTodosLosDe con el nombre del grupo (sin "carpeta", "cliente"…) y busquedas:[]; la app arma la consulta de cada expediente con su juzgado u órgano guardado.
+    - La app pone las consultas en una LISTA NUMERADA en el chat: intenta abrirlas todas y, si el navegador bloquea alguna, el usuario la abre ahí con «Abrir la siguiente». Nunca digas que solo puedes abrir una.
 
 CÓMO DECIDIR ENTRE ESTRADOS DEL TSJ Y DEL PJF (importante):
 - "Estrados", "estrado", "lista de acuerdos", "publicaciones", "boletín" NO deciden nada por sí solos: las dos instituciones publican así. Lo que decide es el ÓRGANO o la institución que se mencione.
