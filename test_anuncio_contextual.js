@@ -37,10 +37,12 @@ const raro = exp('Algo que no se reconoce');
 const elegir = (expedientes, pagina) => A.elegirVariante({ expedientes, pagina });
 
 // Partes (menos de 3 expedientes)
-verificar('sin expedientes, grupo A: orientación general', elegir([], 'inicio') === 'parte_general');
-verificar('sin expedientes, grupo B: corresponsalía (prueba A/B)', A.elegirVariante({ expedientes: [], pagina: 'inicio', grupo: 'b' }) === 'abogado_nuevo');
-verificar('el grupo B no cambia a quien ya tiene expedientes', A.elegirVariante({ expedientes: [fam], grupo: 'b' }) === 'parte_familiar' && A.elegirVariante({ expedientes: [fam, civ, pen], grupo: 'b' }) === 'abogado_general');
-verificar('el grupo B no pisa la sección (IMPI, PJF, laboral)', ['impi', 'pjf', 'laboral'].every(p => A.elegirVariante({ expedientes: [], pagina: p, grupo: 'b' }) === elegir([], p)));
+verificar('sin expedientes: corresponsalía (ganó la prueba A/B)', elegir([], 'inicio') === 'abogado_nuevo' && elegir([], 'expedientes') === 'abogado_nuevo' && elegir([]) === 'abogado_nuevo');
+verificar('ya no hay sorteo: el grupo que hubiera quedado guardado no cuenta', A.elegirVariante({ expedientes: [], pagina: 'inicio', grupo: 'a' }) === 'abogado_nuevo');
+verificar('parte con un juzgado no reconocido sigue con orientación general', elegir([raro]) === 'parte_general');
+verificar('quien tiene expedientes no cambia', elegir([fam]) === 'parte_familiar' && elegir([fam, civ, pen]) === 'abogado_general');
+verificar('la sección manda también sin expedientes (IMPI, PJF, laboral)', elegir([], 'impi') === 'parte_marcas' && elegir([], 'pjf') === 'parte_amparo' && elegir([], 'laboral') === 'parte_laboral');
+verificar('se borra la marca del grupo de la prueba', /localStorage\.removeItem\(CLAVE_GRUPO_VIEJA\)/.test(fs.readFileSync(path.join(JS, 'anuncio-contextual.js'), 'utf8')));
 verificar('abogado_nuevo dice lo mismo que abogado_general', A.VARIANTES.abogado_nuevo.texto === A.VARIANTES.abogado_general.texto);
 verificar('parte familiar', elegir([fam], 'expedientes') === 'parte_familiar');
 verificar('parte civil', elegir([civ], 'expedientes') === 'parte_civil');
