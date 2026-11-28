@@ -24,7 +24,7 @@
     const CLAVE_CERRADO = 'anuncio_ctx_cerrado';      // sessionStorage: solo esta visita
     const UMBRAL_ABOGADO = 3;                          // expedientes activos
     const RETRASO_MS = 4000;                           // no compite con el arranque
-    const CLAVE_GRUPO = 'anuncio_ctx_grupo';          // localStorage: prueba A/B, fija por dispositivo
+    const CLAVE_GRUPO_VIEJA = 'anuncio_ctx_grupo';    // de la prueba A/B ya cerrada: se borra
 
     function whatsapp(texto) { return 'https://wa.me/' + WHATSAPP + '?text=' + encodeURIComponent(texto); }
 
@@ -39,10 +39,11 @@
             llamada: 'Platicarlo por WhatsApp',
             enlace: () => whatsapp('Hola, soy abogado y vengo de TSJ Filing. Me interesa colaborar con ustedes como corresponsales en Cancún.')
         },
-        // Prueba A/B (desde el 21 nov 2026): a quien aún no tiene expedientes —casi
-        // siempre llega desde los estrados, que usan sobre todo litigantes— la mitad
-        // ve esto en vez de parte_general. Mismo texto que abogado_general, otro
-        // nombre para distinguirlo en Analytics.
+        // Lo que ve quien aún no tiene expedientes (casi siempre llega desde los
+        // estrados, que usan sobre todo litigantes). Ganó la prueba A/B del
+        // 21 al 28 nov 2026 a parte_general: 2 clics en 23 vistas contra 0 en 28
+        // (y 0 en 50 en dos semanas). Mismo texto que abogado_general; otro nombre
+        // para seguirlo aparte en Analytics.
         abogado_nuevo: {
             texto: '¿Un asunto en Cancún fuera de tu materia o de tu agenda? Lo llevamos contigo como corresponsales.',
             llamada: 'Platicarlo por WhatsApp',
@@ -115,13 +116,13 @@
         return mejor;
     }
 
-    /** Qué anuncio toca. Función pura: expedientes activos, la sección actual y el grupo de la prueba A/B. */
-    function elegirVariante({ expedientes = [], pagina: seccion = '', grupo = 'a' } = {}) {
+    /** Qué anuncio toca. Función pura: expedientes activos y la sección actual. */
+    function elegirVariante({ expedientes = [], pagina: seccion = '' } = {}) {
         const abogado = expedientes.length >= UMBRAL_ABOGADO;
         if (seccion === 'impi') return abogado ? 'abogado_marcas' : 'parte_marcas';
         if (seccion === 'pjf') return abogado ? 'abogado_amparo' : 'parte_amparo';
         if (seccion === 'laboral' && !abogado) return 'parte_laboral';
-        if (expedientes.length === 0) return grupo === 'b' ? 'abogado_nuevo' : 'parte_general';
+        if (expedientes.length === 0) return 'abogado_nuevo';
         const materia = materiaPredominante(expedientes);
         if (abogado) return materia === 'amparo' ? 'abogado_amparo' : 'abogado_general';
         return VARIANTES['parte_' + materia] ? 'parte_' + materia : 'parte_general';
@@ -144,14 +145,6 @@
     function hayAlgoAbajo() {
         return [...document.querySelectorAll('.aviso-privacidad-pie, #tour-oferta, #rec-oferta, .tour-tarjeta')]
             .some(el => !el.hidden && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden');
-    }
-
-    function grupoAB() {
-        try {
-            let g = localStorage.getItem(CLAVE_GRUPO);
-            if (g !== 'a' && g !== 'b') { g = Math.random() < 0.5 ? 'a' : 'b'; localStorage.setItem(CLAVE_GRUPO, g); }
-            return g;
-        } catch (e) { return 'a'; }
     }
 
     function seccionActual() {
@@ -194,7 +187,7 @@
 
     function pintar() {
         if (excluido()) { ocultar(); return; }
-        const id = elegirVariante({ expedientes: expedientesCache, pagina: seccionActual(), grupo: grupoAB() });
+        const id = elegirVariante({ expedientes: expedientesCache, pagina: seccionActual() });
         if (id === actual && barra) return;
         const v = VARIANTES[id];
         if (!barra) barra = construir();
@@ -232,6 +225,7 @@
     }
 
     async function arrancar(intentos = 0) {
+        try { localStorage.removeItem(CLAVE_GRUPO_VIEJA); } catch (e) {}
         if (excluido()) return;
         if (hayAlgoAbajo()) {
             if (intentos < 60) setTimeout(() => arrancar(intentos + 1), 3000);
